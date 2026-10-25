@@ -21,6 +21,7 @@ import { $t } from '@/locales'
 import { BaseResponse } from '@/types'
 import { isSupabaseApi } from '@/config/api-provider'
 import { isSupabaseSessionFailure } from '@/utils/supabase'
+import { ApiResponseError, decodeResponseEnvelope, type ResponseContract } from './response'
 import {
   isSupabaseSessionConfirmedExpired,
   notifySupabaseSessionExpired,
@@ -33,12 +34,13 @@ const MAX_RETRIES = 0
 const RETRY_DELAY = 1000
 
 /** 扩展 AxiosRequestConfig */
-interface ExtendedAxiosRequestConfig extends AxiosRequestConfig {
+export interface ExtendedAxiosRequestConfig extends AxiosRequestConfig {
   showErrorMessage?: boolean
   showSuccessMessage?: boolean
   skipAuth?: boolean
   skipResponseWrapper?: boolean
   sessionRecoveryRetried?: boolean
+  responseContract?: ResponseContract
 }
 
 const { VITE_API_URL, VITE_WITH_CREDENTIALS } = import.meta.env
@@ -102,15 +104,24 @@ async function retryAfterUnauthorized(
 axiosInstance.interceptors.response.use(
   async (response: AxiosResponse<BaseResponse>) => {
     const config = response.config as ExtendedAxiosRequestConfig
-    if (config.skipResponseWrapper) return response
+    if (config.skipResponseWrapper || response.status === 204) return response
 
-    const { code, msg } = response.data
-    if (code === ApiStatus.success) return response
-    if (code === ApiStatus.unauthorized) {
-      const retried = await retryAfterUnauthorized(config)
-      if (retried) return retried
+    try {
+      const decoded = decodeResponseEnvelope(response.data, config.responseContract)
+      response.data = { code: ApiStatus.success, msg: decoded.message, data: decoded.data }
+      return response
+    } catch (error) {
+      if (!(error instanceof ApiResponseError)) throw error
+      if (error.code === ApiStatus.unauthorized) {
+        const retried = await retryAfterUnauthorized(config)
+        if (retried) return retried
+      }
+      throw new HttpError(
+        error.message,
+        typeof error.code === 'number' ? error.code : ApiStatus.error,
+        { data: error.data }
+      )
     }
-    throw new HttpError(msg || $t('httpMsg.requestFailed'), code, { data: response.data })
   },
   async (error) => {
     if (error.response?.status === ApiStatus.unauthorized && error.config) {
@@ -172,6 +183,8 @@ async function request<T = unknown>(config: ExtendedAxiosRequestConfig): Promise
 
   try {
     const res = await axiosInstance.request<BaseResponse<T> | T>(config)
+
+    if (res.status === 204) return undefined as T
 
     if (config.skipResponseWrapper) {
       return res.data as T

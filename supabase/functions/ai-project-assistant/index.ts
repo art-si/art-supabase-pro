@@ -1,3 +1,4 @@
+import { AiProviderRequestError, requestAiProviderWithFallback, getAiProviderFailure } from '../_shared/ai-provider-request.ts'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import {
@@ -416,7 +417,7 @@ async function requestProvider(
           body: JSON.stringify(body)
         }, config.timeoutMs)
         if (!response.ok) {
-          lastError = new Error(`AI provider request failed with HTTP ${response.status}`)
+          lastError = new AiProviderRequestError(response.status)
           if (response.status < 500 && response.status !== 429) break
           continue
         }
@@ -436,26 +437,6 @@ async function requestProvider(
   throw lastError
 }
 
-async function requestProviderWithFallback(
-  endpoints: AiProviderEndpoint[],
-  messages: ProviderMessage[],
-  allowTools: boolean,
-  config: AiRuntimeConfig
-): Promise<{ endpoint: AiProviderEndpoint; result: ProviderResult }> {
-  let lastError = new Error('AI provider request failed')
-  for (const endpoint of endpoints) {
-    try {
-      return {
-        endpoint,
-        result: await requestProvider(endpoint, messages, allowTools, config)
-      }
-    } catch (error) {
-      lastError = error instanceof Error ? error : lastError
-      console.warn('ai-project-assistant provider fallback', endpoint.label, lastError.message)
-    }
-  }
-  throw lastError
-}
 
 async function listEdgeFunctions(): Promise<Record<string, unknown>> {
   const accessToken = Deno.env.get('SUPABASE_ACCESS_TOKEN')
@@ -1029,12 +1010,7 @@ Deno.serve(async (req) => {
     ]
     let inputTokens = 0
     let outputTokens = 0
-    const initialProviderResponse = await requestProviderWithFallback(
-      providerEndpoints,
-      providerMessages,
-      true,
-      runtimeConfig
-    )
+    const initialProviderResponse = await requestAiProviderWithFallback(providerEndpoints, (endpoint) => requestProvider(endpoint, providerMessages, true, runtimeConfig))
     const activeProvider = initialProviderResponse.endpoint
     let response = initialProviderResponse.result
     resolvedModel = response.model
@@ -1131,6 +1107,7 @@ Deno.serve(async (req) => {
       safetyMode: 'read_only'
     })
   } catch (error) {
+    const providerFailure = getAiProviderFailure(error)
     const message = error instanceof Error ? error.message : 'Unknown error'
     const providerTimedOut = isAbortLikeError(error)
     console.error('ai-project-assistant error', message)
@@ -1138,7 +1115,7 @@ Deno.serve(async (req) => {
       await admin.from('ai_run').update({
         status: 'failed',
         latency_ms: Date.now() - startedAt,
-        error_code: providerTimedOut ? 'provider_timeout' : 'server_error',
+        error_code: providerTimedOut ? 'provider_timeout' : providerFailure?.code ?? 'server_error',
         error_message: message.slice(0, 2000),
         finished_at: new Date().toISOString(),
         update_by: appUser.user_email
@@ -1146,8 +1123,8 @@ Deno.serve(async (req) => {
     }
     return json(
       {
-        code: providerTimedOut ? 'provider_timeout' : 'server_error',
-        message: providerTimedOut ? '模型响应超时，请稍后重试' : '助手服务暂时不可用，请稍后重试'
+        code: providerTimedOut ? 'provider_timeout' : providerFailure?.code ?? 'server_error',
+        message: providerTimedOut ? '模型响应超时，请稍后重试' : providerFailure?.message ?? '助手服务暂时不可用，请稍后重试'
       },
       providerTimedOut ? 504 : 500
     )

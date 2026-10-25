@@ -1,1 +1,0 @@
-import{Lt as e,pn as t,qt as n}from"./BCo0rLY3.js";import{t as r}from"./CH91vkZ4.js";var i=n({name:`MdmEquipmentDirectory`,__name:`index`,setup(n){return(n,i)=>(t(),e(r))}});export{i as default};

@@ -291,6 +291,7 @@ pnpm build
 | 命令 | 说明 |
 | --- | --- |
 | `pnpm dev` | 启动开发服务器 |
+| `npm run dev:cloudbase` | 本地启动前端，连接 `.env.cloudbase` 配置的 CloudBase 后端 |
 | `pnpm check:fast` | 运行 UI、复用、权限与数据库静态审计、类型、ESLint 和单元测试 |
 | `pnpm check` | 在快速检查基础上增加 Stylelint |
 | `pnpm check:ci` | 运行完整静态检查、快照校验、生产构建与核心视觉回归 |
@@ -332,11 +333,14 @@ art-supabase-pro/
 │  └─ art-supabase-vms/            # VMS 车辆管理应用
 ├─ supabase/
 │  ├─ functions/                   # Edge Functions
-│  ├─ migrations/                  # 历史说明；当前数据库变更直接执行并验证
-│  └─ tests/                       # 数据库测试
-├─ tests/                          # 单元与 E2E 测试
+│  └─ migrations/                  # 历史说明；当前数据库变更直接执行并验证
+├─ tests/                          # 单元、浏览器、SQL 集成与 PowerShell 测试
 └─ screenshots/                    # README 产品截图
 ```
+
+测试目录的用途、SQL 执行边界和提交原则见 [tests/README.md](tests/README.md)。
+
+`docs/` 是主应用和业务子仓当前的静态发布产物，统一发布命令会重建它； `modules/art-supabase-doc/docs/` 则是文档站的源文件，两者都不能按临时目录删除。测试源码、测试夹具和视觉基准需要版本控制；本机 IDE 状态、数据库缓存、运行日志、覆盖率、测试报告、认证会话和一次性排查证据放在忽略目录中，不提交。取消文件跟踪只影响后续提交，不会删除远端 Git 历史；历史瘦身需要单独协调，不能通过强推混入普通清理。
 
 ## 安全与权限原则
 

@@ -15,7 +15,7 @@ for (const [kind, permission] of [
   ['report', 'FinanceReceivableReport'],
   ['writeoff', 'FinanceReceiptWriteoff']
 ]) {
-  test(`${kind} 普通只读用户查询两条数据及业务操作隔离`, async ({ page }) => {
+  test(`${kind} 普通只读用户查询两条数据及业务操作隔离`, async ({ page }, info) => {
     const mutations: string[] = []
     const records = [1, 2].map((index) => ({
       id: `ar-view-${index}`,
@@ -100,9 +100,11 @@ for (const [kind, permission] of [
         })
       return route.fulfill({ json: [] })
     })
+    const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
     await page.goto(
-      `/tests/e2e/fixtures/receivable-workspace.html?kind=${kind}&permissions=${permission}:View`
+      `/tests/e2e/fixtures/receivable-workspace.html?kind=${kind}&theme=${theme}&permissions=${permission}:View`
     )
+    await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*\bdark\b)/)
     if (kind === 'writeoff') {
       await page.getByRole('combobox', { name: '结算组织', exact: true }).click()
       await page

@@ -111,3 +111,97 @@ for (const theme of ['light', 'dark']) {
     }
   })
 }
+
+test('报销详情复用页面时读取新单据，旧请求晚到不能覆盖当前单据', async ({ page }) => {
+  const calls: string[] = []
+  let releaseSecond: (() => void) | undefined
+  await page.route('**/rest/v1/**', async (route) => {
+    const resource = new URL(route.request().url()).pathname.split('/').at(-1)
+    if (resource !== 'tms_get_expense_reimbursement_secure') return route.fulfill({ json: [] })
+    const id = route.request().postDataJSON().p_id
+    calls.push(id)
+    if (id === 'detail-2')
+      await new Promise<void>((resolve) => {
+        releaseSecond = resolve
+      })
+    return route.fulfill({
+      json: {
+        id,
+        tenant_id: '11111111-1111-4111-8111-111111111111',
+        reimbursement_no: `QA-${id}`,
+        source_type: 'travel',
+        status: 'draft',
+        is_demo: true,
+        reason: `事由-${id}`,
+        field_access: {
+          reimbursementAmounts: 'read',
+          payeeDetails: 'read',
+          reimbursementEvidence: 'read',
+          paymentExecution: 'read'
+        },
+        attachment_urls: [],
+        payees: [],
+        payments: [],
+        items: [],
+        travel_lines: []
+      }
+    })
+  })
+  await page.goto(
+    '/tests/e2e/fixtures/receivable-workspace.html?kind=expense_reimbursement_detail&recordId=detail-1&detailNavigation=1'
+  )
+  await expect(page.getByRole('heading', { name: 'QA-detail-1', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '切换详情2', exact: true }).click()
+  await expect.poll(() => Boolean(releaseSecond)).toBe(true)
+  await page.getByRole('button', { name: '切换详情1', exact: true }).click()
+  await expect.poll(() => calls.filter((id) => id === 'detail-1').length).toBe(2)
+  await expect(page.getByRole('heading', { name: 'QA-detail-1', exact: true })).toBeVisible()
+  releaseSecond?.()
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByText('事由-detail-1', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'QA-detail-2', exact: true })).toHaveCount(0)
+  expect(calls).toEqual(['detail-1', 'detail-2', 'detail-1'])
+})
+
+test('报销详情缓存返回重新读取当前单据，离开后的旧请求不污染缓存', async ({ page }) => {
+  const calls: string[] = []
+  let releaseSecond: (() => void) | undefined
+  await page.route('**/rest/v1/**', async (route) => {
+    if (!route.request().url().endsWith('/tms_get_expense_reimbursement_secure'))
+      return route.fulfill({ json: [] })
+    const id = route.request().postDataJSON().p_id
+    calls.push(id)
+    const number = calls.filter((value) => value === id).length
+    if (id === 'detail-2')
+      await new Promise<void>((resolve) => {
+        releaseSecond = resolve
+      })
+    return route.fulfill({
+      json: {
+        id,
+        tenant_id: '11111111-1111-4111-8111-111111111111',
+        reimbursement_no: `QA-${id}-v${number}`,
+        source_type: 'travel',
+        status: 'draft',
+        is_demo: true,
+        attachment_urls: [],
+        payees: [],
+        payments: [],
+        items: [],
+        travel_lines: []
+      }
+    })
+  })
+  await page.goto(
+    '/tests/e2e/fixtures/receivable-workspace.html?kind=expense_reimbursement_detail&recordId=detail-1&detailNavigation=1&detailKeepAlive=1'
+  )
+  await expect(page.getByRole('heading', { name: 'QA-detail-1-v1', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '切换详情2', exact: true }).click()
+  await expect.poll(() => Boolean(releaseSecond)).toBe(true)
+  await page.getByRole('button', { name: '切换详情1', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'QA-detail-1-v2', exact: true })).toBeVisible()
+  releaseSecond?.()
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByRole('heading', { name: 'QA-detail-1-v2', exact: true })).toBeVisible()
+  expect(calls).toEqual(['detail-1', 'detail-2', 'detail-1'])
+})

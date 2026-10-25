@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { sumBy } from 'lodash-es'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15000 })
 test.setTimeout(90000)
@@ -140,9 +141,9 @@ for (const kind of ['payable', 'receivable'] as const) {
               : {
                   records: [...rows('primary'), ...rows('secondary')],
                   summary: {
-                    receivableAmount: 300,
-                    dueThisMonthAmount: 300,
-                    unallocatedReceiptAmount: 300
+                    receivableAmount: sumBy(rows('primary'), 'amount'),
+                    dueThisMonthAmount: sumBy(rows('primary'), 'amount'),
+                    unallocatedReceiptAmount: sumBy(rows('secondary'), 'amount')
                   }
                 }
         })
@@ -215,7 +216,9 @@ for (const kind of ['payable', 'receivable'] as const) {
     await expect(page.getByText('QA-primary-2', { exact: true })).toBeVisible()
     await expect(execute).toBeDisabled()
     if (kind === 'receivable') {
-      await expect(page.getByText('应收收款核销', { exact: true })).toBeVisible()
+      await expect(
+        page.getByText('应收收款核销', { exact: true }).filter({ visible: true })
+      ).toBeVisible()
       await expect(page.getByText('receivable_receipt', { exact: true })).toHaveCount(0)
     }
     await page.screenshot({

@@ -11,7 +11,15 @@
         icon="ri:bill-line"
         density="compact"
       >
-        <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
+        <template #actions>
+          <ElButton
+            v-if="kind === 'estimated'"
+            v-auth="'FinanceEstimatedPayable:Accrual'"
+            @click="accrualRef?.handleOpen()"
+            >自动暂估参数</ElButton
+          >
+          <BusinessTableWorkspaceActions :table="tableRef" />
+        </template>
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
@@ -50,25 +58,13 @@
             /></ElButton>
             <template #dropdown
               ><ElDropdownMenu
-                ><ElDropdownItem v-if="kind === 'estimated'" command="financial"
+                ><ElDropdownItem v-if="canPushTarget('financial')" command="financial"
                   ><ArtSvgIcon icon="ri:bill-line" />财务应付</ElDropdownItem
                 >
-                <ElDropdownItem
-                  v-if="
-                    kind === 'financial' &&
-                    hasAuth('FinancePayableApplication:Add') &&
-                    hasAuth('FinancePayableApplication:View')
-                  "
-                  command="application"
+                <ElDropdownItem v-if="canPushTarget('application')" command="application"
                   ><ArtSvgIcon icon="ri:file-list-3-line" />付款申请</ElDropdownItem
                 >
-                <ElDropdownItem
-                  v-if="
-                    kind === 'financial' &&
-                    hasAuth('FinancePayablePayment:Add') &&
-                    hasAuth('FinancePayablePayment:View')
-                  "
-                  command="payment"
+                <ElDropdownItem v-if="canPushTarget('payment')" command="payment"
                   ><ArtSvgIcon icon="ri:bank-card-line" />付款单</ElDropdownItem
                 ></ElDropdownMenu
               ></template
@@ -127,13 +123,16 @@
         />
       </ArtDialog>
       <FinanceVoucherPreview ref="voucherDialogRef" :result="voucherPreview" />
+      <PayableAccrualManager v-if="kind === 'estimated'" ref="accrualRef" />
     </div>
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
   import { fetchOrganizationOptionsTree } from '@/api/system-manage'
   import FinanceVoucherPreview from '@/components/business/finance-voucher-preview/index.vue'
+  import PayableAccrualManager from '@/components/business/payable-accrual-manager/index.vue'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { formatTenantLabel } from '@/utils/tenant-display'
   import { pushPayableSettlement } from '@/api/payable-settlement'
   import { ElMessage, ElTag } from 'element-plus'
@@ -173,7 +172,7 @@
   import { formatCurrencyValue } from '@/utils/ui/format'
   import { payableStatusLabels } from '@/utils/finance/payable'
   import { useAuth } from '@/hooks/core/useAuth'
-  import { useRouteTableContext } from '@/hooks/core/useRouteTableContext'
+  import { useRouteTableContext, useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { printHtmlDocument } from '@/utils/file/print-document'
   import { financePaths } from '@/router/business-paths'
@@ -181,13 +180,17 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
 
   const props = defineProps<{ kind: PurchasePayableKind; permissions: PayablePermissions }>()
+  const accrualRef = ref<InstanceType<typeof PayableAccrualManager>>()
   const route = useRoute()
   const tenantScope = useTenantScopeStore()
   const router = useRouter()
+  const captureRouteOperation = useRouteOperationGuard()
   const { hasAuth } = useAuth()
   const { confirmDelete } = useArtFeedback()
   const title = computed(() => (props.kind === 'estimated' ? '暂估应付单' : '财务应付单'))
   const permission = (action: keyof PayablePermissions) => props.permissions[action] || ''
+  const captureImportOperation = useTenantOperationGuard(permission('View'))
+  let carrierImportContext: { kind: PurchasePayableKind; isCurrent: () => boolean } | undefined
   const tableRef = ref<InstanceType<typeof ArtTableQuery>>()
   const drawerRef = ref<InstanceType<typeof PayableDocumentDrawer>>()
   const deleteGuardRef = ref<InstanceType<typeof MasterDataDeleteGuard>>()
@@ -313,8 +316,24 @@
       rows.length !== 1 ||
       !!rows[0]?.isCredit ||
       selectionDisabled(rows, 'approved') ||
+      (props.kind === 'estimated'
+        ? !canPushTarget('financial')
+        : !canPushTarget('application') && !canPushTarget('payment')) ||
       (props.kind === 'estimated' && !!rows[0]?.standardPurchase)
     )
+  }
+  function canPushTarget(command: string): boolean {
+    const target =
+      props.kind === 'estimated'
+        ? command === 'financial'
+          ? 'FinancePurchasePayable'
+          : ''
+        : command === 'application'
+          ? 'FinancePayableApplication'
+          : command === 'payment'
+            ? 'FinancePayablePayment'
+            : ''
+    return !!target && hasAuth(`${target}:Add`) && hasAuth(`${target}:View`)
   }
   async function fetchRows(query: PayableSearch) {
     const result = await fetchPurchasePayables(props.kind, {
@@ -345,9 +364,20 @@
       busy.value = false
     }
   }
+  function canEditDocument(row: PurchasePayableDocument): boolean {
+    return row.status === 'draft' && !row.isReversal && row.sourceType !== 'carrier_statement'
+  }
   async function open(row: PurchasePayableDocument, edit = false): Promise<void> {
     await run(async () => {
-      await drawerRef.value?.open(await reloadDocument(row.id), edit)
+      const isCurrentRoute = captureRouteOperation()
+      const document = await reloadDocument(row.id)
+      if (!isCurrentRoute()) return
+      if (edit && !canEditDocument(document)) {
+        ElMessage.warning('单据状态已变化，请重新核对列表后操作')
+        await tableRef.value?.refreshData()
+        return
+      }
+      await drawerRef.value?.open(document, edit)
     })
   }
   async function act(ids: string[], action: PayableAction): Promise<void> {
@@ -438,7 +468,9 @@
     })
   }
   async function push(id: string, command: string): Promise<void> {
+    if (!hasAuth(permission('Push')) || !canPushTarget(command)) return
     await run(async () => {
+      const isCurrentRoute = captureRouteOperation()
       if (props.kind === 'financial') {
         if (command !== 'application' && command !== 'payment') return
         const source = await reloadDocument(id)
@@ -455,7 +487,9 @@
         }
         const created = await pushPayableSettlement(id, command)
         ElMessage.success(`已生成 ${created.documentNo}`)
+        if (!isCurrentRoute()) return
         await tableRef.value?.refreshData()
+        if (!isCurrentRoute()) return
         await router.push({
           path:
             command === 'application'
@@ -472,29 +506,59 @@
       }
       const created = await pushEstimatedPayable(id)
       ElMessage.success(`已生成 ${created.documentNo}`)
+      if (!isCurrentRoute()) return
       await tableRef.value?.refreshData()
+      if (!isCurrentRoute()) return
       await router.push({ path: financePaths.financialPayable, query: { recordId: created.id } })
     })
   }
   async function carrierOptions(): Promise<PayableOption[]> {
     return fetchPayableOptions('carrier_statement')
   }
+  function openCarrierPicker(): void {
+    const scopeCurrent = captureImportOperation()
+    const requiredPermission = permission('Import')
+    const canImport = () =>
+      hasAuth(requiredPermission) &&
+      hasAuth(permission('Add')) &&
+      hasAuth('FinanceCarrierSettlement:View')
+    if (busy.value || !scopeCurrent() || !canImport()) return
+    const kind = props.kind
+    carrierImportContext = {
+      kind,
+      isCurrent: () => scopeCurrent() && props.kind === kind && canImport()
+    }
+    void carrierPickerRef.value?.open()
+  }
   async function importCarrier(rows: PayableOption[]): Promise<void> {
-    if (!rows[0]) return
-    await run(async () => {
-      await importCarrierPayable(props.kind, rows[0].id)
+    if (!rows[0] || busy.value) return
+    const context = carrierImportContext
+    carrierImportContext = undefined
+    if (!context?.isCurrent()) {
+      ElMessage.warning('操作范围或权限已变化，请重新选择承运结算')
+      return
+    }
+    busy.value = true
+    try {
+      await importCarrierPayable(context.kind, rows[0].id)
+      if (!context.isCurrent()) return
       ElMessage.success('已导入TMS应付')
       await tableRef.value?.refreshData()
-    })
+    } catch (error) {
+      if (context.isCurrent()) notifyFriendlyError(error, '承运结算未导入，请重新选择后重试')
+    } finally {
+      busy.value = false
+    }
   }
   const freezeForm = reactive({ amount: 0, reason: '' })
-  const freezeItems: FormItem[] = [
+  const freezeUnfreezing = ref(false)
+  const freezeItems = computed<FormItem[]>(() => [
     {
       key: 'amount',
       label: '冻结金额(原币)',
       type: 'number',
       span: 24,
-      props: { min: 0, precision: 2 }
+      props: { min: 0, precision: 2, disabled: freezeUnfreezing.value }
     },
     {
       key: 'reason',
@@ -503,17 +567,43 @@
       span: 24,
       props: { maxlength: 500, rows: 3 }
     }
-  ]
+  ])
+  function canFreezeDocument(row: PurchasePayableDocument): boolean {
+    const available = Math.abs(row.unpaidAmount ?? row.totalAmount)
+    return (
+      row.status === 'approved' &&
+      (!!row.frozenAmount || (Number.isFinite(available) && available > 0))
+    )
+  }
   async function freeze(id: string, unfreeze: boolean): Promise<void> {
+    if (props.kind !== 'financial' || !hasAuth(permission('Freeze'))) return
     await run(async () => {
+      const isCurrentRoute = captureRouteOperation()
       const row = await reloadDocument(id)
-      freezeForm.amount = unfreeze ? 0 : Math.abs(row.unpaidAmount ?? row.totalAmount)
+      if (!isCurrentRoute()) return
+      if (!canFreezeDocument(row) || Boolean(row.frozenAmount) !== unfreeze) {
+        ElMessage.warning('冻结状态已变化，请重新核对列表后操作')
+        await tableRef.value?.refreshData()
+        return
+      }
+      const available = Math.abs(row.unpaidAmount ?? row.totalAmount)
+      freezeUnfreezing.value = unfreeze
+      freezeForm.amount = unfreeze ? 0 : available
       freezeForm.reason = ''
       await freezeDialogRef.value?.handleOpen(undefined, {
         title: `${unfreeze ? '解冻财务应付' : '冻结财务应付'} · ${row.currencyCode || 'CNY'}`,
         onConfirm: async () => {
           if (!freezeForm.reason.trim()) {
             ElMessage.warning('请填写原因')
+            return false
+          }
+          if (
+            !unfreeze &&
+            (!Number.isFinite(freezeForm.amount) ||
+              freezeForm.amount <= 0 ||
+              freezeForm.amount > available)
+          ) {
+            ElMessage.warning('冻结金额应大于零且不超过未付余额')
             return false
           }
           try {
@@ -536,25 +626,32 @@
   }
   async function voucher(id: string, command: string): Promise<void> {
     await run(async () => {
+      const isCurrentRoute = captureRouteOperation()
       if (command === 'preview') {
-        voucherPreview.value = await previewPayableVoucher(id)
+        const result = await previewPayableVoucher(id)
+        if (!isCurrentRoute()) return
+        voucherPreview.value = result
         await voucherDialogRef.value?.handleOpen()
         return
       }
       const result = await generatePayableVoucher(id)
       if (result.voucherId) {
         ElMessage.success('记账凭证已生成')
-        await router.push({
-          path: financePaths.voucherCenter,
-          query: { recordId: result.voucherId }
-        })
+        if (!isCurrentRoute()) return
+        if (hasAuth('FinanceVoucherCenter:View'))
+          await router.push({
+            path: financePaths.voucherCenter,
+            query: { recordId: result.voucherId }
+          })
       } else ElMessage.warning(result.message)
-      await tableRef.value?.refreshData()
+      if (isCurrentRoute()) await tableRef.value?.refreshData()
     })
   }
   async function print(ids: string[]): Promise<void> {
     await run(async () => {
+      const isCurrentRoute = captureRouteOperation()
       const records = await Promise.all(uniq(ids).map(reloadDocument))
+      if (!isCurrentRoute()) return
       const body = records
         .map(
           (record) =>
@@ -577,8 +674,9 @@
       label: '导入TMS',
       icon: 'ri:download-cloud-2-line',
       permission: permission('Import'),
-      disabled: busy.value,
-      onClick: () => carrierPickerRef.value?.open()
+      disabled:
+        busy.value || !hasAuth(permission('Add')) || !hasAuth('FinanceCarrierSettlement:View'),
+      onClick: openCarrierPicker
     },
     {
       key: 'submit',
@@ -862,7 +960,7 @@
             label="查看"
             onClick={() => open(row)}
           />
-          {row.status === 'draft' && !row.isReversal && row.sourceType !== 'carrier_statement' && (
+          {canEditDocument(row) && (
             <ArtButtonTable
               type="edit"
               permission={permission('Edit')}
@@ -870,7 +968,7 @@
               onClick={() => open(row, true)}
             />
           )}
-          {props.kind === 'financial' && row.status === 'approved' && (
+          {props.kind === 'financial' && canFreezeDocument(row) && (
             <ArtButtonTable
               icon={row.frozenAmount ? 'ri:lock-unlock-line' : 'ri:lock-line'}
               permission={permission('Freeze')}

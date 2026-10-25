@@ -1,0 +1,1 @@
+import{Wn as e,in as t}from"./B2BaADVT.js";function n(n){let r=e(),i;return{component:r,load:async()=>{if(!r.value){i??(i=n().then(({default:e})=>{r.value=e}));try{await i}finally{i=void 0}}await t()}}}export{n as t};

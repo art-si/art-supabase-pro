@@ -17,8 +17,11 @@ public/flyfish-viewer-assets.json
 public/vendor/
 public/wasm/
 
-# Local IDE session state changes as the editor observes Git operations.
-/.idea/workspace.xml
+# Personal IDE state, database introspection caches and local build diagnostics.
+.idea/
+*.log
+*.tsbuildinfo
+/coverage/
 
 # CloudBase builds must never replace the GitHub Pages docs output.
 /cloudbase-dist/

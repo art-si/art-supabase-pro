@@ -44,7 +44,9 @@ for (const kind of ['receipt', 'refund', 'revenue', 'payment_request']) {
       const rows = ids && mode === 'missing' ? records.slice(0, 1) : records
       return route.fulfill({ json: { records: rows, total: rows.length } })
     })
-    await page.goto(`/tests/e2e/fixtures/receivable-workspace.html?kind=${kind}`)
+    const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
+    await page.goto(`/tests/e2e/fixtures/receivable-workspace.html?kind=${kind}&theme=${theme}`)
+    if (theme === 'dark') await expect(page.locator('html')).toHaveClass(/dark/)
     await expect(page.getByText('QA-AR-PRINT-2', { exact: true })).toBeVisible()
     await page.evaluate(() => {
       window.print = () => {

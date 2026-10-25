@@ -1,4 +1,4 @@
-import { createApp, h } from 'vue'
+import { createApp, h, KeepAlive, type VNode } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -29,7 +29,15 @@ const app = createApp({
       h(
         ElConfigProvider,
         { locale: zhCn },
-        { default: () => h(RouterView, { key: String(router.currentRoute.value.name) }) }
+        {
+          default: () =>
+            params.has('keepAlive')
+              ? h(RouterView, null, {
+                  default: ({ Component }: { Component: VNode }) =>
+                    h(KeepAlive, null, { default: () => Component })
+                })
+              : h(RouterView, { key: String(router.currentRoute.value.name) })
+        }
       )
     )
 })

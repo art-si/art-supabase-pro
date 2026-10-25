@@ -1,1 +1,0 @@
-import{Ft as e,qn as t}from"./BCo0rLY3.js";import{t as n}from"./BmeyOOXG.js";import{n as r}from"./CZ5BkJj7.js";function i(i){let a=n();return e(()=>r({effectiveTenantId:a.effectiveTenantId,requestedTenantId:t(i),isPlatformSuper:a.isPlatformScope}))}export{i as t};

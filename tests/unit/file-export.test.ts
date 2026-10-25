@@ -98,6 +98,26 @@ test('Excel export rejects a tenant change before saving its generated file', as
   }
 })
 
+test('Excel export rechecks operation permission immediately before saving the workbook', async () => {
+  let authorized = true
+  let checked = false
+  await assert.rejects(
+    exportExcel({
+      data: [{ name: '权限回归' }],
+      columns: [{ key: 'name', title: '名称' }],
+      onProgress: (progress) => {
+        if (progress === 95) authorized = false
+      },
+      assertCanDownload: () => {
+        checked = true
+        if (!authorized) throw new Error('导出权限已变化')
+      }
+    }),
+    /导出权限已变化/
+  )
+  assert.equal(checked, true)
+})
+
 test('Excel export rejects invalid row limits and oversized data before loading browser libraries', async () => {
   const data = [{ name: '第一条' }, { name: '第二条' }]
   const columns = [{ key: 'name' as const, title: '名称' }]

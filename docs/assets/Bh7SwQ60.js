@@ -1,1 +1,0 @@
-import{Dn as e,d as t,qn as n}from"./BCo0rLY3.js";function r(r,i){let a=t();e(()=>a.path===n(r)?a.fullPath:``,async e=>{if(!e)return;let t=n(i);t?.clearSelection(),await t?.refreshContext()},{flush:`post`})}export{r as t};

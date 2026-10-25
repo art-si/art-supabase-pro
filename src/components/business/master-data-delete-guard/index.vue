@@ -359,6 +359,7 @@
     cargo_waybill: createWaybillMeta('货物关联运单', 10),
     address_waybill: createWaybillMeta('地址关联运单', 10),
     vehicle_waybill: createWaybillMeta('车辆关联运单', 10),
+    vehicle_fixed_asset: createFinanceMeta('车辆固定资产', '项', 'FinanceFixedAsset', 15),
     carrier_statement: createFinanceMeta(
       '承运商对账单',
       '张',
@@ -918,7 +919,14 @@
       return
     }
     await dialogRef.value?.handleClose(true)
-    if (meta.routePath) await router.push({ path: meta.routePath, query })
+    if (meta.routePath)
+      await router.push({
+        path: meta.routePath,
+        query: {
+          ...query,
+          ...(typeof meta.routeQuery === 'function' ? meta.routeQuery(record) : meta.routeQuery)
+        }
+      })
   }
 
   defineExpose({ inspect, checking })

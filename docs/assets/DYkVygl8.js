@@ -1,1 +1,0 @@
-import{S as e}from"./CWsmOlGP.js";function t(e,t){return e?.length?[...e]:t?[t]:[]}function n(t,n,r){let i=String(t??``).split(/[,，、;；]/).map(e=>e.trim()).filter(Boolean).map(e=>{let t=n.find(t=>String(t.value)===e||t.label===e);if(!t)throw Error(`${r}包含无效选项：${e}`);return String(t.value)});return e(i)}export{n,t};

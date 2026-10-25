@@ -1,4 +1,4 @@
-import { createApp, h } from 'vue'
+import { createApp, h, KeepAlive, type VNode } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { setupGlobDirectives } from '@/directives'
 import language from '@/locales'
@@ -53,11 +53,20 @@ const pages = [
 const app = createApp({
   render: () =>
     h('main', { class: 'art-page-view p-4', style: { height: '100vh' } }, [
+      ...(parameters.has('navigationTest')
+        ? [h('button', { onClick: () => router.push('/audit-away') }, '打开其他页面')]
+        : []),
       h(
         ElConfigProvider,
         { locale: zhCn },
         {
-          default: () => h(RouterView)
+          default: () =>
+            parameters.has('keepAlive')
+              ? h(RouterView, null, {
+                  default: ({ Component }: { Component: VNode }) =>
+                    h(KeepAlive, null, { default: () => Component })
+                })
+              : h(RouterView)
         }
       )
     ])
@@ -65,6 +74,35 @@ const app = createApp({
 const router = createRouter({
   history: createMemoryHistory(),
   routes: [
+    {
+      path: financePaths.estimatedPayable,
+      name: 'FinanceEstimatedPayable',
+      component: EstimatedPayablePage
+    },
+    {
+      path: financePaths.financialPayable,
+      component: FinancialPayablePage
+    },
+    {
+      path: financePaths.voucherCenter,
+      component: {
+        render: () =>
+          h('div', [
+            h('h1', '凭证中心导航目标'),
+            h('p', String(router.currentRoute.value.query.recordId || ''))
+          ])
+      }
+    },
+    {
+      path: '/audit-away',
+      component: {
+        render: () =>
+          h('div', [
+            h('h1', '其他业务页面'),
+            h('button', { onClick: () => router.push('/') }, '返回来源页面')
+          ])
+      }
+    },
     {
       path: '/',
       component:
@@ -130,10 +168,32 @@ if (parameters.has('permissions'))
       .filter(Boolean)
       .map((name) => ({ name, path: '', type: 'button', meta: { title: '应付验收权限' } }))
   )
+if (parameters.has('permissionControls')) {
+  window.addEventListener('keydown', (event) => {
+    if (event.altKey && event.shiftKey && event.code === 'Digit4') {
+      const permissions = (parameters.get('permissions') || '').split(',').filter(Boolean)
+      useMenuStore(store).setButtonList(
+        permissions
+          .filter((name) => !/:(Add|Edit)$/.test(name))
+          .map((name) => ({ name, path: name, type: 'button', meta: { title: name } }))
+      )
+    }
+    if (event.altKey && event.shiftKey && ['Digit7', 'Digit5'].includes(event.code)) {
+      const permissions = (parameters.get('permissions') || '').split(',').filter(Boolean)
+      useMenuStore(store).setButtonList(
+        permissions
+          .filter((name) => event.code === 'Digit5' || !name.endsWith(':Import'))
+          .map((name) => ({ name, path: name, type: 'button', meta: { title: name } }))
+      )
+    }
+  })
+}
 useTenantScopeStore(store).selectedTenantId =
   parameters.get('scope') === 'all' ? null : '11111111-1111-4111-8111-111111111111'
 const setting = useSettingStore(store)
-const theme = parameters.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+const requestedTheme =
+  parameters.get('theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+const theme = requestedTheme === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
 setting.setGlobalTheme(theme, theme)
 setting.boxBorderMode = parameters.get('box') !== 'shadow-mode'
 document.documentElement.dataset.boxMode = setting.boxBorderMode ? 'border-mode' : 'shadow-mode'

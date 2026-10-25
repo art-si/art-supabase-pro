@@ -89,6 +89,11 @@ export function createRecordReferenceNavigation(
   )
   return {
     ...warehouseReferences,
+    tms_waybill_cost: {
+      routeName: 'FinanceWaybillCostDetail',
+      ...permitted('FinanceWaybillCost:View'),
+      routeParams: (record) => ({ id: record.targetId })
+    },
     fms_payable_settlement_document: {
       routeNames: ['FinancePayableApplication', 'FinancePayablePayment', 'FinancePayableRefund'],
       canNavigate: () =>

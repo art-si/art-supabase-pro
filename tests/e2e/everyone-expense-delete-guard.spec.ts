@@ -150,7 +150,11 @@ for (const config of [
             }
           })
         })
-        await page.goto(`/tests/e2e/fixtures/receivable-workspace.html?kind=expense_${config.kind}`)
+        const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
+        await page.goto(
+          `/tests/e2e/fixtures/receivable-workspace.html?kind=expense_${config.kind}&theme=${theme}`
+        )
+        if (theme === 'dark') await expect(page.locator('html')).toHaveClass(/dark/)
         const row = page.getByRole('row').filter({ hasText: 'QA-DELETE-001' })
         await expect(row).toBeVisible()
         if (bulk) {

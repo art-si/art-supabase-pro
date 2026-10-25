@@ -452,6 +452,9 @@
   import { formatCurrencyValue } from '@/utils/ui/format'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { unref } from 'vue'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { financePaths } from '@/router/business-paths'
   import BusinessRecordLink from '@/components/business/business-record-link/index.vue'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
@@ -478,6 +481,20 @@
   const { hasAuth } = useAuth()
   const emit = defineEmits<{ success: [] }>()
   const drawerRef = ref<ArtDrawerExpose>()
+  const permissionMap = {
+    estimated: {
+      View: 'FinanceEstimatedPayable:View',
+      Add: 'FinanceEstimatedPayable:Add',
+      Edit: 'FinanceEstimatedPayable:Edit'
+    },
+    financial: {
+      View: 'FinancePurchasePayable:View',
+      Add: 'FinancePurchasePayable:Add',
+      Edit: 'FinancePurchasePayable:Edit'
+    }
+  }
+  const captureOperation = useTenantOperationGuard(permissionMap[props.kind].View)
+  const session = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
   const materialPickerRef = ref<ArtDataSelectExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const lineTableRef = ref<ArtTableExpose>()
@@ -1209,7 +1226,11 @@
       remark: ''
     })
   }
-  async function save(): Promise<boolean> {
+  async function save(isCurrent: () => boolean): Promise<boolean> {
+    if (!isCurrent()) {
+      ElMessage.warning('操作范围或权限已变化，请重新打开应付单')
+      return false
+    }
     if (
       !document.value ||
       optionError.value ||
@@ -1221,11 +1242,13 @@
       return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
+      if (!isCurrent()) return false
       if (!document.value.lines.length) {
         ElMessage.warning('请至少选择一行物料明细')
         return false
       }
       const lineValidation = await lineTableRef.value?.validate()
+      if (!isCurrent()) return false
       if (lineValidation?.valid === false) {
         ElMessage.warning(lineValidation.firstError?.message || '请完整填写应付明细')
         return false
@@ -1240,15 +1263,28 @@
         return false
       }
       await savePurchasePayable(document.value)
+      if (!isCurrent()) return false
       ElMessage.success('应付单已保存')
       emit('success')
       return true
     } catch (error) {
-      notifyFriendlyError(error, '保存失败，请检查明细和当前数据状态')
+      if (isCurrent()) notifyFriendlyError(error, '保存失败，请检查明细和当前数据状态')
       return false
     }
   }
   async function open(row?: PurchasePayableDocument, edit = false): Promise<void> {
+    const kind = props.kind
+    const scopeCurrent = captureOperation()
+    const version = session.invalidate()
+    const permissions = permissionMap[kind]
+    const permission = row?.id ? permissions.Edit : permissions.Add
+    const contextCurrent = () =>
+      scopeCurrent() &&
+      props.kind === kind &&
+      session.version.value === version &&
+      (!edit || hasAuth(permission))
+    if (!contextCurrent()) return
+    const isCurrent = () => edit && contextCurrent() && session.isCurrent(version)
     lastValidQuantities = new WeakMap()
     materialPickerRef.value?.clear()
     currencyVersion += 1
@@ -1323,9 +1359,13 @@
       confirmText: '保存',
       confirmDisabled: edit,
       showFooter: edit,
-      onConfirm: save
+      onClose: () => {
+        session.invalidate()
+        currencyVersion += 1
+      },
+      onConfirm: () => save(isCurrent)
     })
-    if (edit) await loadOptions()
+    if (isCurrent()) await loadOptions()
   }
   watch(signedTotal, (value) => {
     if (document.value && editable.value) document.value.totalAmount = roundPayable(value)

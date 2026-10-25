@@ -329,7 +329,6 @@ export default async ({ mode }: { mode: string }) => {
       Components({
         dirs: [resolvePath('src/components')],
         dts: enableGeneratedDeclarations ? 'src/types/import/components.d.ts' : false,
-        exclude: [/[\\/]art-data-select[\\/]preview\.vue$/],
         resolvers: [ElementPlusResolver({ importStyle: 'sass' })]
       }),
       // 按需定制主题配置

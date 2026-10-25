@@ -11,6 +11,7 @@ export interface RecordDeleteDependency extends Omit<
 }
 
 const scopedDeleteReaders: Partial<Record<string, string>> = {
+  vehicle_maintenance_record: 'vms_get_maintenance_delete_dependencies_secure',
   mdm_payment_term: 'get_mdm_payable_master_delete_dependencies_secure',
   mdm_payment_purpose: 'get_mdm_payable_master_delete_dependencies_secure',
   mdm_settlement_method: 'get_mdm_payable_master_delete_dependencies_secure',

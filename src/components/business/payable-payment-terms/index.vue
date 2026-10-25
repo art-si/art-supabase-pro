@@ -54,6 +54,10 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
+  import { unref } from 'vue'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { ElMessage, ElTag } from 'element-plus'
   import {
     fetchPaymentTerms,
@@ -85,6 +89,9 @@
   const tableRef = ref<InstanceType<typeof ArtTableQuery>>()
   const dialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
+  const { hasAuth } = useAuth()
+  const captureOperation = useTenantOperationGuard(props.permissions.View)
+  const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const form = ref<Partial<PaymentTerm>>({})
   const items: FormItem[] = [
     { key: 'code', label: '编号', type: 'input', props: { maxlength: 40 } },
@@ -159,18 +166,32 @@
     })
   }
   async function open(row?: PaymentTerm): Promise<void> {
+    const permission = row ? props.permissions.Edit : props.permissions.Add
+    if (!hasAuth(permission)) return
+    const scopeCurrent = captureOperation()
+    const version = session.invalidate()
+    const isCurrent = () => scopeCurrent() && session.isCurrent(version) && hasAuth(permission)
     form.value = row ? { ...row } : { code: '', name: '', days: 0, enabled: true, remark: '' }
     await dialogRef.value?.handleOpen(undefined, {
       title: row ? '编辑付款条件' : '新增付款条件',
+      onClose: () => {
+        session.invalidate()
+      },
       onConfirm: async () => {
+        if (!isCurrent()) {
+          ElMessage.warning('操作范围或权限已变化，请重新打开付款条件')
+          return false
+        }
         if (!(await validateArtFormForSubmit(formRef.value))) return false
+        if (!isCurrent()) return false
         try {
           await savePaymentTerm(form.value)
+          if (!isCurrent()) return false
           ElMessage.success('付款条件已保存')
           await tableRef.value?.refreshData()
           return true
         } catch (error) {
-          notifyFriendlyError(error, '付款条件未保存，请重试')
+          if (isCurrent()) notifyFriendlyError(error, '付款条件未保存，请重试')
           return false
         }
       }

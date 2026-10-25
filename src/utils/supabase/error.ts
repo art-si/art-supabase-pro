@@ -29,6 +29,9 @@ export function wasErrorUserNotified(error: unknown): boolean {
 }
 
 const ERROR_CODE_MESSAGES: Record<string, string> = {
+  password_not_set: '账号尚未设置登录密码，请联系管理员设置后重试',
+  invalid_username_or_password: '账号或密码错误，请重新输入',
+  password_policy_rejected: '密码不符合安全要求，请重新设置后登录',
   invalid_credentials: '邮箱或密码错误，请重新输入',
   email_not_confirmed: '邮箱尚未验证，请先完成邮箱验证',
   phone_not_confirmed: '手机号尚未验证，请先完成验证',
@@ -386,7 +389,10 @@ export function getFriendlySupabaseErrorMessage(
   }
 
   for (const code of details.codes) {
-    const message = ERROR_CODE_MESSAGES[code] ?? ERROR_CODE_MESSAGES[code.toUpperCase()]
+    const message =
+      ERROR_CODE_MESSAGES[code] ??
+      ERROR_CODE_MESSAGES[code.toUpperCase()] ??
+      ERROR_CODE_MESSAGES[code.toLowerCase()]
     if (message) return message
   }
 

@@ -1,3 +1,4 @@
+import { AiProviderRequestError, requestAiProviderWithFallback, getAiProviderFailure } from '../_shared/ai-provider-request.ts'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import {
@@ -789,7 +790,7 @@ async function requestProvider(
         if (!response.ok) {
           const errorText = await response.text()
           console.error('ai-assistant provider error', response.status, errorText)
-          lastError = new Error(`AI provider request failed with HTTP ${response.status}`)
+          lastError = new AiProviderRequestError(response.status)
           if (response.status < 500 && response.status !== 429) break
           continue
         }
@@ -808,26 +809,6 @@ async function requestProvider(
   throw lastError
 }
 
-async function requestProviderWithFallback(
-  endpoints: AiProviderEndpoint[],
-  messages: ProviderMessage[],
-  allowTools: boolean,
-  config: AiRuntimeConfig
-): Promise<{ endpoint: AiProviderEndpoint; result: ProviderResult }> {
-  let lastError = new Error('AI provider request failed')
-  for (const endpoint of endpoints) {
-    try {
-      return {
-        endpoint,
-        result: await requestProvider(endpoint, messages, allowTools, config)
-      }
-    } catch (error) {
-      lastError = error instanceof Error ? error : lastError
-      console.warn('ai-assistant provider fallback', endpoint.label, lastError.message)
-    }
-  }
-  throw lastError
-}
 
 async function executeTool(
   name: ToolName,
@@ -1415,12 +1396,7 @@ Deno.serve(async (req) => {
 
     let totalInputTokens = 0
     let totalOutputTokens = 0
-    const initialProviderResponse = await requestProviderWithFallback(
-      providerEndpoints,
-      providerMessages,
-      true,
-      runtimeConfig
-    )
+    const initialProviderResponse = await requestAiProviderWithFallback(providerEndpoints, (endpoint) => requestProvider(endpoint, providerMessages, true, runtimeConfig))
     const activeProvider = initialProviderResponse.endpoint
     const firstResponse = initialProviderResponse.result
     resolvedRunModel = firstResponse.model
@@ -1500,6 +1476,7 @@ Deno.serve(async (req) => {
     if (!content) throw new Error('AI provider returned an empty message')
     return await finishSuccess(content, executedTools, totalInputTokens, totalOutputTokens)
   } catch (error) {
+    const providerFailure = getAiProviderFailure(error)
     const message = error instanceof Error ? error.message : 'Unknown error'
     console.error('ai-assistant error', message)
     if (runId) {
@@ -1511,7 +1488,7 @@ Deno.serve(async (req) => {
           error_code:
             error instanceof DOMException && error.name === 'AbortError'
               ? 'provider_timeout'
-              : 'server_error',
+              : providerFailure?.code ?? 'server_error',
           error_message: message.slice(0, 2000),
           finished_at: new Date().toISOString(),
           update_by: appUser.user_email
@@ -1523,11 +1500,11 @@ Deno.serve(async (req) => {
         code:
           error instanceof DOMException && error.name === 'AbortError'
             ? 'provider_timeout'
-            : 'server_error',
+            : providerFailure?.code ?? 'server_error',
         message:
           error instanceof DOMException && error.name === 'AbortError'
             ? 'AI 服务响应超时，请稍后重试'
-            : message
+            : providerFailure?.message ?? '助手服务暂时不可用，请稍后重试'
       },
       error instanceof DOMException && error.name === 'AbortError' ? 504 : 500
     )

@@ -96,7 +96,9 @@ test('应收报表两条记录、组织树筛选、汇总账龄与导出文件�
     return route.fulfill({ json: [] })
   })
   const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
-  await page.goto(`/tests/e2e/fixtures/receivable-workspace.html?kind=report&theme=${theme}`)
+  await page.goto(
+    `/tests/e2e/fixtures/receivable-workspace.html?kind=report&theme=${theme}&permissions=FinanceReceivableReport:View,FinanceReceivableReport:Export`
+  )
   await expect(page.getByText('QA-AR-REPORT-1', { exact: true })).toBeVisible()
   await expect(page.getByText('QA-AR-REPORT-2', { exact: true })).toBeVisible()
   const expand = page.getByRole('button', { name: '展开', exact: true })
@@ -109,9 +111,13 @@ test('应收报表两条记录、组织树筛选、汇总账龄与导出文件�
   await page.getByRole('button', { name: '查询', exact: true }).click()
   await expect(page.getByText('QA-AR-REPORT-2', { exact: true })).toHaveCount(0)
   await page.getByRole('radio', { name: '应收汇总与账龄', exact: true }).locator('..').click()
+  await expect(page.getByRole('columnheader', { name: '单据编号', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '0—30天', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '查询', exact: true }).click()
   await expect(page.getByRole('columnheader', { name: '0—30天', exact: true })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: '单据编号', exact: true })).toHaveCount(0)
+  await page.getByRole('radio', { name: '应收明细', exact: true }).locator('..').click()
+  await expect(page.getByRole('columnheader', { name: '0—30天', exact: true })).toBeVisible()
   const event = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出', exact: true }).click()
   const download = await event
@@ -150,4 +156,9 @@ test('应收报表两条记录、组织树筛选、汇总账龄与导出文件�
   expect(exported).toHaveLength(1)
   expect(exported[0]).toMatchObject({ mode: 'summary', organizationId: 'org-1', agingBasis: 'due' })
   await page.screenshot({ path: info.outputPath('report-summary-filtered.png'), fullPage: true })
+  await page.goto(
+    `/tests/e2e/fixtures/receivable-workspace.html?kind=report&theme=${theme}&permissions=FinanceReceivableReport:View`
+  )
+  await expect(page.getByText('QA-AR-REPORT-1', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '导出', exact: true })).toHaveCount(0)
 })

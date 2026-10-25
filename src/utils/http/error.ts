@@ -23,7 +23,7 @@
 import { AxiosError } from 'axios'
 import { ApiStatus } from './status'
 import { $t } from '@/locales'
-import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
+import { getFriendlySupabaseErrorMessage, markErrorAsUserNotified } from '@/utils/supabase'
 
 // 错误响应接口
 export interface ErrorResponse {
@@ -68,9 +68,10 @@ export class HttpError extends Error {
       data?: unknown
       url?: string
       method?: string
+      cause?: unknown
     }
   ) {
-    super(message)
+    super(message, { cause: options?.cause })
     this.name = 'HttpError'
     this.code = code
     this.data = options?.data
@@ -126,25 +127,27 @@ export function handleError(error: AxiosError<ErrorResponse>): never {
   }
 
   const statusCode = error.response?.status
-  const errorMessage = error.response?.data?.msg || error.message
   const requestConfig = error.config
 
   // 处理网络错误
   if (!error.response) {
     throw new HttpError($t('httpMsg.networkError'), ApiStatus.error, {
       url: requestConfig?.url,
-      method: requestConfig?.method?.toUpperCase()
+      method: requestConfig?.method?.toUpperCase(),
+      cause: error
     })
   }
 
   // 处理 HTTP 状态码错误
-  const message = statusCode
-    ? getErrorMessage(statusCode)
-    : errorMessage || $t('httpMsg.requestFailed')
+  const message = getFriendlySupabaseErrorMessage(
+    error.response.data,
+    statusCode ? getErrorMessage(statusCode) : $t('httpMsg.requestFailed')
+  )
   throw new HttpError(message, statusCode || ApiStatus.error, {
     data: error.response.data,
     url: requestConfig?.url,
-    method: requestConfig?.method?.toUpperCase()
+    method: requestConfig?.method?.toUpperCase(),
+    cause: error
   })
 }
 
@@ -158,6 +161,7 @@ export function showError(error: HttpError, showMessage: boolean = true): void {
     ElMessage.error(
       getFriendlySupabaseErrorMessage([{ status: error.code }, error], $t('httpMsg.requestFailed'))
     )
+    markErrorAsUserNotified(error)
   }
   // 记录错误日志
   console.error('[HTTP Error]', error.toLogData())

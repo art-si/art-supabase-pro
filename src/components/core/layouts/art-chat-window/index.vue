@@ -330,6 +330,7 @@
 
 <script setup lang="ts">
   import { cloneDeep } from 'lodash-es'
+  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { copyTextToClipboard } from '@/utils/file/clipboard'
 
   import ArtAssistantHistoryDrawer from '@/components/core/layouts/art-assistant-history-drawer/index.vue'

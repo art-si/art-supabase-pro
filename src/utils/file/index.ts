@@ -27,6 +27,7 @@ export interface ExportExcelOptions<TRecord extends object = ExcelRecord> {
   filenameSuffix?: 'date' | 'datetime' | false
   workbookProperties?: ExcelWorkbookProperties
   onProgress?: (progress: number) => void
+  assertCanDownload?: () => void
 }
 
 export interface ExcelWorkbookProperties {
@@ -110,7 +111,8 @@ export const exportExcel = async <TRecord extends object>(
     maxRows = 100000,
     filenameSuffix = 'date',
     workbookProperties = {},
-    onProgress
+    onProgress,
+    assertCanDownload
   } = options
 
   if (!Array.isArray(data) || !data.length) {
@@ -166,6 +168,7 @@ export const exportExcel = async <TRecord extends object>(
 
   onProgress?.(95)
   assertTenantScope()
+  assertCanDownload?.()
   FileSaver.saveAs(blob, buildExcelFilename(filename, filenameSuffix))
   onProgress?.(100)
 }

@@ -160,7 +160,7 @@
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import SettlementDocumentDrawer from './modules/settlement-document-drawer.vue'
   import { useAuth } from '@/hooks/core/useAuth'
-  import { useRouteTableContext } from '@/hooks/core/useRouteTableContext'
+  import { useRouteTableContext, useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { formatCurrencyValue } from '@/utils/ui/format'
   import {
@@ -197,7 +197,12 @@
   const voucherResult = ref<PayableVoucherResult>()
   const route = useRoute()
   const router = useRouter()
+  const captureRouteOperation = useRouteOperationGuard()
   const { hasAuth } = useAuth()
+  const canPushToTarget = computed(() => {
+    const target = props.kind === 'payment' ? 'FinancePayableRefund' : 'FinancePayablePayment'
+    return hasAuth(`${target}:Add`) && hasAuth(`${target}:View`)
+  })
   const { confirm, confirmDelete, promptReason } = useArtFeedback()
   const title = computed(() => settlementTitles[props.kind])
   const query = reactive<PayableSettlementQuery>({ current: 1, size: 20, viewMode: 'document' })
@@ -299,6 +304,7 @@
           return !['draft', 'submitted', 'approved'].includes(String(row.status))
         case 'push':
           return (
+            !canPushToTarget.value ||
             !!row.frozen ||
             (props.kind === 'application'
               ? row.status !== 'approved' || row.paymentStatus === 'full'
@@ -324,7 +330,17 @@
     }
   }
   async function open(row: PayableSettlementDocument, edit = false): Promise<void> {
-    await run(async () => drawerRef.value?.open(await reload(row.id), edit))
+    await run(async () => {
+      const isCurrentRoute = captureRouteOperation()
+      const document = await reload(row.id)
+      if (!isCurrentRoute()) return
+      if (edit && (document.status !== 'draft' || document.frozen)) {
+        ElMessage.warning('单据状态已变化，列表已刷新，请重新核对后操作')
+        await tableRef.value?.refreshData()
+        return
+      }
+      await drawerRef.value?.open(document, edit)
+    })
   }
   async function act(ids: string[], action: PayableSettlementAction): Promise<void> {
     await run(async () => {
@@ -421,38 +437,49 @@
     })
   }
   async function push(id: string): Promise<void> {
+    if (!props.permissions.Push || !hasAuth(props.permissions.Push) || !canPushToTarget.value)
+      return
     await run(async () => {
+      const isCurrentRoute = captureRouteOperation()
+      const targetPath =
+        props.kind === 'payment' ? financePaths.payableRefund : financePaths.payablePayment
       const created = await pushPayableSettlement(
         id,
         props.kind === 'payment' ? 'refund' : 'payment',
         props.kind === 'payment' ? 'payment' : 'application'
       )
       ElMessage.success(`已生成 ${created.documentNo}`)
+      if (!isCurrentRoute()) return
       await router.push({
-        path: props.kind === 'payment' ? financePaths.payableRefund : financePaths.payablePayment,
+        path: targetPath,
         query: { recordId: created.id }
       })
     })
   }
   async function voucher(id: string, preview: boolean): Promise<void> {
     await run(async () => {
-      voucherResult.value = await payableSettlementVoucher(
+      const isCurrentRoute = captureRouteOperation()
+      const result = await payableSettlementVoucher(
         id,
         props.kind === 'refund' ? 'refund' : 'payment',
         preview
       )
-      if (preview) await voucherRef.value?.handleOpen()
-      else {
-        if (voucherResult.value.status === 'generated')
-          ElMessage.success(voucherResult.value.message)
-        else ElMessage.warning(voucherResult.value.message)
-        await tableRef.value?.refreshData()
+      if (preview) {
+        if (!isCurrentRoute()) return
+        voucherResult.value = result
+        await voucherRef.value?.handleOpen()
+      } else {
+        if (result.status === 'generated') ElMessage.success(result.message)
+        else ElMessage.warning(result.message)
+        if (isCurrentRoute()) await tableRef.value?.refreshData()
       }
     })
   }
   async function print(ids: string[]): Promise<void> {
     await run(async () => {
+      const isCurrentRoute = captureRouteOperation()
       const rows = await Promise.all(uniq(ids).map(reload))
+      if (!isCurrentRoute()) return
       const body = rows
         .map(
           (row) =>

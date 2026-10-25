@@ -54,7 +54,9 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
-  import { ref } from 'vue'
+  import { ref, unref } from 'vue'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { ElMessage } from 'element-plus'
   import {
     fetchArWorkspace,
@@ -90,6 +92,8 @@
   const deleteGuard = ref<InstanceType<typeof MasterDataDeleteGuard>>()
   const { confirmDelete } = useArtFeedback()
   const { hasAuth } = useAuth()
+  const captureOperation = useTenantOperationGuard(props.permissions.View)
+  const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const form = ref<Partial<ReceiptCondition> & { code: string }>({ code: '' })
   const booleanOptions = useDictionaryOptions('commonBoolean', (value) => value === 'true')
   const items: FormItem[] = [
@@ -151,27 +155,45 @@
     }
   ]
   async function open(row?: ReceiptCondition): Promise<void> {
+    const permission = row ? props.permissions.Edit : props.permissions.Add
+    if (!hasAuth(permission)) return
+    const scopeCurrent = captureOperation()
+    const version = session.invalidate()
+    const isCurrent = () => scopeCurrent() && session.isCurrent(version) && hasAuth(permission)
     form.value = row
       ? { ...row, code: row.conditionCode }
       : { code: '', name: '', dueDays: 0, isEnabled: true, remark: '' }
     await dialogRef.value?.handleOpen(undefined, {
       title: row ? '编辑收款条件' : '新增收款条件',
+      onClose: () => {
+        session.invalidate()
+      },
       onConfirm: async () => {
+        if (!isCurrent()) {
+          ElMessage.warning('操作范围或权限已变化，请重新打开收款条件')
+          return false
+        }
         if (!(await validateArtFormForSubmit(formRef.value))) return false
+        if (!isCurrent()) return false
         try {
           await saveArCondition(form.value)
+          if (!isCurrent()) return false
           ElMessage.success('收款条件已保存')
           await tableRef.value?.refreshData()
           return true
         } catch (error) {
-          notifyFriendlyError(error, '收款条件未保存，请重试')
+          if (isCurrent()) notifyFriendlyError(error, '收款条件未保存，请重试')
           return false
         }
       }
     })
   }
   async function remove(ids: string[]): Promise<void> {
+    if (!ids.length || !hasAuth(props.permissions.Delete)) return
+    const scopeCurrent = captureOperation()
+    const isCurrent = () => scopeCurrent() && hasAuth(props.permissions.Delete)
     const result = await fetchRows({ ids, size: 500 })
+    if (!isCurrent()) return
     const rows = result.data.filter((row) => ids.includes(row.id))
     if (rows.length !== ids.length)
       throw new Error('所选收款条件已变化或不可查看，请重新查询后再删除')
@@ -203,16 +225,23 @@
       }
     }
     if (!deleteGuard.value || (await deleteGuard.value.inspect(options))) return
+    if (!isCurrent()) return
     try {
       await confirmDelete(`确认删除 ${rows.length} 个无引用的收款条件？`)
     } catch {
       return
     }
+    if (!isCurrent()) {
+      ElMessage.warning('操作范围或权限已变化，请重新查询后删除')
+      return
+    }
     try {
       await deleteArRecords('condition', ids)
+      if (!isCurrent()) return
       ElMessage.success('收款条件已删除')
       await tableRef.value?.refreshRemove()
     } catch (error) {
+      if (!isCurrent()) return
       if (!(await deleteGuard.value?.inspect(options)))
         notifyFriendlyError(error, '删除未完成，请重新检查关联资料')
     }

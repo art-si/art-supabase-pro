@@ -1,1 +1,0 @@
-import{at as e}from"./w3euNb_m.js";var{supabase:t,responseHandle:n}=e();async function r(e,r){let i=t.from(`mdm_master_group`).select(`*`).eq(`domain`,e).order(`sort`).order(`code`);r&&(i=i.eq(`tenant_id`,r));let{data:a}=await n(()=>i,{breakReturn:!0,showErrorMessage:!1,errorMessage:`分组加载失败，请重试`});return a??[]}export{r as t};

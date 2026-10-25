@@ -1,1 +1,0 @@
-import{Lt as e,pn as t,qt as n}from"./BCo0rLY3.js";import{t as r}from"./ywn5g8W7.js";var i=n({name:`WmsInitialSalesReturn`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`initial_return`}))}});export{i as default};

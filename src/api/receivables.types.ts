@@ -86,6 +86,9 @@ export interface ReceiptLine {
 
 export interface ReceiptDocument {
   id: string
+  supplierId?: string | null
+  supplierName?: string | null
+  partyName?: string | null
   requestId?: string
   tenantId: string
   documentNo: string

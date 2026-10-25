@@ -350,6 +350,10 @@
 <script setup lang="ts">
   import { fetchOrganizationOptionsTree } from '@/api/system-manage'
   import { cloneDeep } from 'lodash-es'
+  import { unref } from 'vue'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import type { EmployeeIntegrationItem } from '@/api/integration/employees'
   import { ElMessage } from 'element-plus'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
@@ -389,6 +393,26 @@
   const props = defineProps<{ kind: PayableSettlementKind }>()
   const emit = defineEmits<{ success: [] }>()
   const drawerRef = ref<ArtDrawerExpose>()
+  const { hasAuth } = useAuth()
+  const permissionMap = {
+    application: {
+      View: 'FinancePayableApplication:View',
+      Add: 'FinancePayableApplication:Add',
+      Edit: 'FinancePayableApplication:Edit'
+    },
+    payment: {
+      View: 'FinancePayablePayment:View',
+      Add: 'FinancePayablePayment:Add',
+      Edit: 'FinancePayablePayment:Edit'
+    },
+    refund: {
+      View: 'FinancePayableRefund:View',
+      Add: 'FinancePayableRefund:Add',
+      Edit: 'FinancePayableRefund:Edit'
+    }
+  }
+  const captureOperation = useTenantOperationGuard(permissionMap[props.kind].View)
+  const session = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const deleteGuardRef = ref<InstanceType<typeof MasterDataDeleteGuard>>()
   const document = ref<PayableSettlementDocument>()
@@ -884,6 +908,18 @@
     }
   }
   async function open(value?: PayableSettlementDocument, edit = false): Promise<void> {
+    const kind = props.kind
+    const scopeCurrent = captureOperation()
+    const version = session.invalidate()
+    const permissions = permissionMap[kind]
+    const permission = value?.id ? permissions.Edit : permissions.Add
+    const contextCurrent = () =>
+      scopeCurrent() &&
+      props.kind === kind &&
+      session.version.value === version &&
+      (!edit || hasAuth(permission))
+    if (!contextCurrent()) return
+    const isCurrent = () => contextCurrent() && session.isCurrent(version)
     requestVersion += 1
     loading.value = false
     error.value = ''
@@ -901,7 +937,15 @@
       showFooter: edit,
       confirmText: '保存',
       confirmDisabled: true,
+      onClose: () => {
+        session.invalidate()
+        requestVersion += 1
+      },
       onConfirm: async () => {
+        if (!edit || !isCurrent()) {
+          ElMessage.warning('操作范围或权限已变化，请重新打开付款单据')
+          return false
+        }
         if (
           !document.value ||
           loading.value ||
@@ -909,6 +953,7 @@
           !(await validateArtFormForSubmit(formRef.value))
         )
           return false
+        if (!isCurrent()) return false
         const invalid = validateSettlementAmounts(document.value.lines, props.kind)
         if (invalid) {
           ElMessage.warning(invalid)
@@ -916,16 +961,17 @@
         }
         try {
           await savePayableSettlement(document.value)
+          if (!isCurrent()) return false
           ElMessage.success(`${title.value}已保存`)
           emit('success')
           return true
         } catch (cause) {
-          notifyFriendlyError(cause, '单据未保存，请核对金额和来源后重试')
+          if (isCurrent()) notifyFriendlyError(cause, '单据未保存，请核对金额和来源后重试')
           return false
         }
       }
     })
-    if (edit || props.kind !== 'refund') await loadOptions()
+    if (isCurrent() && (edit || props.kind !== 'refund')) await loadOptions()
   }
   defineExpose({ open })
   watch(

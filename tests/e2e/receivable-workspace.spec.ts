@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page, type Route } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 const tenant = '11111111-1111-4111-8111-111111111111'
 const customer = '22222222-2222-4222-8222-222222222222'
@@ -426,9 +426,12 @@ test('收款只读详情不显示填写标记或保存操作', async ({ page }, 
   await page.goto(`/tests/e2e/fixtures/receivable-workspace.html?kind=receipt&theme=${theme}`)
   await page.getByRole('button', { name: '查看', exact: true }).click()
   const detail = page.getByRole('dialog')
-  await expect(
-    detail.getByRole('columnheader', { name: '本次收款金额', exact: true })
-  ).toBeVisible()
+  if ((info.project.use.viewport?.width ?? 1440) <= 640)
+    await expect(detail.getByText('本次收款金额', { exact: true })).toBeVisible()
+  else
+    await expect(
+      detail.getByRole('columnheader', { name: '本次收款金额', exact: true })
+    ).toBeVisible()
   await expect(detail.getByRole('columnheader').filter({ hasText: '必填' })).toHaveCount(0)
   await expect(detail.getByRole('spinbutton')).toHaveCount(0)
   await expect(detail.getByRole('button', { name: '保存草稿', exact: true })).toHaveCount(0)
@@ -626,8 +629,15 @@ test('编辑保存只发送业务字段并包含稳定请求标识', async ({ pa
   expect(body.lines[0]).not.toHaveProperty('materialCode')
   await expect(page.getByRole('dialog')).not.toBeVisible()
 })
-for (const kind of ['estimate', 'financial']) {
-  test(`${kind} 两张单据费用承担部门保留三级树并提交子部门`, async ({ page }, info) => {
+for (const [kind, mode] of [
+  ['estimate', 'edit'],
+  ['financial', 'edit'],
+  ['estimate', 'copy'],
+  ['financial', 'copy'],
+  ['estimate', 'late'],
+  ['financial', 'late']
+] as const) {
+  test(`${kind} ${mode} 两张单据费用承担部门保留三级树并提交子部门`, async ({ page }, info) => {
     await mock(page)
     const records = [1, 2].map((index) => ({
       ...doc,
@@ -642,7 +652,10 @@ for (const kind of ['estimate', 'financial']) {
         }
       ]
     }))
+    let heldSave: Route | undefined
+    let reads = 0
     await page.route('**/rest/v1/rpc/fms_receivable_workspace_secure', (route) => {
+      reads++
       const body = route.request().postDataJSON()
       const rows = body.p_query?.id ? records.filter((row) => row.id === body.p_query.id) : records
       return route.fulfill({ json: { records: rows, total: rows.length } })
@@ -688,24 +701,41 @@ for (const kind of ['estimate', 'financial']) {
         ]
       })
     )
-    const payloads: Array<{ id: string; lines: Array<{ expenseDepartmentId: string }> }> = []
+    const payloads: Array<{
+      id?: string
+      requestId: string
+      lines: Array<{
+        expenseDepartmentId: string
+        estimatedLineId?: string | null
+        sourceLineId?: string | null
+      }>
+    }> = []
     await page.route('**/rest/v1/rpc/fms_save_receivable_document_secure', (route) => {
       const payload = route.request().postDataJSON().p_payload
       payloads.push(payload)
+      if (mode === 'late') {
+        heldSave = route
+        return
+      }
       const record = records.find((row) => row.id === payload.id)
-      expect(record).toBeDefined()
+      if (mode === 'edit') expect(record).toBeDefined()
       if (record) record.lines[0].expense_department_id = payload.lines[0].expenseDepartmentId
-      return route.fulfill({ json: payload.id })
+      return route.fulfill({ json: payload.id || `copied-${payloads.length}` })
     })
     const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
-    await page.goto(`/tests/e2e/fixtures/receivable-workspace.html?kind=${kind}&theme=${theme}`)
+    const permission =
+      kind === 'estimate' ? 'FinanceEstimatedReceivable' : 'FinanceFinancialReceivable'
+    await page.goto(
+      `/tests/e2e/fixtures/receivable-workspace.html?kind=${kind}&theme=${theme}&permissionControls=1&permissions=${permission}:View,${permission}:${mode === 'copy' ? 'Add' : 'Edit'},${permission}:Copy`
+    )
     for (const index of [1, 2]) {
       await expect(page.locator('.el-message')).toHaveCount(0)
-      await page
-        .getByRole('row')
-        .filter({ hasText: `QA-DEPARTMENT-${index}` })
-        .getByRole('button', { name: '编辑', exact: true })
-        .click()
+      const row = page.getByRole('row').filter({ hasText: `QA-DEPARTMENT-${index}` })
+      if (mode !== 'copy') await row.getByRole('button', { name: '编辑', exact: true }).click()
+      else {
+        await row.locator('label.el-checkbox').click()
+        await page.getByRole('button', { name: '复制', exact: true }).click()
+      }
       const dialog = page.getByRole('dialog')
       const department = dialog.getByRole('combobox', { name: '费用承担部门 第10行', exact: true })
       await department.click()
@@ -734,6 +764,31 @@ for (const kind of ['estimate', 'financial']) {
       await page.getByRole('treeitem', { name: `验收部门${index}`, exact: true }).click()
       if (index === 2)
         await dialog.screenshot({ path: info.outputPath(`${kind}-department-tree.png`) })
+      if (mode === 'late') {
+        await dialog.getByRole('button', { name: '保存应收单', exact: true }).click()
+        await expect.poll(() => payloads.length).toBe(index)
+        const readsBeforeRelease = reads
+        await page.keyboard.press('Alt+Shift+4')
+        if (!heldSave) throw new Error('未捕获应收保存请求')
+        await heldSave.fulfill({ json: `department-document-${index}` })
+        await expect(dialog.getByRole('button', { name: '保存应收单', exact: true })).toBeEnabled()
+        await expect(dialog).toBeVisible()
+        await expect(page.locator('.el-message--success')).toHaveCount(0)
+        expect(reads).toBe(readsBeforeRelease)
+        await expect(dialog.locator('.el-form-item').filter({ hasText: '收款组织' })).toContainText(
+          '演示结算组织'
+        )
+        await dialog.getByRole('button', { name: '取消', exact: true }).click()
+        await page.keyboard.press('Alt+Shift+5')
+        continue
+      }
+      await page.keyboard.press(mode === 'copy' ? 'Alt+Shift+0' : 'Alt+Shift+4')
+      await dialog.getByRole('button', { name: '保存应收单', exact: true }).click()
+      await expect(
+        page.getByText('操作范围或权限已变化，请重新打开应收单', { exact: true })
+      ).toBeVisible()
+      expect(payloads).toHaveLength(index - 1)
+      await page.keyboard.press('Alt+Shift+5')
       await dialog.getByRole('button', { name: '保存应收单', exact: true }).click()
       await expect(dialog).not.toBeVisible()
     }
@@ -743,9 +798,14 @@ for (const kind of ['estimate', 'financial']) {
         department: payload.lines[0].expenseDepartmentId
       }))
     ).toEqual([
-      { id: 'department-document-1', department: 'department-1' },
-      { id: 'department-document-2', department: 'department-2' }
+      { id: mode === 'copy' ? undefined : 'department-document-1', department: 'department-1' },
+      { id: mode === 'copy' ? undefined : 'department-document-2', department: 'department-2' }
     ])
+    if (mode === 'copy') {
+      expect(payloads[0].requestId).not.toBe(payloads[1].requestId)
+      for (const payload of payloads)
+        expect(payload.lines[0]).toMatchObject({ estimatedLineId: null, sourceLineId: null })
+    }
   })
 }
 

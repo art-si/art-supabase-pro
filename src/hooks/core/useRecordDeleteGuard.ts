@@ -175,13 +175,18 @@ export function useRecordDeleteGuard(
         await options.remove()
       } catch (error) {
         assertScope()
+        if (!hasDeletePermission()) return
         if (await inspect(getDeleteReferenceContext(error)?.constraint)) return
         throw error
       }
+      assertScope()
+      if (!hasDeletePermission()) return
       if (options.successMessage) ElMessage.success(options.successMessage)
       try {
         await options.onDeleted?.()
       } catch (error) {
+        assertScope()
+        if (!hasDeletePermission()) return
         notifyFriendlyError(error, `${label}已删除，但列表刷新失败，请重新查询`)
       }
     } catch (error) {

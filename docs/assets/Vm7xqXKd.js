@@ -1,0 +1,1 @@
+import{n as e}from"./l28tKDkV.js";function t(t,n){let r=new Map(n.map(e=>[e.id,e]));return new e().mapTree(t,e=>{if(!e.id||!e.tenantId)throw Error(`组织资料不完整，请刷新后重试`);let t=r.get(e.id),n=!(!t||t.tenantId&&t.tenantId!==e.tenantId);return{id:e.id,tenantId:e.tenantId,code:e.organizationCode,name:e.organizationName,isDefault:n&&t?.isDefault===!0,disabled:!n}})}export{t};

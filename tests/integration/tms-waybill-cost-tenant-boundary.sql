@@ -1,0 +1,41 @@
+-- Contract regression: ordinary users cannot rebind a cost across tenants;
+-- platform-all creation inherits the waybill tenant and retains the real actor.
+-- All created costs are rolled back. Requires the marked TMS acceptance fixtures.
+BEGIN;
+do $test$ declare item uuid; saved jsonb; blocked boolean; su uuid; begin
+perform set_config('request.jwt.claims','{"sub":"ab881b32-87d4-4dce-9014-ce488b8069df","role":"authenticated"}',true);
+perform set_config('request.jwt.claim.sub','ab881b32-87d4-4dce-9014-ce488b8069df',true);
+perform set_config('request.headers','{}',true);
+select id into strict item from public.tms_expense_item where tenant_id='7529f951-938e-4e2c-ac0d-316c136ae1f9' and business_category='vehicle_maintenance' and is_selectable;
+saved:=public.tms_save_waybill_cost_secure(null,jsonb_build_object('waybill_id','a9fc0006-1023-4620-9220-000000000001','expense_item_id',item,'amount',600,'remark','费用运单租户回归'));
+if not exists(select 1 from public.tms_waybill_cost where id=(saved->>'id')::uuid and tenant_id='7529f951-938e-4e2c-ac0d-316c136ae1f9') then raise exception 'own tenant create failed'; end if;
+perform set_config('request.headers','{"x-art-tenant-scope":"6675a0d6-3ff6-4ab7-bb09-232d85ae96ad"}',true);
+blocked:=false;
+begin perform public.tms_save_waybill_cost_secure(null,jsonb_build_object('waybill_id','f9600000-0000-4000-8000-000000000001','expense_item_id',item,'amount',600));
+exception when insufficient_privilege then blocked:=true; end;
+if not blocked then raise exception 'forged header create allowed'; end if;
+blocked:=false;
+begin perform public.tms_save_waybill_cost_secure((saved->>'id')::uuid,jsonb_build_object('waybill_id','f9600000-0000-4000-8000-000000000001','expense_item_id',item,'amount',600));
+exception when insufficient_privilege then blocked:=true; end;
+if not blocked then raise exception 'cross tenant edit allowed'; end if;
+select auth_user_id into strict su from public.sys_user where user_roles @> array['R_SUPER'] and deleted_at is null limit 1;
+perform set_config('request.jwt.claim.sub',su::text,true);
+perform set_config('request.jwt.claims',jsonb_build_object('sub',su,'role','authenticated')::text,true);
+perform set_config('request.headers','{}',true);
+saved:=public.tms_save_waybill_cost_secure(null,jsonb_build_object('waybill_id','a9fc0006-1023-4620-9220-000000000002','expense_item_id',item,'reporter_user_id',(select id from public.sys_user where auth_user_id='ab881b32-87d4-4dce-9014-ce488b8069df'),'amount',900));
+if not exists(select 1 from public.tms_waybill_cost where id=(saved->>'id')::uuid and tenant_id='7529f951-938e-4e2c-ac0d-316c136ae1f9') then raise exception 'platform all parent inheritance failed'; end if;
+if not exists(select 1 from public.tms_waybill_cost c join public.sys_user u on u.id=c.created_by_user_id where c.id=(saved->>'id')::uuid and u.auth_user_id=su) then raise exception 'real platform actor not preserved'; end if;
+blocked:=false;
+begin update public.tms_waybill_cost set created_by_user_id=(select id from public.sys_user where auth_user_id='ab881b32-87d4-4dce-9014-ce488b8069df') where id=(saved->>'id')::uuid;
+exception when raise_exception then blocked:=true; end;
+if not blocked then raise exception 'actor could be rewritten'; end if;
+perform set_config('request.headers','{"x-art-tenant-scope":"7529f951-938e-4e2c-ac0d-316c136ae1f9"}',true);
+saved:=public.tms_save_waybill_cost_secure(null,jsonb_build_object('waybill_id','a9fc0006-1023-4620-9220-000000000002','expense_item_id',item,'reporter_user_id',(select id from public.sys_user where auth_user_id='ab881b32-87d4-4dce-9014-ce488b8069df'),'amount',900));
+if not exists(select 1 from public.tms_waybill_cost where id=(saved->>'id')::uuid and tenant_id='7529f951-938e-4e2c-ac0d-316c136ae1f9') then raise exception 'selected own create failed'; end if;
+perform set_config('request.headers','{"x-art-tenant-scope":"6675a0d6-3ff6-4ab7-bb09-232d85ae96ad"}',true);
+blocked:=false;
+begin perform public.tms_save_waybill_cost_secure(null,jsonb_build_object('waybill_id','a9fc0006-1023-4620-9220-000000000002','expense_item_id',item,'reporter_user_id',(select id from public.sys_user where auth_user_id='ab881b32-87d4-4dce-9014-ce488b8069df'),'amount',900));
+exception when insufficient_privilege then blocked:=true; end;
+if not blocked then raise exception 'selected tenant boundary failed'; end if;
+end $test$;
+ROLLBACK;

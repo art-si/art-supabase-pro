@@ -1,1 +1,0 @@
-import{Lt as e,pn as t,qt as n}from"./BCo0rLY3.js";import{t as r}from"./tsgFdJ6P.js";var i=n({name:`PmisInspectionSheet`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{mode:`sheet`}))}});export{i as default};

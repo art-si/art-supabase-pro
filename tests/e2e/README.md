@@ -2,11 +2,12 @@
 
 视觉回归覆盖 Dashboard、在途监控、发票管理、Supabase AI 助手、AI 项目规划、运单录入、网站配置和 ArtTableQuery 示例页，并配置桌面、平板、移动端、暗色与阴影盒模型环境。
 
-测试默认通过独立的 `41737` 端口预览 `VITE_OUT_DIR` 配置的生产构建；本项目当前输出目录为 `docs`。源码 UI 发生变化后，先构建再生成或确认新基线：
+本地测试默认通过独立的 `41738` 端口运行 Vite `e2e` 模式；CI 或设置 `E2E_USE_DEV_SERVER=false` 时，通过 `41737` 端口预览 `VITE_OUT_DIR` 配置的生产构建（默认 `docs`）。设置 `E2E_BASE_URL` 后使用指定服务，不再自动启动本地服务。更新生产构建的视觉基准时，先构建，再显式选择预览模式：
 
 ```powershell
 pnpm.cmd exec playwright install chromium
 pnpm.cmd build
+$env:E2E_USE_DEV_SERVER='false'
 pnpm.cmd test:e2e:update
 ```
 
@@ -30,7 +31,7 @@ pnpm.cmd test:e2e:core
 pnpm.cmd check:ci
 ```
 
-测试准备阶段通过 Supabase 密码认证建立隔离会话，避免 Cloudflare Turnstile 阻断自动化。默认读取登录页自带的演示账号；需要覆盖账号、远程地址或本机浏览器通道时设置环境变量：
+需要真实登录的测试在准备阶段通过 Supabase 密码认证建立隔离会话，避免 Cloudflare Turnstile 阻断自动化。通过环境变量提供测试账号；远程地址或本机浏览器通道也可显式指定：
 
 ```powershell
 $env:E2E_EMAIL='your-account@example.com'

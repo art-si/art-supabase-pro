@@ -203,7 +203,7 @@
   import ArtForm from '@/components/core/forms/art-form/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import { useI18n } from 'vue-i18n'
-  import { HttpError } from '@/utils/http/error'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElInput, ElMessage, ElNotification, type FormRules } from 'element-plus'
   import {
     checkCurrentUserAccess,
@@ -563,9 +563,7 @@
 
       await completeAuthenticatedLogin(tokens)
     } catch (error) {
-      if (!(error instanceof HttpError)) {
-        console.error('[Login] Unexpected error:', error)
-      }
+      notifyFriendlyError(error, '登录失败，请稍后重试')
     } finally {
       loading.value = false
       if (showTurnstile.value) {

@@ -1,1 +1,0 @@
-import{Lt as e,pn as t,qt as n}from"./BCo0rLY3.js";import{t as r}from"./DAL1Gcjo.js";var i=n({name:`MdmPaymentPurpose`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`purpose`,permissions:{View:`MdmPaymentPurpose:View`,Add:`MdmPaymentPurpose:Add`,Edit:`MdmPaymentPurpose:Edit`,Delete:`MdmPaymentPurpose:Delete`}}))}});export{i as default};

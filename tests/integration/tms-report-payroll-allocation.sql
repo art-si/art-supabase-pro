@@ -15,10 +15,10 @@ BEGIN
  UPDATE public.tms_order SET create_time='2026-09-01 08:00:00+08' WHERE id IN ('a9fc0005-1023-4620-9220-000000000003','a9fc0005-1023-4620-9220-000000000005','a9fc0005-1023-4620-9220-000000000007');
  INSERT INTO public.tms_waybill_execution_record(tenant_id,waybill_id,departure_odometer_km,return_odometer_km)
  SELECT w.tenant_id,w.id,0,1 FROM public.tms_waybill w WHERE w.id IN ('a9fc0006-1023-4620-9220-000000000001','a9fc0006-1023-4620-9220-000000000003','a9fc0006-1023-4620-9220-000000000005','a9fc0006-1023-4620-9220-000000000007') AND NOT EXISTS(SELECT 1 FROM public.tms_waybill_execution_record e WHERE e.waybill_id=w.id AND e.tenant_id=w.tenant_id);
- UPDATE public.tms_waybill_execution_record SET departure_odometer_km=0,return_odometer_km=CASE WHEN waybill_id='a9fc0006-1023-4620-9220-000000000007' THEN 4 ELSE 1 END WHERE waybill_id IN ('a9fc0006-1023-4620-9220-000000000001','a9fc0006-1023-4620-9220-000000000003','a9fc0006-1023-4620-9220-000000000005','a9fc0006-1023-4620-9220-000000000007');
+ UPDATE public.tms_waybill_execution_record SET empty_mileage_km=0,departure_odometer_km=0,return_odometer_km=CASE WHEN waybill_id='a9fc0006-1023-4620-9220-000000000007' THEN 4 ELSE 1 END WHERE waybill_id IN ('a9fc0006-1023-4620-9220-000000000001','a9fc0006-1023-4620-9220-000000000003','a9fc0006-1023-4620-9220-000000000005','a9fc0006-1023-4620-9220-000000000007');
  rows:=app_private.tms_payroll_allocations('2026-09-01','2026-09-30');
  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(rows) j WHERE j->>'waybill_id'='a9fc0006-1023-4620-9220-000000000007' AND j->>'basis'='里程' AND (j->>'allocated_payroll')::numeric=5257.13) THEN RAISE EXCEPTION 'Mileage rounding residual incorrect'; END IF;
- UPDATE public.tms_waybill_execution_record SET return_odometer_km=null WHERE waybill_id='a9fc0006-1023-4620-9220-000000000007';
+ UPDATE public.tms_waybill_execution_record SET empty_mileage_km=null,return_odometer_km=null WHERE waybill_id='a9fc0006-1023-4620-9220-000000000007';
  rows:=app_private.tms_payroll_allocations('2026-09-01','2026-09-30');
  IF (SELECT count(*) FROM jsonb_array_elements(rows) j WHERE j->>'driver_id'='a9fc0003-1023-4620-9220-000000000001' AND j->>'basis'='订单数' AND (j->>'allocated_payroll')::numeric=2300)<>4 THEN RAISE EXCEPTION 'Incomplete mileage fallback incorrect'; END IF;
  PERFORM set_config('request.headers','{"x-art-tenant-scope":"6675a0d6-3ff6-4ab7-bb09-232d85ae96ad"}',true);

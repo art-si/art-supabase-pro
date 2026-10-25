@@ -1,1 +1,0 @@
-import{Ft as e}from"./CWsmOlGP.js";function t(e,t){let[n]=e;if(!n?.id)throw Error(`未找到${t}`);if(e.length!==1)throw Error(`${t}存在多个匹配记录，请核对编号后重新导入`);return n}function n(n){return e(async(e,r)=>t(await n(e),r))}export{n as t};

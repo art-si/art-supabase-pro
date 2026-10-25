@@ -32,7 +32,7 @@ test('模型测速和会话历史复用耗时格式，并保留公共加载与�
   await drawer.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(drawer.getByText('test-model · 1.23 s')).toBeVisible()
   await setState('empty')
-  await expect(drawer.getByText('暂无项目助手会话', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('暂无会话历史', { exact: true })).toBeVisible()
   await page.screenshot({ path: info.outputPath('empty.png') })
   const width = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,

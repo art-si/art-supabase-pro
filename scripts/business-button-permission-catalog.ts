@@ -32,6 +32,35 @@ const crud = (
 
 export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] = [
   {
+    menuName: 'TmsReportVehicleDispatch',
+    buttons: [button('EditPlan', '维护调度计划')]
+  },
+  {
+    menuName: 'TmsReportMonthlyOverview',
+    buttons: [button('MaintainBudget', '维护预算与目标')]
+  },
+  {
+    menuName: 'TmsReportReceiptTracking',
+    buttons: [button('EditFollowup', '登记回单跟进')]
+  },
+  {
+    menuName: 'TmsReportCustomerProfit',
+    buttons: [button('EditReview', '维护经营复盘')]
+  },
+  {
+    menuName: 'TmsReportReceivables',
+    buttons: [button('AddCollection', '登记催收'), button('ViewCollection', '查看催收历史')]
+  },
+  {
+    menuName: 'TmsReportOrderExceptions',
+    buttons: [
+      button('ViewHistory', '查看处理历史'),
+      button('Add', '登记异常'),
+      button('Process', '处理异常'),
+      button('Close', '结案确认')
+    ]
+  },
+  {
     menuName: 'WorkflowDefinition',
     buttons: [
       button('Add', '新建流程'),
@@ -611,7 +640,10 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
   },
   {
     menuName: 'VehicleViolation',
-    buttons: [button('Export', '导出', 'VehicleViolation:Export')]
+    buttons: [
+      button('Export', '导出', 'VehicleViolation:Export'),
+      button('LinkDriver', '关联司机', 'VehicleViolation:LinkDriver')
+    ]
   },
   ...[
     'VehicleInspectionExpiry',
@@ -2501,6 +2533,9 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('Submit', '提交'),
       button('Approve', '审核'),
       button('Confirm', '确认收款'),
+      button('Cancel', '取消供应商退款收款'),
+      button('VoucherPreview', '预览供应商收款凭证'),
+      button('VoucherGenerate', '生成供应商收款凭证'),
       button('Delete', '删除'),
       button('Print', '打印'),
       button('Export', '导出')
@@ -2578,6 +2613,9 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
   {
     menuName: 'FinanceEstimatedPayable',
     buttons: [
+      button('Accrual', '自动暂估参数'),
+      button('AccrualDelete', '删除自动暂估参数'),
+      button('AccrualExecute', '补提暂估'),
       button('View', '查看'),
       button('Add', '新增'),
       button('Edit', '编辑'),
@@ -2644,7 +2682,6 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('Delete', '删除'),
       button('Push', '下推付款退款'),
       button('Confirm', '确认/取消付款'),
-      button('Push', '下推付款退款'),
       button('Void', '作废未付款单'),
       button('Voucher', '生成凭证'),
       button('Print', '打印'),
@@ -2668,11 +2705,18 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     ]
   },
   {
+    menuName: 'FinancePayableReport',
+    buttons: [button('View', '查看'), button('Export', '导出'), button('Print', '打印')]
+  },
+  {
     menuName: 'FinancePayableWriteoff',
     buttons: [
       button('View', '查看'),
       button('Writeoff', '核销'),
       button('AutoWriteoff', '按方案自动核销'),
+      button('Automation', '维护后台核销配置'),
+      button('AutomationDelete', '删除后台核销配置'),
+      button('AutomationRetry', '重试后台核销任务'),
       button('Reverse', '反核销'),
       button('Scheme', '维护核销方案'),
       button('Voucher', '生成凭证')
@@ -3228,7 +3272,8 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('DeleteLine', '删除费用明细'),
       button('DeletePayee', '删除收款明细'),
       button('Pay', '登记付款'),
-      button('SimulatePayment', '模拟付款')
+      button('SimulatePayment', '模拟付款'),
+      button('Delegate', '管理费用委托')
     ]
   },
   {

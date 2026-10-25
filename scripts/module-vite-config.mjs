@@ -168,7 +168,7 @@ export async function createModuleViteConfig({
       }),
       Components({
         include: [sourceTransformPattern],
-        exclude: [/[\\/]\.git[\\/]/, /[\\/]art-data-select[\\/]preview\.vue$/],
+        exclude: [/[\\/]\.git[\\/]/],
         dirs: resolveComponentDirs({ applicationRoot, platformSourceRoot, componentScope }),
         deep: true,
         dts: false,

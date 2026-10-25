@@ -1,5 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { isCloudBaseBaas } from '@/config/baas-provider'
+import { signInWithCloudBaseMigration } from './providers/cloudbase/login'
 import {
   formatSupabaseAuthErrorMessage,
   getFriendlySupabaseErrorMessage,
@@ -130,20 +131,13 @@ export async function login(params: Api.Auth.LoginParams) {
     const credentials = identifier.includes('@')
       ? { email: identifier.toLowerCase(), password }
       : { phone: identifier, password }
-    let result = await supabase.auth.signInWithPassword(credentials)
-    if (result.error) {
-      const migration = await supabase.functions.invoke<PasswordMigrationResponse>(
-        'migrate-supabase-login',
-        { body: { identifier, password, captchaToken } }
-      )
-      if (migration.error) {
-        throw new Error('原账号验证服务暂时不可用，请稍后重试', { cause: migration.error })
-      }
-      if (!migration.data?.ok) {
-        throw new Error(migration.data?.message || '账号或密码错误')
-      }
-      result = await supabase.auth.signInWithPassword(credentials)
-    }
+    const result = await signInWithCloudBaseMigration(
+      () => supabase.auth.signInWithPassword(credentials),
+      () =>
+        supabase.functions.invoke<PasswordMigrationResponse>('migrate-supabase-login', {
+          body: { identifier, password, captchaToken }
+        })
+    )
     return await responseHandle<AuthSessionResponse>(() => Promise.resolve(result), {
       showMessage: true,
       message: '登录成功',

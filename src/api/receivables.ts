@@ -526,6 +526,14 @@ export async function arVoucher(
   return result.data
 }
 
+export async function cancelSupplierReceipt(id: string, reason: string): Promise<void> {
+  const result = await responseHandle(
+    () => supabase.rpc('fms_cancel_supplier_receipt_secure', { p_id: id, p_reason: reason }),
+    { showErrorMessage: false }
+  )
+  if (result.error) throw result.error
+}
+
 export async function fetchArDeleteDependencies(
   kind: string,
   ids: string[]

@@ -1,0 +1,1 @@
+import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./BhAG9nIs.js";var i=e({name:`SafetyProductionCommand`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`safety-production`}))}});export{i as default};

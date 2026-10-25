@@ -123,6 +123,152 @@ const optionsFor = (kind: string) => ({
     name: kind === 'application' ? '采购付款申请' : '采购付款'
   }))
 })
+for (const kind of ['application', 'payment'] as const) {
+  test(`${kind} 两空白新增草稿组织树、撤权与失败重试`, async ({ page }, info) => {
+    const attempts: Array<{
+      id: string
+      kind: string
+      organization_id: string
+      reason: string
+      lines: Array<{ supplier_id: string; amount: number }>
+    }> = []
+    const documents: ReturnType<typeof makeDocument>[] = []
+    let fail = true
+    await page.route('**/rest/v1/**', (route) => {
+      const name = new URL(route.request().url()).pathname.split('/').at(-1)
+      if (name === 'fms_payable_settlement_list_secure')
+        return route.fulfill({ json: { data: documents, total: documents.length } })
+      if (name === 'fms_payable_settlement_options_secure')
+        return route.fulfill({ json: optionsFor(kind) })
+      if (name === 'mdm_organization')
+        return route.fulfill({
+          json: [
+            {
+              id: 'group',
+              tenant_id: tenant,
+              parent_id: null,
+              organization_name: '新增验收集团',
+              organization_type: 'group',
+              status: '1'
+            },
+            {
+              id: 'company',
+              tenant_id: tenant,
+              parent_id: 'group',
+              organization_name: '新增验收公司',
+              organization_type: 'company',
+              status: '1'
+            },
+            ...[1, 2].map((index) => ({
+              id: `department-${index}`,
+              tenant_id: tenant,
+              parent_id: 'company',
+              organization_name: `新增验收部门${index}`,
+              organization_type: 'department',
+              status: '1'
+            }))
+          ]
+        })
+      if (name === 'fms_save_payable_settlement_secure') {
+        const payload = route.request().postDataJSON().p_document
+        attempts.push(payload)
+        if (fail)
+          return route.fulfill({
+            status: 409,
+            json: { code: 'P0001', message: '新增资料已变化，请核对后重试' }
+          })
+        const index = documents.length + 1
+        const created = {
+          ...makeDocument(index, kind),
+          ...payload,
+          id: `new-${index}`,
+          document_no: `QA-NEW-${index}`,
+          amount: index * 100
+        }
+        documents.push(created)
+        return route.fulfill({ json: created })
+      }
+      return route.fulfill({ json: [] })
+    })
+    const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
+    const menu = kind === 'application' ? 'FinancePayableApplication' : 'FinancePayablePayment'
+    for (const index of [1, 2]) {
+      await page.goto(
+        `/tests/e2e/fixtures/purchase-payable.html?kind=${kind}&theme=${theme}&permissionControls&permissions=${menu}:View,${menu}:Add`
+      )
+      await page.getByRole('button', { name: '新增', exact: true }).click()
+      const drawer = page.getByRole('dialog', {
+        name: kind === 'application' ? '新增付款申请单' : '新增付款单',
+        exact: true
+      })
+      const save = drawer.getByRole('button', { name: '保存', exact: true })
+      await expect(save).toBeEnabled()
+      const before = attempts.length
+      await save.click()
+      await expect(page.getByText('请至少添加一行付款明细', { exact: true })).toBeVisible()
+      expect(attempts).toHaveLength(before)
+      await drawer.getByLabel('付款组织', { exact: true }).click()
+      await page
+        .getByRole('treeitem', { name: '新增验收集团', exact: true })
+        .locator('.el-tree-node__expand-icon')
+        .first()
+        .click()
+      await page
+        .getByRole('treeitem', { name: '新增验收公司', exact: true })
+        .locator('.el-tree-node__expand-icon')
+        .first()
+        .click()
+      if (index === 2) {
+        await expect(page.locator('.el-message')).toHaveCount(0)
+        await page
+          .getByRole('tree')
+          .screenshot({ path: info.outputPath('create-organization-tree.png') })
+      }
+      await page.getByRole('treeitem', { name: `新增验收部门${index}`, exact: true }).click()
+      await drawer
+        .getByRole('textbox', { name: kind === 'application' ? '请款事由' : '摘要', exact: true })
+        .fill(`独立新增事由${index}`)
+      await drawer.getByRole('button', { name: '新增明细', exact: true }).click()
+      const row = drawer.locator('.el-table__body-wrapper tbody tr').first()
+      await row.getByRole('combobox', { name: '往来单位', exact: true }).click()
+      await page
+        .getByRole('option', { name: `示例供应商${index} · SUP-${index}`, exact: true })
+        .click()
+      const amount = row.getByRole('spinbutton', {
+        name: kind === 'application' ? '申请金额' : '实付金额',
+        exact: true
+      })
+      await amount.fill(`${index * 100}`)
+      await amount.press('Tab')
+      if (index === 2) await drawer.screenshot({ path: info.outputPath('create-filled.png') })
+      await page.keyboard.press('Alt+Shift+4')
+      await save.click()
+      await expect(
+        page.getByText('操作范围或权限已变化，请重新打开付款单据', { exact: true })
+      ).toBeVisible()
+      expect(attempts).toHaveLength(before)
+      await page.keyboard.press('Alt+Shift+5')
+      await save.click()
+      if (index === 1) {
+        await expect(page.getByText('新增资料已变化，请核对后重试', { exact: true })).toBeVisible()
+        fail = false
+        await save.click()
+      }
+      await expect(drawer).not.toBeVisible()
+      await expect(page.getByText(`QA-NEW-${index}`, { exact: true })).toBeVisible()
+      expect(attempts.at(-1)).toMatchObject({
+        id: '',
+        kind,
+        tenant_id: tenant,
+        organization_id: `department-${index}`,
+        reason: `独立新增事由${index}`,
+        lines: [{ supplier_id: `supplier-${index}`, amount: index * 100 }]
+      })
+    }
+    expect(documents).toHaveLength(2)
+    expect(attempts).toHaveLength(3)
+  })
+}
 for (const kind of ['estimated', 'financial', 'application', 'payment', 'writeoff'] as const) {
   test(`${kind} 手动刷新只旋转原图标并保留列表`, async ({ page }, info) => {
     let release: (() => void) | undefined
@@ -414,6 +560,9 @@ for (const theme of ['light', 'dark']) {
       let documents = [makeDocument(1, kind), makeDocument(2, kind)]
       let fail = false
       let saved = 0
+      const savedIds: string[] = []
+      const actionCalls: Array<{ ids: string[]; action: string }> = []
+      const savedReasons: string[] = []
       const errors: string[] = []
       page.on('pageerror', (error) => errors.push(error.message))
       await page.route('**/rest/v1/**', (route) => {
@@ -440,10 +589,13 @@ for (const theme of ['light', 'dark']) {
         if (name === 'fms_save_payable_settlement_secure' && request.p_document) {
           saved++
           const record = request.p_document
+          savedIds.push(record.id)
+          savedReasons.push(record.reason)
           documents = documents.map((row) => (row.id === record.id ? record : row))
           return route.fulfill({ json: record })
         }
         if (name === 'fms_act_payable_settlement_secure') {
+          actionCalls.push({ ids: request.p_ids ?? [], action: request.p_action ?? '' })
           documents = documents.map((row) =>
             request.p_ids?.includes(row.id)
               ? {
@@ -473,30 +625,39 @@ for (const theme of ['light', 'dark']) {
         path: info.outputPath(`${kind}-${theme}-list.png`),
         fullPage: true
       })
-      await rows.first().getByRole('button', { name: '编辑', exact: true }).click()
-      const drawer = page.getByRole('dialog')
-      await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeVisible()
-      if (kind === 'payment')
-        await expect(drawer.getByText('主动付款', { exact: true })).toBeVisible()
-      await expect(drawer.locator('.el-table__body-wrapper tbody tr')).toHaveCount(2)
-      await expect(
-        drawer.getByRole('combobox', { name: '往来单位', exact: true }).first()
-      ).toBeVisible()
-      await captureBusinessEvidence(drawer, {
-        path: info.outputPath(`${kind}-${theme}-editor.png`)
-      })
-      await drawer.getByText('金额与付款说明', { exact: true }).scrollIntoViewIfNeeded()
-      await captureBusinessEvidence(drawer, {
-        path: info.outputPath(`${kind}-${theme}-editor-total.png`)
-      })
-      await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
-      await drawer.getByRole('button', { name: '保存', exact: true }).click()
-      await expect(drawer).not.toBeVisible()
-      expect(saved).toBe(1)
+      for (const index of [0, 1]) {
+        await rows.nth(index).getByRole('button', { name: '编辑', exact: true }).click()
+        const drawer = page.getByRole('dialog')
+        await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeVisible()
+        if (kind === 'payment')
+          await expect(drawer.getByText('主动付款', { exact: true })).toBeVisible()
+        await expect(drawer.locator('.el-table__body-wrapper tbody tr')).toHaveCount(2)
+        await expect(
+          drawer.getByRole('combobox', { name: '往来单位', exact: true }).first()
+        ).toBeVisible()
+        await captureBusinessEvidence(drawer, {
+          path: info.outputPath(`${kind}-${theme}-editor-${index + 1}.png`)
+        })
+        await drawer.getByText('金额与付款说明', { exact: true }).scrollIntoViewIfNeeded()
+        await drawer
+          .getByRole('textbox', { name: kind === 'application' ? '请款事由' : '摘要', exact: true })
+          .fill(`两单编辑复核${index + 1}`)
+        await captureBusinessEvidence(drawer, {
+          path: info.outputPath(`${kind}-${theme}-editor-total-${index + 1}.png`)
+        })
+        await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+        await drawer.getByRole('button', { name: '保存', exact: true }).click()
+        await expect(drawer).not.toBeVisible()
+        expect(saved).toBe(index + 1)
+        await expect(rows.nth(index)).toContainText(`两单编辑复核${index + 1}`)
+      }
+      expect(savedIds).toEqual(['document-1', 'document-2'])
+      expect(savedReasons).toEqual(['两单编辑复核1', '两单编辑复核2'])
       for (const action of ['提交', '审核']) {
         await page.locator('.el-table__header-wrapper .el-checkbox').first().click()
         await page.getByRole('button', { name: action, exact: true }).click()
         await expect(rows.first()).toContainText(action === '提交' ? '已提交' : '已审核')
+        await expect(rows.nth(1)).toContainText(action === '提交' ? '已提交' : '已审核')
       }
       if (kind === 'payment') {
         await page.locator('.el-table__header-wrapper .el-checkbox').first().click()
@@ -504,7 +665,13 @@ for (const theme of ['light', 'dark']) {
         await page.getByRole('menuitem', { name: '确认付款', exact: true }).click()
         await page.getByRole('button', { name: '确认登记', exact: true }).click()
         await expect(rows.first()).toContainText('已确认付款')
+        await expect(rows.nth(1)).toContainText('已确认付款')
       }
+      expect(actionCalls).toEqual(
+        (kind === 'payment' ? ['submit', 'approve', 'confirm'] : ['submit', 'approve']).map(
+          (action) => ({ ids: ['document-1', 'document-2'], action })
+        )
+      )
       fail = true
       await page.getByRole('button', { name: '查询', exact: true }).click()
       await expect(page.getByText('数据加载失败', { exact: true })).toBeVisible()

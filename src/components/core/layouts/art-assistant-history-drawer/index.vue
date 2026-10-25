@@ -159,7 +159,6 @@
 
       article {
         position: relative;
-
         background: var(--el-fill-color-blank);
         border: 1px solid var(--el-border-color-lighter);
         border-radius: var(--art-surface-radius);
@@ -187,19 +186,23 @@
           background: transparent;
           border: 0;
           border-radius: inherit;
+
           &:focus-visible {
             outline: 2px solid var(--theme-color);
             outline-offset: -2px;
           }
         }
+
         .history-rename {
           position: absolute;
           top: 12px;
           right: 12px;
         }
+
         header {
           padding-right: 40px;
         }
+
         header,
         footer {
           display: flex;

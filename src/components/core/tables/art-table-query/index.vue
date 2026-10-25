@@ -256,8 +256,9 @@
         </template>
       </ArtTableHeader>
 
+      <slot v-if="$slots.content" name="content" />
       <ArtEmptyState
-        v-if="isManaged && managedTable.error.value && !resolvedLoading"
+        v-else-if="isManaged && managedTable.error.value && !resolvedLoading"
         title="数据加载失败"
         description="暂时无法获取列表，请检查网络后重试。"
       >
@@ -302,7 +303,7 @@
   import type { ButtonProps, TableColumnCtx, TableProps } from 'element-plus'
   import { ElMessage } from 'element-plus'
   import { useEventListener, useRafFn, useResizeObserver } from '@vueuse/core'
-  import { cloneDeep } from 'lodash-es'
+  import { cloneDeep, get, uniqBy } from 'lodash-es'
   import {
     commandIcon,
     isRangeAction,
@@ -332,6 +333,9 @@
   import { useTenantScopeAccessPolicy } from '@/hooks/core/useTenantScopeAccessPolicy'
   import { resolveBusinessButtonPermission } from '@/utils/business-permission'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useUserStore } from '@/store/modules/user'
+  import { toDictionaryOption } from '@/utils/form/option'
   import { getFriendlySupabaseErrorMessage, wasErrorUserNotified } from '@/utils/supabase'
   import {
     filterTenantDimensionDescriptors,
@@ -341,6 +345,8 @@
   defineOptions({ name: 'ArtTableQuery' })
 
   const { hasAuth } = useAuth()
+  const captureExportScope = useTenantOperationGuard()
+  const userStore = useUserStore()
   const { confirmAction } = useArtFeedback()
   const route = useRoute()
   const { isCrossTenantReadOnly } = useTenantScopeAccessPolicy()
@@ -842,6 +848,8 @@
   }
 
   export interface ArtTableQuerySlots {
+    /** 替换表格区域，共用查询条件和工具栏，适用于图表等替代视图。 */
+    content?: () => VNodeChild
     /** 工具栏左侧扩展区，渲染在 headerActions 后 */
     'header-left'?: (props: ArtTableQueryHeaderLeftSlotProps) => VNodeChild
     /** 工具栏右侧扩展区 */
@@ -1085,6 +1093,7 @@
     'selection-bar',
     'selection-details',
     'table-header-top',
+    'content',
     'default'
   ])
 
@@ -1331,6 +1340,16 @@
     )
   }
 
+  const getExcelDictionaryValue = (
+    column: ColumnOption,
+    row: TableQueryRecord
+  ): string | number | null | undefined => {
+    const value: unknown = column.dict?.value ? column.dict.value(row) : get(row, column.prop || '')
+    return value == null || typeof value === 'string' || typeof value === 'number'
+      ? value
+      : String(value)
+  }
+
   const resolveExcelColumns = (
     columns: ArtTableQueryExcelColumns | undefined,
     ctx: ArtTableQueryHeaderActionContext
@@ -1344,13 +1363,21 @@
               key: column.prop as string,
               title: String(column.label),
               width: typeof column.width === 'number' ? column.width : undefined,
-              formatter: column.formatter
+              formatter: column.dict
                 ? (_value: unknown, row: TableQueryRecord) => {
-                    const formattedValue = column.formatter?.(row)
-                    if (formattedValue && typeof formattedValue === 'object') return ''
-                    return formattedValue as string | number | boolean | null | undefined
+                    const value = getExcelDictionaryValue(column, row)
+                    const item = userStore.getDictDisplayItemByValue(column.dict!.code, value)
+                    return item
+                      ? toDictionaryOption(item).label || String(value ?? '')
+                      : String(value ?? '')
                   }
-                : undefined
+                : column.formatter
+                  ? (_value: unknown, row: TableQueryRecord) => {
+                      const formattedValue = column.formatter?.(row)
+                      if (formattedValue && typeof formattedValue === 'object') return ''
+                      return formattedValue as string | number | boolean | null | undefined
+                    }
+                  : undefined
             }))
 
     return isPlatformScope.value
@@ -1417,19 +1444,52 @@
     action: ArtTableQueryHeaderAction,
     ctx: ArtTableQueryHeaderActionContext
   ): Promise<void> => {
-    const rows = await fetchExportRows(action, ctx)
-    if (!rows.length) {
-      ElMessage.warning('暂无可导出的数据')
-      return
+    const scopeCurrent = captureExportScope()
+    const permission = getHeaderActionPermission(action)
+    const assertCanDownload = () => {
+      if (!scopeCurrent() || (permission && !hasAuth(permission)))
+        throw new Error('导出范围或权限已变化，请重新导出')
     }
+    try {
+      assertCanDownload()
+      const rows = await fetchExportRows(action, ctx)
+      assertCanDownload()
+      if (!rows.length) {
+        ElMessage.warning('暂无可导出的数据')
+        return
+      }
 
-    await exportExcel({
-      data: rows,
-      columns: resolveExcelColumns(action.exportColumns, ctx),
-      filename: getActionFilename(action, ctx),
-      sheetName: action.exportSheetName || getActionFilename(action, ctx),
-      maxRows: action.exportMaxRows
-    })
+      if (
+        !action.exportColumns ||
+        (Array.isArray(action.exportColumns) && !action.exportColumns.length)
+      ) {
+        await Promise.all(
+          resolvedColumns.value.filter(isExcelColumn).flatMap((column) => {
+            const dictionary = column.dict
+            return dictionary
+              ? uniqBy(rows, (row) => String(getExcelDictionaryValue(column, row))).map((row) =>
+                  userStore.ensureDictDisplayItemLoaded(
+                    dictionary.code,
+                    getExcelDictionaryValue(column, row)
+                  )
+                )
+              : []
+          })
+        )
+      }
+      assertCanDownload()
+
+      await exportExcel({
+        data: rows,
+        columns: resolveExcelColumns(action.exportColumns, ctx),
+        filename: getActionFilename(action, ctx),
+        sheetName: action.exportSheetName || getActionFilename(action, ctx),
+        maxRows: action.exportMaxRows,
+        assertCanDownload
+      })
+    } catch (error) {
+      if (scopeCurrent()) throw error
+    }
   }
 
   const resolveImportRows = async (

@@ -1,7 +1,158 @@
 import { expect, test } from '@playwright/test'
+import type { Route } from '@playwright/test'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15000 })
 test.setTimeout(60000)
+
+test('两条收款条件保存响应期间撤权保留输入并抑制旧成功反馈', async ({ page }, info) => {
+  const saves: Array<{ p_payload: { id: string; name: string } }> = []
+  let held: Route | undefined
+  let reads = 0
+  await page.route('**/rest/v1/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1)
+    if (name === 'fms_receivable_workspace_secure') {
+      reads++
+      return route.fulfill({
+        json: {
+          records: [1, 2].map((index) => ({
+            id: `condition-${index}`,
+            condition_code: `QA-LATE-${index}`,
+            name: `延迟账期${index}`,
+            due_days: 30,
+            is_enabled: true
+          })),
+          total: 2
+        }
+      })
+    }
+    if (name === 'fms_save_receipt_condition_secure') {
+      saves.push(route.request().postDataJSON())
+      held = route
+      return
+    }
+    return route.fulfill({ json: [] })
+  })
+  const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
+  await page.goto(
+    `/tests/e2e/fixtures/receivable-workspace.html?kind=condition&theme=${theme}&permissionControls=1&permissions=MdmReceiptCondition:View,MdmReceiptCondition:Edit`
+  )
+  for (const index of [1, 2]) {
+    await page
+      .getByRole('row')
+      .filter({ hasText: `QA-LATE-${index}` })
+      .getByRole('button', { name: '编辑', exact: true })
+      .click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox', { name: '名称' }).fill(`延迟账期${index}已修改`)
+    held = undefined
+    await dialog.getByRole('button', { name: '保存收款条件', exact: true }).click()
+    await expect.poll(() => saves.length).toBe(index)
+    const readsBefore = reads
+    await page.keyboard.press('Alt+Shift+4')
+    if (!held) throw new Error('未捕获收款条件保存请求')
+    await held.fulfill({ json: `condition-${index}` })
+    await expect(dialog.getByRole('button', { name: '保存收款条件', exact: true })).toBeEnabled()
+    await expect(dialog.getByRole('textbox', { name: '名称' })).toHaveValue(
+      `延迟账期${index}已修改`
+    )
+    await expect(page.locator('.el-message--success')).toHaveCount(0)
+    expect(reads).toBe(readsBefore)
+    expect(saves[index - 1].p_payload).toMatchObject({
+      id: `condition-${index}`,
+      name: `延迟账期${index}已修改`
+    })
+    await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    await page.keyboard.press('Alt+Shift+5')
+  }
+})
+
+test('两条收款条件删除确认期间撤权阻止旧确认', async ({ page }, info) => {
+  let checks = 0
+  const deletes: unknown[] = []
+  const records = [1, 2].map((index) => ({
+    id: `condition-${index}`,
+    condition_code: `QA-DELETE-${index}`,
+    name: `删除保护账期${index}`,
+    due_days: 30,
+    is_enabled: true
+  }))
+  await page.route('**/rest/v1/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1)
+    if (name === 'fms_receivable_workspace_secure')
+      return route.fulfill({ json: { records, total: 2 } })
+    if (name === 'fms_ar_delete_dependencies_secure') checks++
+    if (name === 'fms_delete_ar_records_secure') deletes.push(route.request().postDataJSON())
+    return route.fulfill({ json: [] })
+  })
+  const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
+  await page.goto(
+    `/tests/e2e/fixtures/receivable-workspace.html?kind=condition&theme=${theme}&permissionControls=1&permissions=MdmReceiptCondition:View,MdmReceiptCondition:Delete`
+  )
+  await expect(page.getByText('QA-DELETE-2', { exact: true })).toBeVisible()
+  await page.locator('.el-table__header-wrapper label.el-checkbox').first().click()
+  await page.getByRole('button', { name: '批量删除', exact: true }).click()
+  const confirmation = page.locator('.el-message-box')
+  await expect(confirmation).toContainText('2 个无引用的收款条件')
+  expect(checks).toBe(1)
+  await page.keyboard.press('Alt+Shift+9')
+  await confirmation.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(
+    page.getByText('操作范围或权限已变化，请重新查询后删除', { exact: true })
+  ).toBeVisible()
+  expect(deletes).toEqual([])
+  await expect(page.getByText('QA-DELETE-1', { exact: true })).toBeVisible()
+  await expect(page.getByText('QA-DELETE-2', { exact: true })).toBeVisible()
+})
+
+test('两条收款条件编辑期间撤权阻止保存，恢复后可取消重开', async ({ page }, info) => {
+  const saves: unknown[] = []
+  await page.route('**/rest/v1/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1)
+    if (name === 'fms_receivable_workspace_secure')
+      return route.fulfill({
+        json: {
+          records: [1, 2].map((index) => ({
+            id: `condition-${index}`,
+            condition_code: `QA-GUARD-${index}`,
+            name: `权限账期${index}`,
+            due_days: 30,
+            is_enabled: true
+          })),
+          total: 2
+        }
+      })
+    if (name === 'fms_save_receipt_condition_secure') {
+      saves.push(route.request().postDataJSON())
+      return route.fulfill({ json: 'condition-1' })
+    }
+    return route.fulfill({ json: [] })
+  })
+  const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
+  await page.goto(
+    `/tests/e2e/fixtures/receivable-workspace.html?kind=condition&theme=${theme}&permissionControls=1&permissions=MdmReceiptCondition:View,MdmReceiptCondition:Edit`
+  )
+  for (const index of [1, 2]) {
+    await expect(page.locator('.el-message')).toHaveCount(0)
+    await page
+      .getByRole('row')
+      .filter({ hasText: `QA-GUARD-${index}` })
+      .getByRole('button', { name: '编辑', exact: true })
+      .click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox', { name: '名称' }).fill(`权限账期${index}待保存`)
+    await page.keyboard.press('Alt+Shift+4')
+    await dialog.getByRole('button', { name: '保存收款条件', exact: true }).click()
+    await expect(
+      page.getByText('操作范围或权限已变化，请重新打开收款条件', { exact: true })
+    ).toBeVisible()
+    await expect(dialog.getByRole('textbox', { name: '名称' })).toHaveValue(
+      `权限账期${index}待保存`
+    )
+    expect(saves).toEqual([])
+    await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    await page.keyboard.press('Alt+Shift+5')
+  }
+})
 
 test('两条收款条件新增、编辑停用、保存失败恢复与引用保护', async ({ page }, info) => {
   const records: Array<{

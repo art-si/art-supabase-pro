@@ -53,7 +53,9 @@ test('两张退款凭证预览、待配置反馈、取消到账和作废原因�
     }
     return route.fulfill({ json: [] })
   })
-  await page.goto('/tests/e2e/fixtures/purchase-payable.html?kind=refund')
+  const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
+  await page.goto(`/tests/e2e/fixtures/purchase-payable.html?kind=refund&theme=${theme}`)
+  if (theme === 'dark') await expect(page.locator('html')).toHaveClass(/dark/)
   for (const index of [1, 2]) {
     const row = page.getByRole('row').filter({ hasText: `QA-REFUND-ACTION-${index}` })
     await row.locator('label.el-checkbox').click()

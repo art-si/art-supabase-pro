@@ -12,6 +12,7 @@ for (const mode of [
   'child',
   'denied',
   'selectable',
+  'accounting',
   'group-reset',
   'parent-exclusion',
   'blank'
@@ -31,7 +32,14 @@ for (const mode of [
         ['false', '分组'],
         ['true', '可记账项目']
       ],
-      tmsWaybillCostType: [['toll', '路桥费']]
+      tmsWaybillCostType: [
+        ['toll', '路桥费'],
+        ['driver_payroll', '司机薪酬'],
+        ['vehicle_insurance', '车辆保险'],
+        ['vehicle_depreciation', '车辆折旧'],
+        ['vehicle_maintenance', '维修保养'],
+        ['traffic_fine', '违章罚款']
+      ]
     }
     await page.route('**/rest/v1/sys_dictionary?*', (route) => {
       const code = new URL(route.request().url()).searchParams
@@ -177,11 +185,17 @@ for (const mode of [
       return
     }
     await dialog.getByRole('textbox', { name: '备注', exact: true }).fill('   ')
-    if (mode === 'selectable' || mode === 'group-reset') {
+    if (mode === 'selectable' || mode === 'group-reset' || mode === 'accounting') {
       await dialog.getByText('可记账项目', { exact: true }).click()
       await expect(dialog.getByRole('radio', { name: '可记账项目', exact: true })).toBeChecked()
       await dialog.getByRole('combobox', { name: /业务分类/ }).click()
       await page.getByRole('option', { name: '路桥费', exact: true }).click()
+      if (mode === 'accounting') {
+        for (const label of ['司机薪酬', '车辆保险', '车辆折旧', '维修保养', '违章罚款']) {
+          await dialog.getByRole('combobox', { name: /业务分类/ }).click()
+          await page.getByRole('option', { name: label, exact: true }).click()
+        }
+      }
       await dialog.getByText('是', { exact: true }).click()
       await expect(dialog.getByRole('radio', { name: '是', exact: true })).toBeChecked()
       if (mode === 'group-reset') {
@@ -223,9 +237,10 @@ for (const mode of [
             : null,
       item_code: 'EXP-NEW',
       item_name: '新费用分组',
-      business_category: mode === 'selectable' ? 'toll' : null,
-      is_selectable: mode === 'selectable',
-      reimbursement_allowed: mode === 'selectable',
+      business_category:
+        mode === 'accounting' ? 'traffic_fine' : mode === 'selectable' ? 'toll' : null,
+      is_selectable: mode === 'selectable' || mode === 'accounting',
+      reimbursement_allowed: mode === 'selectable' || mode === 'accounting',
       is_enabled: true,
       sort: mode === 'create' || mode === 'child' ? 100 : 0,
       remark: null

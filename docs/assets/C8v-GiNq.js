@@ -1,1 +1,0 @@
-import{Lt as e,pn as t,qt as n}from"./BCo0rLY3.js";import{t as r}from"./DPetjhlJ.js";var i=n({name:`WmsStock`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`stock`}))}});export{i as default};

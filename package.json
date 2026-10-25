@@ -34,6 +34,7 @@
   },
   "scripts": {
     "dev": "vite --open",
+    "dev:cloudbase": "vite --open --mode cloudbase",
     "build": "pnpm icons:check && vite build",
     "cloudbase:install": "sh scripts/cloudbase-install.sh",
     "cloudbase:build": "VITE_OUT_DIR=cloudbase-dist VITE_BASE_URL=/art-supabase-pro/ VITE_HOSTED_APPLICATION_BASE_URL=/art-supabase-pro/ RAYON_NUM_THREADS=2 UV_THREADPOOL_SIZE=2 NODE_OPTIONS=--max-old-space-size=3072 npx --yes pnpm@11.28.2 build --mode cloudbase",

@@ -7,7 +7,8 @@ import { setupGlobDirectives } from '@/directives'
 import type { AiProviderModel, AiModelBenchmark } from '@/api/ai-configuration'
 import type { ProjectAssistantConversationSummary } from '@/types/supabase-ai-assistant'
 import ModelSelector from '@/views/system/ai-configuration/modules/ai-model-selector.vue'
-import HistoryDrawer from '@/views/data-center/supabase-ai-assistant/modules/project-assistant-history-drawer.vue'
+import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
+import HistoryDrawer from '@/components/core/layouts/art-assistant-history-drawer/index.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -57,7 +58,7 @@ const items: ProjectAssistantConversationSummary[] = [0, 34.6, 1234, 12345, Numb
 )
 const app = createApp({
   setup() {
-    const drawer = shallowRef<InstanceType<typeof HistoryDrawer>>()
+    const drawer = shallowRef<Pick<ArtDrawerExpose, 'handleOpen' | 'handleClose'>>()
     const state = ref('ready')
     useEventListener(window, 'duration-fixture-state', (event) => {
       if (event instanceof CustomEvent && typeof event.detail === 'string')

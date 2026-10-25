@@ -374,6 +374,7 @@ const load = () => {
 | `selection-details` | 默认批量命令栏中补充选中金额等信息，提供 `selectedRows`、`selectedCount`；保留默认数量与操作按钮。需要独占一行时在内容根节点使用 `w-full`。 |
 | `table-header-top` | 工具栏上方扩展区，高度会自动计入表格布局。 |
 | `default` | 透传给 `ArtTable` 的默认插槽。 |
+| `content` | 替换表格及其分页区域，用于图表等替代视图；查询、数据加载和顶部工具栏继续共用。替代视图需自行展示加载、空态、错误与重试。用条件插槽切换回表格时保留查询模型。 |
 | 表格列 slot | 除保留插槽外，其它插槽会透传给 `ArtTable`。例如列 `prop: 'status'` 可写 `#status`。 |
 | `search-{key}` | 查询项插槽。例如查询项 `key: 'status'` 可写 `#search-status`。 |
 
@@ -384,6 +385,7 @@ const load = () => {
 - `selection-bar`
 - `selection-details`
 - `table-header-top`
+- `content`
 - `default`
 - `search-*`
 

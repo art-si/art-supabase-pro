@@ -3,6 +3,7 @@ import type { ICloudbaseRequest } from '@cloudbase/js-sdk/types/request'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isSupabaseApi } from '@/config/api-provider'
 import { isCloudBaseBaas } from '@/config/baas-provider'
+import { decodeFunctionResponse } from '@/utils/http/response'
 import {
   normalizePlatformTenantReadUrl,
   readPlatformTenantScopeActive,
@@ -149,9 +150,7 @@ const createCloudBaseClient = (): SupabaseClient => {
             },
             body: JSON.stringify(options?.body ?? {})
           })
-          const result = (await response.json().catch(() => null)) as T | null
-          if (!response.ok && !result) throw new Error('CloudBase login migration failed')
-          return { data: result, error: null }
+          return decodeFunctionResponse<T>(response)
         }
         const session = await auth.getSession()
         const bearerToken = session.data?.session?.access_token || accessKey
@@ -167,22 +166,14 @@ const createCloudBaseClient = (): SupabaseClient => {
             body: JSON.stringify(options?.body ?? {})
           }
         )
-        const result = (await response.json().catch(() => null)) as T | null
-        if (!response.ok) {
-          return {
-            data: null,
-            error: new Error(
-              result && typeof result === 'object' && 'error' in result
-                ? String(result.error)
-                : 'CloudBase function invocation failed'
-            )
-          }
-        }
-        return { data: result, error: null }
+        return decodeFunctionResponse<T>(response)
       } catch (error) {
         return {
           data: null,
-          error: error instanceof Error ? error : new Error('CloudBase function invocation failed')
+          error:
+            error instanceof Error
+              ? error
+              : new Error('CloudBase function invocation failed', { cause: error })
         }
       }
     }
