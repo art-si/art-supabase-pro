@@ -14,7 +14,7 @@
         <template #actions>
           <ElButton
             v-if="kind === 'estimated'"
-            v-auth="'FinanceEstimatedPayable:Accrual'"
+            v-auth="permission('Accrual')"
             @click="accrualRef?.handleOpen()"
             >自动暂估参数</ElButton
           >
@@ -123,7 +123,13 @@
         />
       </ArtDialog>
       <FinanceVoucherPreview ref="voucherDialogRef" :result="voucherPreview" />
-      <PayableAccrualManager v-if="kind === 'estimated'" ref="accrualRef" />
+      <PayableAccrualManager
+        v-if="kind === 'estimated'"
+        ref="accrualRef"
+        :manage-permission="permission('Accrual')"
+        :delete-permission="permission('AccrualDelete')"
+        :execute-permission="permission('AccrualExecute')"
+      />
     </div>
   </ArtPermissionGuard>
 </template>

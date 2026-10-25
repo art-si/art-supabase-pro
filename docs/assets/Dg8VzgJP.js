@@ -1,1 +1,0 @@
-import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./BjjnvnNJ.js";var i=e({name:`ScmSalesOrder`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`sales_order`}))}});export{i as default};

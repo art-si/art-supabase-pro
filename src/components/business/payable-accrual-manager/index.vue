@@ -9,11 +9,7 @@
     <ArtAsyncState :loading="loading" :error="error" @retry="load">
       <template v-if="workspace">
         <div class="mb-4 flex flex-wrap gap-2">
-          <ElButton
-            v-auth="'FinanceEstimatedPayable:Accrual'"
-            type="primary"
-            :disabled="busy"
-            @click="edit()"
+          <ElButton v-auth="props.managePermission" type="primary" :disabled="busy" @click="edit()"
             >新增参数</ElButton
           >
           <ElButton :disabled="busy || loading" @click="load">刷新</ElButton>
@@ -34,13 +30,13 @@
                 ><BusinessTableRowActions>
                   <ArtButtonTable
                     type="edit"
-                    permission="FinanceEstimatedPayable:Accrual"
+                    :permission="props.managePermission"
                     :disabled="busy"
                     @click="edit(row)"
                   />
                   <ArtButtonTable
                     type="delete"
-                    permission="FinanceEstimatedPayable:AccrualDelete"
+                    :permission="props.deletePermission"
                     :disabled="busy"
                     @click="remove(row)"
                   /> </BusinessTableRowActions
@@ -80,7 +76,7 @@
             >
               <template #operation="{ row }"
                 ><ElButton
-                  v-auth="'FinanceEstimatedPayable:AccrualExecute'"
+                  v-auth="props.executePermission"
                   link
                   type="primary"
                   :disabled="busy || !hasAuth('WmsPurchaseInbound:View')"
@@ -145,6 +141,11 @@
     type PayableAccrualInput
   } from '@/api/payable-accrual'
 
+  const props = defineProps<{
+    managePermission: string
+    deletePermission: string
+    executePermission: string
+  }>()
   const dialog = ref<ArtDialogExpose>()
   const editor = ref<ArtDialogExpose>()
   const form = ref<InstanceType<typeof ArtForm>>()
@@ -153,9 +154,9 @@
   const { hasAuth } = useAuth()
   const { confirmAction, confirmDelete } = useArtFeedback()
   const scope = useTenantScopeStore()
-  const capture = useTenantOperationGuard('FinanceEstimatedPayable:Accrual')
-  const captureDelete = useTenantOperationGuard('FinanceEstimatedPayable:AccrualDelete')
-  const captureExecute = useTenantOperationGuard('FinanceEstimatedPayable:AccrualExecute')
+  const capture = useTenantOperationGuard(props.managePermission)
+  const captureDelete = useTenantOperationGuard(props.deletePermission)
+  const captureExecute = useTenantOperationGuard(props.executePermission)
   const workspace = ref<PayableAccrualWorkspace>()
   const loading = ref(false)
   let loadVersion = 0
@@ -303,8 +304,7 @@
   ]
   const pagination = (total: number) => ({ current: current.value, size: size.value, total })
   async function load() {
-    if (!hasAuth('FinanceEstimatedPayable:View') || !hasAuth('FinanceEstimatedPayable:Accrual'))
-      return
+    if (!hasAuth('FinanceEstimatedPayable:View') || !hasAuth(props.managePermission)) return
     const version = session.version.value
     const requestVersion = ++loadVersion
     const isCurrent = capture()
@@ -328,8 +328,7 @@
     }
   }
   async function handleOpen() {
-    if (!hasAuth('FinanceEstimatedPayable:View') || !hasAuth('FinanceEstimatedPayable:Accrual'))
-      return
+    if (!hasAuth('FinanceEstimatedPayable:View') || !hasAuth(props.managePermission)) return
     session.invalidate()
     workspace.value = undefined
     loading.value = false
@@ -358,7 +357,7 @@
     void load()
   }
   async function edit(row?: PayableAccrualPolicy) {
-    if (busy.value || !hasAuth('FinanceEstimatedPayable:Accrual')) return
+    if (busy.value || !hasAuth(props.managePermission)) return
     model.value = row
       ? pick(row, [
           'id',
@@ -436,7 +435,7 @@
     })
   }
   async function remove(row: PayableAccrualPolicy) {
-    if (busy.value || !hasAuth('FinanceEstimatedPayable:AccrualDelete')) return
+    if (busy.value || !hasAuth(props.deletePermission)) return
     const isCurrent = captureDelete()
     const version = session.version.value
     const options = {
@@ -504,11 +503,7 @@
     }
   }
   async function execute(row: PayableAccrualGap) {
-    if (
-      busy.value ||
-      !hasAuth('FinanceEstimatedPayable:AccrualExecute') ||
-      !hasAuth('WmsPurchaseInbound:View')
-    )
+    if (busy.value || !hasAuth(props.executePermission) || !hasAuth('WmsPurchaseInbound:View'))
       return
     const isCurrent = captureExecute()
     const version = session.version.value

@@ -1,1 +1,0 @@
-import{Wn as e}from"./B2BaADVT.js";import{t}from"./DpHNUCDu.js";import{r as n,t as r}from"./DQTVFhOg.js";function i(){let i=e(r([])),a=0;async function o(e){let n=++a,o=await t(e);n===a&&(i.value=r(o))}function s(e,t){return n(i.value,e,t)}return{loadUnitDisplayNames:o,unitDisplayName:s}}export{i as t};

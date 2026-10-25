@@ -1,0 +1,1 @@
+import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./isJGh_j4.js";var i=e({name:`FleetComplianceCommand`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`fleet-compliance`}))}});export{i as default};

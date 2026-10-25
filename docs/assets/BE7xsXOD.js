@@ -1,0 +1,1 @@
+import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./Dii4VZW4.js";var i=e({name:`PmisPatrolTask`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`patrol`,mode:`task`}))}});export{i as default};

@@ -1,1 +1,0 @@
-import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./jgRS7HSW.js";var i=e({name:`WmsStockLedger`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`ledger`}))}});export{i as default};

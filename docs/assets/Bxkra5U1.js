@@ -1,1 +1,0 @@
-import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./mrlhC7RA.js";var i=e({name:`MesMold`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{mode:`mold`}))}});export{i as default};

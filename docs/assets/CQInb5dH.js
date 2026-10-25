@@ -1,0 +1,1 @@
+import{Jt as e,Rt as t,Xn as n,mn as r}from"./B2BaADVT.js";import{t as i}from"./L4qL2OYY.js";import{n as a}from"./CeQAo5Sp.js";var o=e({name:`WmsEntrustedProcessingReturn`,__name:`index`,setup(e){let o=a;return(e,a)=>(r(),t(i,{kind:`entrusted_processing_return`,permissions:n(o)},null,8,[`permissions`]))}});export{o as default};

@@ -1,0 +1,1 @@
+import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./DkeVU-rT.js";var i=e({name:`MesAndon`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{mode:`andon`}))}});export{i as default};

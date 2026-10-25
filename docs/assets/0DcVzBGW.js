@@ -1,0 +1,1 @@
+import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./BSJL-XFX.js";var i=e({name:`MdmSupplyChainCodeRule`,__name:`index`,setup(e){return(e,i)=>(n(),t(r))}});export{i as default};

@@ -16,6 +16,9 @@ export interface PayablePermissions {
   Print: string
   Export: string
   Freeze?: string
+  Accrual?: string
+  AccrualDelete?: string
+  AccrualExecute?: string
 }
 export interface PayablePaymentPlan {
   dueDate: string

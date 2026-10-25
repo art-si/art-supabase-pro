@@ -1,1 +1,0 @@
-import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./DBDmWvLW.js";var i=e({name:`WorkforceInsightCommand`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`workforce-insight`}))}});export{i as default};
