@@ -1,0 +1,73 @@
+@charset "UTF-8";
+
+:root {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* 滚动条 */
+
+/* 滚动条整体部分,必须要设置 */
+::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+/* 滚动条的轨道 */
+::-webkit-scrollbar-track {
+  background-color: var(--art-gray-200);
+}
+
+/* 滚动条的滑块按钮 */
+::-webkit-scrollbar-thumb {
+  background-color: #ccc !important;
+  border-radius: 5px;
+  -webkit-transition: background-color 0.2s;
+  transition: background-color 0.2s;
+}
+
+:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #b0abab !important;
+}
+
+/* 滚动条的上下两端的按钮 */
+::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+}
+
+.dark {
+  ::-webkit-scrollbar-track {
+    background-color: var(--default-bg-color);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--art-gray-300) !important;
+  }
+}

@@ -1,0 +1,495 @@
+@use '@styles/core/mixin.scss' as *;
+
+// 菜单样式变量
+$menu-height: 42px;
+$menu-icon-size: 20px;
+$menu-font-size: 14px;
+$hover-bg-color: var(--art-gray-200);
+$popup-menu-height: 40px;
+$popup-menu-padding: 8px;
+$popup-menu-margin: 5px;
+$popup-menu-radius: 6px;
+
+// 通用菜单项样式
+@mixin menu-item-base {
+  width: calc(100% - 16px);
+  margin-left: 8px;
+  border-radius: 6px;
+
+  .menu-icon {
+    margin-left: -7px;
+  }
+}
+
+// 通用 hover 样式
+@mixin menu-hover($bg-color) {
+  .el-sub-menu__title:hover,
+  .el-menu-item:not(.is-active):hover {
+    background: $bg-color !important;
+  }
+}
+
+// 通用选中样式
+@mixin menu-active($color, $bg-color, $icon-color: var(--theme-color)) {
+  .el-menu-item.is-active {
+    color: $color !important;
+    background-color: $bg-color;
+
+    .menu-icon {
+      .art-svg-icon {
+        color: $icon-color !important;
+      }
+    }
+  }
+}
+
+// 弹窗菜单项样式
+@mixin popup-menu-item {
+  height: $popup-menu-height;
+  margin-bottom: $popup-menu-margin;
+  border-radius: $popup-menu-radius;
+
+  .menu-icon {
+    margin-right: 5px;
+  }
+
+  &:last-of-type {
+    margin-bottom: 0;
+  }
+}
+
+// 财务等长菜单的目录分组样式：目录承担信息分区，叶子菜单保持紧凑可扫描。
+@mixin section-menu {
+  .el-sub-menu.is-menu-section {
+    > .el-sub-menu__title {
+      height: 38px !important;
+      margin-top: 8px;
+      margin-bottom: 3px;
+      font-weight: 500;
+      color: var(--sidebar-section-text, var(--el-menu-text-color));
+      background: transparent;
+
+      .menu-name {
+        color: inherit !important;
+      }
+
+      .menu-icon .art-svg-icon,
+      .el-sub-menu__icon-arrow {
+        color: var(--sidebar-section-icon, currentcolor) !important;
+      }
+
+      &:hover {
+        background: color-mix(in srgb, var(--theme-color) 8%, transparent) !important;
+      }
+    }
+
+    > .el-menu {
+      width: auto;
+      padding: 1px 0 4px;
+      margin: 0 4px 0 8px;
+    }
+
+    > .el-menu > .el-menu-item,
+    > .el-menu > .el-sub-menu > .el-sub-menu__title {
+      width: 100%;
+      margin-left: 0;
+    }
+
+    > .el-menu > .el-menu-item {
+      height: 38px !important;
+      margin-bottom: 2px;
+      line-height: 38px !important;
+    }
+
+    &.is-active > .el-sub-menu__title {
+      color: var(--theme-color);
+      background: color-mix(in srgb, var(--theme-color) 7%, transparent);
+
+      .menu-name,
+      .menu-icon .art-svg-icon,
+      .el-sub-menu__icon-arrow {
+        color: inherit !important;
+      }
+    }
+  }
+}
+
+// 主题菜单通用样式（合并 design 和 dark 主题的共同逻辑）
+@mixin theme-menu-base {
+  .el-sub-menu__title,
+  .el-menu-item {
+    @include menu-item-base;
+  }
+}
+
+// 弹窗菜单通用样式
+@mixin popup-menu-base($hover-bg, $active-color, $active-bg) {
+  .el-menu--popup {
+    padding: $popup-menu-padding;
+
+    .el-sub-menu__title:hover,
+    .el-menu-item:hover {
+      background-color: $hover-bg !important;
+      border-radius: $popup-menu-radius;
+    }
+
+    .el-menu-item {
+      @include popup-menu-item;
+
+      &.is-active {
+        color: $active-color !important;
+        background-color: $active-bg !important;
+      }
+    }
+
+    .el-sub-menu {
+      @include popup-menu-item;
+
+      height: $popup-menu-height !important;
+
+      .el-sub-menu__title {
+        height: $popup-menu-height !important;
+        border-radius: $popup-menu-radius;
+      }
+    }
+  }
+}
+
+.layout-sidebar {
+  // ---------------------- Modify default style ----------------------
+
+  // 菜单折叠样式
+  .menu-left-close {
+    .header {
+      .logo {
+        margin-right: 0;
+        margin-left: 14px;
+      }
+    }
+  }
+
+  // 菜单图标
+  .menu-icon {
+    flex: none;
+    margin-right: 8px;
+    font-size: $menu-icon-size;
+  }
+
+  .menu-name {
+    flex: 1;
+    min-width: 0;
+  }
+
+  // 菜单高度
+  .el-sub-menu__title,
+  .el-menu-item {
+    height: $menu-height !important;
+    margin-bottom: 4px;
+    line-height: $menu-height !important;
+
+    span {
+      font-size: $menu-font-size !important;
+
+      @include ellipsis();
+    }
+  }
+
+  // 右侧箭头
+  .el-sub-menu__icon-arrow {
+    width: 13px !important;
+    font-size: 13px !important;
+  }
+
+  // 菜单折叠
+  .el-menu--collapse {
+    .el-sub-menu.is-active {
+      .el-sub-menu__title {
+        .menu-icon {
+          .art-svg-icon {
+            // 选中菜单图标颜色
+            color: var(--theme-color) !important;
+          }
+        }
+      }
+    }
+  }
+
+  // ---------------------- Design theme menu ----------------------
+  .el-menu-design {
+    --sidebar-section-text: var(--art-gray-700);
+    --sidebar-section-icon: var(--art-gray-600);
+
+    @include theme-menu-base;
+    @include menu-active(var(--theme-color), var(--el-color-primary-light-9));
+    @include menu-hover($hover-bg-color);
+
+    .el-sub-menu__icon-arrow {
+      color: var(--art-gray-600);
+    }
+
+    .el-menu-item.is-active {
+      position: relative;
+      font-weight: 600;
+      background: linear-gradient(
+        100deg,
+        color-mix(in srgb, var(--theme-color) 15%, transparent),
+        color-mix(in srgb, var(--theme-color) 6%, transparent)
+      );
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--theme-color) 10%, transparent),
+        0 6px 16px color-mix(in srgb, var(--theme-color) 7%, transparent);
+
+      &::after {
+        position: absolute;
+        top: 10px;
+        right: 0;
+        bottom: 10px;
+        width: 3px;
+        content: '';
+        background: var(--theme-color);
+        border-radius: 999px 0 0 999px;
+        box-shadow: 0 0 10px color-mix(in srgb, var(--theme-color) 42%, transparent);
+      }
+    }
+
+    @include section-menu;
+  }
+
+  // ---------------------- Dark theme menu ----------------------
+  .el-menu-dark {
+    --sidebar-dark-surface: #181a2a;
+    --sidebar-dark-text: rgb(244 246 255 / 88%);
+    --sidebar-dark-icon: rgb(224 228 240 / 78%);
+    --sidebar-section-text: rgb(244 246 255 / 84%);
+    --sidebar-section-icon: rgb(224 228 240 / 76%);
+
+    @include theme-menu-base;
+    @include menu-active(
+      #fff,
+      color-mix(in srgb, var(--theme-color) 16%, var(--sidebar-dark-surface)),
+      color-mix(in srgb, var(--theme-color) 72%, #fff)
+    );
+    @include menu-hover(color-mix(in srgb, var(--theme-color) 8%, var(--sidebar-dark-surface)));
+
+    .el-sub-menu__title:hover,
+    .el-menu-item:not(.is-active):hover {
+      color: #fff !important;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-color) 12%, transparent);
+
+      .menu-icon .art-svg-icon,
+      .menu-name,
+      .el-sub-menu__icon-arrow {
+        color: #fff !important;
+      }
+    }
+
+    .el-menu-item.is-active {
+      font-weight: 600;
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--theme-color) 24%, transparent),
+        0 3px 10px rgb(0 0 0 / 12%);
+    }
+
+    .el-sub-menu__icon-arrow {
+      color: var(--art-gray-400);
+    }
+
+    @include section-menu;
+
+    .el-sub-menu__title,
+    .el-menu-item {
+      color: var(--sidebar-dark-text) !important;
+
+      .menu-name {
+        color: inherit !important;
+      }
+
+      .menu-icon .art-svg-icon {
+        color: var(--sidebar-dark-icon) !important;
+      }
+    }
+
+    .el-sub-menu.is-active > .el-sub-menu__title {
+      font-weight: 600;
+      color: color-mix(in srgb, var(--theme-color) 52%, #fff) !important;
+      background: transparent !important;
+      box-shadow: none !important;
+
+      .menu-name,
+      .menu-icon .art-svg-icon,
+      .el-sub-menu__icon-arrow {
+        color: inherit !important;
+      }
+    }
+
+    .el-menu-item.is-active {
+      color: color-mix(in srgb, var(--theme-color) 70%, #fff) !important;
+
+      .menu-name,
+      .menu-icon .art-svg-icon {
+        color: inherit !important;
+      }
+    }
+  }
+
+  // ---------------------- Light theme menu ----------------------
+  .el-menu-light {
+    --sidebar-section-text: var(--art-gray-700);
+    --sidebar-section-icon: var(--art-gray-600);
+
+    .el-sub-menu__title,
+    .el-menu-item {
+      .menu-icon {
+        margin-left: 1px;
+      }
+    }
+
+    .el-menu-item.is-active {
+      font-weight: 600;
+      background: linear-gradient(
+        100deg,
+        color-mix(in srgb, var(--theme-color) 13%, transparent),
+        color-mix(in srgb, var(--theme-color) 4%, transparent)
+      );
+      border-radius: 0 8px 8px 0;
+
+      .art-svg-icon {
+        color: var(--theme-color) !important;
+      }
+
+      &::before {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+        content: '';
+        background: var(--theme-color);
+        box-shadow: 0 0 10px color-mix(in srgb, var(--theme-color) 38%, transparent);
+      }
+    }
+
+    @include menu-hover($hover-bg-color);
+
+    .el-sub-menu__icon-arrow {
+      color: var(--art-gray-600);
+    }
+
+    @include section-menu;
+  }
+}
+
+@media only screen and (width <= 640px) {
+  .layout-sidebar {
+    .el-menu-design {
+      > .el-sub-menu {
+        margin-left: 0;
+      }
+
+      .el-sub-menu {
+        width: 100% !important;
+      }
+    }
+  }
+}
+
+// 菜单折叠 hover 弹窗样式（浅色主题）
+.el-menu--vertical,
+.el-menu--popup-container {
+  @include popup-menu-base(var(--art-gray-200), var(--art-gray-900), var(--art-gray-200));
+}
+
+// 独立菜单主题为深色时，折叠弹层也保持同一深色语义，不依赖系统是否为深色模式。
+.menu-left-dark-popper {
+  --sidebar-dark-popup-text: rgb(244 246 255 / 88%);
+
+  @include popup-menu-base(
+    color-mix(in srgb, var(--theme-color) 9%, #181a2a),
+    color-mix(in srgb, var(--theme-color) 70%, #fff),
+    color-mix(in srgb, var(--theme-color) 16%, #181a2a)
+  );
+
+  // 用低对比度主题分隔线替换 Element Plus 在深色浮层上的白色边框。
+  border: 0 !important;
+  border-left: 1px solid color-mix(in srgb, var(--theme-color) 24%, #181a2a) !important;
+
+  > .el-menu--popup {
+    transform-origin: left center;
+    animation: art-sidebar-popup-enter 220ms var(--art-motion-ease-out) backwards;
+  }
+
+  &.el-menu--vertical,
+  .el-menu--popup,
+  .el-menu {
+    background: #181a2a !important;
+  }
+
+  .el-sub-menu__title,
+  .el-menu-item {
+    color: var(--sidebar-dark-popup-text) !important;
+  }
+
+  .el-sub-menu__title:hover,
+  .el-menu-item:not(.is-active):hover {
+    color: #fff !important;
+  }
+}
+
+@keyframes art-sidebar-popup-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-18px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-left-dark-popper > .el-menu--popup {
+    animation: none;
+  }
+}
+
+// 暗黑模式菜单样式
+.dark {
+  .el-menu--vertical,
+  .el-menu--popup-container {
+    @include popup-menu-base(var(--art-gray-200), var(--art-gray-900), #292a2e);
+  }
+
+  .layout-sidebar {
+    // 图标颜色、文字颜色
+    .menu-icon .art-svg-icon,
+    .menu-name {
+      color: rgb(236 239 248 / 84%) !important;
+    }
+
+    // 选中的文字颜色跟图标颜色
+    .el-menu-item.is-active {
+      span,
+      .menu-icon .art-svg-icon {
+        color: var(--theme-color) !important;
+      }
+    }
+
+    .el-sub-menu__title:hover,
+    .el-menu-item:not(.is-active):hover {
+      color: #fff !important;
+      background: color-mix(in srgb, var(--theme-color) 9%, #202129) !important;
+
+      .menu-icon .art-svg-icon,
+      .menu-name,
+      .el-sub-menu__icon-arrow {
+        color: #fff !important;
+      }
+    }
+
+    // 右侧箭头颜色
+    .el-sub-menu__icon-arrow {
+      color: rgb(236 239 248 / 74%);
+    }
+  }
+}

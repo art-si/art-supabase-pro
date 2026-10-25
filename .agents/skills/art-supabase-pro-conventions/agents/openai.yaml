@@ -1,0 +1,4 @@
+interface:
+  display_name: '亿企工场 Conventions'
+  short_description: 'Project UI, CRUD, and API boundary rules'
+  default_prompt: 'Use $art-supabase-pro-conventions to implement this feature with the project component, business payload, and API boundary conventions.'

@@ -1,0 +1,47 @@
+[submodule "modules/art-supabase-vms"]
+	path = modules/art-supabase-vms
+	url = https://gitee.com/art-si/art-supabase-vms.git
+	branch = master
+[submodule "modules/art-supabase-fms"]
+	path = modules/art-supabase-fms
+	url = https://gitee.com/art-si/art-supabase-fms.git
+	branch = master
+[submodule "modules/art-supabase-hr"]
+	path = modules/art-supabase-hr
+	url = https://gitee.com/art-si/art-supabase-hr.git
+	branch = master
+[submodule "modules/art-supabase-smis"]
+	path = modules/art-supabase-smis
+	url = https://gitee.com/art-si/art-supabase-smis.git
+[submodule "modules/art-supabase-tms"]
+	path = modules/art-supabase-tms
+	url = https://gitee.com/art-si/art-supabase-tms.git
+	branch = master
+[submodule "modules/art-supabase-doc"]
+	path = modules/art-supabase-doc
+	url = https://gitee.com/art-si/art-supabase-doc.git
+	branch = master
+[submodule "modules/art-supabase-mdm"]
+	path = modules/art-supabase-mdm
+	url = https://gitee.com/art-si/art-supabase-mdm.git
+	branch = master
+[submodule "modules/art-supabase-wms"]
+	path = modules/art-supabase-wms
+	url = https://gitee.com/art-si/art-supabase-wms.git
+	branch = master
+[submodule "modules/art-supabase-mes"]
+	path = modules/art-supabase-mes
+	url = https://gitee.com/art-si/art-supabase-mes.git
+	branch = master
+[submodule "modules/art-supabase-pmis"]
+	path = modules/art-supabase-pmis
+	url = https://gitee.com/art-si/art-supabase-pmis.git
+	branch = master
+[submodule "modules/art-supabase-scm"]
+	path = modules/art-supabase-scm
+	url = https://gitee.com/art-si/art-supabase-scm.git
+	branch = master
+[submodule "modules/art-supabase-site"]
+	path = modules/art-supabase-site
+	url = https://gitee.com/art-si/art-supabase-site.git
+	branch = master

@@ -1,0 +1,151 @@
+// 从 URL 和路径模块中导入必要的功能
+import fs from 'fs'
+import path, { dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+// 从 ESLint 插件中导入推荐配置
+import pluginJs from '@eslint/js'
+import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended'
+import pluginVue from 'eslint-plugin-vue'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
+
+// 使用 import.meta.url 获取当前模块的路径
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
+// 读取 .auto-import.json 文件的内容，并将其解析为 JSON 对象
+const autoImportConfig = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '.auto-import.json'), 'utf-8')
+)
+
+export default [
+  // 指定文件匹配规则
+  {
+    files: ['**/*.{js,mjs,cjs,ts,tsx,vue}']
+  },
+  // 指定全局变量和环境
+  {
+    languageOptions: {
+      parserOptions: { tsconfigRootDir: __dirname },
+      globals: {
+        ...globals.browser,
+        ...globals.node
+      }
+    }
+  },
+  // 扩展配置
+  pluginJs.configs.recommended,
+  ...tseslint.configs.recommended,
+  ...pluginVue.configs['flat/essential'],
+  // 自定义规则
+  {
+    // 针对所有 JavaScript、TypeScript 和 Vue 文件应用以下配置
+    files: ['**/*.{js,mjs,cjs,ts,tsx,vue}'],
+
+    languageOptions: {
+      globals: {
+        // 合并从 autoImportConfig 中读取的全局变量配置
+        ...autoImportConfig.globals,
+        // 生成文件只记录当前 Vite 会话扫描到的模块；常用服务 API 必须稳定可用。
+        ElLoading: 'readonly',
+        ElMessage: 'readonly',
+        // TypeScript 全局命名空间
+        Api: 'readonly'
+      }
+    },
+    rules: {
+      quotes: ['error', 'single'], // 使用单引号
+      semi: ['error', 'never'], // 语句末尾不加分号
+      'no-var': 'error', // 要求使用 let 或 const 而不是 var
+      '@typescript-eslint/no-explicit-any': 'warn', // 存量代码逐步收紧
+      'vue/multi-word-component-names': 'off', // 禁用对 Vue 组件名称的多词要求检查
+      'no-multiple-empty-lines': ['warn', { max: 1 }], // 不允许多个空行
+      'no-unexpected-multiline': 'error' // 禁止空余的多行
+    }
+  },
+  // vue 规则
+  {
+    files: ['**/*.vue'],
+    languageOptions: {
+      parserOptions: {
+        parser: tseslint.parser,
+        ecmaFeatures: {
+          jsx: true
+        }
+      }
+    }
+  },
+  // 忽略文件
+  {
+    files: ['tests/e2e/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/^\\u002f#/]',
+          message: '哈希路由请使用 #/路径，保留 Playwright baseURL 的部署目录前缀。'
+        },
+        {
+          selector: 'TemplateLiteral > TemplateElement.quasis:first-child[value.raw=/^\\u002f#/]',
+          message: '哈希路由模板请保留 Playwright baseURL 的部署目录前缀。'
+        }
+      ]
+    }
+  },
+  // 业务视图和组件只能通过 src/api 的公开入口访问后端，禁止跨越 provider 边界。
+  {
+    files: [
+      'src/views/**/*.{ts,tsx,vue}',
+      'src/components/**/*.{ts,tsx,vue}',
+      'modules/*/src/views/**/*.{ts,tsx,vue}',
+      'modules/*/src/components/**/*.{ts,tsx,vue}'
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@/hooks',
+              importNames: ['useSupabase'],
+              message: '业务 UI 请通过 src/api 的公开函数访问后端。'
+            },
+            {
+              name: '@/hooks/core/useSupabase',
+              message: '业务 UI 请通过 src/api 的公开函数访问后端。'
+            },
+            {
+              name: '@/plugins/supabase',
+              message: 'Supabase client 只能在 API/provider 层使用。'
+            }
+          ],
+          patterns: [
+            {
+              group: ['@/api/providers/**'],
+              message: '业务 UI 请依赖 src/api 的公开入口，不要直接依赖具体 provider。'
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    ignores: [
+      'node_modules',
+      'dist',
+      'docs',
+      '.artifacts',
+      '.codex-build-*',
+      '.bundle-stats.html',
+      'public',
+      'supabase/**',
+      '.vscode/**',
+      'src/assets/**',
+      'src/vendor/**',
+      'src/utils/console.ts'
+    ]
+  },
+  // prettier 配置
+  eslintPluginPrettierRecommended
+]

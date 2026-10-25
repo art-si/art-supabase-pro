@@ -1,0 +1,33 @@
+.dict-maintenance-form {
+  min-width: 0;
+
+  :deep(.el-form-item) {
+    margin-bottom: var(--art-space-5);
+  }
+
+  :deep(.el-form-item__label) {
+    padding-bottom: var(--art-space-2);
+    font-weight: 500;
+    line-height: 20px;
+  }
+
+  :deep(.art-section-title) {
+    margin-top: var(--art-space-2);
+    margin-bottom: var(--art-space-4);
+  }
+
+  :deep(.el-row > .el-col:first-child .art-section-title) {
+    margin-top: 0;
+  }
+
+  :deep(.art-form-item__description) {
+    max-width: 720px;
+  }
+
+  @media (width <= 600px) {
+    :deep(.el-col) {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+  }
+}

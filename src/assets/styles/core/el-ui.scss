@@ -1,0 +1,974 @@
+// 优化 Element Plus 组件库默认样式
+
+:root {
+  // 系统主色
+  --main-color: var(--el-color-primary);
+  --el-color-white: white !important;
+  // 输入框边框颜色
+  // --el-border-color: #E4E4E7 !important; // DCDFE6
+  // 按钮粗度
+  --el-font-weight-primary: 400 !important;
+  --el-component-custom-height: 36px !important;
+  --el-component-size: var(--el-component-custom-height) !important;
+
+  // 全局圆角层级：控件 < 浮层 < 模态框。所有值跟随系统圆角设置联动。
+  --art-control-radius: calc(var(--custom-radius) / 3 + 2px);
+  --art-control-radius-small: calc(var(--custom-radius) / 3);
+  --art-floating-radius: calc(var(--custom-radius) / 3 + 4px);
+  --art-modal-radius: calc(var(--custom-radius) / 1.2 + 2px);
+  --art-surface-radius: var(--custom-radius);
+  --art-feature-radius: calc(var(--custom-radius) * 2);
+  --art-floating-shadow: var(--el-box-shadow-light);
+  --art-modal-shadow: var(--el-box-shadow);
+  --art-motion-duration-fast: 180ms;
+  --art-motion-duration-base: 260ms;
+  --art-motion-duration-slow: 320ms;
+  --art-motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --art-motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  // 对齐 Element Plus 组件变量，避免按需样式和全局覆盖各用一套圆角。
+  --el-border-radius-base: var(--art-control-radius) !important;
+  --el-border-radius-small: var(--art-control-radius-small) !important;
+  --el-messagebox-border-radius: var(--art-modal-radius) !important;
+  --el-notification-radius: var(--art-floating-radius) !important;
+  --el-popover-border-radius: var(--art-floating-radius) !important;
+
+  .region .el-radio-button__original-radio:checked + .el-radio-button__inner {
+    color: var(--theme-color);
+  }
+}
+
+// 优化 el-form-item 标签高度
+.el-form-item__label {
+  height: var(--el-component-custom-height) !important;
+  line-height: var(--el-component-custom-height) !important;
+}
+
+// 日期选择器
+.el-date-range-picker {
+  --el-datepicker-inrange-bg-color: var(--art-gray-200) !important;
+}
+
+// el-card 背景色跟系统背景色保持一致
+html.dark .el-card {
+  --el-card-bg-color: var(--default-box-color) !important;
+}
+
+// 修改 el-pagination 大小
+.el-pagination--default {
+  --el-pagination-button-width: 32px !important;
+  --el-pagination-button-height: var(--el-pagination-button-width) !important;
+
+  @media (width <= 1180px) {
+    --el-pagination-button-width: 28px !important;
+  }
+
+  .el-select--default .el-select__wrapper {
+    min-height: var(--el-pagination-button-width) !important;
+  }
+
+  .el-pagination__jump .el-input {
+    height: var(--el-pagination-button-width) !important;
+  }
+}
+
+.el-pager li {
+  padding: 0 10px !important;
+  // border: 1px solid red !important;
+}
+
+// 优化菜单折叠展开动画（提升动画流畅度）
+.el-menu.el-menu--inline {
+  transition: max-height 0.26s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+// 优化菜单 item hover 动画（提升鼠标跟手感）
+.el-sub-menu__title,
+.el-menu-item {
+  transition: background-color 0s !important;
+}
+
+// -------------------------------- 修改 el-size=default 组件默认高度 start --------------------------------
+// 修改 el-button 高度
+.el-button--default {
+  height: var(--el-component-custom-height) !important;
+}
+
+// circle 按钮宽度优化
+.el-button--default.is-circle {
+  width: var(--el-component-custom-height) !important;
+}
+
+// 修改 el-select 高度
+.el-select--default {
+  .el-select__wrapper {
+    min-height: var(--el-component-custom-height) !important;
+  }
+}
+
+// 修改 el-checkbox-button 高度
+.el-checkbox-button--default .el-checkbox-button__inner,
+// 修改 el-radio-button 高度
+.el-radio-button--default .el-radio-button__inner {
+  padding: 10px 15px !important;
+}
+
+// 修改 el-segmented 高度
+.el-segmented.el-segmented--default {
+  --el-segmented-item-selected-bg-color: var(--el-color-primary);
+  --el-segmented-item-selected-color: var(--el-color-white);
+
+  height: var(--el-component-custom-height) !important;
+
+  .el-segmented__item {
+    line-height: calc(var(--el-component-custom-height) - 4px);
+  }
+}
+
+// 标准顶部页签统一采用紧凑高度，并为首尾标签保留一致的横向留白。
+// 激活线覆盖标签的完整点击区域，因此首项可与底部分隔线左端对齐，文字仍保留呼吸空间。
+.el-tabs.el-tabs--top:not(.el-tabs--card, .el-tabs--border-card) > .el-tabs__header {
+  .el-tabs__item {
+    position: relative;
+    height: 40px;
+    padding-inline: var(--art-space-4);
+    line-height: 40px;
+
+    &.is-active::after {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      z-index: 1;
+      width: 100%;
+      height: 3px;
+      content: '';
+      background-color: var(--theme-color);
+    }
+  }
+
+  .el-tabs__active-bar {
+    display: none;
+  }
+}
+// -------------------------------- 修改 el-size=default 组件默认高度 end --------------------------------
+
+.el-pagination.is-background .btn-next,
+.el-pagination.is-background .btn-prev,
+.el-pagination.is-background .el-pager li {
+  border-radius: var(--art-control-radius);
+}
+
+.el-popover {
+  min-width: 80px;
+  border-radius: var(--art-floating-radius) !important;
+}
+
+.el-dialog {
+  overflow: hidden;
+  background: var(--default-box-color);
+  border: 1px solid var(--art-modal-surface-border);
+  border-radius: var(--art-modal-radius) !important;
+  box-shadow: var(--art-modal-surface-shadow);
+  transition:
+    width var(--art-motion-duration-base) var(--art-motion-ease-out),
+    height var(--art-motion-duration-base) var(--art-motion-ease-out),
+    margin var(--art-motion-duration-base) var(--art-motion-ease-out),
+    border-radius var(--art-motion-duration-base) var(--art-motion-ease-out);
+
+  &.art-dialog {
+    padding: 0 !important;
+  }
+
+  &.art-dialog > .el-dialog__header {
+    display: flex;
+    align-items: center;
+    min-height: 56px;
+    padding: 16px 64px 16px 24px !important;
+    margin-right: 0;
+    background: color-mix(in srgb, var(--theme-color) 2%, var(--default-box-color));
+    border-bottom: 1px solid var(--art-card-border);
+
+    .el-dialog__title {
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 24px;
+    }
+  }
+
+  &.art-dialog > .el-dialog__body {
+    position: relative; // 为了兼容 el-pagination 样式，需要设置 relative，不然会影响 el-pagination 的样式，比如 el-pagination__jump--small 会被影响，导致 el-pagination__jump--small 按钮无法点击，详见 URL_ADDRESS.com/element-plus/element-plus/issues/5684#issuecomment-1176299275;
+    padding: 0 !important;
+  }
+
+  &.art-dialog > .el-dialog__footer {
+    min-height: 60px;
+    padding: 12px 24px !important;
+    background: color-mix(in srgb, var(--art-gray-100) 58%, var(--default-box-color));
+    border-top: 1px solid var(--art-card-border);
+  }
+
+  &.el-dialog-border {
+    .el-dialog__body {
+      // 上边框
+      &::before,
+      // 下边框
+      &::after {
+        position: absolute;
+        left: -16px;
+        width: calc(100% + 32px);
+        height: 1px;
+        content: '';
+        background-color: var(--art-gray-300);
+      }
+
+      &::before {
+        top: 0;
+      }
+
+      &::after {
+        bottom: 0;
+      }
+    }
+  }
+}
+
+// el-drawer 与 el-dialog 保持一致的弹层质感；仅给远离视口的一侧保留圆角
+.el-drawer {
+  overflow: hidden;
+  background: var(--default-box-color);
+  border: 1px solid var(--art-modal-surface-border);
+  box-shadow: var(--art-modal-surface-shadow);
+
+  &.rtl {
+    border-radius: var(--art-modal-radius) 0 0 var(--art-modal-radius);
+  }
+
+  &.ltr {
+    border-radius: 0 var(--art-modal-radius) var(--art-modal-radius) 0;
+  }
+
+  &.ttb {
+    border-radius: 0 0 var(--art-modal-radius) var(--art-modal-radius);
+  }
+
+  &.btt {
+    border-radius: var(--art-modal-radius) var(--art-modal-radius) 0 0;
+  }
+
+  &__title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  > .el-drawer__header {
+    padding-bottom: var(--el-drawer-padding-primary);
+    margin-bottom: 0;
+    background: color-mix(in srgb, var(--theme-color) 2%, var(--default-box-color));
+    border-bottom: 1px solid var(--art-card-border);
+  }
+
+  > .el-drawer__footer {
+    padding-top: var(--el-drawer-padding-primary);
+    background: color-mix(in srgb, var(--art-gray-100) 58%, var(--default-box-color));
+    border-top: 1px solid var(--art-card-border);
+  }
+}
+
+// el-message 样式优化
+.el-message {
+  background-color: var(--default-box-color) !important;
+  border: 1px solid var(--art-card-border) !important;
+  border-radius: var(--art-floating-radius) !important;
+  box-shadow: var(--art-floating-shadow) !important;
+
+  p {
+    font-size: 13px;
+  }
+}
+
+// 修改 el-dropdown 样式
+.el-dropdown-menu {
+  padding: 6px !important;
+  border: none !important;
+  border-radius: var(--art-floating-radius) !important;
+
+  .el-dropdown-menu__item {
+    padding: 6px 16px !important;
+    border-radius: var(--art-control-radius) !important;
+
+    &:hover:not(.is-disabled) {
+      color: var(--art-gray-900) !important;
+      background-color: var(--art-el-active-color) !important;
+    }
+
+    &:focus:not(.is-disabled) {
+      color: var(--art-gray-900) !important;
+      background-color: var(--art-gray-200) !important;
+    }
+  }
+}
+
+// 隐藏 select、dropdown 的三角
+.el-select__popper,
+.el-dropdown__popper {
+  margin-top: -6px !important;
+
+  .el-popper__arrow {
+    display: none;
+  }
+}
+
+// Tooltip 箭头由 ArtTooltip 统一禁用；同时覆盖表格溢出提示等组件内部生成的 Tooltip。
+.el-popper[role='tooltip']:not(.el-popover, .el-select__popper, .el-dropdown__popper) {
+  > .el-popper__arrow {
+    display: none !important;
+  }
+}
+
+// ElSelect 的可搜索内层 input 由外层 wrapper 统一呈现焦点态，避免生产构建中出现双层焦点框。
+.el-select__input:focus-visible {
+  outline: none;
+}
+
+// 处理移动端组件兼容性
+@media screen and (width <= 640px) {
+  .el-date-range-picker {
+    width: calc(100vw - 24px) !important;
+    max-height: min(480px, 50dvh);
+    overflow-y: auto;
+
+    .el-picker-panel__body {
+      min-width: 0 !important;
+    }
+
+    .el-date-range-picker__content {
+      display: block !important;
+      width: 100% !important;
+
+      &.is-left {
+        border-right: 0;
+        border-bottom: 1px solid var(--el-border-color-lighter);
+      }
+    }
+  }
+
+  .el-message-box,
+  .el-dialog {
+    width: calc(100% - 24px) !important;
+  }
+
+  .el-date-picker.has-sidebar.has-time {
+    left: 12px !important;
+    width: calc(100% - 24px);
+  }
+
+  .el-picker-panel *[slot='sidebar'],
+  .el-picker-panel__sidebar {
+    display: none;
+  }
+
+  .el-picker-panel *[slot='sidebar'] + .el-picker-panel__body,
+  .el-picker-panel__sidebar + .el-picker-panel__body {
+    margin-left: 0;
+  }
+}
+
+// 图文控件统一使用 flex 间距，兼容 ElIcon、ArtSvgIcon 与纯文本节点的组合。
+// Element Plus 默认只处理 `ElIcon + span`，直接插入 ArtSvgIcon 时不会自动留白。
+.el-button {
+  column-gap: var(--art-control-icon-gap);
+
+  > span {
+    position: relative;
+    z-index: 10;
+    display: inline-flex;
+    gap: var(--art-control-icon-gap);
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    line-height: 1;
+  }
+
+  [class*='el-icon'] + span {
+    margin-left: 0 !important;
+  }
+
+  .art-svg-icon,
+  .el-icon {
+    flex: none;
+  }
+
+  &.el-button--small,
+  &.el-button--small > span {
+    gap: var(--art-control-icon-gap-compact);
+  }
+
+  &.el-button--large,
+  &.el-button--large > span {
+    gap: var(--art-control-icon-gap-spacious);
+  }
+
+  &.el-button--text {
+    padding: 0 !important;
+    background-color: transparent !important;
+
+    > span {
+      margin-left: 0 !important;
+    }
+  }
+}
+
+// 修改el-tag样式
+.el-tag {
+  // Keep semantic tags immune to broad parent selectors such as `> span` used by
+  // identity icons. ElTag renders a span root, so those selectors otherwise stretch
+  // status tags into oversized icon tiles.
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: fit-content !important;
+  max-width: 100%;
+  height: 24px !important;
+  padding: 0 9px !important;
+  font-size: var(--el-tag-font-size, 12px) !important;
+  font-weight: 500;
+  line-height: 1 !important;
+  vertical-align: middle;
+  color: var(--el-tag-text-color) !important;
+  background-color: var(--el-tag-bg-color) !important;
+  border-color: var(--el-tag-border-color) !important;
+  transition: none !important;
+
+  &.el-tag--small {
+    height: 20px !important;
+    padding: 0 7px !important;
+  }
+
+  &.el-tag--large {
+    height: 32px !important;
+    padding: 0 11px !important;
+  }
+
+  &.is-round {
+    border-radius: var(--el-tag-border-radius-rounded) !important;
+  }
+
+  .el-tag__content {
+    display: inline-flex;
+    gap: var(--art-control-icon-gap);
+    align-items: center;
+    min-width: 0;
+    line-height: 1;
+  }
+
+  &.el-tag--small .el-tag__content {
+    gap: var(--art-control-icon-gap-compact);
+  }
+
+  .art-svg-icon,
+  .el-icon {
+    flex: none;
+  }
+}
+
+.el-link__inner {
+  gap: var(--art-control-icon-gap);
+  align-items: center;
+
+  .art-svg-icon,
+  .el-icon {
+    flex: none;
+  }
+}
+
+// 原生按钮、链接和状态文本需要图文组合时复用该类，避免页面级 margin 微调。
+// 仅规范行内控件图标，不影响页面标题、指标和纯图标按钮的层级尺寸。
+.el-button > span,
+.el-dropdown-menu__item,
+.el-segmented__item-label,
+:where(.el-segmented__item-label > :has(> .art-svg-icon)),
+:where(.el-tabs__item > :has(> .art-svg-icon)),
+.el-radio-button__inner,
+.el-checkbox-button__inner,
+.el-link__inner,
+.el-tag__content,
+.art-icon-label {
+  &:has(> .art-svg-icon, > .el-icon) {
+    display: inline-flex;
+    gap: var(--art-control-icon-gap);
+    align-items: center;
+  }
+
+  > .art-svg-icon,
+  > .el-icon {
+    flex: none;
+    width: 1.1429em;
+    height: 1.1429em;
+    margin-inline: 0;
+    font-size: inherit;
+  }
+}
+
+.el-button.el-button--small > span:has(> .art-svg-icon, > .el-icon) {
+  gap: var(--art-control-icon-gap-compact);
+}
+
+.el-button.el-button--large > span:has(> .art-svg-icon, > .el-icon) {
+  gap: var(--art-control-icon-gap-spacious);
+}
+
+.art-icon-label {
+  display: inline-flex;
+  gap: var(--art-control-icon-gap);
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  line-height: 1;
+
+  > .art-svg-icon,
+  > .el-icon {
+    flex: none;
+  }
+
+  &--compact {
+    --art-control-icon-gap: var(--art-control-icon-gap-compact);
+
+    gap: var(--art-control-icon-gap-compact);
+  }
+}
+
+.el-checkbox-group {
+  &.el-table-filter__checkbox-group label.el-checkbox {
+    height: 17px !important;
+
+    .el-checkbox__label {
+      font-weight: 400 !important;
+    }
+  }
+}
+
+.el-radio--default {
+  // 优化单选按钮大小
+  .el-radio__input {
+    .el-radio__inner {
+      width: 16px;
+      height: 16px;
+
+      &::after {
+        width: 6px;
+        height: 6px;
+      }
+    }
+  }
+}
+
+.el-checkbox {
+  .el-checkbox__inner {
+    border-radius: 2px !important;
+  }
+}
+
+// 优化复选框样式
+.el-checkbox--default {
+  .el-checkbox__inner {
+    width: 16px !important;
+    height: 16px !important;
+    border-radius: 4px !important;
+
+    &::before {
+      top: 5px !important;
+      height: 4px !important;
+      content: '';
+      background-color: #fff !important;
+      transform: scale(0.6) !important;
+    }
+  }
+
+  .is-checked {
+    .el-checkbox__inner {
+      &::after {
+        width: 3px;
+        height: 8px;
+        margin: auto;
+        border: 2px solid var(--el-checkbox-checked-icon-color);
+        border-top: 0;
+        border-left: 0;
+        transform: translate(-45%, -60%) rotate(45deg) scale(0.86) !important;
+        transform-origin: center;
+      }
+    }
+  }
+}
+
+.el-notification {
+  border-color: var(--art-card-border);
+  border-radius: var(--art-floating-radius);
+  box-shadow: var(--art-floating-shadow);
+
+  .el-notification__icon {
+    font-size: 22px !important;
+  }
+}
+
+// 修改弹层关闭按钮样式
+.el-dialog {
+  &__headerbtn {
+    .el-dialog__close {
+      top: 7px;
+      right: 7px;
+      width: 30px;
+      height: 30px;
+      border-radius: var(--art-control-radius);
+      transition:
+        color 0.3s,
+        background-color 0.3s;
+
+      &:hover {
+        color: var(--art-gray-900) !important;
+        background-color: var(--art-hover-color) !important;
+      }
+    }
+  }
+}
+
+.el-drawer {
+  &__close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: var(--art-control-radius);
+    transition:
+      color 0.3s,
+      background-color 0.3s;
+
+    &:hover {
+      color: var(--art-gray-900) !important;
+      background-color: var(--art-hover-color) !important;
+    }
+  }
+}
+
+// 修改 el-message-box 样式
+.el-message-box {
+  padding: 25px 20px !important;
+  border: 1px solid var(--art-card-border);
+  border-radius: var(--art-modal-radius) !important;
+  box-shadow: var(--art-modal-shadow);
+
+  &__headerbtn {
+    .el-message-box__close {
+      top: 7px;
+      right: 7px;
+      width: 30px;
+      height: 30px;
+      border-radius: var(--art-control-radius);
+      transition:
+        color 0.3s,
+        background-color 0.3s;
+
+      &:hover {
+        color: var(--art-gray-900) !important;
+        background-color: var(--art-hover-color) !important;
+      }
+    }
+  }
+
+  &__title {
+    font-weight: 500 !important;
+  }
+}
+
+.art-feedback-message-box {
+  width: min(460px, calc(100vw - 24px)) !important;
+  max-width: calc(100vw - 24px) !important;
+
+  .el-message-box__message {
+    line-height: 1.65;
+  }
+
+  .el-message-box__input {
+    padding-top: var(--art-space-3);
+  }
+
+  .el-message-box__btns {
+    gap: var(--art-space-2);
+    padding-top: var(--art-space-4);
+
+    .el-button + .el-button {
+      margin-left: 0;
+    }
+
+    .art-feedback-cancel {
+      --el-button-text-color: var(--el-text-color-regular);
+      --el-button-bg-color: var(--el-bg-color);
+      --el-button-border-color: var(--el-border-color);
+      --el-button-hover-text-color: var(--el-text-color-primary);
+      --el-button-hover-bg-color: var(--el-fill-color-light);
+      --el-button-hover-border-color: var(--el-border-color-dark);
+      --el-button-active-text-color: var(--el-text-color-primary);
+      --el-button-active-bg-color: var(--el-fill-color);
+      --el-button-active-border-color: var(--el-border-color-darker);
+    }
+  }
+
+  &.is-multiline {
+    width: min(520px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+
+    .el-textarea__inner {
+      min-height: 104px !important;
+      line-height: 1.65;
+      resize: vertical;
+    }
+  }
+}
+
+.el-table__column-filter-trigger i {
+  margin: -3px 0 0 2px;
+  color: var(--theme-color) !important;
+}
+
+// ipad 表单右侧按钮优化
+@media screen and (width <= 1180px) {
+  .el-table-fixed-column--right {
+    padding-right: 0 !important;
+  }
+}
+
+.login-out-dialog {
+  padding: 30px 20px !important;
+  border-radius: var(--art-modal-radius) !important;
+}
+
+// 弹窗只允许内容区滚动。Element Plus 默认让遮罩内层 overflow: auto，
+// 长表单会与 ArtDialog 的 ElScrollbar 形成双滚动条。
+.el-modal-dialog .el-overlay-dialog {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+// 弹窗动画：轻量缩放与位移，保持企业后台的稳定感
+.dialog-fade-enter-active {
+  animation: art-overlay-in var(--art-motion-duration-fast) ease-out both !important;
+
+  .el-overlay-dialog {
+    animation: none !important;
+  }
+
+  .el-dialog {
+    transform-origin: center center;
+    animation: art-dialog-open var(--art-motion-duration-base) var(--art-motion-ease-out) both;
+
+    // 修复弹窗动画后 select 宽度不自适应
+    .el-select__selected-item {
+      display: inline-block;
+    }
+  }
+}
+
+.dialog-fade-leave-active {
+  animation: art-overlay-out var(--art-motion-duration-fast) ease-in both !important;
+
+  .el-overlay-dialog {
+    animation: none !important;
+  }
+
+  .el-dialog {
+    // 关闭时保留 Element Plus 拖拽写入的内联 transform，避免弹窗先跳回中心再消失。
+    animation: art-dialog-close var(--art-motion-duration-fast) var(--art-motion-ease-in) both;
+  }
+}
+
+@keyframes art-dialog-open {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.965);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes art-dialog-close {
+  0% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes art-overlay-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes art-overlay-out {
+  0% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+// 抽屉动画：保留方向感，同时加入轻微缩放和透明度变化
+.el-drawer-fade-enter-active,
+.el-drawer-fade-leave-active {
+  transition: background-color var(--art-motion-duration-fast) ease !important;
+
+  .el-drawer {
+    transition:
+      transform var(--art-motion-duration-slow) var(--art-motion-ease-out),
+      opacity var(--art-motion-duration-base) ease !important;
+  }
+}
+
+.el-drawer-fade-leave-active .el-drawer {
+  transition-timing-function: var(--art-motion-ease-in), ease !important;
+}
+
+.el-drawer-fade-enter-from,
+.el-drawer-fade-leave-to {
+  .el-drawer {
+    opacity: 0.64;
+
+    &.rtl {
+      transform: translateX(calc(100% + 12px)) scale(0.985) !important;
+      transform-origin: right center;
+    }
+
+    &.ltr {
+      transform: translateX(calc(-100% - 12px)) scale(0.985) !important;
+      transform-origin: left center;
+    }
+
+    &.ttb {
+      transform: translateY(calc(-100% - 12px)) scale(0.985) !important;
+      transform-origin: center top;
+    }
+
+    &.btt {
+      transform: translateY(calc(100% + 12px)) scale(0.985) !important;
+      transform-origin: center bottom;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-fade-enter-active,
+  .dialog-fade-leave-active,
+  .dialog-fade-enter-active .el-dialog,
+  .dialog-fade-leave-active .el-dialog {
+    animation: none !important;
+  }
+
+  .el-drawer-fade-enter-active,
+  .el-drawer-fade-leave-active,
+  .el-drawer-fade-enter-active .el-drawer,
+  .el-drawer-fade-leave-active .el-drawer {
+    transition: none !important;
+  }
+
+  .el-drawer-fade-enter-from .el-drawer,
+  .el-drawer-fade-leave-to .el-drawer {
+    opacity: 1;
+    transform: none !important;
+  }
+}
+
+// 修改 el-select 样式
+.el-select__popper:not(.el-tree-select__popper, .art-select-rich-options) {
+  .el-select-dropdown__list {
+    padding: 5px !important;
+
+    .el-select-dropdown__item {
+      height: 34px !important;
+      line-height: 34px !important;
+      border-radius: 6px !important;
+    }
+  }
+}
+
+// 修改 el-tree-select 样式
+.el-tree-select__popper {
+  .el-select-dropdown__list {
+    padding: 5px !important;
+
+    .el-tree-node {
+      .el-tree-node__content {
+        height: 36px !important;
+        border-radius: 6px !important;
+
+        &:hover {
+          background-color: var(--art-gray-200) !important;
+        }
+      }
+    }
+  }
+}
+
+// 优化颜色选择器圆角
+.el-color-picker__color {
+  border-radius: 2px !important;
+}
+
+// 优化日期时间选择器底部圆角
+.el-picker-panel {
+  .el-picker-panel__footer {
+    border-radius: 0 0 var(--el-border-radius-base) var(--el-border-radius-base);
+  }
+}
+
+// 优化树型菜单样式
+.el-tree-node__content {
+  padding: 1px 0;
+  margin-bottom: 4px;
+  border-radius: 4px;
+
+  &:hover {
+    background-color: var(--art-hover-color) !important;
+  }
+}
+
+.dark {
+  .el-tree--highlight-current .el-tree-node.is-current > .el-tree-node__content {
+    background-color: var(--art-gray-300) !important;
+  }
+}
+
+// 隐藏折叠菜单弹窗 hover 出现的边框
+.menu-left-popper:focus-within,
+.horizontal-menu-popper:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+// 数字输入组件右侧按钮高度跟随自定义组件高度
+.el-input-number--default.is-controls-right {
+  .el-input-number__decrease,
+  .el-input-number__increase {
+    height: calc((var(--el-component-size) / 2)) !important;
+  }
+}
+
+// 图片预览控件使用独立的深色工具表面，保持深浅主题中的图标对比度。
+.el-image-viewer__actions,
+.el-image-viewer__close,
+.el-image-viewer__prev,
+.el-image-viewer__next {
+  color: var(--el-color-white);
+  background-color: #32343a;
+}

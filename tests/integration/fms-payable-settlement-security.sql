@@ -1,0 +1,68 @@
+begin;
+do $fixtures$
+declare actor uuid;ordinary uuid;platform_tenant uuid;tenant uuid;fixture_role uuid;fixture_code text:='AP_PAYMENT_SECURITY_'||left(gen_random_uuid()::text,8);
+ supplier uuid;app_type uuid;other_type uuid;purpose uuid;method uuid;payload jsonb;document jsonb;second_document jsonb;type_options jsonb;created_purpose uuid;blocked boolean;
+begin
+ select auth_user_id,tenant_id into actor,platform_tenant from public.sys_user where auth_user_id is not null and user_roles @>array['R_SUPER'] limit 1;
+ select u.auth_user_id,u.tenant_id into ordinary,tenant from public.sys_user u where auth_user_id is not null and status='1' and not user_roles @>array['R_SUPER']
+ and exists(select 1 from public.mdm_supplier where tenant_id=u.tenant_id) and exists(select 1 from public.fms_fund_account where tenant_id=u.tenant_id) limit 1;
+ if actor is null or ordinary is null then raise exception 'Missing settlement security fixtures';end if;
+ insert into public.sys_role(role_code,role_name,tenant_id,enabled) values(fixture_code,'付款安全回归临时角色',tenant,true) returning id into fixture_role;
+ insert into public.sys_role_menu(role_id,menu_id,tenant_id) select fixture_role,id,tenant from public.sys_menu where name in('FinancePayableApplication:View','FinancePayableApplication:Add','FinancePayableApplication:Edit','FinancePayablePayment:View','MdmPaymentPurpose:View','MdmPaymentPurpose:Add','MdmPaymentPurpose:Edit','MdmSettlementMethod:View','FinancePayableWriteoff:View');
+ update public.sys_user set user_roles=array[fixture_code] where auth_user_id=ordinary;
+ select id into supplier from public.mdm_supplier where tenant_id=tenant limit 1;
+ select id into app_type from public.mdm_document_type where tenant_id=tenant and document_type_code='AP_APP_PURCHASE';
+ select id into purpose from public.mdm_payment_purpose where tenant_id=tenant and code='201';
+ select id into method from public.mdm_settlement_method where tenant_id=tenant and code='JSFS04';
+ payload:=jsonb_build_object('kind','application','tenant_id',tenant,'document_type_id',app_type,'business_date',current_date,'lines',jsonb_build_array(jsonb_build_object('supplier_id',supplier,'purpose_id',purpose,'settlement_method_id',method,'amount',100)));
+ perform set_config('request.jwt.claim.sub',actor::text,true);perform set_config('request.headers','{}',true);
+ document:=public.fms_save_payable_settlement_secure(payload);
+ if document->>'document_no' !~ '^FKSQ-[0-9]{6}-[0-9]{3}$' then raise exception 'Monthly three-digit number engine was not used';end if;
+ document:=public.fms_save_payable_settlement_secure(document||jsonb_build_object('reason','平台全部租户编辑'));
+ if document->>'reason'<>'平台全部租户编辑' then raise exception 'Platform-all edit failed';end if;
+ select id into other_type from public.mdm_document_type where tenant_id=tenant and document_type_code='AP_APP_OTHER';
+ if other_type is null then raise exception 'Missing other payment application type';end if;
+ second_document:=public.fms_save_payable_settlement_secure(payload||jsonb_build_object('document_type_id',other_type));
+ if not exists(select 1 from jsonb_array_elements(public.fms_payable_settlement_list_secure('application',jsonb_build_object('document_type_id',other_type))->'data') item where item->>'id'=second_document->>'id') or exists(select 1 from jsonb_array_elements(public.fms_payable_settlement_list_secure('application',jsonb_build_object('document_type_id',other_type))->'data') item where item->>'id'=document->>'id') then raise exception 'Payment type query did not separate the two documents';end if;
+ type_options:=public.fms_payable_settlement_type_options_secure('application');
+ if (select count(distinct item->'tenant'->>'tenant_code') from jsonb_array_elements(type_options) item)<2 then raise exception 'Platform-all type query lost tenant scope';end if;
+ created_purpose:=public.fms_save_payable_reference_secure('purpose',jsonb_build_object('code',fixture_code,'name','平台根付款用途','business_type','other'));
+ if (select tenant_id from public.mdm_payment_purpose where id=created_purpose)<>platform_tenant then raise exception 'Platform root default tenant incorrect';end if;
+ perform set_config('request.headers',jsonb_build_object('x-art-tenant-scope',tenant)::text,true);
+ if exists(select 1 from jsonb_array_elements(public.fms_payable_settlement_type_options_secure('application')) item join public.mdm_document_type dt on dt.id=(item->>'id')::uuid where dt.tenant_id<>tenant) then raise exception 'Selected type query leaked another tenant';end if;
+ if jsonb_array_length(public.fms_payable_settlement_list_secure('application',jsonb_build_object('id',document->>'id'))->'data')<>1 then raise exception 'Selected business tenant lost own payment';end if;
+ blocked:=false;begin perform public.fms_save_payable_reference_secure('purpose',jsonb_build_object('id',created_purpose,'code',fixture_code,'name','非法跨租户配置编辑','business_type','other'));exception when insufficient_privilege then blocked:=true;end;
+ if not blocked then raise exception 'Selected tenant permitted foreign edit';end if;
+ perform set_config('request.jwt.claim.sub',ordinary::text,true);perform set_config('request.headers','{}',true);
+ document:=public.fms_save_payable_settlement_secure(document||jsonb_build_object('reason','普通用户编辑'));
+ perform set_config('request.headers',jsonb_build_object('x-art-tenant-scope',platform_tenant)::text,true);
+ if exists(select 1 from jsonb_array_elements(public.fms_payable_settlement_type_options_secure('payment')) item join public.mdm_document_type dt on dt.id=(item->>'id')::uuid where dt.tenant_id<>tenant) then raise exception 'Forged header leaked payment types';end if;
+ if jsonb_array_length(public.fms_payable_settlement_list_secure('application',jsonb_build_object('id',document->>'id'))->'data')<>1 then raise exception 'Forged scope hid ordinary own document';end if;
+ blocked:=false;begin perform public.fms_save_payable_settlement_secure(payload||jsonb_build_object('tenant_id',platform_tenant));exception when insufficient_privilege then blocked:=true;end;
+ if not blocked then raise exception 'Forged write tenant accepted';end if;
+ blocked:=false;begin perform public.fms_act_payable_settlement_secure(array[(document->>'id')::uuid],'submit');exception when insufficient_privilege then blocked:=true;end;
+ if not blocked then raise exception 'Missing Submit permission accepted';end if;
+ created_purpose:=public.fms_save_payable_reference_secure('purpose',jsonb_build_object('code',fixture_code,'name','普通根付款用途','business_type','other'));
+ if (select tenant_id from public.mdm_payment_purpose where id=created_purpose)<>tenant then raise exception 'Forged header changed ordinary root write';end if;
+ update public.mdm_document_type set enabled=false where id=other_type;
+ if not exists(select 1 from jsonb_array_elements(public.fms_payable_settlement_type_options_secure('application')) item where item->>'id'=other_type::text and (item->>'enabled')::boolean=false) then raise exception 'Disabled type unavailable for historical query';end if;
+ delete from public.sys_role_menu where role_id=fixture_role and menu_id=(select id from public.sys_menu where name='FinancePayablePayment:View');
+ blocked:=false;begin perform public.fms_payable_settlement_type_options_secure('payment');exception when insufficient_privilege then blocked:=true;end;
+ if not blocked then raise exception 'Payment type query ignored View permission';end if;
+ blocked:=false;begin perform public.fms_payable_settlement_type_options_secure(null);exception when insufficient_privilege then blocked:=true;end;
+ if not blocked or has_function_privilege('anon','public.fms_payable_settlement_type_options_secure(text)','EXECUTE') then raise exception 'Invalid or anonymous type query accepted';end if;
+ perform set_config('test.payment_actor',actor::text,true);perform set_config('test.payment_ordinary',ordinary::text,true);
+ perform set_config('test.payment_tenant',tenant::text,true);perform set_config('test.payment_platform',platform_tenant::text,true);
+end $fixtures$;
+set local role authenticated;
+do $rls$
+declare tenant uuid:=current_setting('test.payment_tenant')::uuid;platform uuid:=current_setting('test.payment_platform')::uuid;
+begin
+ if exists(select 1 from public.fms_payable_settlement_document where tenant_id<>tenant) or exists(select 1 from public.fms_payable_settlement_line where tenant_id<>tenant) or exists(select 1 from public.mdm_payment_purpose where tenant_id<>tenant) then raise exception 'Forged ordinary scope leaked protected rows';end if;
+ perform set_config('request.jwt.claim.sub',current_setting('test.payment_actor'),true);perform set_config('request.headers','{}',true);
+ if (select count(distinct tenant_id) from public.mdm_payment_purpose)<2 then raise exception 'Platform-all direct master read lost tenants';end if;
+ perform set_config('request.headers',jsonb_build_object('x-art-tenant-scope',tenant)::text,true);
+ if exists(select 1 from public.mdm_payment_purpose where tenant_id<>tenant) then raise exception 'Platform-selected direct read leaked tenants';end if;
+ if has_table_privilege('authenticated','public.fms_payable_settlement_document','UPDATE') or has_table_privilege('authenticated','public.mdm_payment_purpose','DELETE') then raise exception 'Payment direct writes bypass secure APIs';end if;
+end $rls$;
+rollback;

@@ -1,0 +1,52 @@
+// https://github.com/element-plus/element-plus/blob/dev/packages/theme-chalk/src/common/var.scss
+// 自定义Element 亮色主题
+// 状态文字需要同时在白底与 light-9 底色上可读；light-3 保留实心按钮悬停对比度。
+
+@forward 'element-plus/theme-chalk/src/common/var.scss' with (
+  $text-color: (
+    'secondary': #626b7a
+  ),
+  $colors: (
+    'white': #ffffff,
+    'black': #000000,
+    'info': (
+      'base': #5b6474,
+      'light-3': #667080
+    ),
+    'success': (
+      'base': #066e5c,
+      'light-3': #167968
+    ),
+    'warning': (
+      'base': #805000,
+      'light-3': #966000
+    ),
+    'danger': (
+      'base': #b5232a,
+      'light-3': #c2373d
+    ),
+    'error': (
+      'base': #ae3d23,
+      'light-3': #b94b32
+    )
+  ),
+  $button: (
+    'hover-bg-color': var(--el-color-primary-light-9),
+    'hover-border-color': var(--el-color-primary),
+    'border-color': var(--el-color-primary),
+    'text-color': var(--el-color-primary)
+  ),
+  $dialog: (
+    'border-radius': var(--art-modal-radius)
+  ),
+  $messagebox: (
+    'border-radius': var(--art-modal-radius)
+  ),
+  $notification: (
+    'radius': var(--art-floating-radius)
+  ),
+  $popover: (
+    'padding': '14px',
+    'border-radius': var(--art-floating-radius)
+  )
+);

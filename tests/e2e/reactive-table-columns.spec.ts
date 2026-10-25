@@ -1,0 +1,28 @@
+import { expect, test } from '@playwright/test'
+
+test.use({ storageState: { cookies: [], origins: [] } })
+test('公共列工厂响应异步依赖并保留用户设置', async ({ page }, info) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/tests/e2e/fixtures/reactive-table-columns.html')
+  const headers = page.locator('.el-table__header th .cell')
+  await expect(headers).toHaveText(['业务名称', '编号'])
+  await page.getByRole('button', { name: '隐藏名称', exact: true }).click()
+  await expect(headers).toHaveText(['编号'])
+  await page.getByRole('button', { name: '允许金额', exact: true }).click()
+  await expect(headers).toHaveText(['编号', '金额'])
+  await page.getByRole('button', { name: '撤回金额', exact: true }).click()
+  await expect(headers).toHaveText(['编号'])
+  await expect(page.getByText('1234', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '显示名称', exact: true }).click()
+  await page.getByRole('button', { name: '调整列顺序', exact: true }).click()
+  await expect(headers).toHaveText(['编号', '业务名称'])
+  await page.getByRole('button', { name: '更改名称标签', exact: true }).click()
+  await expect(headers).toHaveText(['编号', '更新后的名称'])
+  await page.getByRole('button', { name: '允许金额', exact: true }).click()
+  await expect(headers).toHaveText(['编号', '更新后的名称', '金额'])
+  await page.getByRole('button', { name: '重置列设置', exact: true }).click()
+  await expect(headers).toHaveText(['更新后的名称', '编号', '金额'])
+  expect(errors).toEqual([])
+  await page.screenshot({ path: info.outputPath('reactive-columns.png'), fullPage: true })
+})

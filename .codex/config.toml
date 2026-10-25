@@ -1,0 +1,7 @@
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+[mcp_servers.supabase]
+url = "https://mcp.supabase.com/mcp?project_ref=ckbftoopuyophiebamwy&features=database,debugging,development,docs"
+
+[mcp_servers.supabase.tools.execute_sql]
+approval_mode = "approve"

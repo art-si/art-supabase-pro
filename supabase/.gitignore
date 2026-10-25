@@ -1,0 +1,11 @@
+# Supabase
+.branches
+.temp
+
+# Timestamped local backups contain data, credentials metadata, and storage files.
+backups/
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local

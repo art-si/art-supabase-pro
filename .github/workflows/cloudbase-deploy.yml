@@ -1,0 +1,73 @@
+name: Deploy CloudBase
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudbase-art-supabase-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      TCB_ENV_ID: art-supabase-staging-d8a9e32316e
+      TENCENTCLOUD_SECRETID: ${{ secrets.TCB_SECRET_ID }}
+      TENCENTCLOUD_SECRETKEY: ${{ secrets.TCB_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check deployment credentials
+        run: |
+          if [ -z "$TENCENTCLOUD_SECRETID" ] || [ -z "$TENCENTCLOUD_SECRETKEY" ]; then
+            echo '::error::Add TCB_SECRET_ID and TCB_SECRET_KEY to this repository Actions secrets before deploying.'
+            exit 1
+          fi
+      - name: Install CloudBase CLI
+        run: npm install --global @cloudbase/cli@3.8.9
+      - name: Build and deploy the existing application
+        run: |
+          set -euo pipefail
+          request=$(jq -nc --arg env "$TCB_ENV_ID" '{
+            EnvId: $env,
+            ServiceName: "art-supabase-pro",
+            DeployType: "static-hosting",
+            BuildType: "GIT",
+            StaticConfig: {
+              Framework: "vue", NodeJsVersion: "24", AppPath: "/art-supabase-pro", BuildPath: "",
+              CodeSource: "github", CodeRepo: "art-si/art-supabase-pro", CodeBranch: "master",
+              StaticCmd: {
+                InstallCmd: "npm run cloudbase:install",
+                BuildCmd: "npm run cloudbase:build",
+                DeployCmd: "tcb hosting deploy ./cloudbase-dist /art-supabase-pro"
+              }
+            }
+          }')
+          response=$(tcb --json api tcb CreateCloudApp --body "$request")
+          version=$(printf '%s\n' "$response" | sed -n '/^{/,$p' | jq -er '.data.VersionName')
+          echo "CloudBase version: $version; branch: master; trigger commit: $GITHUB_SHA"
+          query=$(jq -nc --arg env "$TCB_ENV_ID" --arg version "$version" '{
+            EnvId: $env, ServiceName: "art-supabase-pro", DeployType: "static-hosting", VersionName: $version
+          }')
+          for attempt in $(seq 1 60); do
+            response=$(tcb --json api tcb DescribeCloudAppVersion --body "$query")
+            status=$(printf '%s\n' "$response" | sed -n '/^{/,$p' | jq -er '.data.Status')
+            echo "CloudBase $version: $status"
+            case "$status" in
+              SUCCESS) exit 0 ;;
+              FAILED|FAIL|ERROR|CANCELLED|CANCELED)
+                printf '%s\n' "$response" | sed -n '/^{/,$p' | jq '.data.Steps'
+                exit 1 ;;
+            esac
+            sleep 20
+          done
+          echo '::error::CloudBase build did not finish within 20 minutes; inspect the version in the CloudBase console.'
+          exit 1

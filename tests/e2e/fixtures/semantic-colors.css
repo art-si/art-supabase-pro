@@ -1,0 +1,3 @@
+@import '../../../src/assets/styles/core/tailwind.css';
+
+@source './semantic-colors.ts';

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-doc" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-fms" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-hr" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-mdm" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-mes" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-pmis" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-scm" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-site" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-smis" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-tms" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-vms" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/modules/art-supabase-wms" vcs="Git" />
+  </component>
+</project>

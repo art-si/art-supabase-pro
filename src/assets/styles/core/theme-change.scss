@@ -1,0 +1,15 @@
+// 主题切换过渡优化，优化除视觉上的不适感
+.theme-change {
+  * {
+    transition: 0s !important;
+  }
+
+  .el-switch__core,
+  .el-switch__action {
+    transition:
+      background-color 0.3s,
+      border-color 0.3s,
+      color 0.3s,
+      transform 0.3s !important;
+  }
+}

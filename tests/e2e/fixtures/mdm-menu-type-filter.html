@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MDM 菜单筛选器</title>
+    <style>
+      html,
+      body,
+      #preview {
+        min-height: 100%;
+        margin: 0;
+      }
+      .preview-layout {
+        box-sizing: border-box;
+        width: min(100%, 360px);
+        height: 720px;
+        margin: 24px auto;
+        padding: 0 12px;
+      }
+      .preview-switch {
+        margin-bottom: 12px;
+      }
+      .preview-panel {
+        height: calc(100% - 44px);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="preview"></div>
+    <script type="module" src="/tests/e2e/fixtures/mdm-menu-type-filter.ts"></script>
+  </body>
+</html>

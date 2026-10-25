@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Impeccable · 项目辅助审查'
+  short_description: 'Project UI audits and polish under local quality standards'
+  default_prompt: 'Use $impeccable to audit this UI under the local professional-ui-quality standard.'

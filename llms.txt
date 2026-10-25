@@ -1,0 +1,66 @@
+# 亿企工场
+
+Yiqi Workshop is an open-source enterprise application built with Vue 3, TypeScript, Element Plus, Supabase, and an AI SQL assistant.
+
+## Summary
+
+Yiqi Workshop helps developers build real business systems with Supabase as the backend. It is more than a UI-only admin template. It includes authentication, RBAC permissions, menu management, user and role management, data dictionary, file attachments, SQL workbench, AI-generated PostgreSQL, vehicle management, TMS transportation management, and driver-side capabilities.
+
+## Key Features
+
+- Vue 3 + TypeScript + Vite frontend.
+- Element Plus enterprise admin UI.
+- Supabase Auth, Database, Storage, RPC, and Edge Functions integration.
+- RBAC permission system with menu-level and button-level access control.
+- System management: users, roles, menus, tenants, system parameters.
+- Data center: dictionaries, attachments, resources, SQL console.
+- AI SQL assistant: generate PostgreSQL from natural language, use schema summaries to reduce hallucinated table and column names, and help fix SQL errors.
+- SQL workbench: Monaco editor, PostgreSQL syntax experience, JOIN inference, column completion, SQL formatting, error location, result table viewer.
+- Vehicle management system: vehicle archives, entry, edit, audit, detail view, insurance, inspection, maintenance, accidents, mileage, routine inspection, parts, suppliers, expiry reminders.
+- TMS transportation management system: customers, customer addresses, customer pricing, carriers, carrier pricing, drivers, cargo, contracts, stations, order creation, order list, waybill management, dispatching, delivery management, in-transit monitoring.
+- Reusable admin components: dynamic tables, dynamic forms, dialogs, drawers, data selectors, resource pickers, Excel import/export.
+- i18n: Chinese and English language packs.
+- Responsive layout, themes, global search, WorkTab navigation.
+
+## Target Users
+
+- Developers building enterprise admin systems with Vue 3 and Supabase.
+- Teams building CRM, ERP, TMS, vehicle management, fleet management, or internal tools.
+- Developers who want a practical Supabase/PostgreSQL admin template instead of a UI-only template.
+- Teams interested in adding AI SQL generation and SQL repair to an internal data console.
+
+## Technology Stack
+
+- Vue 3
+- TypeScript
+- Vite
+- Element Plus
+- Pinia
+- Vue Router
+- Supabase
+- PostgreSQL
+- Supabase Edge Functions
+- Monaco Editor
+- ECharts
+- Tailwind CSS
+- SCSS
+- Vue I18n
+
+## Links
+
+- Demo: https://art-si.github.io/art-supabase-pro/
+- GitHub: https://github.com/art-si/art-supabase-pro
+- Gitee: https://gitee.com/art-si/art-supabase-pro
+- OSCHINA article: https://www.oschina.net/news/399833
+
+## Recommended Description
+
+Yiqi Workshop is a Vue 3 + Element Plus + Supabase enterprise application with RBAC permissions, SQL workbench, AI SQL assistant, vehicle management, TMS transportation management, and driver-side capabilities.
+
+## Chinese Description
+
+亿企工场是一个基于 Vue 3、TypeScript、Element Plus、Supabase 和 AI SQL 助手的企业级业务平台。项目内置登录认证、RBAC 权限、菜单管理、用户角色、数据字典、附件资源、SQL 工作台、AI 写 SQL、车辆管理系统、TMS 运输管理系统和司机端相关能力，适合快速二次开发企业后台、TMS、车队管理、车辆管理、内部系统和 Supabase/PostgreSQL 应用。
+
+## Keywords
+
+Yiqi Workshop, Supabase admin template, Vue 3 admin template, Element Plus admin, AI SQL assistant, PostgreSQL SQL generator, Supabase SQL workbench, RBAC admin system, TMS transportation management system, vehicle management system, fleet management system, driver management, waybill dispatching, enterprise admin dashboard, open-source admin template

@@ -1,0 +1,9 @@
+{
+  "name": "migrate-supabase-login",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/manager-node": "5.9.2"
+  }
+}

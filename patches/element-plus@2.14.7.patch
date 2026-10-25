@@ -1,0 +1,24 @@
+diff --git a/es/components/input-number/src/input-number.vue_vue_type_script_setup_true_lang.mjs b/es/components/input-number/src/input-number.vue_vue_type_script_setup_true_lang.mjs
+index ad8ae2a795852c06c44b3ea7efe610fd0a40a241..9fb5ad143d8a9dda9c4b84f5cd365181e187b0e8 100644
+--- a/es/components/input-number/src/input-number.vue_vue_type_script_setup_true_lang.mjs
++++ b/es/components/input-number/src/input-number.vue_vue_type_script_setup_true_lang.mjs
+@@ -218,6 +218,7 @@ var input_number_vue_vue_type_script_setup_true_lang_default = /*@__PURE__*/ def
+ 		});
+ 		onUpdated(() => {
+ 			(input.value?.input)?.setAttribute("aria-valuenow", `${data.currentValue ?? ""}`);
++			(input.value?.input)?.setAttribute("aria-disabled", String(inputNumberDisabled.value));
+ 		});
+ 		__expose({
+ 			/** @description get focus the input component */
+diff --git a/lib/components/input-number/src/input-number.vue_vue_type_script_setup_true_lang.js b/lib/components/input-number/src/input-number.vue_vue_type_script_setup_true_lang.js
+index 51f050c07498357479f002ce37657f0ce7b1da3a..f957748d3e66d097ba7c04e1953b32e7d8b16d27 100644
+--- a/lib/components/input-number/src/input-number.vue_vue_type_script_setup_true_lang.js
++++ b/lib/components/input-number/src/input-number.vue_vue_type_script_setup_true_lang.js
+@@ -218,6 +218,7 @@ var input_number_vue_vue_type_script_setup_true_lang_default = /*@__PURE__*/ (0,
+ 		});
+ 		(0, vue.onUpdated)(() => {
+ 			(input.value?.input)?.setAttribute("aria-valuenow", `${data.currentValue ?? ""}`);
++			(input.value?.input)?.setAttribute("aria-disabled", String(inputNumberDisabled.value));
+ 		});
+ 		__expose({
+ 			/** @description get focus the input component */

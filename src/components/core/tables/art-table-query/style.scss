@@ -1,0 +1,256 @@
+.art-table-query {
+  display: flex;
+  // 普通文档流中保留表格内容高度；全高弹性容器仍可按可用空间收缩。
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 0;
+
+  :deep(.art-table-card) {
+    margin-top: 0;
+  }
+
+  &.has-visible-search :deep(.art-table-card) {
+    margin-top: var(--art-page-gap);
+  }
+
+  &.is-focus-mode {
+    height: 100%;
+    min-height: 0;
+
+    // 展开的筛选项可独立滚动，避免在矮窗口中挤掉表格与分页。
+    :deep(.art-search-bar) {
+      flex-shrink: 0;
+      max-height: 40%;
+      overflow-y: auto;
+    }
+  }
+}
+
+:global(.art-table-focus-hidden) {
+  display: none !important;
+}
+
+:global(.art-table-focus-page) {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  height: var(--art-full-height) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+:global(.art-table-focus-path) {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+:deep(.art-table-card) {
+  display: flex;
+  // 卡片必须与外层使用相同基准，否则表格会被压成 0 高度。
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:deep(.art-table-card > .el-card__body) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:deep(.art-table-card.is-table-only > .el-card__body) {
+  padding-top: var(--art-space-4);
+}
+
+// 在占满工作区的列表里，让空状态位于剩余表格区域中央。
+:deep(.art-table-card > .el-card__body > .art-table.is-empty > .el-table) {
+  min-height: 100%;
+}
+
+:deep(.art-table-card:not(.has-table-header) .art-table > .el-table) {
+  margin-top: 0;
+}
+
+.art-table-query__header-left,
+.art-table-query__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--art-space-2);
+  align-items: center;
+  min-width: 0;
+}
+
+.art-table-query__header-left {
+  flex: 1;
+}
+
+.art-table-query__header-top {
+  display: grid;
+  gap: var(--art-space-3);
+  margin-bottom: var(--art-space-3);
+}
+
+.art-table-query__section-heading {
+  display: flex;
+  gap: var(--art-space-4);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.art-table-query__section-copy {
+  min-width: 0;
+}
+
+.art-table-query__section-copy :deep(.art-section-title) {
+  margin: 0;
+}
+
+.art-table-query__section-subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--el-text-color-secondary);
+}
+
+.art-table-query__section-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--art-space-2);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+:deep(.art-table-query__command-bar.has-tools) {
+  min-height: 44px;
+}
+
+:deep(.art-table-query__command-bar .art-table-header__right .art-table-header__action) {
+  width: 30px;
+  height: 30px;
+  margin-right: var(--art-space-2);
+}
+
+:deep(.art-table-query__command-bar .art-table-header__right .focus-button) {
+  width: auto;
+  margin-right: 0;
+}
+
+:deep(.art-table-query__command-bar.has-selection) {
+  min-height: 44px;
+  padding: 5px 12px;
+  background: var(--default-box-color);
+  border: 1px solid transparent;
+  border-radius: var(--el-border-radius-base);
+
+  .art-table-header__left {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+:global(html[data-box-mode='border-mode'] .art-table-query__command-bar.has-selection) {
+  border-color: var(--el-border-color-lighter);
+  box-shadow: none;
+}
+
+:global(html[data-box-mode='shadow-mode'] .art-table-query__command-bar.has-selection) {
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--theme-color) 7%, transparent);
+}
+
+.art-table-query__selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--art-space-2);
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  color: var(--el-text-color-regular);
+}
+
+.art-table-query__selection-summary,
+.art-table-query__selection-actions {
+  display: flex;
+  align-items: center;
+}
+
+.art-table-query__selection-summary {
+  flex: none;
+  gap: 7px;
+  font-size: 13px;
+  white-space: nowrap;
+
+  :deep(.art-svg-icon) {
+    font-size: 17px;
+    color: var(--theme-color);
+  }
+
+  strong {
+    font-variant-numeric: tabular-nums;
+    color: var(--theme-color);
+  }
+}
+
+.art-table-query__selection-actions {
+  flex-wrap: wrap;
+  gap: var(--art-space-2);
+  justify-content: flex-start;
+  min-width: 0;
+  margin-inline-start: 0;
+}
+
+.art-table-query__selection-action {
+  display: inline-flex;
+}
+
+.art-table-query__selection-divider {
+  width: 1px;
+  height: 18px;
+  margin-inline: 2px;
+  background: color-mix(in srgb, var(--theme-color) 28%, var(--el-border-color));
+}
+
+.art-table-query__selection-clear {
+  padding-inline: 4px;
+}
+
+@media (width <= 640px) {
+  .art-table-query__section-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .art-table-query__section-actions {
+    justify-content: flex-start;
+  }
+
+  :deep(.art-table-query__command-bar.has-selection),
+  .art-table-query__selection-bar {
+    align-items: flex-start;
+  }
+
+  .art-table-query__selection-actions {
+    row-gap: 6px;
+  }
+
+  .art-table-query__selection-divider {
+    display: none;
+  }
+}
+
+.art-table-query__header-action {
+  display: inline-flex;
+}

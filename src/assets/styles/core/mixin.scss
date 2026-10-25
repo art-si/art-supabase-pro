@@ -1,0 +1,79 @@
+// 应用布局使用的 Sass 混合宏。
+
+// 主数据分组导航的“全部分组”入口：同一选中、悬停和键盘焦点契约。
+@mixin master-group-all-button {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 18px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--el-text-color-regular);
+  text-align: left;
+  cursor: pointer;
+  background: var(--art-gray-100);
+  border: 1px solid transparent;
+  border-radius: var(--el-border-radius-base);
+  transition:
+    background-color var(--art-motion-duration-fast),
+    border-color var(--art-motion-duration-fast),
+    box-shadow var(--art-motion-duration-fast);
+
+  &:hover,
+  &.is-current {
+    background: color-mix(in srgb, var(--theme-color) 9%, var(--default-box-color));
+    border-color: color-mix(in srgb, var(--theme-color) 22%, transparent);
+  }
+
+  &.is-current {
+    box-shadow: inset 3px 0 0 var(--theme-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--theme-color);
+    outline-offset: 2px;
+  }
+}
+
+// 编辑表格的插槽内容应按列宽排布，避免内联包装层压缩下拉框。
+@mixin fill-editable-table-cells {
+  :deep(.art-table__cell-content) {
+    display: flex;
+    width: 100%;
+  }
+
+  :deep(.art-table__cell-value) {
+    display: block;
+    width: 100%;
+  }
+}
+
+@mixin ellipsis($rowCount: 1) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  @if $rowCount <= 1 {
+    white-space: nowrap;
+  }
+
+  @if $rowCount > 1 {
+    display: -webkit-box;
+    min-width: 0;
+    -webkit-line-clamp: $rowCount;
+    -webkit-box-orient: vertical;
+  }
+}
+
+@mixin backdropBlur() {
+  --tw-backdrop-blur: blur(30px);
+
+  -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness)
+    var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate)
+    var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate)
+    var(--tw-backdrop-sepia);
+  backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast)
+    var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert)
+    var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+}

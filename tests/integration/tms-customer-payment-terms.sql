@@ -1,0 +1,36 @@
+BEGIN;
+DO $test$
+DECLARE customer uuid; condition_id uuid; second_condition uuid; rows jsonb; actual text;
+BEGIN
+ SELECT customer_id INTO customer FROM public.fms_receivable_document WHERE id='7d95528d-7a9b-4cd5-96b7-115a22f0a371';
+ SELECT id INTO condition_id FROM public.mdm_receipt_condition WHERE tenant_id='7529f951-938e-4e2c-ac0d-316c136ae1f9' ORDER BY id LIMIT 1;
+ UPDATE public.mdm_receipt_condition SET due_days=45 WHERE id=condition_id;
+ UPDATE public.fms_receivable_document SET customer_id=customer,payment_term_id=condition_id WHERE id IN ('7d95528d-7a9b-4cd5-96b7-115a22f0a371','83678a56-0c0c-4934-915e-cc70b5c72dd2');
+ PERFORM set_config('request.jwt.claims','{"sub":"ab881b32-87d4-4dce-9014-ce488b8069df","role":"authenticated"}',true);
+ PERFORM set_config('request.headers','{"x-art-tenant-scope":"6675a0d6-3ff6-4ab7-bb09-232d85ae96ad"}',true);
+ rows:=public.tms_management_report('customer-profit','2026-09-01','2026-10-31',null,0,200)->'records';
+ SELECT r->>'payment_term_range' INTO actual FROM jsonb_array_elements(rows) r WHERE r->>'group_key'=customer::text;
+ IF actual IS DISTINCT FROM '45天' THEN RAISE EXCEPTION 'Uniform terms mismatch: %',actual; END IF;
+ SELECT id INTO second_condition FROM public.mdm_receipt_condition WHERE tenant_id='7529f951-938e-4e2c-ac0d-316c136ae1f9' AND id<>condition_id ORDER BY id LIMIT 1;
+ IF second_condition IS NULL THEN RAISE EXCEPTION 'Second condition fixture required'; END IF;
+ UPDATE public.mdm_receipt_condition SET due_days=60 WHERE id=second_condition;
+ UPDATE public.fms_receivable_document SET payment_term_id=second_condition WHERE id='83678a56-0c0c-4934-915e-cc70b5c72dd2';
+ EXECUTE 'SET LOCAL ROLE authenticated';
+ rows:=public.tms_management_report('customer-profit','2026-09-01','2026-10-31',null,0,200)->'records';
+ EXECUTE 'RESET ROLE';
+ SELECT r->>'payment_term_range' INTO actual FROM jsonb_array_elements(rows) r WHERE r->>'group_key'=customer::text;
+ IF actual IS DISTINCT FROM '45—60天（多种账期）' THEN RAISE EXCEPTION 'Mixed terms mismatch: %',actual; END IF;
+ UPDATE public.fms_receivable_document SET payment_term_id=null WHERE id='83678a56-0c0c-4934-915e-cc70b5c72dd2';
+ rows:=public.tms_management_report('customer-profit','2026-09-01','2026-10-31',null,0,200)->'records';
+ SELECT r->>'payment_term_range' INTO actual FROM jsonb_array_elements(rows) r WHERE r->>'group_key'=customer::text;
+ IF actual IS DISTINCT FROM '部分未约定' THEN RAISE EXCEPTION 'Partial terms mismatch: %',actual; END IF;
+ UPDATE public.fms_receivable_document SET payment_term_id=null WHERE id='7d95528d-7a9b-4cd5-96b7-115a22f0a371';
+ rows:=public.tms_management_report('customer-profit','2026-09-01','2026-10-31',null,0,200)->'records';
+ SELECT r->>'payment_term_range' INTO actual FROM jsonb_array_elements(rows) r WHERE r->>'group_key'=customer::text;
+ IF actual IS DISTINCT FROM '未约定' THEN RAISE EXCEPTION 'Missing terms mismatch: %',actual; END IF;
+ UPDATE public.fms_receivable_document SET business_date='2026-11-01' WHERE id IN ('7d95528d-7a9b-4cd5-96b7-115a22f0a371','83678a56-0c0c-4934-915e-cc70b5c72dd2');
+ rows:=public.tms_management_report('customer-profit','2026-09-01','2026-10-31',null,0,200)->'records';
+ SELECT r->>'payment_term_range' INTO actual FROM jsonb_array_elements(rows) r WHERE r->>'group_key'=customer::text;
+ IF actual IS DISTINCT FROM '无期间应收' THEN RAISE EXCEPTION 'No-period-document terms mismatch: %',actual; END IF;
+END $test$;
+ROLLBACK;

@@ -1,0 +1,19 @@
+:is(.enterprise-screen, .domain-command-screen) .screen-empty-state {
+  --el-text-color-primary: var(--screen-text-strong);
+  --el-text-color-secondary: var(--screen-text-muted);
+  --el-color-primary: var(--screen-accent-soft);
+  --el-color-primary-light-9: color-mix(in srgb, var(--screen-accent) 14%, transparent);
+  --el-color-primary-light-5: color-mix(in srgb, var(--screen-accent-soft) 58%, transparent);
+  --el-color-success-light-5: var(--screen-success);
+  --el-border-color: var(--screen-line);
+  --el-border-color-light: var(--screen-line);
+  --el-border-color-lighter: var(--screen-line);
+  --el-fill-color-light: var(--screen-surface-soft, var(--screen-surface));
+  --el-bg-color: var(--screen-surface);
+
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  padding: 12px 8px;
+  margin: auto;
+}

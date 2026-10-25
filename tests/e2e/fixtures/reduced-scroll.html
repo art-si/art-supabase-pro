@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>滚动偏好验收</title>
+  </head>
+  <body>
+    <button type="button" id="scroll">定位目标</button>
+    <button type="button" id="validate">定位当前页签错误</button>
+    <section id="other-pane" class="el-form-item is-error">
+      <label for="other-field">其他页签字段</label><input id="other-field" />
+    </section>
+    <main style="height: 2000px"></main>
+    <p id="target">目标位置</p>
+    <section id="current-pane">
+      <div class="el-form-item is-error">
+        <input type="hidden" tabindex="0" />
+        <input disabled tabindex="0" />
+        <input aria-disabled="true" tabindex="0" />
+        <label for="valid-field">当前错误字段</label><input id="valid-field" />
+      </div>
+    </section>
+    <script type="module" src="./reduced-scroll.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,4 @@
+interface:
+  display_name: '项目代码质量规范'
+  short_description: '统一代码组织、错误处理、复用边界、类型安全与验证门禁'
+  default_prompt: "Use $project-code-quality to audit and improve this project's code quality."

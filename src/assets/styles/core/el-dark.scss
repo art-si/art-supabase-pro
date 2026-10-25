@@ -1,0 +1,53 @@
+// 导入暗黑主题
+@use 'element-plus/theme-chalk/src/dark/var.scss' with (
+  $colors: (
+    'info': (
+      'base': #b4bbc7
+    ),
+    'success': (
+      'base': #13deb9
+    ),
+    'warning': (
+      'base': #ffae1f
+    ),
+    'danger': (
+      'base': #ff8c8e
+    ),
+    'error': (
+      'base': #fa896b
+    )
+  )
+);
+@use 'element-plus/theme-chalk/src/dark/css-vars.scss' as *;
+
+html.dark {
+  --el-bg-color: var(--default-box-color);
+  --el-text-color-regular: rgb(255 255 255 / 85%);
+
+  // 深色主题的状态底色较亮，实心控件必须使用深色前景。
+  @each $type in success, warning, danger, error, info {
+    .el-tag--dark.el-tag--#{$type} {
+      --el-tag-text-color: #141414;
+    }
+
+    .el-button--#{$type}:not(.is-plain, .is-dashed, .is-text, .is-link) {
+      --el-button-text-color: #141414;
+      --el-button-hover-text-color: #141414;
+      --el-button-active-text-color: #141414;
+    }
+
+    .el-button--#{$type}.is-plain {
+      --el-button-hover-text-color: #141414;
+      --el-button-active-text-color: #141414;
+    }
+
+    .el-alert--#{$type}.is-dark {
+      color: #141414;
+
+      .el-alert__description,
+      .el-alert__close-btn {
+        color: #141414;
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+*,
+*::before,
+*::after {
+  animation-delay: 0s !important;
+  animation-duration: 0s !important;
+  caret-color: transparent !important;
+  scroll-behavior: auto !important;
+  transition-delay: 0s !important;
+  transition-duration: 0s !important;
+}
+
+.el-message,
+.el-notification,
+.nprogress,
+#nprogress {
+  visibility: hidden !important;
+}
+
+.header-status strong,
+.table-query-widget__log-item > span {
+  visibility: hidden !important;
+}
+
+.monitor-map__chart {
+  background: #071522 !important;
+}
+
+.monitor-map__chart canvas,
+.monitor-map__chart img,
+.monitor-map__chart .amap-markers,
+.monitor-map__chart .amap-labels {
+  visibility: hidden !important;
+}

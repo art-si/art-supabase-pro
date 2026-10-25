@@ -1,0 +1,4 @@
+interface:
+  display_name: '专业 UI 质量 v2'
+  short_description: '项目级 UI 设计、可访问性审查、评分与浏览器视觉验收'
+  default_prompt: '使用 $professional-ui-quality 设计、审查并验证这个项目界面。'

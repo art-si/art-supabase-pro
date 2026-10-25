@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>共享业务菜单筛选</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+      .preview-layout {
+        box-sizing: border-box;
+        width: min(100%, 400px);
+        height: 760px;
+        padding: 12px;
+        margin: 12px auto;
+      }
+      .preview-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .preview-panel {
+        height: 620px;
+      }
+      .preview-result {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="preview"></div>
+    <script type="module" src="/tests/e2e/fixtures/business-menu-filters.ts"></script>
+  </body>
+</html>
