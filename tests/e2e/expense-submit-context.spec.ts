@@ -4,6 +4,7 @@ test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15000 })
 test.setTimeout(120000)
 
 for (const config of [
+  { kind: 'travel', table: 'fms_travel_application', title: '提交出差审批' },
   { kind: 'loan', table: 'fms_travel_loan', title: '提交借款审批' },
   { kind: 'repayment', table: 'fms_travel_repayment', title: '提交还款审批' },
   { kind: 'reimbursement', table: 'fms_list_expense_reimbursements_secure', title: '提交报销审批' }
@@ -16,10 +17,12 @@ for (const config of [
         id: `submit-${i}`,
         tenant_id: '11111111-1111-4111-8111-111111111111',
         loan_no: `QA-SUBMIT-${i}`,
+        application_no: `QA-SUBMIT-${i}`,
+        requested_amount: 100,
         repayment_no: `QA-SUBMIT-${i}`,
         reimbursement_no: `QA-SUBMIT-${i}`,
         source_type: 'travel',
-        status: 'draft',
+        status: config.kind === 'travel' && i === 2 ? 'rejected' : 'draft',
         amount: 100,
         loan_amount: 100,
         approved_amount: 100,
@@ -55,6 +58,7 @@ for (const config of [
         if (name === 'start_workflow' || name === 'submit_fms_travel_repayment_secure') {
           const body = request.postDataJSON()
           const id = body.p_business_id || body.p_id
+          if (config.kind === 'travel') expect(body.p_business_type).toBe('fms_travel_application')
           calls.push(id)
           if (fail) {
             fail = false
@@ -64,7 +68,7 @@ for (const config of [
             })
           }
           const row = records.find((item) => item.id === id)
-          if (row) row.status = 'submitted'
+          if (row) row.status = config.kind === 'travel' ? 'pending_review' : 'submitted'
           return route.fulfill({
             json: name === 'start_workflow' ? 'workflow-qa' : { id, status: 'submitted' }
           })
@@ -73,11 +77,13 @@ for (const config of [
       })
       const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
       const permission =
-        config.kind === 'loan'
-          ? 'FinanceLoanApplication'
-          : config.kind === 'repayment'
-            ? 'FinanceRepayment'
-            : 'FinanceExpenseReimbursement'
+        config.kind === 'travel'
+          ? 'FinanceTravelApplication'
+          : config.kind === 'loan'
+            ? 'FinanceLoanApplication'
+            : config.kind === 'repayment'
+              ? 'FinanceRepayment'
+              : 'FinanceExpenseReimbursement'
       await page.goto(
         `/tests/e2e/fixtures/receivable-workspace.html?kind=expense_${config.kind}&arNavigation=1&theme=${theme}&${mode === 'tenant' ? 'scopeControls=1' : `permissionControls=1&permissions=${permission}:View,${permission}:Submit`}`
       )

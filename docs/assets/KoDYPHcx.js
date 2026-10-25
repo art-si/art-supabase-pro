@@ -1,0 +1,1 @@
+import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./CHqGvqcQ.js";var i=e({__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`maintenance`}))}});export{i as default};

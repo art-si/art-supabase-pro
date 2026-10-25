@@ -106,6 +106,29 @@ const contracts: Record<string, WorkflowBusinessContract> = {
     ],
     routePath: getExpenseReimbursementDetailPath
   },
+  fms_travel_application: {
+    businessType: 'fms_travel_application',
+    label: '出差申请',
+    menuName: 'FinanceTravelApplication',
+    domain: 'finance',
+    riskLevel: 'medium',
+    owner: '差旅审批',
+    fields: [
+      { key: 'amount', label: '申请金额', valueType: 'number' },
+      { key: 'applicationNo', label: '申请单号', valueType: 'text' },
+      { key: 'itemCount', label: '行程段数', valueType: 'number' },
+      { key: 'estimatedDays', label: '预计天数', valueType: 'number' },
+      { key: 'employeeId', label: '申请人', valueType: 'text', referenceType: 'employee' },
+      {
+        key: 'organizationId',
+        label: '费用承担部门',
+        valueType: 'text',
+        referenceType: 'organization'
+      }
+    ],
+    routePath: (businessId) =>
+      `${financePaths.travelApplication}?applicationId=${encodeURIComponent(businessId)}`
+  },
   fms_travel_loan: {
     businessType: 'fms_travel_loan',
     label: '借款单',

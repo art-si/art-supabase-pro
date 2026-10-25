@@ -1,0 +1,1 @@
+import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./3c4AxQlq.js";var i=e({name:`WmsProductionIssue`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`issue`}))}});export{i as default};

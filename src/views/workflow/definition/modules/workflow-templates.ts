@@ -74,6 +74,16 @@ const templateDefinitions: WorkflowTemplateDefinition[] = [
     nodeNames: ['费用审核', '财务负责人复核']
   },
   {
+    key: 'travel-application',
+    name: '出差申请审批',
+    description: '核对出差行程、申请预算、费用承担部门与预计天数。',
+    category: 'finance',
+    businessType: 'fms_travel_application',
+    icon: 'ri:flight-takeoff-line',
+    tone: 'primary',
+    nodeNames: ['部门负责人审核', '预算审核']
+  },
+  {
     key: 'expense-reimbursement',
     name: '费用报销审批',
     description: '覆盖报销金额、费用笔数、收款人与计划付款日期。',

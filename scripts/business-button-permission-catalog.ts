@@ -3296,7 +3296,9 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('Copy', '复制'),
       button('Delete', '删除'),
       button('Print', '打印'),
-      button('DeleteLine', '删除行程')
+      button('DeleteLine', '删除行程'),
+      button('Submit', '提交审批'),
+      button('PushReimbursement', '下推差旅报销')
     ]
   },
   {

@@ -14,6 +14,18 @@ test('workflow templates only expose fields from registered business contracts',
   }
 })
 
+test('travel approval registers authoritative itinerary fields and locates its source application', () => {
+  const contract = getWorkflowBusinessContract('fms_travel_application')
+  assert.equal(contract.menuName, 'FinanceTravelApplication')
+  assert.deepEqual(
+    contract.fields.map((field) => field.key),
+    ['amount', 'applicationNo', 'itemCount', 'estimatedDays', 'employeeId', 'organizationId']
+  )
+  const route = new URL(contract.routePath('application/1?'), 'https://example.test')
+  assert.equal(route.pathname, '/fms/everyone-expense/travel-application')
+  assert.equal(route.searchParams.get('applicationId'), 'application/1?')
+})
+
 test('workflow template drafts are isolated and fail closed by default', () => {
   const first = createWorkflowTemplateDraft('waybill-cost')
   const second = createWorkflowTemplateDraft('waybill-cost')

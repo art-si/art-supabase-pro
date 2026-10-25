@@ -1,0 +1,1 @@
+import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./DOo4ZZad.js";var i=e({name:`MesDefectReasons`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{"initial-tab":`reasons`}))}});export{i as default};
