@@ -9,11 +9,13 @@ import {
   readMutationTenantScopeId,
   readTenantScopeId,
   shouldAttachTenantScopeHeader,
+  CLOUDBASE_TENANT_SCOPE_HEADER,
   TENANT_SCOPE_HEADER
 } from '@/utils/tenant-scope-context'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost'
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'java-api-provider'
+const tenantScopeHeader = isCloudBaseBaas ? CLOUDBASE_TENANT_SCOPE_HEADER : TENANT_SCOPE_HEADER
 if (
   isSupabaseApi &&
   !isCloudBaseBaas &&
@@ -52,7 +54,7 @@ const tenantScopeFetch: typeof fetch = async (input, init) => {
 
   const headers = new Headers(input instanceof Request ? input.headers : undefined)
   new Headers(init?.headers).forEach((value, key) => headers.set(key, value))
-  headers.set(TENANT_SCOPE_HEADER, tenantScopeId)
+  headers.set(tenantScopeHeader, tenantScopeId)
 
   const normalizedInput =
     input instanceof Request ? new Request(normalizedUrl, input) : normalizedUrl
@@ -106,7 +108,7 @@ const createCloudBaseClient = (): SupabaseClient => {
       url: normalizedUrl,
       headers: {
         ...options.headers,
-        ...(tenantScopeId ? { [TENANT_SCOPE_HEADER]: tenantScopeId } : {})
+        ...(tenantScopeId ? { [tenantScopeHeader]: tenantScopeId } : {})
       }
     })
   }

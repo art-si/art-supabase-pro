@@ -2,6 +2,9 @@ import { uniq } from 'lodash-es'
 import { isPlainObjectRecord } from './type-guards'
 
 export const TENANT_SCOPE_HEADER = 'x-art-tenant-scope'
+// CloudBase's PostgreSQL gateway permits this metadata header in CORS preflights.
+// Its database tenant helpers read the same UUID from this provider-specific header.
+export const CLOUDBASE_TENANT_SCOPE_HEADER = 'x-metadata'
 export const TENANT_SCOPE_STORAGE_KEY = 'art-platform-tenant-scope-id'
 export const TENANT_SCOPE_MODE_STORAGE_KEY = 'art-platform-tenant-scope-active'
 let tenantScopeRevision = 0

@@ -59,6 +59,30 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT ON 
   assert.deepEqual(result.report.skippedFunctions, ['"app_private"."notify"'])
 })
 
+test('preserves tenant authorization while accepting the CloudBase CORS metadata header', () => {
+  const result = transformSchema(`
+CREATE SCHEMA IF NOT EXISTS "app_private";
+CREATE FUNCTION "app_private"."tenant_scope"() RETURNS text AS $$
+BEGIN
+  IF NOT app_private.is_platform_super() THEN
+    RETURN app_private.auth_user_tenant_id()::text;
+  END IF;
+  RETURN current_setting('request.headers', true)::jsonb ->> 'x-art-tenant-scope';
+END;
+$$ LANGUAGE plpgsql;
+CREATE FUNCTION "app_private"."set_scope"() RETURNS text AS $$
+  SELECT jsonb_build_object('x-art-tenant-scope', 'scope')::text;
+$$ LANGUAGE sql;
+`)
+  assert.match(result.sql, /IF NOT app_private\.is_platform_super\(\) THEN/u)
+  assert.match(result.sql, /RETURN app_private\.auth_user_tenant_id\(\)::text/u)
+  assert.match(
+    result.sql,
+    /coalesce\(current_setting\('request\.headers', true\)::jsonb ->> 'x-art-tenant-scope', current_setting\('request\.headers', true\)::jsonb ->> 'x-metadata'\)/u
+  )
+  assert.match(result.sql, /jsonb_build_object\('x-art-tenant-scope', 'scope'\)/u)
+})
+
 test('converts COPY blocks to bounded INSERT statements and excludes managed schemas', () => {
   const result = transformData(
     `COPY "public"."example" ("id", "label", "optional") FROM stdin;
