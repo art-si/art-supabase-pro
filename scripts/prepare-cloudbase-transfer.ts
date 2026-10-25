@@ -144,6 +144,8 @@ const referencesSkippedFunction = (statement: string, functions: Set<string>): b
 }
 
 const authUidPattern = /(?<![A-Za-z0-9_])(?:auth\.uid\(\)|"auth"\."uid"\(\))/giu
+const tenantScopeHeaderReadPattern =
+  /current_setting\('request\.headers',\s*true\)::jsonb\s*->>\s*'x-art-tenant-scope'/giu
 
 const AUTH_UID_HELPER = `
 CREATE OR REPLACE FUNCTION "app_private"."auth_uid_uuid"() RETURNS "uuid"
@@ -223,7 +225,13 @@ export function transformSchema(source: string): {
 
     const matches = statement.match(authUidPattern)
     rewrittenAuthUidReferences += matches?.length ?? 0
-    const rewritten = statement.replace(authUidPattern, 'app_private.auth_uid_uuid()')
+    const rewritten = statement
+      .replace(authUidPattern, 'app_private.auth_uid_uuid()')
+      .replace(
+        tenantScopeHeaderReadPattern,
+        (headerRead) =>
+          `coalesce(${headerRead}, current_setting('request.headers', true)::jsonb ->> 'x-metadata')`
+      )
     output.push(rewritten)
 
     if (
