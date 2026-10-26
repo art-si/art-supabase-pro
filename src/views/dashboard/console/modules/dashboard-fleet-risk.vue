@@ -1,8 +1,8 @@
 <template>
   <article class="fleet-risk art-card-xs">
     <header
-      ><div><p>车辆健康</p><h2>风险提醒</h2></div
-      ><span>{{ reminderTotal }} 项待处理</span></header
+      ><div><p>车辆健康</p><h2>运行提醒</h2></div
+      ><span>{{ reminderTotal }} 项运行提醒</span></header
     >
     <div class="fleet-risk__stats">
       <div

@@ -1,1 +1,0 @@
-import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./4q_7RF-7.js";var i=e({name:`SmisWorkItem`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{"catalog-type":`work_item`}))}});export{i as default};
