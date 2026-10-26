@@ -47,7 +47,7 @@ export async function uploadPrivateAttachment(
     () =>
       supabase.storage.from(bucket).upload(storagePath, file, {
         contentType: file.type,
-        cacheControl: 'private, max-age=300',
+        cacheControl: '300',
         upsert: false
       }),
     { breakReturn: true, errorMessage: '私有附件上传失败，请稍后重试' }
@@ -59,14 +59,16 @@ export async function uploadPrivateAttachment(
   )
   if (!data?.signedUrl) throw new Error('附件预览生成失败，请重新打开表单')
 
-  return [{
-    originName: file.name,
-    objectName: storagePath.split('/').at(-1),
-    mimeType: file.type,
-    storagePath,
-    sizeByte: file.size,
-    url: data.signedUrl
-  }]
+  return [
+    {
+      originName: file.name,
+      objectName: storagePath.split('/').at(-1),
+      mimeType: file.type,
+      storagePath,
+      sizeByte: file.size,
+      url: data.signedUrl
+    }
+  ]
 }
 
 /** Extract the immutable object path from a signed Storage URL before a business RPC write. */
@@ -98,5 +100,7 @@ export async function signPrivateAttachmentPaths(
     () => supabase.storage.from(bucket).createSignedUrls([...paths], SIGNED_URL_SECONDS),
     { breakReturn: true, errorMessage: '私有附件预览暂不可用，请稍后重试' }
   )
-  return new Map((data ?? []).filter(item => item.signedUrl).map(item => [item.path, item.signedUrl]))
+  return new Map(
+    (data ?? []).filter((item) => item.signedUrl).map((item) => [item.path, item.signedUrl])
+  )
 }

@@ -481,7 +481,8 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     buttons: [
       ...crud({ view: true, import: true, export: true }),
       button('Invite', '邀请司机'),
-      button('Ocr', '司机证件识别')
+      button('Ocr', '司机证件识别'),
+      button('UploadDocument', '司机证件上传')
     ]
   },
   {

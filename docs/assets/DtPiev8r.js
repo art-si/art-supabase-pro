@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./C6f5iMgt.js";var i=e({name:`ScmPurchaseOrder`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{kind:`purchase_order`,"prepayment-permission":`ScmPurchaseOrder:Push`}))}});export{i as default};

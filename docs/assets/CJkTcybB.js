@@ -1,0 +1,1 @@
+import{l as e}from"./B3K673Tq.js";var t={onClick:e,disabled:e=>!e.url,title:e=>`预览${e.name?.trim()||`附件`}`};export{t};
