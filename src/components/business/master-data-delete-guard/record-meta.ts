@@ -5,6 +5,22 @@ interface RecordReferenceMeta {
 }
 
 const recordReferences: Record<string, RecordReferenceMeta> = {
+  tms_order: {
+    label: '运输订单',
+    routeName: 'TmsOrderQueryDetail',
+    statusDictCode: 'tmsOrderStatus'
+  },
+  fms_receipt_document: {
+    label: '收款单',
+    routeName: 'FinanceReceipt',
+    statusDictCode: 'arDocumentStatus'
+  },
+  fms_receipt_fund_execution: { label: '收款资金执行' },
+  fms_payable_writeoff_automation: { label: '后台核销配置', statusDictCode: 'commonBoolean' },
+  fms_payable_writeoff_automation_job: {
+    label: '后台核销任务',
+    statusDictCode: 'fmsPayableAutomationJobStatus'
+  },
   fms_payable_settlement_document: { label: '付款申请 / 付款单' },
   fms_payable_settlement_line: { label: '付款业务明细' },
   tms_expense_reimbursement: {
@@ -40,6 +56,11 @@ const recordReferences: Record<string, RecordReferenceMeta> = {
   },
   mdm_part_category: { label: '子类别', statusDictCode: 'status' },
   vehicle_part_usage: { label: '零部件使用记录', statusDictCode: 'vehiclePartUsageStatus' },
+  vehicle_fuel_card: {
+    label: '油卡档案',
+    routeName: 'FuelCardArchive',
+    statusDictCode: 'fuelCardStatus'
+  },
   hr_employee_contract: { label: '劳动合同', routeName: 'HrCompliance' },
   hr_employee_qualification: { label: '员工资质', routeName: 'HrCompliance' },
   hr_performance_cycle: { label: '考核周期', routeName: 'HrPerformance' },

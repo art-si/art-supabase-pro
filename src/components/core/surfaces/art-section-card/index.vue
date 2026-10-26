@@ -171,8 +171,8 @@
     }
 
     &__identity {
-      flex: 1 1 140px;
-      min-width: min(140px, 100%);
+      flex: 1 1 80px;
+      min-width: min(80px, 100%);
 
       :deep(.art-section-title) {
         margin: 0;

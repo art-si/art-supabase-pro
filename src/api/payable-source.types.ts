@@ -1,0 +1,10 @@
+export type PayableSourceKind =
+  | 'estimated_payable'
+  | 'financial_payable'
+  | 'financial_receivable'
+  | 'payable_application'
+  | 'payable_payment'
+  | 'purchase_contract'
+  | 'purchase_order'
+  | 'purchase_inbound'
+  | 'carrier_statement'

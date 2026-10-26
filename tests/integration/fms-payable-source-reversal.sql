@@ -16,7 +16,8 @@ declare
   other_supplier uuid;
 begin
   select auth_user_id into actor from public.sys_user where auth_user_id is not null and user_roles @>array['R_SUPER'] limit 1;
-  select * into template from public.wms_purchase_document where kind='purchase_inbound' and status='approved' and not is_initialization and supplier_id is not null and exists(select 1 from public.wms_purchase_document_line where document_id=wms_purchase_document.id) limit 1;
+  select document.* into template from public.wms_purchase_document document where document.kind='purchase_inbound' and document.status='approved' and not document.is_initialization and document.supplier_id is not null and exists(select 1 from public.wms_purchase_document_line where document_id=document.id)
+  and not exists(select 1 from public.fms_payable_accrual_policy policy where policy.tenant_id=document.tenant_id and policy.organization_id=document.organization_id) limit 1;
   select * into source_line from public.wms_purchase_document_line where document_id=template.id limit 1;
   if actor is null or source_line.id is null then raise exception 'Missing source-payable fixtures'; end if;
   perform set_config('request.jwt.claim.sub',actor::text,true);
@@ -52,7 +53,7 @@ begin
   perform public.fms_act_purchase_payable_secure(array[finance_id],'freeze','明细余额验证',113);
   listing:=public.fms_purchase_payable_list_secure('financial','',finance_id,20,0,jsonb_build_object('view_mode','line'));
   if jsonb_array_length(listing->'data')<>2 then raise exception 'Line mode did not return both split rows'; end if;
-  if (listing->'data'->0->>'unpaid_amount')::numeric<>226 or (listing->'data'->0->>'matched_amount')::numeric<>226 then raise exception 'Line mode duplicated document balances'; end if;
+  if (listing->'data'->0->>'unpaid_amount')::numeric<>226 or (listing->'data'->0->>'matched_amount')::numeric<>0 then raise exception 'Line mode duplicated balances or treated approval as inventory cost matching'; end if;
   if (select sum((row_data->>'frozen_amount')::numeric) from jsonb_array_elements(listing->'data') row_data)<>113 then raise exception 'Line frozen balances do not reconcile to document'; end if;
 end $test$;
 rollback;

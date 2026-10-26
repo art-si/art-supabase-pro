@@ -1,7 +1,10 @@
 import type {
   PayableMatchField,
   PayableMatchOperator,
-  PayableMatchRule
+  PayableMatchRule,
+  PayableReference,
+  PayableRelationRuleConfig,
+  PayableWriteoffRelation
 } from '@/api/payable-reference'
 
 export const payableMatchFields: Array<{
@@ -34,6 +37,73 @@ export const payableMatchOperators: Array<{ value: PayableMatchOperator; label: 
 
 export function newPayableMatchRule(field: PayableMatchField = 'supplier_id'): PayableMatchRule {
   return { primaryField: field, secondaryField: field, operator: 'eq', emptyMatches: false }
+}
+
+export function describePayableMatchRule(rule: PayableMatchRule): string {
+  const primary =
+    payableMatchFields.find((field) => field.value === rule.primaryField)?.label || '未识别字段'
+  const secondary =
+    payableMatchFields.find((field) => field.value === rule.secondaryField)?.label || '未识别字段'
+  const operator =
+    payableMatchOperators.find((item) => item.value === rule.operator)?.label || '未识别关系'
+  return `${primary} ${operator} ${secondary}（${rule.emptyMatches ? '允许空值' : '空值不匹配'}）`
+}
+
+export function newPayableRelationConfig(
+  relation: PayableWriteoffRelation
+): PayableRelationRuleConfig {
+  return {
+    relation,
+    description: '',
+    rules: [
+      newPayableMatchRule(relation === 'payable_receivable' ? 'counterparty_id' : 'supplier_id'),
+      newPayableMatchRule('currency_code')
+    ]
+  }
+}
+
+export function isPayableWriteoffRelation(value: string): value is PayableWriteoffRelation {
+  return [
+    'payable_payment',
+    'payment_refund',
+    'payable_receivable',
+    'payable_red_blue',
+    'payable_refund'
+  ].includes(value)
+}
+
+export function payableSchemeRules(
+  scheme: PayableReference,
+  relation: PayableWriteoffRelation
+): PayableMatchRule[] | undefined {
+  return scheme.relationRules == null
+    ? scheme.rules
+    : scheme.relationRules.find((config) => config.relation === relation)?.rules
+}
+
+export function payableSchemeApplies(
+  scheme: PayableReference,
+  relation: PayableWriteoffRelation
+): boolean {
+  return (
+    scheme.relationRules == null ||
+    scheme.relationRules.some((config) => config.relation === relation)
+  )
+}
+
+export function validatePayableRelationConfigs(
+  configs: PayableRelationRuleConfig[] | null | undefined
+): string {
+  if (!configs?.length || configs.length > 5) return '请配置 1 至 5 种核销关系'
+  for (const [index, config] of configs.entries()) {
+    if (!isPayableWriteoffRelation(config.relation)) return '请选择支持的核销关系'
+    if (configs.findIndex((entry) => entry.relation === config.relation) !== index)
+      return '每种核销关系只能配置一次'
+    const invalid = validatePayableMatchRules(config.rules)
+    if (invalid) return `第 ${index + 1} 种核销关系：${invalid}`
+    if ((config.description?.length || 0) > 1000) return '核销关系说明不能超过 1000 字'
+  }
+  return ''
 }
 
 export function allowedPayableMatchOperators(rule: PayableMatchRule): PayableMatchOperator[] {

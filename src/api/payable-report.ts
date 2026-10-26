@@ -2,69 +2,14 @@ import { useSupabase } from '@/hooks/core/useSupabase'
 import { fetchOrganizationOptionsTree } from '@/api/system-manage'
 import { buildOrganizationSelectTree } from '@/utils/organization-options'
 import type { OrganizationSelectOption } from '@/utils/organization-options'
+import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
+import type {
+  PayableReportOption,
+  PayableReportQuery,
+  PayableReportRow
+} from './payable-report.types'
 
-export type PayableReportMode = 'summary' | 'detail' | 'aging'
-export type PayableReportAction = 'view' | 'export' | 'print'
-export type PayableBalanceState =
-  'ready' | 'amount_hidden' | 'source_mismatch' | 'history_incomplete'
-
-export interface PayableReportQuery {
-  current: number
-  size: number
-  mode: PayableReportMode
-  action?: PayableReportAction
-  asOfDate: string
-  agingBasis: 'business' | 'due'
-  allocationMode: 'oldest_due' | 'proportional'
-  kind?: '' | 'estimated' | 'financial'
-  tenantId?: string
-  accountSetId?: string
-  organizationId?: string
-  partyType?: '' | 'supplier' | 'carrier'
-  partyId?: string
-  currencyCode?: string
-  keyword?: string
-  outstandingOnly?: boolean
-}
-
-export interface PayableReportRow {
-  id: string
-  tenantId: string
-  tenantName: string
-  accountSetName: string
-  organizationName: string
-  partyName: string
-  partyCode: string
-  partyType: 'supplier' | 'carrier'
-  kind: 'estimated' | 'financial'
-  currencyCode: string
-  baseCurrencyCode: string
-  documentNo?: string
-  sourceDocumentNo?: string
-  businessDate?: string
-  dueDate?: string | null
-  documentCount: number
-  amountReadable: boolean
-  balanceState: PayableBalanceState
-  occurrenceAmount: number | null
-  reductionAmount: number | null
-  balanceAmount: number | null
-  baseBalanceAmount: number | null
-  currentAmount: number | null
-  age1To30: number | null
-  age31To60: number | null
-  age61To90: number | null
-  age91To180: number | null
-  ageOver180: number | null
-  creditBalance: number | null
-}
-
-interface ReportOption {
-  id: string
-  tenantId: string
-  name: string
-  code: string
-}
+export type * from './payable-report.types'
 
 const { supabase, responseHandle, keysToSnakeDeep } = useSupabase()
 const options = {
@@ -74,17 +19,19 @@ const options = {
 }
 
 export async function fetchPayableReportOptions(): Promise<{
-  books: ReportOption[]
+  books: PayableReportOption[]
   organizations: OrganizationSelectOption[]
 }> {
+  const assertScope = createTenantScopeReadGuard()
   const { data } = await responseHandle<{
-    books: ReportOption[]
-    organizations: ReportOption[]
+    books: PayableReportOption[]
+    organizations: PayableReportOption[]
   }>(() => supabase.rpc('fms_payable_report_options_secure'), options)
   if (!data || !Array.isArray(data.books) || !Array.isArray(data.organizations)) {
     throw new Error('应付报表筛选资料不完整，请重试')
   }
   const tree = await fetchOrganizationOptionsTree({}, { showErrorMessage: false })
+  assertScope()
   if (tree.error) throw tree.error
   return {
     books: data.books,
@@ -97,11 +44,13 @@ export async function fetchPayableReport(query: PayableReportQuery): Promise<{
   total: number
   unavailableCount: number
 }> {
+  const assertScope = createTenantScopeReadGuard()
   const { data } = await responseHandle<{
     records: PayableReportRow[]
     total: number
     unavailableCount: number
   }>(() => supabase.rpc('fms_payable_report_secure', { p_query: keysToSnakeDeep(query) }), options)
+  assertScope()
   if (
     !data ||
     !Array.isArray(data.records) ||

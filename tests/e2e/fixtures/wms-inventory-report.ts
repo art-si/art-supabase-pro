@@ -1,5 +1,6 @@
 import { createApp, h, KeepAlive, ref } from 'vue'
-import { createMemoryHistory, createRouter } from 'vue-router'
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
+import { financePaths } from '@/router/business-paths'
 import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
@@ -7,6 +8,7 @@ import { useSettingStore } from '@/store/modules/setting'
 import { useMenuStore } from '@/store/modules/menu'
 import { setupGlobDirectives } from '@/directives'
 import { initializeTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import type { AppRouteRecord } from '@/types/router'
 import Workspace from '../../../modules/art-supabase-wms/src/views/inventory-trace/shared/inventory-report-workspace.vue'
 import type { WmsInventoryReportKind } from '../../../modules/art-supabase-wms/src/api/inventory-report'
@@ -36,13 +38,20 @@ const app = createApp({
             )
           ]
         : []),
-      cached
-        ? h(KeepAlive, null, { default: () => (active.value ? h(Workspace, { kind }) : null) })
-        : h(Workspace, { kind })
+      params.has('costSource')
+        ? h(RouterView)
+        : cached
+          ? h(KeepAlive, null, { default: () => (active.value ? h(Workspace, { kind }) : null) })
+          : h(Workspace, { kind })
     ])
 })
 app.use(store)
 const settings = useSettingStore(store)
+if (params.has('theme')) {
+  const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+  settings.setGlobalTheme(theme, theme)
+}
+if (params.has('box')) settings.boxBorderMode = params.get('box') !== 'shadow-mode'
 document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
 document.documentElement.classList.toggle('dark', settings.isDark)
 initializeTheme()
@@ -51,7 +60,12 @@ app.use(
   createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', component: {} },
+      { path: '/', component: Workspace, props: { kind } },
+      {
+        path: financePaths.financialPayable,
+        name: 'FinancePurchasePayable',
+        component: () => import('@fms/views/accounts-payable/purchase-payable/index.vue')
+      },
       { path: '/wms/outbound-business/sales-outbound', component: {} }
     ]
   })
@@ -67,7 +81,11 @@ useMenuStore(store).setButtonList(
     'WmsStock:View',
     'WmsInventoryLedger:View',
     'WmsStockLedger:View',
-    'WmsMaterialReceiptIssue:View'
+    'WmsMaterialReceiptIssue:View',
+    ...(params.has('costSource') ? ['MdmMaterialArchive:View'] : []),
+    ...(params.has('costSource') && !params.has('denyFinance')
+      ? ['FinancePurchasePayable:View']
+      : [])
   ].map<AppRouteRecord>((name) => ({
     name,
     path: '',

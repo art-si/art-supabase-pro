@@ -12,6 +12,8 @@
 
 ## 字典展示规范
 
+默认 Excel 导出沿用列的 `dict` 与 `dict.value` 配置，等待字典资料加载后输出业务名称，包含已停用的历史值；字典请求失败会阻止导出并允许重试，不用内部编码冒充正常结果。显式提供的 `exportColumns` 仍由调用方定义导出格式。
+
 后续涉及字典值展示时统一使用 `ArtDictDisplay`。表格场景优先配置 `ColumnOption.dict`，不要在业务页面重复编写 `formatter`、`ElTag` 或颜色判断。
 
 ### 表格列

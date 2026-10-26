@@ -209,6 +209,8 @@ for (const authority of ['super', 'ordinary'] as const) {
       }
       const header = page.locator('.business-workspace-header')
       const table = page.locator('.art-table-query')
+      await expect(table.getByRole('button', { name: '展开', exact: true })).toBeVisible()
+      await expect(table.getByRole('textbox', { name: '物料描述', exact: true })).toHaveCount(0)
       await expect(page.getByText('TEST-MAT', { exact: true })).toBeVisible({ timeout: 120_000 })
       if (kind === 'movement' || kind === 'receipt-issue') {
         const link = table.getByRole('link', { name: 'TEST-SALES-001', exact: true }).first()
@@ -327,6 +329,7 @@ for (const authority of ['super', 'ordinary'] as const) {
         ['项目全称', 'p_project_name', '测试工程'],
         ['批号', 'p_batch_no', 'BATCH-001']
       ] as const
+      await table.getByRole('button', { name: '展开', exact: true }).click()
       for (const [label, , value] of filters)
         await page.getByRole('textbox', { name: label, exact: true }).fill(value)
       const startDate = page.getByPlaceholder('开始日期', { exact: true })
@@ -346,6 +349,8 @@ for (const authority of ['super', 'ordinary'] as const) {
         animations: 'disabled'
       })
       state = 'data'
+      await table.getByRole('button', { name: '收起', exact: true }).click()
+      await expect(table.getByRole('textbox', { name: '物料描述', exact: true })).toHaveCount(0)
       await page.getByRole('button', { name: '查询', exact: true }).click()
       await expect(page.getByText('TEST-MAT', { exact: true })).toBeVisible()
       expect(requests.at(-1)).toMatchObject({
@@ -353,6 +358,7 @@ for (const authority of ['super', 'ordinary'] as const) {
         p_date_end: '2026-09-30'
       })
       for (const [, key, value] of filters) expect(requests.at(-1)?.[key]).toBe(value)
+      await table.getByRole('button', { name: '展开', exact: true }).click()
       const beforeReset = requests.length
       await page.getByRole('button', { name: '重置', exact: true }).click()
       for (const [label] of filters)

@@ -1,87 +1,14 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import type { MasterDataDeleteDependencyDetail } from '@/api/master-data-delete'
-import type { PayableReference } from '@/api/payable-reference'
-import type { PayableCrossCurrencyMode, PayableWriteoffRelation } from '@/api/payable-writeoff'
+import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
+import type {
+  PayableAutomationInput,
+  PayableAutomationQuery,
+  PayableAutomationRecord,
+  PayableAutomationWorkspace
+} from './payable-automation.types'
 
-export type PayableAutomationRelation = PayableWriteoffRelation | 'payable_refund'
-export interface PayableAutomationConfiguration {
-  id: string
-  tenantId: string
-  schemeId: string
-  accountSetId: string
-  name: string
-  enabled: boolean
-  relations: PayableAutomationRelation[]
-  allowCrossParty: boolean
-  crossCurrencyMode: PayableCrossCurrencyMode
-  schemeVersion: number
-  version: number
-  pauseReason: string
-  schemeName: string
-  accountSetName: string
-  actorName: string
-  jobCount: number
-}
-export interface PayableAutomationJob {
-  id: string
-  tenantId: string
-  automationId: string
-  automationName: string
-  automationVersion: number
-  configurationVersion: number
-  configurationEnabled: boolean
-  schemeVersion: number
-  jobNo: string
-  relation: PayableAutomationRelation
-  sourceDocumentNo: string
-  businessDate: string
-  status: 'pending' | 'blocked' | 'failed' | 'no_match' | 'succeeded' | 'cancelled'
-  message: string
-  attemptCount: number
-  recordCount: number
-  actorName: string
-}
-export interface PayableAutomationQuery {
-  configurationPage?: number
-  jobPage?: number
-  size?: number
-  tenantId?: string | null
-  automationId?: string
-  jobId?: string
-  keyword?: string
-  status?: string
-}
-export interface PayableAutomationWorkspace {
-  configurationVersion: number
-  configurations: { data: PayableAutomationConfiguration[]; total: number }
-  jobs: { data: PayableAutomationJob[]; total: number }
-  books: Array<{ id: string; tenantId: string; name: string; code: string; active: boolean }>
-  schemes: Array<PayableReference & { id: string; tenantId: string; version: number }>
-  runtime: { available: boolean }
-  relations: Array<{ label: string; value: PayableAutomationRelation }>
-}
-export interface PayableAutomationInput {
-  id?: string
-  version?: number
-  schemeId: string
-  expectedSchemeVersion: number
-  accountSetId: string
-  name: string
-  enabled: boolean
-  relations: PayableAutomationRelation[]
-  allowCrossParty: boolean
-  crossCurrencyMode: PayableCrossCurrencyMode
-  processExisting: boolean
-}
-export interface PayableAutomationRecord {
-  id: string
-  recordNo: string
-  documentNo: string | null
-  status: string
-  writeoffDate: string
-  needsVoucher: boolean
-  voucherNo: string | null
-}
+export type * from './payable-automation.types'
 const { supabase, responseHandle, keysToSnakeDeep } = useSupabase()
 const options = {
   breakReturn: true,
@@ -92,6 +19,7 @@ const options = {
 export async function fetchPayableAutomationWorkspace(
   query: PayableAutomationQuery
 ): Promise<PayableAutomationWorkspace> {
+  const assertScope = createTenantScopeReadGuard()
   const { data } = await responseHandle<PayableAutomationWorkspace>(
     () =>
       supabase.rpc('fms_payable_automation_workspace_secure', {
@@ -99,6 +27,7 @@ export async function fetchPayableAutomationWorkspace(
       }),
     options
   )
+  assertScope()
   if (
     !data ||
     data.configurationVersion !== 1 ||
@@ -127,10 +56,12 @@ export async function savePayableAutomation(input: PayableAutomationInput): Prom
 export async function fetchPayableAutomationDeleteDependencies(
   ids: string[]
 ): Promise<MasterDataDeleteDependencyDetail[]> {
+  const assertScope = createTenantScopeReadGuard()
   const { data } = await responseHandle<MasterDataDeleteDependencyDetail[]>(
     () => supabase.rpc('get_fms_payable_automation_delete_dependencies_secure', { p_ids: ids }),
     options
   )
+  assertScope()
   if (!Array.isArray(data)) throw new Error('后台核销关联检查失败，请重新检查后再删除')
   return data
 }
@@ -157,6 +88,7 @@ export async function fetchPayableAutomationRecords(
   page = 1,
   size = 20
 ): Promise<{ data: PayableAutomationRecord[]; total: number }> {
+  const assertScope = createTenantScopeReadGuard()
   const { data } = await responseHandle<{ data: PayableAutomationRecord[]; total: number }>(
     () =>
       supabase.rpc('fms_payable_automation_records_secure', {
@@ -166,6 +98,7 @@ export async function fetchPayableAutomationRecords(
       }),
     options
   )
+  assertScope()
   if (!data || !Array.isArray(data.data) || !Number.isSafeInteger(data.total) || data.total < 0)
     throw new Error('后台核销记录未加载，请重试')
   return data

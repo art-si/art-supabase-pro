@@ -7,7 +7,6 @@ for (const mode of [
   'assembly',
   'station',
   'purchase',
-  'pack',
   'notice',
   'driver',
   'insurance',
@@ -34,17 +33,15 @@ for (const mode of [
                     ? '/mdm_station'
                     : mode === 'purchase'
                       ? '/scm_order_target_document'
-                      : mode === 'pack'
-                        ? '/mes_work_order_pack'
-                        : mode === 'notice'
-                          ? '/scm_sales_document'
-                          : mode === 'driver'
-                            ? '/mdm_vehicle'
-                            : mode === 'insurance'
-                              ? '/mdm_insurance_company'
-                              : mode === 'accessory'
-                                ? '/mdm_accessory_processing_list'
-                                : '/wms_serial_number'
+                      : mode === 'notice'
+                        ? '/scm_sales_document'
+                        : mode === 'driver'
+                          ? '/mdm_vehicle'
+                          : mode === 'insurance'
+                            ? '/mdm_insurance_company'
+                            : mode === 'accessory'
+                              ? '/mdm_accessory_processing_list'
+                              : '/wms_serial_number'
           )
         ).toBe(true)
         expect(url.searchParams.get('limit')).toBe('500')
@@ -74,11 +71,6 @@ for (const mode of [
           expect(url.searchParams.get('select')).toContain('tms_station_role!inner(role_type)')
           expect(url.searchParams.get('or')).toContain('测试')
           expect(url.searchParams.get('order')).toBe('sort.asc,station_code.asc,id.asc')
-        } else if (mode === 'pack') {
-          expect(url.searchParams.get('work_order_id')).toBe('eq.order-a')
-          expect(url.searchParams.get('confirmed')).toBe('eq.true')
-          expect(url.searchParams.get('order')).toBe('pack_no.asc,id.asc')
-          expect(url.searchParams.get('select')).toContain('mes_work_order_pack_item(pieces)')
         } else if (mode === 'notice') {
           expect(url.searchParams.get('tenant_id')).toBe('eq.tenant-a')
           expect(url.searchParams.get('kind')).toBe('eq.shipping_notice')
@@ -162,3 +154,24 @@ test('站点空集合是成功结果', async ({ page }) => {
   await page.getByRole('button', { name: '加载候选', exact: true }).click()
   await expect(page.getByTestId('result')).toHaveText('0:undefined')
 })
+
+for (const failure of [false, true]) {
+  test(`排包 RPC ${failure ? '失败时拒绝候选' : '完整保留服务端包集合'}`, async ({ page }) => {
+    await page.route('**/rest/v1/rpc/wms_finished_pack_options_secure', (route) => {
+      expect(route.request().postDataJSON()).toEqual({
+        p_work_order_id: 'order-a',
+        p_exclude_document_id: null
+      })
+      return failure
+        ? route.fulfill({ status: 503, json: { code: 'XX000', message: '排包读取失败' } })
+        : route.fulfill({
+            json: Array.from({ length: 1001 }, (_, index) => ({ id: `record-${index}` }))
+          })
+    })
+    await page.goto('/tests/e2e/fixtures/business-options-pagination.html?mode=pack', {
+      waitUntil: 'domcontentloaded'
+    })
+    await page.getByRole('button', { name: '加载候选', exact: true }).click()
+    await expect(page.getByTestId('result')).toHaveText(failure ? '加载失败' : '1001:record-1000')
+  })
+}

@@ -1,6 +1,7 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { fetchOrganizationOptionsTree } from '@/api/system-manage'
 import { buildOrganizationSelectTree } from '@/utils/organization-options'
+import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
 import type { PayableReference, PayableMatchRule } from '@/api/payable-reference'
 import type { PayableSettlementOption } from '@/api/payable-settlement.types'
 import type { PayableVoucherPreview } from '@/api/purchase-payable'
@@ -62,6 +63,7 @@ export interface PayableWriteoffCandidate {
 export interface PayableWriteoffRecord {
   id: string
   tenantId: string
+  accountSetId?: string
   supplierId: string
   recordNo: string
   documentNo?: string | null
@@ -70,6 +72,10 @@ export interface PayableWriteoffRecord {
   refundLineId?: string | null
   paymentLineId?: string | null
   receivableLineId?: string | null
+  paymentDocumentId?: string | null
+  refundDocumentId?: string | null
+  receivableDocumentId?: string | null
+  receiptId?: string | null
   receivableAmount?: number
   creditPayableId?: string
   creditAmount?: number
@@ -90,7 +96,21 @@ export interface PayableWriteoffRecord {
   amount: number
   paymentAmount?: number
   cashDiscountAmount?: number
-  matchSnapshot?: { schemeCode: string; schemeName: string; rules: PayableMatchRule[] }
+  matchSnapshot?: {
+    schemeCode: string
+    schemeName: string
+    rules: PayableMatchRule[]
+    schemeVersion?: number
+    relationDescription?: string
+    primary?: { accountSetId?: string | null }
+    secondary?: { accountSetId?: string | null }
+    executionKind?: 'background'
+    automationId?: string
+    automationJobId?: string
+    automationJobNo?: string
+    automationName?: string
+    automationVersion?: number
+  }
   needsVoucher: boolean
   voucherId?: string | null
   voucherNo?: string | null
@@ -179,6 +199,16 @@ export async function fetchPayableWriteoffWorkspace(
     organizations.data ?? [],
     data.organizations ?? []
   )
+  return data
+}
+export async function fetchPayableWriteoffRecord(id: string): Promise<PayableWriteoffRecord> {
+  const assertScope = createTenantScopeReadGuard()
+  const { data } = await responseHandle<PayableWriteoffRecord>(
+    () => supabase.rpc('fms_get_payable_writeoff_record_secure', { p_id: id }),
+    options
+  )
+  assertScope()
+  if (!data || data.id !== id) throw new Error('核销记录暂不可读取，请刷新后核对权限')
   return data
 }
 export async function executePayableWriteoff(

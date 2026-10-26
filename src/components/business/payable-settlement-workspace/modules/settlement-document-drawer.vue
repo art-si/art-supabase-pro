@@ -16,8 +16,8 @@
       <ArtSectionCard
         title="基本信息"
         subtitle="编号由系统按月生成；记账日期与业务日期一致。"
-        :loading="loading"
-        :error="error"
+        :loading="editable && loading"
+        :error="editable ? error : ''"
         @retry="loadOptions"
       >
         <ArtForm
@@ -971,7 +971,7 @@
         }
       }
     })
-    if (isCurrent() && (edit || props.kind !== 'refund')) await loadOptions()
+    if (isCurrent() && edit) await loadOptions()
   }
   defineExpose({ open })
   watch(

@@ -97,6 +97,19 @@ export interface ReceivableDocument {
   businessDate: string
   accountingDate: string
   currencyCode: string
+  accountSetId?: string | null
+  accountSetName?: string | null
+  baseCurrencyCode?: string | null
+  exchangeRate?: number | null
+  bookSnapshotVersion?: number | null
+  bookContext?: {
+    configured: boolean
+    message?: string
+    accountSetId?: string | null
+    accountSetName?: string | null
+    baseCurrencyCode?: string | null
+    exchangeRate?: number | null
+  }
   paymentTermId: string | null
   settlementMethod: string
   amount: number | null

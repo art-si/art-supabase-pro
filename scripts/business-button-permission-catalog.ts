@@ -32,6 +32,32 @@ const crud = (
 
 export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] = [
   {
+    menuName: 'FuelCardArchive',
+    buttons: [
+      button('View', '查看'),
+      button('Add', '新增'),
+      button('Edit', '启停'),
+      button('Export', '导出')
+    ]
+  },
+  {
+    menuName: 'FuelCardLedger',
+    buttons: [
+      button('View', '查看'),
+      button('Recharge', '充值'),
+      button('Consume', '消费'),
+      button('Reverse', '冲正'),
+      button('Export', '导出')
+    ]
+  },
+  {
+    menuName: 'TmsCompanyCertification',
+    buttons: [
+      button('View', '查看公司认证信息', 'TmsCompanyCertification:View'),
+      button('Submit', '提交认证申请', 'TmsCompanyCertification:Submit')
+    ]
+  },
+  {
     menuName: 'TmsReportVehicleDispatch',
     buttons: [button('EditPlan', '维护调度计划')]
   },
@@ -449,7 +475,18 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
   },
   { menuName: 'TmsCustomerPrice', buttons: crud({ view: true, export: true }) },
   { menuName: 'TmsCustomerPriceEdit', buttons: [button('Save', '保存客户价')] },
-  { menuName: 'TmsDriver', buttons: crud() },
+  {
+    menuName: 'TmsDriver',
+    buttons: [
+      ...crud({ view: true, import: true, export: true }),
+      button('Invite', '邀请司机'),
+      button('Ocr', '司机证件识别')
+    ]
+  },
+  {
+    menuName: 'TmsDriverQuery',
+    buttons: [button('View', '查看'), button('Export', '导出')]
+  },
   {
     menuName: 'TmsDriverBlacklist',
     buttons: [
@@ -496,14 +533,21 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('EditFreight', '修改运费'),
       button('Quote', '报价'),
       button('AddExpense', '新增费用'),
+      button('AddReturnTrip', '新增返程配货'),
       button('Export', '导出')
     ]
   },
+  {
+    menuName: 'TmsOrderQuery',
+    buttons: [button('View', '查看'), button('Export', '导出')]
+  },
+  { menuName: 'TmsMainlineScreen', buttons: [button('View', '查看')] },
   {
     menuName: 'TmsPendingWaybillList',
     buttons: [
       button('View', '查看'),
       button('Dispatch', '配载调度'),
+      button('OverrideCertificateRisk', '证件过期强制派单'),
       button('ViewAgreement', '查看协议'),
       button('RemindSignature', '提醒签署'),
       button('RemindRevision', '提醒修改'),
@@ -581,6 +625,7 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       })),
       button('Copy', '复制车辆档案', 'VehicleArchive:Copy'),
       button('Ocr', '证件智能识别', 'VehicleArchive:Ocr'),
+      button('Submit', '提交车辆档案审核', 'VehicleArchive:Submit'),
       button('TabBasic', '页签 · 基础信息', 'VehicleArchive:TabBasic'),
       button('TabBody', '页签 · 车身参数', 'VehicleArchive:TabBody'),
       button('TabEngine', '页签 · 发动机参数', 'VehicleArchive:TabEngine'),
@@ -590,6 +635,23 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('TypeAdd', '新增车型规格', 'VehicleArchive:TypeAdd'),
       button('TypeEdit', '编辑车型规格', 'VehicleArchive:TypeEdit'),
       button('TypeDelete', '删除车型规格', 'VehicleArchive:TypeDelete')
+    ]
+  },
+  {
+    menuName: 'TrailerManage',
+    buttons: [
+      button('View', '查看挂车', 'TrailerManage:View'),
+      button('Add', '新增挂车', 'TrailerManage:Add'),
+      button('Edit', '编辑挂车', 'TrailerManage:Edit')
+    ]
+  },
+  {
+    menuName: 'CertificateCenter',
+    buttons: [
+      button('View', '查看证件', 'CertificateCenter:View'),
+      button('Add', '新增证件', 'CertificateCenter:Add'),
+      button('Edit', '编辑证件', 'CertificateCenter:Edit'),
+      button('Handle', '处理预警', 'CertificateCenter:Handle')
     ]
   },
   {
@@ -663,6 +725,7 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     menuName: 'VehicleQuery',
     buttons: [
       button('View', '查看'),
+      button('Export', '导出'),
       button('AiAnalyze', 'AI 健康分析'),
       button('TabBasic', '页签 · 基础信息'),
       button('TabBody', '页签 · 车身参数'),
@@ -2611,6 +2674,10 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     buttons: [button('View', '查看'), button('Export', '导出')]
   },
   {
+    menuName: 'FinancePayableReport',
+    buttons: [button('View', '查看'), button('Export', '导出'), button('Print', '打印')]
+  },
+  {
     menuName: 'FinanceEstimatedPayable',
     buttons: [
       button('Accrual', '自动暂估参数'),
@@ -2643,7 +2710,8 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('Voucher', '生成凭证'),
       button('Print', '打印'),
       button('Export', '导出'),
-      button('Freeze', '冻结/解冻')
+      button('Freeze', '冻结/解冻'),
+      button('CostMatch', '库存成本勾稽')
     ]
   },
   {
@@ -2681,6 +2749,7 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('Approve', '审核'),
       button('Delete', '删除'),
       button('Push', '下推付款退款'),
+      button('GuaranteeConvert', '保证金转货款'),
       button('Confirm', '确认/取消付款'),
       button('Void', '作废未付款单'),
       button('Voucher', '生成凭证'),
@@ -2705,18 +2774,14 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     ]
   },
   {
-    menuName: 'FinancePayableReport',
-    buttons: [button('View', '查看'), button('Export', '导出'), button('Print', '打印')]
-  },
-  {
     menuName: 'FinancePayableWriteoff',
     buttons: [
       button('View', '查看'),
+      button('Automation', '维护后台核销配置'),
+      button('AutomationRetry', '重试后台核销任务'),
+      button('AutomationDelete', '删除后台核销配置'),
       button('Writeoff', '核销'),
       button('AutoWriteoff', '按方案自动核销'),
-      button('Automation', '维护后台核销配置'),
-      button('AutomationDelete', '删除后台核销配置'),
-      button('AutomationRetry', '重试后台核销任务'),
       button('Reverse', '反核销'),
       button('Scheme', '维护核销方案'),
       button('Voucher', '生成凭证')

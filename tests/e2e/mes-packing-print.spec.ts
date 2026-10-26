@@ -109,7 +109,7 @@ test('排包表格铺满面板，小按钮与整包打印预览', async ({ page 
       json: [
         {
           id: 'pack',
-          pack_no: 'PK-0001',
+          pack_no: 'QA-MO-001-PK-0001',
           manually_adjusted: false,
           confirmed: false,
           remark: '',
@@ -172,6 +172,7 @@ test('排包表格铺满面板，小按钮与整包打印预览', async ({ page 
     })
     .toBeLessThan(0.02)
   await expect(dialog).toContainText('合 格 证')
+  await expect(dialog).toContainText('QA-MO-001-PK-0001')
   await expect(dialog).toContainText('区域/编号')
   await expect(dialog).toContainText('A区/A-1、A区/A-2')
   await expect(dialog).toContainText(materialDescription)

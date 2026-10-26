@@ -1,13 +1,111 @@
 import dayjs from 'dayjs'
+import { uniq } from 'lodash-es'
 import type {
   PayableSettlementDocument,
   PayableSettlementKind,
-  PayableSettlementLine
+  PayableSettlementLine,
+  PayableSettlementOption,
+  PayableSettlementOptions
 } from '@/api/payable-settlement.types'
+
+function settlementAccountSetConstraints(
+  document: PayableSettlementDocument,
+  options: PayableSettlementOptions,
+  line: PayableSettlementLine
+): string[] {
+  return uniq(
+    [
+      document.accountSetId,
+      ...document.lines.flatMap((row) => [
+        row.accountSetId,
+        options.payable.find((source) => source.id === row.payableId)?.accountSetId,
+        options.purchase.find((source) => source.id === row.purchaseId)?.accountSetId,
+        options.receivable?.find((source) => source.id === row.receivableLineId)?.accountSetId,
+        row === line
+          ? undefined
+          : options.fund.find((account) => account.id === row.fundAccountId)?.accountSetId
+      ])
+    ].filter((value): value is string => Boolean(value))
+  )
+}
+
+export function settlementFundAccountOptions(
+  document: PayableSettlementDocument,
+  options: PayableSettlementOptions,
+  line: PayableSettlementLine
+): PayableSettlementOption[] {
+  const books = settlementAccountSetConstraints(document, options, line)
+  const method = options.method.find((option) => option.id === line.settlementMethodId)
+  return options.fund.filter(
+    (option) =>
+      option.currencyCode === document.currencyCode &&
+      books.every((book) => option.accountSetId === book) &&
+      (method?.category === 'cash' ? option.category === 'cash' : option.category !== 'cash')
+  )
+}
+
+type SettlementSourceContext = Pick<
+  PayableSettlementOption,
+  'accountSetId' | 'accountSetName' | 'currencyCode'
+> & { baseCurrencyCode?: string }
+
+export function settlementSourceConflict(
+  document: PayableSettlementDocument,
+  options: PayableSettlementOptions,
+  line: PayableSettlementLine,
+  source: SettlementSourceContext
+): string | null {
+  if (source.currencyCode && !/^[A-Z]{3}$/.test(source.currencyCode))
+    return '来源币种资料无效，请先核对原单或币种配置'
+  if (
+    source.accountSetId &&
+    settlementAccountSetConstraints(document, options, line).some(
+      (book) => book !== source.accountSetId
+    )
+  )
+    return '来源与单据或其他明细不属于同一账套，请按账套拆单'
+  if (
+    source.currencyCode &&
+    source.currencyCode !== document.currencyCode &&
+    (document.id ||
+      document.lines.some(
+        (row) =>
+          row !== line &&
+          (row.payableId ||
+            row.purchaseId ||
+            row.receivableLineId ||
+            row.applicationLineId ||
+            row.guaranteePaymentLineId ||
+            row.refundPaymentLineId ||
+            row.fundAccountId)
+      ))
+  )
+    return '同一单据不能混用来源币种，请先核对单据币种或另建单据'
+  return null
+}
+
+export function applySettlementSourceContext(
+  document: PayableSettlementDocument,
+  source: SettlementSourceContext
+): void {
+  const changed =
+    (source.currencyCode && source.currencyCode !== document.currencyCode) ||
+    (source.accountSetId && source.accountSetId !== document.accountSetId)
+  document.currencyCode = source.currencyCode || document.currencyCode
+  document.accountSetId ||= source.accountSetId
+  document.accountSetName = source.accountSetName || document.accountSetName
+  document.baseCurrencyCode = source.baseCurrencyCode || document.baseCurrencyCode
+  if (changed) {
+    document.currencyId = null
+    document.exchangeRate = null
+    document.fxSnapshotVersion = undefined
+  }
+}
 
 export const payablePurposeBusinessTypeOptions = [
   { value: 'purchase', label: '采购付款' },
   { value: 'advance', label: '预付款' },
+  { value: 'guarantee', label: '采购保证金' },
   { value: 'other', label: '其他付款' },
   { value: 'sales_refund', label: '销售退款' },
   { value: 'other_refund', label: '其他退款' },
@@ -91,6 +189,25 @@ export function validateSettlementAmounts(
 ): string | null {
   if (!lines.length) return '请至少添加一行付款明细'
   for (const [index, line] of lines.entries()) {
+    const customerRefund = !!(line.customerId || line.payeeCustomerId || line.receivableLineId)
+    if (customerRefund) {
+      if (
+        !line.customerId ||
+        !line.payeeCustomerId ||
+        !line.receivableLineId ||
+        line.supplierId ||
+        line.payeeSupplierId ||
+        line.carrierId ||
+        line.payableId ||
+        line.purchaseId
+      )
+        return `第 ${index + 1} 行销售退款须完整关联原红字应收客户和收款客户，不能混用供应商来源`
+      if (kind === 'payment' && !line.applicationLineId)
+        return `第 ${index + 1} 行销售退款付款须从本行的已审核申请下推`
+      if (line.cashDiscount !== 0 || line.taxRate !== 0)
+        return `第 ${index + 1} 行销售退款按原应收本金付款，不另计现金折扣或税额`
+      if (kind === 'refund') return '客户退款付款的回款须恢复原应收流水，不能套用供应商退款'
+    }
     if (kind === 'refund' && (!line.refundPaymentLineId || !line.fundAccountId))
       return `第 ${index + 1} 行请选择原付款明细和退款收款账户`
     if (
@@ -102,8 +219,8 @@ export function validateSettlementAmounts(
       return `第 ${index + 1} 行失效折扣必须非负，且不能作为现金折扣重复计入退款`
     if (
       !line.purposeId ||
-      (!line.supplierId && !line.carrierId) ||
-      (!line.payeeSupplierId && !line.carrierId) ||
+      (!customerRefund && !line.supplierId && !line.carrierId) ||
+      (!customerRefund && !line.payeeSupplierId && !line.carrierId) ||
       !line.settlementMethodId
     )
       return `第 ${index + 1} 行请选择付款用途、往来单位、收款单位及结算方式`

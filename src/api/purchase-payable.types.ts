@@ -16,6 +16,7 @@ export interface PayablePermissions {
   Print: string
   Export: string
   Freeze?: string
+  CostMatch?: string
   Accrual?: string
   AccrualDelete?: string
   AccrualExecute?: string
@@ -115,8 +116,16 @@ export interface PurchasePayableDocument {
   financialPayableTypeId?: string | null
   financialPayableTypeName?: string | null
   sourceType?: 'manual' | 'purchase_inbound' | 'carrier_statement'
+  tmsStatementId?: string | null
   sourceDocumentId: string | null
   sourceDocumentNo: string
+  automaticAccrual?: {
+    runId: string
+    policyId: string
+    policyVersion: number
+    policyCodeSnapshot: string
+    policyNameSnapshot: string
+  } | null
   estimatedSources?: PayableEstimatedSource[]
   supplierId?: string | null
   supplierName: string | null
@@ -213,3 +222,65 @@ export interface PaymentTerm extends PayableOption {
   remark: string
 }
 export type PayableAction = 'submit' | 'approve' | 'freeze' | 'unfreeze' | 'delete'
+
+export interface PayableStockCostBatch {
+  id: string
+  batchNo: string
+  quantity: number
+  unitCost: number
+  afterUnitCost: number | null
+  adjustmentAmount: number | null
+  organizationId: string
+  organizationName: string | null
+  warehouseId: string
+  warehouseName: string | null
+  accountSetId: string | null
+  accountSetName: string | null
+  ownerType: string
+}
+
+export interface PayableStockCostLine {
+  financialLineId: string
+  lineNo: number
+  sourceLineId: string
+  sourceDocumentNo: string
+  materialCode: string | null
+  sourceBaseUnitName: string
+  materialDescription: string | null
+  tenantId: string
+  accountSetId: string
+  currencyCode: string
+  logicalQuantity: number
+  physicalQuantity: number
+  basicQuantity: number
+  originalAmount: number
+  actualCostAmount: number
+  apCostDifference: number
+  baselineDifference: number
+  adjustmentAmount: number
+  stockQuantity: number
+  transitQuantity: number
+  stockValue: number
+  valuationGap: number
+  mixedSource: boolean
+  allStock: boolean
+  matched: boolean
+  matchedDate: string | null
+  batches: PayableStockCostBatch[]
+}
+
+export interface PayableStockCostPreview {
+  id: string
+  documentNo: string
+  tenantId: string
+  tenantName: string
+  supplierName: string | null
+  accountSetId: string
+  accountSetName: string
+  baseCurrencyCode: string
+  costDate: string
+  minimumDate: string
+  version: number
+  previewToken: string
+  lines: PayableStockCostLine[]
+}

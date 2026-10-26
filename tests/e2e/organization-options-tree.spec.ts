@@ -1,10 +1,14 @@
 import { expect, test } from '@playwright/test'
 import { mockApplicationMenus } from './support/menu-rpc'
+import { prepareIsolatedSession } from './support/isolated-session'
+
+test.use({ storageState: { cookies: [], origins: [] } })
 
 test('HR organization navigation loads only the fields needed for its tree', async ({
   page
 }, testInfo) => {
   test.setTimeout(90_000)
+  await prepareIsolatedSession(page)
   const organizationRequests: string[] = []
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))

@@ -61,6 +61,31 @@ test('reuse audit rejects empty component aliases while retaining configured com
     const accepted = audit()
     assert.equal(accepted.status, 0, accepted.stderr)
     assert.match(accepted.stdout, /Shared reuse audit passed/)
+    const movedFile = join(source, 'moved.ts')
+    writeFileSync(movedFile, 'export const moved = true')
+    const missingFileHook = join(root, 'missing-file.cjs')
+    writeFileSync(
+      missingFileHook,
+      `const fs = require('node:fs/promises')
+const readFile = fs.readFile
+fs.readFile = async (file, ...args) => {
+  if (file === ${JSON.stringify(movedFile)}) {
+    throw Object.assign(new Error('File moved during audit'), { code: 'ENOENT' })
+  }
+  return readFile(file, ...args)
+}
+require('node:module').syncBuiltinESMExports()
+`
+    )
+    const interrupted = spawnSync(
+      process.execPath,
+      ['--require', missingFileHook, '--import', import.meta.resolve('tsx'), script],
+      { cwd: root, encoding: 'utf8', timeout: 60_000 }
+    )
+    assert.equal(interrupted.status, 1, interrupted.stderr)
+    assert.match(interrupted.stderr, /source-changed-during-audit/)
+    assert.doesNotMatch(interrupted.stdout, /Shared reuse audit passed/)
+    unlinkSync(movedFile)
     const duplicate = join(source, 'duplicate.ts')
     writeFileSync(
       duplicate,

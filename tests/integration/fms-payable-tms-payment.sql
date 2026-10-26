@@ -1,6 +1,6 @@
 begin;
 do $test$
-declare actor uuid;statement record;finance jsonb;payment jsonb;payment_id uuid;fund uuid;amount_value numeric;old_settled numeric;count_test integer:=0;blocked boolean;preview jsonb;cash uuid;events bigint;
+declare actor uuid;statement record;finance jsonb;payment jsonb;payment_id uuid;fund uuid;amount_value numeric;old_settled numeric;count_test integer:=0;blocked boolean;preview jsonb;cash uuid;events bigint;report_fact jsonb;
 begin
  select auth_user_id into actor from public.sys_user where user_roles @>array['R_SUPER'] and auth_user_id is not null limit 1;
  perform set_config('request.jwt.claim.sub',actor::text,true);perform set_config('request.headers','{}',true);
@@ -22,6 +22,8 @@ begin
   perform public.fms_act_purchase_payable_secure(array[(finance->>'id')::uuid],'unfreeze','TMS联动解冻');
   perform public.fms_act_payable_settlement_secure(array[payment_id],'confirm');
   if (select settled_amount from public.tms_carrier_statement where id=statement.id)<>old_settled+amount_value then raise exception 'TMS settlement was not updated exactly once';end if;
+  select value into report_fact from app_private.payable_report_source_balances(jsonb_build_object('kind','financial','tenant_id',statement.tenant_id)) value where value->>'document_id'=finance->>'id';
+  if report_fact->>'balance_state' is distinct from 'ready' or (report_fact->>'balance_amount')::numeric<>(app_private.purchase_payable_json((finance->>'id')::uuid)->>'unpaid_amount')::numeric then raise exception 'Transport report duplicated or omitted actual allocation';end if;
   select cash_transaction_id into cash from public.fms_payable_payment_execution where document_id=payment_id and status='posted' limit 1;
   if cash is null or not exists(select 1 from public.fms_fund_ledger_entry where source_id=cash and source_type='carrier_payment' and direction='outflow') then raise exception 'TMS payment bypassed legacy cash ledger';end if;
   preview:=public.fms_payable_settlement_voucher_secure(payment_id,'payment',true);
@@ -30,6 +32,8 @@ begin
   perform public.fms_act_payable_settlement_secure(array[payment_id],'cancel_payment','TMS回归取消');
   if (select settled_amount from public.tms_carrier_statement where id=statement.id)<>old_settled then raise exception 'TMS cancellation failed to restore settlement';end if;
   if (select status from public.tms_cash_transaction where id=cash)<>'voided' then raise exception 'TMS cash cancellation did not preserve voided transaction';end if;
+  select value into report_fact from app_private.payable_report_source_balances(jsonb_build_object('kind','financial','tenant_id',statement.tenant_id)) value where value->>'document_id'=finance->>'id';
+  if report_fact->>'balance_state' is distinct from 'ready' or (report_fact->>'balance_amount')::numeric<>(app_private.purchase_payable_json((finance->>'id')::uuid)->>'unpaid_amount')::numeric then raise exception 'Transport report failed to restore cancelled allocation';end if;
   count_test:=count_test+1;
  end loop;
  if count_test<>2 then raise exception 'Need two TMS payment scenarios, tested %',count_test;end if;

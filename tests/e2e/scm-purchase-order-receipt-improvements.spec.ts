@@ -7,6 +7,25 @@ test.setTimeout(180_000)
 
 test('采购订单逐行批量操作、收料带入和参选布局', async ({ page }, testInfo) => {
   const tenant = await prepareIsolatedSession(page)
+  await page.route('**/rest/v1/sys_dictionary?*', (route) => {
+    const code = new URL(route.request().url()).searchParams.get('dict_type_table.code')
+    return route.fulfill({
+      json:
+        !code || code === 'eq.commonDocumentDisplayMode'
+          ? [
+              { value: 'document', label: '按单据' },
+              { value: 'line', label: '按明细' }
+            ].map((item, index) => ({
+              ...item,
+              id: `document-display-${item.value}`,
+              code: item.value,
+              status: '1',
+              sort: index,
+              dict_type_table: { code: 'commonDocumentDisplayMode', name: '单据展示方式' }
+            }))
+          : []
+    })
+  })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   const path = '/scm/purchase-management/purchase-order'
@@ -175,7 +194,7 @@ test('采购订单逐行批量操作、收料带入和参选布局', async ({ pa
       ]
     })
   )
-  await page.goto(`#${path}`)
+  await page.goto(`#${path}`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('button', { name: 'QA-ORDER-001', exact: true }).first()).toBeVisible(
     { timeout: 120_000 }
   )

@@ -545,8 +545,23 @@ for (const entry of moduleEntries.filter((item) => item.isDirectory())) {
   }
 }
 
+let checkedFileCount = 0
 for (const file of files) {
-  const content = await readFile(file, 'utf8')
+  let content: string
+  try {
+    content = await readFile(file, 'utf8')
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      findings.push({
+        file: relativeFile(file),
+        rule: 'source-changed-during-audit',
+        detail: '文件在扫描过程中被移动或删除，请在源码稳定后重新运行审计。'
+      })
+      continue
+    }
+    throw error
+  }
+  checkedFileCount += 1
   const relative = relativeFile(file)
   if (relative.startsWith('src/utils/') && !utilityFileName.test(path.basename(file))) {
     findings.push({
@@ -622,5 +637,5 @@ if (findings.length) {
   )
   process.exitCode = 1
 } else {
-  console.log(`Shared reuse audit passed (${files.length} frontend source files checked).`)
+  console.log(`Shared reuse audit passed (${checkedFileCount} frontend source files checked).`)
 }

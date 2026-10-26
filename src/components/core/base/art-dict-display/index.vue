@@ -50,7 +50,12 @@
 
   const userStore = useUserStore()
   watch(
-    () => [props.dictCode, props.value, props.item] as const,
+    [
+      () => props.dictCode,
+      () => props.value,
+      () => props.item,
+      () => userStore.getDictMap[props.dictCode]
+    ] as const,
     ([dictCode, value, item]) => {
       if (dictCode && !item)
         void userStore

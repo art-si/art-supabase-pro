@@ -4,19 +4,27 @@ import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
 
 const router = createRouter({
   history: createMemoryHistory(),
-  routes: [{ path: '/linked', name: 'Linked', component: {} }]
+  routes: [
+    { path: '/linked', name: 'Linked', component: {} },
+    { path: '/other', name: 'Other', component: {} }
+  ]
 })
+const parameters = new URLSearchParams(location.search)
 await router.push('/linked?documentId=original')
 const app = createApp({
   setup() {
-    const failOpen = ref(true)
+    const failOpen = ref(!parameters.has('success'))
+    const paused = ref(parameters.has('pause'))
+    const authorized = ref(true)
+    const pending: Array<() => void> = []
     const opened = ref('')
     const reads = ref(0)
     const state = useRouteDocumentDrawer({
       routeName: 'Linked',
-      canOpen: () => true,
+      canOpen: () => authorized.value,
       fetchDocument: async (id) => {
         reads.value += 1
+        if (paused.value) await new Promise<void>((resolve) => pending.push(resolve))
         return { id }
       },
       openDocument: async (document) => {
@@ -47,6 +55,40 @@ const app = createApp({
             }
           },
           '恢复并重试'
+        ),
+        h(
+          'button',
+          { onClick: () => router.replace('/linked?documentId=second') },
+          '切换到第二单据'
+        ),
+        h('button', { onClick: () => router.push('/other') }, '离开关联页面'),
+        h(
+          'button',
+          {
+            onClick: () => {
+              paused.value = false
+              pending.splice(0).forEach((resolve) => resolve())
+            }
+          },
+          '继续读取'
+        ),
+        h(
+          'button',
+          {
+            onClick: () => {
+              authorized.value = false
+            }
+          },
+          '撤回查看权限'
+        ),
+        h(
+          'button',
+          {
+            onClick: () => {
+              authorized.value = true
+            }
+          },
+          '恢复查看权限'
         )
       ])
   }

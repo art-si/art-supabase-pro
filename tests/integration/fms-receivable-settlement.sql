@@ -21,6 +21,12 @@ begin
   result:=public.fms_ar_options_secure(k,t,'');
   if jsonb_typeof(result)<>'array' then raise exception 'Invalid options result for %',k; end if;
  end loop;
+ result:=public.fms_ar_options_secure('tms_source',null,'');
+ if jsonb_array_length(result)>0 and exists(
+  select 1 from jsonb_array_elements(result) option
+  where not(option ?& array['id','tenant_id','code','name','plate_no','driver_name','shipping_contact_name','shipping_address',
+   'origin_station','destination_station','transfer_station','shipping_customer_name','receiving_customer_name'])
+ ) then raise exception 'Transport source options omitted waybill identity or route context'; end if;
  -- Draft reservation is authoritative even without a cash account.
  receipt:=public.fms_save_receipt_secure(jsonb_build_object('tenantId',t,'customerId',customer,
  'settlementOrganizationId',org,'businessDate',current_date,'currencyCode','CNY','paymentMethod','cash',

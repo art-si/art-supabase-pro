@@ -117,7 +117,7 @@ export async function actPayableSettlement(
 export async function pushPayableSettlement(
   id: string,
   kind: PayableSettlementKind,
-  source: 'payable' | 'application' | 'purchase' | 'payment' = 'payable'
+  source: 'payable' | 'application' | 'purchase' | 'payment' | 'receivable' = 'payable'
 ): Promise<PayableSettlementDocument> {
   const { data } = await responseHandle<PayableSettlementDocument>(
     () =>
@@ -129,6 +129,16 @@ export async function pushPayableSettlement(
     options
   )
   if (!data?.id) throw new Error('未生成下游付款单据，请刷新后重试')
+  return data
+}
+export async function convertGuaranteeToPurchasePayment(
+  id: string
+): Promise<PayableSettlementDocument> {
+  const { data } = await responseHandle<PayableSettlementDocument>(
+    () => supabase.rpc('fms_convert_guarantee_to_purchase_payment_secure', { p_id: id }),
+    options
+  )
+  if (!data?.id) throw new Error('未生成保证金转货款单，请刷新后重试')
   return data
 }
 export async function fetchSettlementDeleteDependencies(

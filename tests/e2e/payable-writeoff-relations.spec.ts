@@ -153,6 +153,22 @@ test('已有统一往来单位方案两条规则回填并保存，不丢失匹�
           }))
         }
       })
+    if (name === 'fms_payable_scheme_configuration_secure')
+      return route.fulfill({
+        json: {
+          configurationVersion: 2,
+          relations: [{ value: 'payable_payment', label: '应付付款核销' }, ...relations],
+          schemes: [1, 2].map((index) => ({
+            id: `scheme-${index}`,
+            code: `QA-AR-${index}`,
+            name: `统一往来方案${index}`,
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            enabled: true,
+            automatic: false,
+            rules
+          }))
+        }
+      })
     if (name === 'fms_save_payable_reference_secure') {
       saved.push(route.request().postDataJSON().p_record)
       return route.fulfill({ json: saved.at(-1)?.id })
@@ -246,7 +262,7 @@ for (const relation of relations) {
             json: { code: 'P0001', message: '余额已更新，请核对后重试' }
           })
         completed = true
-        return route.fulfill({ json: null })
+        return route.fulfill({ json: ['writeoff-1', 'writeoff-2'] })
       }
       return route.fulfill({ json: [] })
     })
@@ -281,11 +297,16 @@ for (const relation of relations) {
     const items = [1, 2].map((index) => ({
       relation: relation.value,
       ...(relation.value === 'payment_refund'
-        ? { payment_line_id: `primary-${index}`, refund_line_id: `secondary-${index}` }
+        ? {
+            payment_line_id: `primary-${index}`,
+            refund_line_id: `secondary-${index}`,
+            refund_amount: index * 100
+          }
         : relation.value === 'payable_receivable'
           ? {
               payable_id: `primary-${index}`,
               receivable_line_id: `secondary-${index}`,
+              receivable_amount: index * 100,
               allow_cross_party: false
             }
           : {

@@ -66,7 +66,8 @@ declare
  first_estimate uuid;second_estimate uuid;before_total numeric;
 begin
  select auth_user_id into actor from public.sys_user where user_roles @>array['R_SUPER'] and auth_user_id is not null limit 1;
- select document.* into template from public.wms_purchase_document document where document.kind='purchase_inbound' and document.status='approved' and not document.is_initialization and document.supplier_id is not null and exists(select 1 from public.wms_purchase_document_line where document_id=document.id) limit 1;
+ select document.* into template from public.wms_purchase_document document where document.kind='purchase_inbound' and document.status='approved' and not document.is_initialization and document.supplier_id is not null and exists(select 1 from public.wms_purchase_document_line where document_id=document.id)
+ and not exists(select 1 from public.fms_payable_accrual_policy policy where policy.tenant_id=document.tenant_id and policy.organization_id=document.organization_id) limit 1;
  select * into source_line from public.wms_purchase_document_line where document_id=template.id limit 1;
  if actor is null or source_line.id is null then raise exception 'Missing split invoice price fixture';end if;
  perform set_config('request.jwt.claim.sub',actor::text,true);perform set_config('request.headers','{}',true);

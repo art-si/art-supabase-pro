@@ -25,7 +25,7 @@ begin
  perform public.fms_act_payable_settlement_secure(array[(payment->>'id')::uuid],'submit');perform public.fms_act_payable_settlement_secure(array[(payment->>'id')::uuid],'approve');perform public.fms_act_payable_settlement_secure(array[(payment->>'id')::uuid],'confirm');
  select cash_transaction_id into cash_ident from public.fms_payable_payment_execution where document_id=(payment->>'id')::uuid and status='posted';
  insert into public.sys_role(tenant_id,role_code,role_name,enabled) values(source.tenant_id,role_code,'承运核销安全回归角色',true) returning id into fixture_role;
- insert into public.sys_role_menu(tenant_id,role_id,menu_id) select source.tenant_id,fixture_role,id from public.sys_menu where name in('FinanceCashTransaction:View','FinanceCashTransaction:Export','FinanceCashTransaction:Allocate','FinanceCashTransaction:Void','FinancePayablePayment:View','FinancePurchasePayable:View','FinancePayableWriteoff:View');
+ insert into public.sys_role_menu(tenant_id,role_id,menu_id) select source.tenant_id,fixture_role,id from public.sys_menu where name in('FinanceCashTransaction:View','FinanceCashTransaction:Export','FinanceCashTransaction:Allocate','FinanceCashTransaction:Void','FinancePayablePayment:View','FinancePurchasePayable:View','FinancePayableWriteoff:View','FinancePayableReport:View');
  with recursive accessible as(select id,parent_id from public.sys_menu where name in('FinanceCashTransaction','FinancePayablePayment','FinancePurchasePayable','FinancePayableWriteoff') union select parent.id,parent.parent_id from public.sys_menu parent join accessible child on child.parent_id=parent.id)
  insert into public.sys_role_menu(tenant_id,role_id,menu_id) select source.tenant_id,fixture_role,id from accessible on conflict do nothing;
  insert into public.sys_role_field_permission(tenant_id,role_id,resource_id,field_id,access_level)
@@ -53,6 +53,18 @@ begin
  if not blocked then raise exception 'Legacy carrier creation bypassed payable currency';end if;
  insert into qa_carrier_context values(source.tenant_id,source.id,(finance->>'id')::uuid,(payment->>'id')::uuid,(payment->'lines'->0->>'id')::uuid,cash_ident,principal,super_actor,ordinary_actor,fixture_role,foreign_tenant,other_cash);
 end $fixtures$;
+
+do $report_statement_fields$
+declare context qa_carrier_context;report_fact jsonb;
+begin
+ select * into context from qa_carrier_context;
+ update public.sys_role_field_permission permission set access_level='hidden' from public.sys_permission_resource resource,public.sys_permission_field field where permission.role_id=context.role_id and resource.id=permission.resource_id and field.id=permission.field_id and resource.resource_key='tms.carrier_statement' and field.field_key='statementAmounts';
+ perform set_config('request.jwt.claim.sub',context.ordinary_actor::text,true);
+ select value into report_fact from app_private.payable_report_source_balances(jsonb_build_object('kind','financial')) value where value->>'document_id'=context.finance_id::text;
+ if report_fact->>'balance_state' is distinct from 'amount_hidden' or report_fact->>'occurrence_amount' is not null then raise exception 'Statement amount restriction bypassed by payable report';end if;
+ update public.sys_role_field_permission permission set access_level='edit' from public.sys_permission_resource resource,public.sys_permission_field field where permission.role_id=context.role_id and resource.id=permission.resource_id and field.id=permission.field_id and resource.resource_key='tms.carrier_statement' and field.field_key='statementAmounts';
+ perform set_config('request.jwt.claim.sub',context.super_actor::text,true);
+end $report_statement_fields$;
 
 set local role authenticated;
 
@@ -185,11 +197,23 @@ end $field_denied$;
 reset role;
 
 do $mask_amounts$
-declare context qa_carrier_context;
+declare context qa_carrier_context;report_fact jsonb;field_name text;
 begin
  select * into context from qa_carrier_context;
  update public.sys_role_field_permission permission set access_level='masked' from public.sys_permission_resource resource,public.sys_permission_field field where permission.role_id=context.role_id and resource.id=permission.resource_id and field.id=permission.field_id and resource.resource_key='tms.cash_transaction' and field.field_key='transactionAmounts';
  perform set_config('request.jwt.claim.sub',context.ordinary_actor::text,true);
+ select value into report_fact from app_private.payable_report_source_balances(jsonb_build_object('kind','financial')) value where value->>'document_id'=context.finance_id::text;
+ if report_fact->>'balance_state' is distinct from 'amount_hidden' then raise exception 'Masked transport amount was readable in report';end if;
+ foreach field_name in array array['occurrence_amount','reduction_amount','balance_amount','base_balance_amount','current_amount','age1_to30','age31_to60','age61_to90','age91_to180','age_over180','credit_balance'] loop
+  if report_fact->>field_name is not null then raise exception 'Masked transport report exposes %',field_name;end if;
+ end loop;
+ select value into report_fact from jsonb_array_elements(public.fms_payable_report_secure(jsonb_build_object('mode','summary','kind','financial','party_type','carrier',
+  'party_id',(select carrier_id from public.tms_carrier_statement where id=context.statement_id))) ->'records') value
+ where value->>'balance_state'='amount_hidden' limit 1;
+ if report_fact is null then raise exception 'Masked transport summary omitted the unavailable balance group';end if;
+ foreach field_name in array array['occurrence_amount','reduction_amount','balance_amount','base_balance_amount','current_amount','age1_to30','age31_to60','age61_to90','age91_to180','age_over180','credit_balance'] loop
+  if report_fact->>field_name is not null then raise exception 'Masked transport summary exposes %',field_name;end if;
+ end loop;
 end $mask_amounts$;
 
 set local role authenticated;
@@ -210,11 +234,13 @@ end $masked_read$;
 reset role;
 
 do $hide_amounts$
-declare context qa_carrier_context;
+declare context qa_carrier_context;report_fact jsonb;
 begin
  select * into context from qa_carrier_context;
  update public.sys_role_field_permission permission set access_level='hidden' from public.sys_permission_resource resource,public.sys_permission_field field where permission.role_id=context.role_id and resource.id=permission.resource_id and field.id=permission.field_id and resource.resource_key='tms.cash_transaction' and field.field_key='transactionAmounts';
  perform set_config('request.jwt.claim.sub',context.ordinary_actor::text,true);
+ select value into report_fact from app_private.payable_report_source_balances(jsonb_build_object('kind','financial')) value where value->>'document_id'=context.finance_id::text;
+ if report_fact->>'balance_state' is distinct from 'amount_hidden' or report_fact->>'balance_amount' is not null then raise exception 'Hidden transport amount leaked through payable report';end if;
 end $hide_amounts$;
 
 set local role authenticated;

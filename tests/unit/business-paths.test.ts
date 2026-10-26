@@ -19,6 +19,7 @@ test('exposes finance routes from the standalone root', () => {
   assert.equal(financePaths.cashForecast, '/fms/treasury/cash-forecast')
   assert.equal(financePaths.estimatedPayable, '/fms/accounts-payable/estimated-payable')
   assert.equal(financePaths.financialPayable, '/fms/accounts-payable/purchase-payable')
+  assert.equal(financePaths.payableReport, '/fms/accounts-payable/payable-report')
   assert.equal(
     getWaybillCostDetailPath('waybill-1'),
     '/fms/settlement/waybill-cost/detail/waybill-1'

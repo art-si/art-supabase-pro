@@ -14,6 +14,14 @@ test('empty, complete and uniform rows preserve action layout', () => {
   assert.equal(calculateActionSpan([6, 6, 6, 6]), 24)
 })
 
+test('actions wrap instead of occupying less than one normal field column', () => {
+  assert.equal(calculateActionSpan([12, 8], 8), 24)
+  assert.equal(calculateActionSpan([16, 6], 6), 24)
+  assert.equal(calculateActionSpan([12, 6], 6), 6)
+  assert.equal(calculateActionSpan([8, 8], 8), 8)
+  assert.equal(calculateActionSpan([24], 24), 24)
+})
+
 test('responsive field widths determine available action space', () => {
   const spans = [12, 6, 12]
   assert.equal(calculateActionSpan(spans.map((span) => calculateResponsiveSpan(span, 6, 'xs'))), 24)

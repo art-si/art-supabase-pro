@@ -12,6 +12,17 @@ test('引用分类只读取显式业务配置', () => {
     label: '劳动合同',
     routeName: 'HrCompliance'
   })
+  assert.deepEqual(getRecordReferenceMeta('fms_receipt_document'), {
+    label: '收款单',
+    routeName: 'FinanceReceipt',
+    statusDictCode: 'arDocumentStatus'
+  })
+  assert.deepEqual(getRecordReferenceMeta('fms_receipt_fund_execution'), { label: '收款资金执行' })
+  assert.deepEqual(getRecordReferenceMeta('vehicle_fuel_card'), {
+    label: '油卡档案',
+    routeName: 'FuelCardArchive',
+    statusDictCode: 'fuelCardStatus'
+  })
   for (const key of ['constructor', '__proto__', 'toString', 'unknown_table'])
     assert.deepEqual(getRecordReferenceMeta(key), { label: '关联业务记录' })
 })

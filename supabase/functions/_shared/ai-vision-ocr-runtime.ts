@@ -49,6 +49,7 @@ export interface VisionOcrConfig<TInput, TResult extends VisionOcrNormalizedResu
     imageUrls: string[]
     requestedTenantId: string | null
     supabaseUrl: string
+    body: Record<string, unknown>
   }) => Promise<boolean>
   defaultPrompt: string
   expectedShape: Record<string, unknown>
@@ -228,7 +229,12 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
       }
       const body = (await req.json()) as Record<string, unknown>
       const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader } },
+        global: {
+          headers: {
+            Authorization: authHeader,
+            'x-art-tenant-scope': req.headers.get('x-art-tenant-scope') ?? ''
+          }
+        },
         auth: { autoRefreshToken: false, persistSession: false }
       })
       const requiredPermission =
@@ -341,7 +347,8 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
           userId: user.id,
           imageUrls,
           requestedTenantId: req.headers.get('x-art-tenant-scope'),
-          supabaseUrl
+          supabaseUrl,
+          body
         }))
       ) {
         return json({ code: 'forbidden', message: config.labels.forbidden }, 403)

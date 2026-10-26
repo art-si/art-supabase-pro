@@ -89,10 +89,25 @@ export function createRecordReferenceNavigation(
   )
   return {
     ...warehouseReferences,
+    tms_order: {
+      routeName: 'TmsOrderQueryDetail',
+      ...permitted('TmsOrderQuery:View'),
+      routeParams: (record) => ({ id: record.targetId })
+    },
+    vehicle_fuel_card: {
+      routeName: 'FuelCardArchive',
+      applicationCode: 'vms',
+      routePath: '/vms/vehicle-manage/fuel-card-archive',
+      ...permitted('FuelCardArchive:View')
+    },
     tms_waybill_cost: {
       routeName: 'FinanceWaybillCostDetail',
       ...permitted('FinanceWaybillCost:View'),
       routeParams: (record) => ({ id: record.targetId })
+    },
+    fms_receipt_document: {
+      routeName: 'FinanceReceipt',
+      ...permitted('FinanceReceipt:View')
     },
     fms_payable_settlement_document: {
       routeNames: ['FinancePayableApplication', 'FinancePayablePayment', 'FinancePayableRefund'],

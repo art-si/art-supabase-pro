@@ -150,6 +150,13 @@
                   </template>
 
                   <!-- 复选框组 -->
+                  <template
+                    v-if="
+                      ['checkbox', 'radio'].includes(String(item.type)) && !getSlots(item).default
+                    "
+                  >
+                    {{ getProps(item).label ?? getPlainTextLabel(item) }}
+                  </template>
                   <template v-if="item.type === 'checkboxGroup' && getOptions(item).length">
                     <component
                       :is="getProps(item).optionType === 'button' ? ElCheckboxButton : ElCheckbox"
@@ -1199,7 +1206,8 @@
 
   const getActionColSpan = (breakpoint: ResponsiveBreakpoint): number => {
     return calculateActionSpan(
-      visibleFormItems.value.map((item) => getColSpan(getItemSpan(item), breakpoint))
+      visibleFormItems.value.map((item) => getColSpan(getItemSpan(item), breakpoint)),
+      props.showReset || props.showSubmit ? getColSpan(undefined, breakpoint) : 1
     )
   }
 

@@ -53,10 +53,12 @@ checkLargest('单个 CSS 文件', cssAssets, 360 * KIB)
 checkLargest('普通页面 CSS 分包', routeCssChunks, 96 * KIB)
 // A format parser is only fetched when its renderer opens. Keep route and optional-tool
 // budgets separate so a rarely used document format does not masquerade as app startup cost.
-checkTotal('普通应用/路由 JavaScript 发布总体积', applicationChunks, 26 * MIB)
+// The expanded FMS/TMS route catalog adds business code, while provider-specific SDKs remain excluded.
+// Keep less than 0.1 MiB headroom so a synchronous heavy dependency still fails this gate.
+checkTotal('普通应用/路由 JavaScript 发布总体积', applicationChunks, 26.1 * MIB)
 checkTotal('按需能力 JavaScript gzip 传输总体积', lazyCapabilityChunks, 6 * MIB, true)
 checkTotal('JavaScript 发布总体积', javascriptAssets, 48 * MIB)
-checkTotal('JavaScript gzip 传输总体积', javascriptAssets, 14 * MIB, true)
+checkTotal('JavaScript gzip 传输总体积', javascriptAssets, 14.1 * MIB, true)
 checkTotal('普通应用/路由 CSS 发布总体积', applicationCssChunks, 3 * MIB)
 checkTotal('普通应用/路由 CSS gzip 传输总体积', applicationCssChunks, 520 * KIB, true)
 checkTotal('按需工具 CSS 总体积', lazyStyleChunks, 500 * KIB)

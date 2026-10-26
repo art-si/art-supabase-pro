@@ -198,6 +198,12 @@ begin
   perform public.fms_act_payable_settlement_secure(array[refund_id],'void','退款核销验收作废');
   perform public.fms_act_payable_settlement_secure(array[(source_document->>'id')::uuid],'cancel_payment','退款核销验收原付款资金冲回');
  end loop;
- if has_function_privilege('authenticated','app_private.apply_payable_refund_writeoff(uuid,uuid,numeric,date,uuid,text)','execute') or has_function_privilege('anon','app_private.apply_payable_refund_writeoff(uuid,uuid,numeric,date,uuid,text)','execute') then raise exception 'Private refund matching became client executable';end if;
+ if not exists(select 1 from pg_proc procedure_row join pg_namespace namespace_row on namespace_row.oid=procedure_row.pronamespace
+  where namespace_row.nspname='app_private' and procedure_row.proname='apply_payable_refund_writeoff')
+  or exists(select 1 from pg_proc procedure_row join pg_namespace namespace_row on namespace_row.oid=procedure_row.pronamespace
+   where namespace_row.nspname='app_private' and procedure_row.proname='apply_payable_refund_writeoff'
+    and(has_function_privilege('authenticated',procedure_row.oid,'EXECUTE') or has_function_privilege('anon',procedure_row.oid,'EXECUTE'))) then
+  raise exception 'Private refund matching is missing or became client executable';
+ end if;
 end $test$;
 rollback;

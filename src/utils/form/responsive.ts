@@ -97,10 +97,11 @@ export function calculateResponsiveSpan(
 }
 
 /** 操作区占用最后一行剩余空间；字段超出当前行时按完整列换行。 */
-export function calculateActionSpan(fieldSpans: readonly number[]): number {
+export function calculateActionSpan(fieldSpans: readonly number[], minimumSpan = 1): number {
   const occupiedSpan = fieldSpans.reduce((occupied, fieldSpan) => {
     return occupied + fieldSpan > 24 ? fieldSpan : occupied + fieldSpan
   }, 0)
 
-  return occupiedSpan === 0 || occupiedSpan === 24 ? 24 : 24 - occupiedSpan
+  const remainingSpan = 24 - occupiedSpan
+  return occupiedSpan === 0 || remainingSpan < minimumSpan ? 24 : remainingSpan
 }
