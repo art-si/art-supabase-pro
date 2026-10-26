@@ -48,6 +48,7 @@
 </template>
 
 <script setup lang="ts">
+  import { normalizeIdentityDisplayText } from '@/utils/identity-display'
   import { computed, ref, type CSSProperties } from 'vue'
   import ArtPickerEmpty from '@/components/core/feedback/art-picker-empty/index.vue'
   import type { ArtUserSelectOption, ArtUserSelectValue } from './types'
@@ -122,29 +123,24 @@
   })
 
   function normalizeSearchText(value: string | null | undefined): string {
-    return normalizeIdentityText(value).toLocaleLowerCase()
-  }
-
-  function normalizeIdentityText(value: string | null | undefined): string {
-    const text = String(value ?? '').trim()
-    return /^(null|undefined)$/i.test(text) ? '' : text
+    return normalizeIdentityDisplayText(value).toLocaleLowerCase()
   }
 
   function getDisplayName(option: ArtUserSelectOption): string {
     return (
-      normalizeIdentityText(option.nickName) ||
-      normalizeIdentityText(option.userName) ||
-      normalizeIdentityText(option.label) ||
-      normalizeIdentityText(option.userEmail) ||
+      normalizeIdentityDisplayText(option.nickName) ||
+      normalizeIdentityDisplayText(option.userName) ||
+      normalizeIdentityDisplayText(option.label) ||
+      normalizeIdentityDisplayText(option.userEmail) ||
       '未命名用户'
     )
   }
 
   function getSecondaryIdentity(option: ArtUserSelectOption): string {
-    const secondaryText = normalizeIdentityText(option.secondaryText)
+    const secondaryText = normalizeIdentityDisplayText(option.secondaryText)
     if (secondaryText) return secondaryText
-    const email = normalizeIdentityText(option.userEmail)
-    const departmentName = normalizeIdentityText(option.departmentName)
+    const email = normalizeIdentityDisplayText(option.userEmail)
+    const departmentName = normalizeIdentityDisplayText(option.departmentName)
     const identities = [departmentName, email === getDisplayName(option) ? '' : email].filter(
       Boolean
     )

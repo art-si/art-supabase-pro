@@ -36,6 +36,25 @@ export interface DashboardReminder {
   severity: 'danger' | 'warning'
 }
 
+export type DashboardCertificateRiskStatus = 'expired' | 'due_today' | 'due_15' | 'due_30'
+
+export interface DashboardCertificateRisk {
+  id: string
+  subjectType: 'vehicle' | 'driver'
+  subjectId: string
+  subjectLabel: string
+  certificateType: string
+  expiresOn: string
+  responsibleName: string
+  status: DashboardCertificateRiskStatus
+}
+
+export interface DashboardCertificateRiskSummary {
+  expired: number
+  dueSoon: number
+  records: DashboardCertificateRisk[]
+}
+
 export interface DashboardData {
   todayOrderCount: number
   todayFreightAmount: number
@@ -216,5 +235,45 @@ export async function fetchDashboardData(
     trend: createTrend(data.trend, trendRange),
     transitOrders: data.transitOrders.map(toDashboardOrder),
     recentOrders: data.recentOrders.map(toDashboardOrder)
+  }
+}
+
+export async function fetchDashboardCertificateRisks(): Promise<DashboardCertificateRiskSummary> {
+  const statuses: DashboardCertificateRiskStatus[] = [
+    'expired',
+    'due_today',
+    'due_15',
+    'due_30'
+  ]
+  const pages = await Promise.all(
+    statuses.map(async (status) => {
+      const { data } = await responseHandle<{
+        total: number
+        records: DashboardCertificateRisk[]
+      }>(
+        () =>
+          asDashboardQuery(
+            supabase.rpc('vms_list_certificates_secure', {
+              p_from: 0,
+              p_to: 5,
+              p_subject_type: null,
+              p_subject_id: null,
+              p_status: status,
+              p_keyword: null
+            })
+          ),
+        { breakReturn: true, errorMessage: '证件风险加载失败，请重试' }
+      )
+      if (!data) throw new Error('证件风险加载失败，请重试')
+      return { status, total: data.total, records: data.records }
+    })
+  )
+
+  return {
+    expired: pages.find((page) => page.status === 'expired')?.total ?? 0,
+    dueSoon: pages
+      .filter((page) => page.status !== 'expired')
+      .reduce((total, page) => total + page.total, 0),
+    records: pages.flatMap((page) => page.records).slice(0, 8)
   }
 }

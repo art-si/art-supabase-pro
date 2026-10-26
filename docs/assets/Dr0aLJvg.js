@@ -1,1 +1,0 @@
-import{n as e}from"./l28tKDkV.js";var t=new e({idKey:`id`,parentKey:`parentId`,childrenKey:`children`}),n=e=>{let n=t.normalizeTreeData(e),r=t.treeToList(n);return t.listToTree(r,(e,t)=>Number(e.sort??0)-Number(t.sort??0)||e.organizationName.localeCompare(t.organizationName,`zh-CN`))},r=(e,n)=>t.findNode(e,n);export{n,r as t};

@@ -5,11 +5,13 @@ import {
   type ApplicationCode
 } from '@/config/application'
 import { router } from '@/router'
+import { stringifyQuery, type LocationQueryRaw, type Router } from 'vue-router'
 
 export async function navigateToApplication(
   applicationCode: ApplicationCode,
   routePath: string,
-  query?: Record<string, string | undefined>
+  query?: LocationQueryRaw,
+  navigationRouter: Pick<Router, 'push'> = router
 ): Promise<void> {
   const { data, error } = await fetchAccessibleApplications()
   if (error) throw error
@@ -19,15 +21,12 @@ export async function navigateToApplication(
     throw new Error('当前账号没有目标应用的访问权限')
   }
 
-  const routeQuery = new URLSearchParams()
-  Object.entries(query ?? {}).forEach(([key, value]) => {
-    if (value) routeQuery.set(key, value)
-  })
+  const routeQuery = stringifyQuery(query ?? {})
 
   const normalizedPath = routePath.startsWith('/') ? routePath : `/${routePath}`
   // 开发时平台宿主已注册业务路由，直接切换即可，不依赖独立应用端口同时启动。
   if (currentApplication.code === 'platform' && import.meta.env?.DEV) {
-    await router.push({ path: normalizedPath, query: Object.fromEntries(routeQuery) })
+    await navigationRouter.push({ path: normalizedPath, query })
     return
   }
 
@@ -43,6 +42,6 @@ export async function navigateToApplication(
       ? import.meta.env.VITE_HOSTED_APPLICATION_BASE_URL
       : undefined
   )
-  target.hash = `${normalizedPath}${routeQuery.size ? `?${routeQuery.toString()}` : ''}`
+  target.hash = `${normalizedPath}${routeQuery ? `?${routeQuery}` : ''}`
   window.location.assign(target.toString())
 }

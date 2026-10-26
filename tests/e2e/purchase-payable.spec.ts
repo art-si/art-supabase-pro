@@ -51,6 +51,8 @@ for (const kind of ['estimated', 'financial'] as const) {
           amount: 100 * n,
           tax_amount: 13 * n,
           total_amount: 113 * n,
+          matched_amount: 20 * n,
+          reversed_amount: 30 * n,
           lines: [
             {
               id: `line-${n}`,
@@ -135,8 +137,37 @@ for (const kind of ['estimated', 'financial'] as const) {
             path: testInfo.outputPath(`${kind}-detail-${n}.png`),
             fullPage: true
           })
+          await drawer
+            .locator('.art-drawer__scrollbar > .el-scrollbar__wrap')
+            .evaluate((element) => {
+              element.scrollTop = element.scrollHeight
+            })
+          const metric = drawer.getByRole('cell', {
+            name: kind === 'estimated' ? '已冲回金额' : '已勾稽金额',
+            exact: true
+          })
+          await expect(metric).toBeVisible()
+          await expect(metric.locator('xpath=following-sibling::td[1]')).toHaveText(
+            `¥${((kind === 'estimated' ? 30 : 20) * n).toFixed(2)}`
+          )
+          await expect(
+            drawer.getByText(kind === 'estimated' ? '已勾稽金额' : '已冲回金额', { exact: true })
+          ).toHaveCount(0)
+          await captureBusinessEvidence(drawer, {
+            path: testInfo.outputPath(`${kind}-associations-${n}.png`)
+          })
           await page.keyboard.press('Escape')
           await expect(drawer).not.toBeVisible()
+          await page.goto(
+            `/tests/e2e/fixtures/purchase-payable.html?kind=${kind}&theme=${theme}&box=${box}&recordId=payable-${n}`,
+            { waitUntil: 'domcontentloaded' }
+          )
+          await expect(drawer).toContainText(`来源采购入库单：CGRK202610-${n}`)
+          await expect(drawer).toContainText(`项目物料${n}`)
+          await expect(drawer).not.toContainText(`项目物料${n === 1 ? 2 : 1}`)
+          await page.keyboard.press('Escape')
+          await expect(drawer).not.toBeVisible()
+          await expect(rows).toHaveCount(2)
         }
         fail = true
         await page.getByRole('button', { name: '查询', exact: true }).click()

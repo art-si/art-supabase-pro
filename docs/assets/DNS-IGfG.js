@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./DwKH1khx.js";var i=e({name:`Exception403`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{"force-denied":``,"resource-name":`目标页面`,"show-relogin":``,"viewport-centered":``}))}});export{i as default};

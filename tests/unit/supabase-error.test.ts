@@ -6,6 +6,7 @@ import {
   formatSupabaseAuthErrorMessage,
   getFriendlySupabaseErrorMessage,
   isSupabaseAccessFailure,
+  isSupabaseTransactionRejection,
   isSupabaseRequestAbortFailure,
   isSupabaseSessionFailure,
   isSupabaseUnauthorizedResponse,
@@ -18,6 +19,20 @@ class AuthApiErrorFixture extends Error {
   code = 'invalid_credentials'
   status = 400
 }
+
+test('only explicit transactional SQL rejections permit a safe selection retry', () => {
+  assert.equal(isSupabaseTransactionRejection({ code: 'P0001', status: 400 }), true)
+  assert.equal(
+    isSupabaseTransactionRejection(new Error('操作失败', { cause: { code: '40001' } })),
+    true
+  )
+  assert.equal(isSupabaseTransactionRejection({ error: { code: '23514' } }), true)
+  assert.equal(isSupabaseTransactionRejection({ status: 409 }), false)
+  assert.equal(isSupabaseTransactionRejection(new Error('Failed to fetch')), false)
+  assert.equal(isSupabaseTransactionRejection({ code: 'ECONNRESET', status: 502 }), false)
+  assert.equal(isSupabaseTransactionRejection({ code: 'PGRST202' }), false)
+  assert.equal(isSupabaseTransactionRejection({ name: 'AbortError' }), false)
+})
 
 test('converts AuthApiError class instances into a friendly login message', () => {
   const error = new AuthApiErrorFixture('Invalid login credentials')

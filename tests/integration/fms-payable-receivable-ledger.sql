@@ -1,13 +1,24 @@
 begin;
+set local jit=off;
+set local statement_timeout='8s';
 
-do $test$
+create function pg_temp.check_payable_receivable_ledger(p_stage integer) returns jsonb
+language plpgsql as $test$
 declare
  actor uuid;ordinary uuid;tenant uuid;foreign_tenant uuid;book uuid;other_book uuid;organization uuid;supplier uuid;customer uuid;candidate uuid;
  material uuid;unit_id uuid;finance_type uuid;scheme uuid;fixture_role uuid;resource_id uuid;field_id uuid;fixture_code text:='QA_APAR_'||upper(left(gen_random_uuid()::text,8));
  payable jsonb;payables jsonb:='[]';receivable uuid;receivable_line uuid;receivable_lines uuid[]:='{}';offset_id uuid;offset_ids uuid[]:='{}';application_id uuid;
  primary_identity jsonb;secondary_identity jsonb;case_number integer;blocked boolean;before_funds bigint;test_amount numeric;payment_type uuid;purpose uuid;method uuid;application jsonb;orphan_id uuid;
- query jsonb;workspace jsonb;plan jsonb;stale_plan jsonb;public_records jsonb;public_record uuid;voucher_result jsonb;voucher_id uuid;debit uuid;credit uuid;posting_rule uuid;posting_event public.fms_posting_event;visible_records integer;
+ query jsonb;workspace jsonb;plan jsonb;stale_plan jsonb;public_records jsonb;public_record uuid;voucher_result jsonb;voucher_id uuid;debit uuid;credit uuid;posting_rule uuid;posting_event public.fms_posting_event;visible_records integer;private_kernel regprocedure;
+ stage_context jsonb:=coalesce(nullif(current_setting('test.ap_ar_ledger_context',true),''),'{}')::jsonb;
+ previous_stage integer:=coalesce(nullif(current_setting('test.ap_ar_ledger_stage',true),'')::integer,0);
 begin
+ if p_stage not between 1 and 3 or previous_stage<>p_stage-1 then raise exception 'Execute AP/AR ledger stages 1, 2, 3 exactly once in order';end if;
+ if p_stage>1 then
+ select stored.actor,stored.ordinary,stored.tenant,stored.foreign_tenant,stored.book,stored.scheme,stored.fixture_role,stored.fixture_code,stored.payables,stored.receivable_lines,stored.before_funds,stored.public_records into actor,ordinary,tenant,foreign_tenant,book,scheme,fixture_role,fixture_code,payables,receivable_lines,before_funds,public_records
+ from jsonb_to_record(stage_context) as stored(actor uuid,ordinary uuid,tenant uuid,foreign_tenant uuid,book uuid,scheme uuid,fixture_role uuid,fixture_code text,payables jsonb,receivable_lines uuid[],before_funds bigint,public_records jsonb);
+ end if;
+ case p_stage when 1 then
  select auth_user_id into actor from public.sys_user where auth_user_id is not null and user_roles @>array['R_SUPER'] limit 1;
  select id into tenant from public.sys_tenant where tenant_code='qa-payable-20261022';
  select auth_user_id into ordinary from public.sys_user where tenant_id=tenant and auth_user_id is not null and status='1' and not user_roles @>array['R_SUPER'] order by id limit 1;
@@ -130,8 +141,12 @@ begin
  perform set_config('request.jwt.claim.sub',actor::text,true);
  update public.fms_account_set set is_default=false where id=book;
  update public.fms_account_set set is_default=true where id=other_book;
+ insert into public.fms_receivable_document(tenant_id,document_no,kind,status,customer_id,settlement_organization_id,business_date,amount,total_amount,created_by_auth_user_id)
+ values(tenant,fixture_code||'_OTHER_BOOK','financial','approved',customer,organization,app_private.payable_business_date(),1,1,ordinary) returning id into receivable;
+ insert into public.fms_receivable_line(tenant_id,document_id,line_no,basis,material_description,quantity,amount,total_amount,tax_rate)
+ values(tenant,receivable,10,'amount','实际第二账套应收来源',1,1,1,0) returning id into receivable_line;
  blocked:=false;begin
-  perform app_private.apply_payable_receivable_writeoff((payables->1->>'id')::uuid,receivable_lines[2],1,app_private.payable_business_date(),scheme,'跨账套拒绝');
+  perform app_private.apply_payable_receivable_writeoff((payables->1->>'id')::uuid,receivable_line,1,app_private.payable_business_date(),scheme,'实际来源跨账套拒绝');
  exception when check_violation then blocked:=true;end;
  if not blocked then raise exception 'Cross-book offset was allowed';end if;
  select document_id into receivable from public.fms_receivable_line where id=receivable_lines[1];
@@ -174,9 +189,13 @@ begin
  end loop;
  set constraints payable_receivable_record_consistency,payable_receivable_application_consistency immediate;
  if(select count(*) from public.fms_fund_ledger_entry)<>before_funds then raise exception 'Offset or reversal created cash movement';end if;
- if has_function_privilege('authenticated','app_private.apply_payable_receivable_writeoff(uuid,uuid,numeric,date,uuid,text,boolean)','execute')
+ private_kernel:=coalesce(to_regprocedure('app_private.apply_payable_receivable_writeoff(uuid,uuid,numeric,date,uuid,text,boolean,numeric)'),to_regprocedure('app_private.apply_payable_receivable_writeoff(uuid,uuid,numeric,date,uuid,text,boolean)'));
+ if private_kernel is null then raise exception 'Private offset kernel is missing';end if;
+ if has_function_privilege('authenticated',private_kernel,'execute')
   or has_function_privilege('anon','app_private.payable_counterparty_identity(uuid,text,uuid)','execute') then raise exception 'Private offset functions exposed';end if;
  set constraints payable_receivable_record_consistency,payable_receivable_application_consistency deferred;
+
+ when 2 then
  insert into public.sys_role_menu(role_id,menu_id,tenant_id) select fixture_role,id,tenant from public.sys_menu where name in('FinancePayableWriteoff:AutoWriteoff','FinancePayableWriteoff:Voucher','FinanceVoucherCenter:View','FinanceVoucherCenter:Void') on conflict do nothing;
  select jsonb_build_object('relation','payable_receivable','document_ids',
   jsonb_build_array(payables->0->>'id',payables->1->>'id')||jsonb_agg(document_id order by line_no,id)) into query from public.fms_receivable_line where id=any(receivable_lines);
@@ -219,6 +238,8 @@ begin
  select count(*) into visible_records from public.fms_payable_writeoff_record where id in(select value::uuid from jsonb_array_elements_text(public_records));
  reset role;
  if visible_records<>3 then raise exception 'Authorized direct read lost offset records with no payment line';end if;
+
+ when 3 then
  perform set_config('request.jwt.claim.sub',actor::text,true);perform set_config('request.headers',jsonb_build_object('x-art-tenant-scope',tenant)::text,true);
  update public.fms_posting_rule set is_enabled=false where account_set_id=book and event_code='ap_receivable_offset_approved';
  perform set_config('request.jwt.claim.sub',ordinary::text,true);perform set_config('request.headers',jsonb_build_object('x-art-tenant-scope',foreign_tenant)::text,true);
@@ -265,6 +286,14 @@ begin
   or(app_private.purchase_payable_json((payables->1->>'id')::uuid)->>'unpaid_amount')::numeric<>240
   or app_private.ar_line_balance(receivable_lines[1])<>180 or app_private.ar_line_balance(receivable_lines[2])<>300
   or(select count(*) from public.fms_fund_ledger_entry)<>before_funds then raise exception 'Public automatic or voucher flow left incorrect balances or fund movement';end if;
+ end case;
+ select to_jsonb(snapshot) into stage_context from(select actor as actor,ordinary as ordinary,tenant as tenant,foreign_tenant as foreign_tenant,book as book,scheme as scheme,fixture_role as fixture_role,fixture_code as fixture_code,payables as payables,receivable_lines as receivable_lines,before_funds as before_funds,public_records as public_records) snapshot;
+ perform set_config('test.ap_ar_ledger_context',stage_context::text,true);
+ perform set_config('test.ap_ar_ledger_stage',p_stage::text,true);
+ return jsonb_build_object('stage',p_stage,'status','passed');
 end $test$;
 
+select pg_temp.check_payable_receivable_ledger(1);
+select pg_temp.check_payable_receivable_ledger(2);
+select pg_temp.check_payable_receivable_ledger(3);
 rollback;

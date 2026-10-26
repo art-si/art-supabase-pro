@@ -119,6 +119,34 @@ for (const scenario of [
         })
       }
     )
+    await page.route(
+      `**/rest/v1/rpc/smis_list_${scenario.kind}_personal_standard_items_secure`,
+      (route) =>
+        route.fulfill({
+          json: [
+            {
+              id: 'item-test',
+              sourceStandardId: 'source-standard-test',
+              sourceStandardNo: 'STD-TEST',
+              sourceStandardName: '测试发放标准',
+              materialId: 'material-test',
+              materialCode: 'MAT-TEST',
+              materialName: '测试物料',
+              categoryName: '测试分类',
+              specificationModel: 'TEST-01',
+              basicUnit: '件',
+              imageUrls: [],
+              quotaQuantity: 2,
+              issuanceCycle: 'month',
+              issuanceFrequency: 3,
+              status: 'enabled',
+              initialIssueDate: '2026-10-01',
+              lastIssueDate: null,
+              nextIssueDate: '2027-01-01'
+            }
+          ]
+        })
+    )
     await page.goto(`#${scenario.path}`)
     await expect(page.locator('html')).toHaveAttribute(
       'data-box-mode',
@@ -156,6 +184,18 @@ for (const scenario of [
       path: testInfo.outputPath('personal-standard-populated.png'),
       animations: 'disabled'
     })
+    await page.getByRole('button', { name: '查看明细', exact: true }).click()
+    const detail = page.locator(`.${scenario.kind}-detail`)
+    await expect(detail).toBeVisible()
+    await expect(detail).toContainText('测试物料')
+    await expect(detail.locator(`.${scenario.kind}-detail__identity`)).toHaveCSS('display', 'grid')
+    await expect(detail.locator(`.${scenario.kind}-detail__item`)).toHaveCSS('display', 'grid')
+    await page.screenshot({
+      path: testInfo.outputPath('personal-standard-detail.png'),
+      animations: 'disabled'
+    })
+    await page.keyboard.press('Escape')
+    await expect(detail).toBeHidden()
     await assertTableFocusContract(page, testInfo)
     const keyword = page.getByPlaceholder('姓名、工号或岗位', { exact: true })
     const search = page.getByRole('button', { name: '查询', exact: true })

@@ -12,6 +12,7 @@ import { useMenuStore } from '@/store/modules/menu'
 import { useAppMode } from '@/hooks/core/useAppMode'
 import {
   fetchAccessibleApplications,
+  fetchCurrentUserButtonPermissions,
   fetchCurrentUserMenus
 } from '@/api/system-manage/application-access'
 import { asyncRoutes } from '../routes/async-routes'
@@ -67,10 +68,16 @@ export class MenuProcessor {
    * 处理后端控制模式的菜单
    */
   private async processBackendMenu(signal?: AbortSignal): Promise<AppRouteRecord[]> {
+    const menuStore = useMenuStore()
+    menuStore.setButtonList([])
     const isPlatform = currentApplication.code === 'platform'
-    const [accessibleApplicationsResult, menuResponse] = await Promise.all([
+    const [accessibleApplicationsResult, menuResponse, buttonResponse] = await Promise.all([
       isPlatform ? fetchAccessibleApplications(signal) : Promise.resolve(null),
-      fetchCurrentUserMenus(isPlatform ? [...APPLICATION_CODES] : [currentApplication.code], signal)
+      fetchCurrentUserMenus(
+        isPlatform ? [...APPLICATION_CODES] : [currentApplication.code],
+        signal
+      ),
+      fetchCurrentUserButtonPermissions(signal)
     ])
     if (accessibleApplicationsResult?.error) {
       throw new Error('可访问应用范围加载失败', {
@@ -85,15 +92,16 @@ export class MenuProcessor {
     if (menuResponse.error) {
       throw new Error('菜单权限加载失败', { cause: menuResponse.error })
     }
+    if (buttonResponse.error || !buttonResponse.data) {
+      throw new Error('按钮权限加载失败', { cause: buttonResponse.error })
+    }
 
-    const flat = applicationCodes.flatMap((code) => menuResponse.data?.[code] ?? [])
     const tree = applicationCodes.flatMap((code) =>
       buildApplicationMenuTree(menuResponse.data?.[code] ?? [])
     )
 
     // 保存按钮数据到 store
-    const menuStore = useMenuStore()
-    menuStore.setButtonList(flat)
+    menuStore.setButtonList(buttonResponse.data)
     return this.filterEmptyMenus(tree)
   }
 

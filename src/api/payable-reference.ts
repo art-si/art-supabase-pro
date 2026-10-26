@@ -1,5 +1,11 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 export type PayableReferenceKind = 'purpose' | 'method' | 'scheme'
+export type PayableWriteoffRelation =
+  | 'payable_payment'
+  | 'payment_refund'
+  | 'payable_receivable'
+  | 'payable_red_blue'
+  | 'payable_refund'
 export type PayableMatchField =
   | 'supplier_id'
   | 'counterparty_id'
@@ -19,6 +25,16 @@ export interface PayableMatchRule {
   operator: PayableMatchOperator
   emptyMatches: boolean
 }
+export interface PayableRelationRuleConfig {
+  relation: PayableWriteoffRelation
+  rules: PayableMatchRule[]
+  description?: string
+}
+export interface PayableSchemeConfiguration {
+  configurationVersion: number
+  relations: Array<{ label: string; value: PayableWriteoffRelation }>
+  schemes: PayableReference[]
+}
 export interface PayableReference {
   id?: string
   tenantId?: string
@@ -35,6 +51,8 @@ export interface PayableReference {
   cashMethod?: string
   automatic?: boolean
   rules?: PayableMatchRule[]
+  relationRules?: PayableRelationRuleConfig[] | null
+  version?: number
   remark?: string
 }
 const { supabase, responseHandle, keysToSnakeDeep } = useSupabase()
@@ -67,6 +85,26 @@ export async function fetchPayableReferences(
   if (!Array.isArray(data)) throw new Error('付款配置加载失败，请重试')
   return data
 }
+export async function fetchPayableSchemeConfiguration(): Promise<PayableSchemeConfiguration> {
+  const result = await supabase.rpc('fms_payable_scheme_configuration_secure', {
+    p_client_version: 2
+  })
+  if (result.error?.code === 'PGRST202')
+    return {
+      configurationVersion: 0,
+      relations: [],
+      schemes: await fetchPayableReferences('scheme')
+    }
+  const { data } = await responseHandle<PayableSchemeConfiguration>(async () => result, options)
+  if (
+    !data ||
+    data.configurationVersion !== 2 ||
+    !Array.isArray(data.relations) ||
+    !Array.isArray(data.schemes)
+  )
+    throw new Error('核销配置资料加载失败，请刷新后重试')
+  return data
+}
 export async function savePayableReference(
   kind: PayableReferenceKind,
   record: PayableReference
@@ -75,7 +113,9 @@ export async function savePayableReference(
     () =>
       supabase.rpc('fms_save_payable_reference_secure', {
         p_kind: kind,
-        p_record: keysToSnakeDeep(record)
+        p_record: keysToSnakeDeep(
+          kind === 'scheme' ? { ...record, configurationVersion: 2 } : record
+        )
       }),
     options
   )

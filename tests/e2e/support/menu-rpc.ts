@@ -5,6 +5,13 @@ export async function mockApplicationMenus(
   page: Page,
   menusByApplication: Record<string, readonly unknown[]>
 ): Promise<void> {
+  const buttonPermissions = Object.values(menusByApplication)
+    .flat()
+    .filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === 'object' && !Array.isArray(item) && item.type === 'button'
+    )
+
   await page.route('**/rest/v1/rpc/get_menus_for_current_applications', async (route) => {
     const payload: unknown = route.request().postDataJSON()
     const requestedCodes =
@@ -19,4 +26,7 @@ export async function mockApplicationMenus(
       json: Object.fromEntries(codes.map((code) => [code, menusByApplication[code] ?? []]))
     })
   })
+  await page.route('**/rest/v1/rpc/get_current_user_button_permissions', (route) =>
+    route.fulfill({ json: buttonPermissions })
+  )
 }

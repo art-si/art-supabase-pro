@@ -2,6 +2,9 @@ export const FMS_ROOT_PATH = '/fms'
 export const TMS_ROOT_PATH = '/tms'
 export const VMS_ROOT_PATH = '/vms'
 export const WMS_FINISHED_INBOUND_PATH = '/wms/production-inout/finished-inbound'
+export const WMS_PURCHASE_INBOUND_PATH = '/wms/inbound-business/purchase-inbound'
+export const SCM_PURCHASE_CONTRACT_PATH = '/scm/purchase-management/purchase-contract'
+export const SCM_PURCHASE_ORDER_PATH = '/scm/purchase-management/purchase-order'
 
 const LEGACY_FMS_ROOT_PATH = '/finance'
 const LEGACY_TMS_ROOT_PATH = '/tms-transportation'
@@ -39,6 +42,7 @@ export const financePaths = {
   payablePayment: `${FMS_ROOT_PATH}/accounts-payable/payment`,
   payableRefund: `${FMS_ROOT_PATH}/accounts-payable/payment-refund`,
   payableWriteoff: `${FMS_ROOT_PATH}/accounts-payable/writeoff`,
+  payableReport: `${FMS_ROOT_PATH}/accounts-payable/payable-report`,
   waybillProfit: `${FMS_ROOT_PATH}/settlement/waybill-profit`,
   expenseItem: `${FMS_ROOT_PATH}/settlement/expense-item`,
   assetPayable: `${FMS_ROOT_PATH}/settlement/asset-payable`,

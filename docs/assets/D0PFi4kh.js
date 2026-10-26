@@ -1,1 +1,0 @@
-import{It as e,Jn as t,Un as n,an as r,d as i,ln as a,zn as o}from"./B2BaADVT.js";var s=n(new Map);function c(e){let n=i(),c=Symbol(`assistant-page`),l=n.path,u=()=>{s.set(c,{path:l,read:()=>t(e)})};u(),r(u),a(()=>s.delete(c)),o(()=>s.delete(c))}function l(){let t=i();return e(()=>[...s.values()].filter(e=>e.path===t.path).map(e=>e.read()))}export{l as n,c as t};

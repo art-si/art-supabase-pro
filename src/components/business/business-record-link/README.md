@@ -14,5 +14,6 @@ Compact business-record navigation. It renders a record label as a router link, 
 - Use `to` for navigable records and `interactive` plus `@click` for local detail workflows.
 - Omit both for a static table identity cell.
 - Long labels and descriptions truncate with their complete value available through `title`.
+- Custom action or permission hints retain the complete record label in the title. Titles already containing the label are preserved without duplication.
 - Link foregrounds mix the current accent with the theme's primary text token so compact labels remain readable on their tonal surfaces in light and dark themes.
 - Use `BusinessTableIdentityCell` when the record needs an icon-led table identity treatment.

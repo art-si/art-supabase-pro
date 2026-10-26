@@ -1,1 +1,0 @@
-import{D as e,Hn as t,ln as n,sn as r}from"./B2BaADVT.js";function i(){let i=t(!1),a=e=>{i.value=e};return e(document,`keydown`,e=>{e.key===`Escape`&&i.value&&a(!1)}),n(()=>a(!1)),r(()=>a(!1)),{focusMode:i,setFocusMode:a}}export{i as t};

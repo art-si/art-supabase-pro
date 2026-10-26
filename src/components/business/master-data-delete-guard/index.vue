@@ -161,7 +161,8 @@
                     (group.meta.resolveRouteName
                       ? group.meta.routeNames?.some((name) => router.hasRoute(name))
                       : group.meta.routeName
-                        ? router.hasRoute(group.meta.routeName)
+                        ? router.hasRoute(group.meta.routeName) ||
+                          (group.meta.applicationCode && group.meta.routePath)
                         : group.meta.routePath)
                   "
                   link
@@ -224,7 +225,7 @@
 </template>
 
 <script setup lang="ts">
-  import type { RouteLocationRaw } from 'vue-router'
+  import type { LocationQueryRaw, RouteLocationRaw } from 'vue-router'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
   import { formatSensitiveNumberWithAffix } from '@/utils/field-permission'
   import { formatReferenceStatus } from './record-meta'
@@ -235,6 +236,8 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { financeRouteNames } from '@/router/business-paths'
+  import type { ApplicationCode } from '@/config/application'
+  import { navigateToApplication } from '@/utils/application-navigation'
   import {
     cleanupMasterDataDeleteDependencies,
     fetchMasterDataDeleteDependencies,
@@ -260,14 +263,13 @@
     description: string
     actionLabel: string
     routeName?: string
+    applicationCode?: ApplicationCode
     statusDictCode?: string
     routeParams?: (
       record: MasterDataDeleteDependencyDetail
     ) => Record<string, string> | null | Promise<Record<string, string> | null>
     routePath?: string
-    routeQuery?:
-      | Record<string, string>
-      | ((record: MasterDataDeleteDependencyDetail) => Record<string, string>)
+    routeQuery?: LocationQueryRaw | ((record: MasterDataDeleteDependencyDetail) => LocationQueryRaw)
     routeNames?: string[]
     canNavigate?: () => boolean
     resolveRouteName?: (record: MasterDataDeleteDependencyDetail) => Promise<string | null>
@@ -360,6 +362,39 @@
     address_waybill: createWaybillMeta('地址关联运单', 10),
     vehicle_waybill: createWaybillMeta('车辆关联运单', 10),
     vehicle_fixed_asset: createFinanceMeta('车辆固定资产', '项', 'FinanceFixedAsset', 15),
+    vehicle_certificate: {
+      label: '车辆或司机证件',
+      unit: '份',
+      description: '证件属于合规历史，请先核对关联证件，再处理车辆或司机档案。',
+      actionLabel: '查看证件',
+      routePath: '/vms/certificate-center',
+      routeQuery: (record) => ({
+        subjectType: currentOptions.value?.resourceType === 'driver' ? 'driver' : 'vehicle',
+        subjectId: record.resourceId
+      }),
+      canNavigate: () => router.hasRoute('CertificateCenter'),
+      order: 18
+    },
+    tms_driver_commission_rule: {
+      label: '司机提成规则',
+      unit: '条',
+      description: '提成规则需要保留版本和结算依据，请先在司机档案中核对规则。',
+      actionLabel: '查看提成规则',
+      routeName: 'TmsDriver',
+      routeQuery: (record) => ({ driverId: record.resourceId, commissionRuleId: record.recordId }),
+      canNavigate: () => router.hasRoute('TmsDriver'),
+      order: 20
+    },
+    tms_driver_invitation: {
+      label: '司机邀请记录',
+      unit: '条',
+      description: '已关联司机的邀请记录属于身份关联历史，请先核对后再处理司机档案。',
+      actionLabel: '查看邀请记录',
+      routeName: 'TmsDriver',
+      routeQuery: (record) => ({ driverId: record.resourceId, invitationId: record.recordId }),
+      canNavigate: () => router.hasRoute('TmsDriver'),
+      order: 21
+    },
     carrier_statement: createFinanceMeta(
       '承运商对账单',
       '张',
@@ -866,6 +901,14 @@
       resolvingDependency.value = true
       try {
         const name = meta.resolveRouteName ? await meta.resolveRouteName(record) : meta.routeName
+        if ((!name || !router.hasRoute(name)) && meta.applicationCode && meta.routePath) {
+          await dialogRef.value?.handleClose(true)
+          await navigateToApplication(meta.applicationCode, meta.routePath, {
+            ...query,
+            ...(typeof meta.routeQuery === 'function' ? meta.routeQuery(record) : meta.routeQuery)
+          })
+          return
+        }
         if (!name || !router.hasRoute(name)) {
           ElMessage.error('关联记录已不存在或当前账号无权查看，请重新检查关联')
           return

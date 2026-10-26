@@ -1,13 +1,15 @@
 import {
   onBeforeUnmount,
   onMounted,
+  nextTick,
   ref,
   toValue,
   watch,
   type MaybeRefOrGetter,
   type Ref
 } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
+import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
 
 /** Open route-linked detail in cached pages while retaining failed links for retry. */
 export function useRouteDocumentDrawer<T>(options: {
@@ -26,6 +28,24 @@ export function useRouteDocumentDrawer<T>(options: {
   const queryKey = options.queryKey ?? 'documentId'
   const loading = ref(false)
   const error = ref(false)
+  let internalQueryUpdate: { version: number; fullPath: string } | undefined
+  async function replaceOwnQuery(
+    query: LocationQueryRaw,
+    requestVersion: number
+  ): Promise<string | undefined> {
+    const destination = { path: route.path, query, hash: route.hash }
+    const update = { version: requestVersion, fullPath: router.resolve(destination).fullPath }
+    internalQueryUpdate = update
+    try {
+      await router.replace(destination)
+      await nextTick()
+      if (requestVersion !== version) return
+      if (route.fullPath !== update.fullPath) throw new Error('关联单据地址未更新')
+      return update.fullPath
+    } finally {
+      if (internalQueryUpdate === update) internalQueryUpdate = undefined
+    }
+  }
   async function openLinkedDocument(): Promise<void> {
     const requestVersion = ++version
     const documentId = route.query[queryKey]
@@ -38,8 +58,11 @@ export function useRouteDocumentDrawer<T>(options: {
     )
       return
     loading.value = true
+    const assertScope = createTenantScopeReadGuard()
+    let cleanedFullPath: string | undefined
     try {
       const document = await options.fetchDocument(documentId)
+      assertScope()
       if (
         requestVersion !== version ||
         route.name !== toValue(options.routeName) ||
@@ -47,15 +70,21 @@ export function useRouteDocumentDrawer<T>(options: {
         !options.canOpen()
       )
         return
-      await options.openDocument(document)
+      if (options.clearQueryOnOpen !== false) {
+        cleanedFullPath = await replaceOwnQuery(
+          { ...route.query, [queryKey]: undefined },
+          requestVersion
+        )
+        if (!cleanedFullPath) return
+        assertScope()
+      }
       if (
-        options.clearQueryOnOpen !== false &&
-        requestVersion === version &&
-        route.name === toValue(options.routeName) &&
-        route.query[queryKey] === documentId &&
-        options.canOpen()
+        requestVersion !== version ||
+        route.name !== toValue(options.routeName) ||
+        !options.canOpen()
       )
-        await router.replace({ path: route.path, query: { ...route.query, [queryKey]: undefined } })
+        return
+      await options.openDocument(document)
       if (
         route.name === toValue(options.routeName) &&
         options.canOpen() &&
@@ -63,6 +92,22 @@ export function useRouteDocumentDrawer<T>(options: {
       )
         await options.onOpened?.()
     } catch {
+      if (requestVersion !== version || route.name !== toValue(options.routeName)) return
+      if (
+        cleanedFullPath &&
+        route.fullPath === cleanedFullPath &&
+        route.query[queryKey] === undefined
+      ) {
+        try {
+          await replaceOwnQuery({ ...route.query, [queryKey]: documentId }, requestVersion)
+        } catch {
+          if (requestVersion === version) {
+            error.value = true
+            options.onError?.()
+          }
+          return
+        }
+      }
       if (
         requestVersion === version &&
         route.name === toValue(options.routeName) &&
@@ -76,9 +121,19 @@ export function useRouteDocumentDrawer<T>(options: {
     }
   }
   onMounted(() => {
-    watch(() => [route.name, route.query[queryKey], options.canOpen()], openLinkedDocument, {
-      flush: 'post'
-    })
+    watch(
+      () => [route.name, route.query[queryKey], options.canOpen()],
+      () => {
+        if (
+          internalQueryUpdate?.version === version &&
+          internalQueryUpdate.fullPath === route.fullPath &&
+          options.canOpen()
+        )
+          return
+        void openLinkedDocument()
+      },
+      { flush: 'post' }
+    )
     void openLinkedDocument()
   })
   onBeforeUnmount(() => {

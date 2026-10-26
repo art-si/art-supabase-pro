@@ -1,1 +1,0 @@
-import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./CexjCnuZ.js";var i=e({name:`SmisWorkCategory`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{"catalog-type":`work_category`}))}});export{i as default};

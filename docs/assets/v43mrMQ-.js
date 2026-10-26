@@ -1,1 +1,0 @@
-import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./B7RcAS0y.js";var i=e({name:`MdmSettlementMethod`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`method`,permissions:{View:`MdmSettlementMethod:View`,Add:`MdmSettlementMethod:Add`,Edit:`MdmSettlementMethod:Edit`,Delete:`MdmSettlementMethod:Delete`}}))}});export{i as default};

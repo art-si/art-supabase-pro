@@ -1,0 +1,1 @@
+import{Vt as e,hn as t,vn as n}from"./D1G0yLle.js";import{t as r}from"./B8BmMbpX.js";var i={},a={class:`pmis-detail-drawer-sections grid gap-4 content-start min-w-0`};function o(r,i){return t(),e(`div`,a,[n(r.$slots,`default`)])}var s=r(i,[[`render`,o]]);export{s as t};

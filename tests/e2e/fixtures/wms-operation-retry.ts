@@ -628,6 +628,22 @@ if (new URLSearchParams(location.search).get('importPermission') === 'allow') {
 }
 useTenantScopeStore(store).selectedTenantId = 'tenant-test'
 useUserStore(store).setDictMap({
+  wmsFinishedInboundMode: [
+    {
+      name: '入库模式',
+      code: 'wmsFinishedInboundMode',
+      label: '按工单汇总',
+      value: 'order',
+      status: '1'
+    },
+    {
+      name: '入库模式',
+      code: 'wmsFinishedInboundMode',
+      label: '按排包明细',
+      value: 'pack',
+      status: '1'
+    }
+  ],
   wmsCountStockType: [
     { name: '正常库存', code: 'wmsCountStockType', label: '', value: 'normal', status: '1' }
   ],

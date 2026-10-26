@@ -1,24 +1,19 @@
 <template>
   <div class="business-record-link" :class="{ 'is-compact': compact }">
     <div class="business-record-link__primary">
-      <RouterLink
-        v-if="to"
-        class="business-record-link__control"
-        :to="to"
-        :title="title || `查看${label}详情`"
-      >
+      <RouterLink v-if="to" class="business-record-link__control" :to="to" :title="recordTitle">
         <span class="min-w-0 truncate">{{ label }}</span>
       </RouterLink>
       <button
         v-else-if="interactive"
         type="button"
         class="business-record-link__control"
-        :title="title || `查看${label}详情`"
+        :title="recordTitle"
         @click="emit('click')"
       >
         <span class="min-w-0 truncate">{{ label }}</span>
       </button>
-      <strong v-else class="business-record-link__static" :title="title || label">
+      <strong v-else class="business-record-link__static" :title="recordTitle">
         <span class="min-w-0 truncate">{{ label }}</span>
       </strong>
       <span v-if="meta" class="business-record-link__meta" :title="meta">{{ meta }}</span>
@@ -32,7 +27,7 @@
 
   defineOptions({ name: 'BusinessRecordLink' })
 
-  withDefaults(
+  const props = withDefaults(
     defineProps<{
       label: string
       meta?: string
@@ -51,6 +46,12 @@
       compact: false
     }
   )
+
+  const recordTitle = computed(() => {
+    const title =
+      props.title || (props.to || props.interactive ? `查看${props.label}详情` : props.label)
+    return title.includes(props.label) ? title : `${props.label} · ${title}`
+  })
 
   const emit = defineEmits<{ click: [] }>()
 </script>

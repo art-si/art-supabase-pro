@@ -110,6 +110,7 @@ export async function createModuleViteConfig({
     publicDir: path.join(platformRoot, 'public'),
     define: {
       __APP_VERSION__: JSON.stringify(env.VITE_VERSION || '1.0.0'),
+      __CLOUDBASE_BUILD__: JSON.stringify(false),
       ...exposedEnv
     },
     server: {

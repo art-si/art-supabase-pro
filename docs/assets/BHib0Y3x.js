@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./CUslBbAO.js";var i=e({name:`ScmSalesQuotation`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{kind:`sales_quotation`}))}});export{i as default};

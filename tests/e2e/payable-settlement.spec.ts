@@ -1162,6 +1162,81 @@ test('付款申请明细新增复制删除与多往来保存', async ({ page }, 
   expect(savedLines.map((row) => row.supplier_id)).toEqual(['supplier-2', 'supplier-1'])
   expect(savedLines.every((row) => row.amount === 100)).toBe(true)
 })
+
+test('两张已确认保证金付款下推转货款且不复用退款接口', async ({ page }, info) => {
+  const sources = [1, 2].map((index) => ({
+    ...makeDocument(index, 'payment'),
+    status: 'confirmed',
+    document_no: `BZJ-202610-00${index}`,
+    document_type_name: '保证金付款',
+    payment_status: 'full',
+    reason: '采购履约保证金',
+    lines: [
+      {
+        ...makeLine(index),
+        purpose_name: '采购保证金',
+        purpose_type: 'guarantee',
+        guarantee_converted_amount: 0,
+        guarantee_available_amount: index * 100
+      }
+    ]
+  }))
+  const target = {
+    ...makeDocument(9, 'payment'),
+    document_no: 'FK-202610-099',
+    reason: '保证金转货款：BZJ-202610-001',
+    lines: [
+      {
+        ...makeLine(1),
+        purpose_name: '采购付款',
+        purpose_type: 'purchase',
+        guarantee_payment_line_id: sources[0].lines[0].id,
+        guarantee_payment_document_no: sources[0].document_no,
+        source_document_no: sources[0].document_no,
+        source_document_kind: 'payable_payment'
+      }
+    ]
+  }
+  const requests: unknown[] = []
+  await page.route('**/rest/v1/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1)
+    const body = route.request().postDataJSON() || {}
+    if (name === 'fms_payable_settlement_list_secure') {
+      const id = body.p_query?.id
+      const data = id === target.id ? [target] : sources
+      return route.fulfill({ json: { data, total: data.length } })
+    }
+    if (name === 'fms_payable_settlement_options_secure')
+      return route.fulfill({ json: optionsFor('payment') })
+    if (name === 'fms_convert_guarantee_to_purchase_payment_secure') {
+      requests.push(body)
+      return route.fulfill({ json: target })
+    }
+    if (name === 'mdm_organization') return route.fulfill({ json: [] })
+    return route.fulfill({ json: [] })
+  })
+  await page.goto(
+    '/tests/e2e/fixtures/purchase-payable.html?kind=payment&permissions=FinancePayablePayment:View,FinancePayablePayment:Add,FinancePayablePayment:GuaranteeConvert',
+    { waitUntil: 'domcontentloaded' }
+  )
+  await expect(page.getByRole('button', { name: '查询', exact: true })).toBeEnabled()
+  const rows = page.locator('.art-table-query .el-table__body-wrapper tbody tr')
+  await expect(rows).toHaveCount(2)
+  await rows.first().locator('.el-checkbox').first().click()
+  await page.getByRole('button', { name: '下推', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: '付款退款单', exact: true })).toHaveCount(0)
+  await page.getByRole('menuitem', { name: '保证金转货款', exact: true }).click()
+  const targetRow = page
+    .locator('.art-table-query .el-table__body-wrapper tbody tr')
+    .filter({ hasText: target.document_no })
+  await expect(targetRow).toBeVisible()
+  await targetRow.getByRole('button', { name: '查看', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '查看付款单', exact: true })).toContainText(
+    'BZJ-202610-001'
+  )
+  expect(requests).toEqual([{ p_id: sources[0].id }])
+  await captureBusinessEvidence(page, { path: info.outputPath('guarantee-to-purchase.png') })
+})
 test('付款申请删除预检及并发引用拒绝后重新检查', async ({ page }) => {
   let documents = [makeDocument(1, 'application'), makeDocument(2, 'application')]
   let concurrentReference = false

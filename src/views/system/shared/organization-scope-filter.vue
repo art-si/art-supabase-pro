@@ -94,7 +94,7 @@
                 :class="`is-${node.organizationType}`"
                 aria-hidden="true"
               >
-                <ArtSvgIcon :icon="getOrganizationIcon(node.organizationType)" />
+                <ArtSvgIcon :icon="getOrganizationTypeIcon(node.organizationType)" />
               </span>
               <span class="user-organization-filter__node-copy">
                 <strong :title="node.organizationName">{{ node.organizationName }}</strong>
@@ -163,6 +163,7 @@
 </template>
 
 <script setup lang="ts">
+  import { getOrganizationTypeIcon } from '@/utils/organization-display'
   import type { ElTree, TreeNodeData } from 'element-plus'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
@@ -293,16 +294,6 @@
       : [selectedNode.value]
     return organizations.reduce((total, item) => total + (item.scopeCount ?? 0), 0)
   })
-
-  const getOrganizationIcon = (type: Api.SystemManage.OrganizationType): string => {
-    const iconMap: Record<Api.SystemManage.OrganizationType, string> = {
-      company: 'ri:building-4-line',
-      division: 'ri:git-branch-line',
-      department: 'ri:team-line',
-      team: 'ri:group-2-line'
-    }
-    return iconMap[type]
-  }
 
   const getOrganizationMeta = (organization: Organization): string => {
     const tenantName = props.globalScope ? organization.tenant?.tenantName : undefined

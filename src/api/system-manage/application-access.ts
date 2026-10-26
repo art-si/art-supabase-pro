@@ -48,6 +48,23 @@ export async function fetchCurrentUserMenus(
   return { ...result, data }
 }
 
+export async function fetchCurrentUserButtonPermissions(signal?: AbortSignal) {
+  const query = supabase.rpc('get_current_user_button_permissions')
+  const result = await responseHandle<unknown>(() => (signal ? query.abortSignal(signal) : query), {
+    showMessage: false
+  })
+  if (result.error) return { ...result, data: null }
+  if (
+    !Array.isArray(result.data) ||
+    !result.data.every(
+      (row: unknown): row is AuthorizedMenuRow => isAuthorizedMenuRow(row) && row.type === 'button'
+    )
+  )
+    throw new Error('按钮权限数据无效，请重新登录后重试')
+  const data: AppRouteRecord[] = result.data.map((row) => ({ ...row, path: row.path ?? '' }))
+  return { ...result, data }
+}
+
 export interface AccessibleApplication {
   code: ApplicationCode
   name: string

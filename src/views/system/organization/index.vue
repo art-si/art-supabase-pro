@@ -51,6 +51,7 @@
 </template>
 
 <script setup lang="ts">
+  import { getOrganizationTypeIcon } from '@/utils/organization-display'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useLazyComponent } from '@/hooks/core/useLazyComponent'
   import type { ColumnOption } from '@/types'
@@ -231,16 +232,6 @@
     }
   }
 
-  const getOrganizationIcon = (type: Api.SystemManage.OrganizationType): string => {
-    const iconMap: Record<Api.SystemManage.OrganizationType, string> = {
-      company: 'ri:building-4-line',
-      division: 'ri:git-branch-line',
-      department: 'ri:team-line',
-      team: 'ri:group-2-line'
-    }
-    return iconMap[type]
-  }
-
   const getMenuCoverage = (row: Organization): number => {
     if (typeof row.menuCount === 'number') return row.menuCount
 
@@ -277,7 +268,7 @@
               class: ['organization-identity-cell__icon', `is-${row.organizationType}`],
               'aria-hidden': 'true'
             },
-            [h(ArtSvgIcon, { icon: getOrganizationIcon(row.organizationType) })]
+            [h(ArtSvgIcon, { icon: getOrganizationTypeIcon(row.organizationType) })]
           ),
           h('div', { class: 'organization-identity-cell__copy' }, [
             h('div', { class: 'organization-identity-cell__heading' }, [

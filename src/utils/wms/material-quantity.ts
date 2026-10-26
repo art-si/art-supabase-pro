@@ -25,6 +25,16 @@ function baseUnitsPerUnit(material: WmsMaterialUnits, unitId: string): Decimal |
   return new UnitDecimal(conversion.baseFactor).dividedBy(conversion.sourceFactor)
 }
 
+/** Factor for display calculations; invalid or unrepresentable conversions stay unavailable. */
+export function getWmsMaterialUnitFactor(
+  material: WmsMaterialUnits | null | undefined,
+  unitId: string | null | undefined
+): number | null {
+  if (!material || !unitId) return null
+  const factor = baseUnitsPerUnit(material, unitId)?.toNumber()
+  return factor !== undefined && Number.isFinite(factor) && factor > 0 ? factor : null
+}
+
 function roundedMaterialQuantity(value: Decimal): number | null {
   const converted = value.toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toNumber()
   return Number.isFinite(converted) ? converted : null

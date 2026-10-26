@@ -594,6 +594,7 @@ test('初始库存单带出默认组织及多关联单据下的业务类型', as
   await page.route('**/rest/v1/sys_menu?*', (route) => route.fulfill({ json: { id: menu.id } }))
   await page.route('**/rest/v1/mdm_organization?*', (route) =>
     route.fulfill({
+      headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' },
       json: [
         {
           id: 'default-stock-org',
@@ -602,6 +603,11 @@ test('初始库存单带出默认组织及多关联单据下的业务类型', as
           organization_code: 'DEFAULT-ORG',
           organization_name: '默认库存组织',
           organization_type: 'company',
+          initialization: {
+            enabled_on: '2026-10-02',
+            is_default: true,
+            initialization_closed_at: null
+          },
           status: '1',
           sort: 1,
           is_system: false
@@ -667,7 +673,17 @@ test('初始库存单带出默认组织及多关联单据下的业务类型', as
   )
   await page.route('**/rest/v1/mdm_material?*', (route) =>
     route.fulfill({
-      json: [{ ...material, code: material.material_code, name: material.material_name }]
+      json: [
+        {
+          ...material,
+          code: material.material_code,
+          name: material.material_name,
+          batch_management_enabled: true,
+          inventory_unit_id: 'unit-box',
+          base_unit_id: 'unit-piece',
+          unit_conversions: [{ sourceUnitId: 'unit-box', sourceFactor: 1, baseFactor: 12 }]
+        }
+      ]
     })
   )
   await page.goto('#/wms/initialization/initial-stock', { waitUntil: 'domcontentloaded' })
@@ -693,6 +709,16 @@ test('初始库存单带出默认组织及多关联单据下的业务类型', as
   await expect(materialPicker.locator('.el-table__body tr').first()).toBeVisible()
   await materialPicker.locator('.el-table__body tr .el-checkbox').first().click()
   await materialPicker.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(drawer.getByPlaceholder('入账时自动生成', { exact: true })).toBeDisabled()
+  const lineTable = drawer.locator('.art-table.wms-editable-line-table')
+  const lineHeadings = await lineTable.locator('.el-table__header th').allTextContents()
+  const quantityIndex = lineHeadings.findIndex((label) => label.includes('期初数量'))
+  const baseQuantityIndex = lineHeadings.findIndex((label) => label.includes('基本数量'))
+  expect(quantityIndex).toBeGreaterThanOrEqual(0)
+  expect(baseQuantityIndex).toBeGreaterThanOrEqual(0)
+  const lineCells = lineTable.locator('.el-table__body tr').first().locator('td')
+  await lineCells.nth(quantityIndex).locator('input').fill('2')
+  await expect(lineCells.nth(baseQuantityIndex)).toHaveText('24')
   await expect(
     drawer.locator('.wms-editable-line-table .el-table__body tr:first-child .el-select').first()
   ).toBeVisible()
@@ -834,6 +860,7 @@ test('期初销售出库单按菜单和多关联单据带出默认值', async ({
   await page.route('**/rest/v1/sys_menu?*', (route) => route.fulfill({ json: { id: menu.id } }))
   await page.route('**/rest/v1/mdm_organization?*', (route) =>
     route.fulfill({
+      headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' },
       json: [
         {
           id: 'default-sales-org',
@@ -842,6 +869,11 @@ test('期初销售出库单按菜单和多关联单据带出默认值', async ({
           organization_code: 'SALES-ORG',
           organization_name: '销售默认库存组织',
           organization_type: 'company',
+          initialization: {
+            enabled_on: '2026-10-06',
+            is_default: true,
+            initialization_closed_at: null
+          },
           status: '1',
           sort: 1,
           is_system: false

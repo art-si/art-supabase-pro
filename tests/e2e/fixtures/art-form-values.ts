@@ -16,7 +16,8 @@ const model = ref({
   attachment: new File(['测试附件内容'], 'test.txt', { type: 'text/plain' }),
   blank: '',
   count: 0,
-  enabled: false
+  enabled: false,
+  acknowledged: false
 })
 const output = ref('尚未提交')
 const formRef = ref<InstanceType<typeof ArtForm>>()
@@ -41,7 +42,8 @@ const validateForm = async (callback: boolean): Promise<void> => {
 }
 const items: FormItem[] = [
   { key: 'name', label: '名称', type: 'input' },
-  { key: 'period', label: '日期范围', type: 'daterange' }
+  { key: 'period', label: '日期范围', type: 'daterange' },
+  { key: 'acknowledged', label: '业务确认', type: 'checkbox', props: { label: '确认业务值' } }
 ]
 const app = createApp({
   setup() {
@@ -86,7 +88,8 @@ const app = createApp({
                     : null,
                 hasBlank: Object.hasOwn(value, 'blank'),
                 count: value.count,
-                enabled: value.enabled
+                enabled: value.enabled,
+                acknowledged: value.acknowledged
               })
             }
           },

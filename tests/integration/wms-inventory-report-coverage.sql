@@ -63,6 +63,10 @@ begin
           where movement.movement_type not in (
             'initial_stock_in', 'initial_purchase_in', 'initial_purchase_return', 'initialization_correction'
           )
+          union all
+          select entry.id::text || ':cost' as id
+          from public.fms_payable_stock_cost_entry entry
+          join eligible_batches batch on batch.id = entry.batch_id and batch.tenant_id = entry.tenant_id
         )
         select coalesce(array_agg(id order by id), '{}'::text[]) into expected_ids from legs;
       end if;

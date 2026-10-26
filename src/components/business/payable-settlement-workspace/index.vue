@@ -38,21 +38,26 @@
         <template #payment-push="{ selectedRows }">
           <ElDropdown
             trigger="click"
-            :disabled="selectedRows.length !== 1 || actionDisabled('push', selectedRows)"
-            @command="() => push(selectedRows[0]?.id)"
+            :disabled="selectedRows.length !== 1 || pushMenuDisabled(selectedRows)"
+            @command="(command) => push(selectedRows[0]?.id, String(command))"
           >
-            <ElButton
-              plain
-              :disabled="selectedRows.length !== 1 || actionDisabled('push', selectedRows)"
+            <ElButton plain :disabled="selectedRows.length !== 1 || pushMenuDisabled(selectedRows)"
               ><ArtSvgIcon icon="ri:file-transfer-line" />下推<ArtSvgIcon
                 icon="ri:arrow-down-s-line"
             /></ElButton>
             <template #dropdown
               ><ElDropdownMenu
-                ><ElDropdownItem command="payment"
+                ><ElDropdownItem
+                  command="payment"
+                  v-if="kind === 'application' || hasAuth(permissions.Push || '')"
                   ><ArtSvgIcon icon="ri:bank-card-line" />{{
                     kind === 'payment' ? '付款退款单' : '付款单'
                   }}</ElDropdownItem
+                ><ElDropdownItem
+                  v-if="kind === 'payment' && hasAuth(permissions.GuaranteeConvert || '')"
+                  command="guarantee"
+                  :disabled="guaranteeConversionDisabled(selectedRows)"
+                  ><ArtSvgIcon icon="ri:exchange-funds-line" />保证金转货款</ElDropdownItem
                 ></ElDropdownMenu
               ></template
             >
@@ -142,6 +147,7 @@
     fetchPayableSettlementTypeOptions,
     actPayableSettlement,
     pushPayableSettlement,
+    convertGuaranteeToPurchasePayment,
     fetchSettlementDeleteDependencies,
     type PayableSettlementAction,
     type PayableSettlementDocument,
@@ -203,6 +209,14 @@
     const target = props.kind === 'payment' ? 'FinancePayableRefund' : 'FinancePayablePayment'
     return hasAuth(`${target}:Add`) && hasAuth(`${target}:View`)
   })
+  const canConvertGuarantee = computed(
+    () =>
+      props.kind === 'payment' &&
+      Boolean(props.permissions.GuaranteeConvert) &&
+      hasAuth(props.permissions.GuaranteeConvert || '') &&
+      hasAuth('FinancePayablePayment:Add') &&
+      hasAuth('FinancePayablePayment:View')
+  )
   const { confirm, confirmDelete, promptReason } = useArtFeedback()
   const title = computed(() => settlementTitles[props.kind])
   const query = reactive<PayableSettlementQuery>({ current: 1, size: 20, viewMode: 'document' })
@@ -312,6 +326,28 @@
           )
       }
     })
+  }
+  function guaranteeConversionDisabled(rows: Record<string, unknown>[]): boolean {
+    if (!canConvertGuarantee.value || busy.value || rows.length !== 1) return true
+    const row = rows[0]
+    const lines = Array.isArray(row.lines) ? (row.lines as PayableSettlementDocument['lines']) : []
+    return (
+      row.status !== 'confirmed' ||
+      Boolean(row.frozen) ||
+      !lines.length ||
+      lines.some(
+        (line) =>
+          (line.purposeType || line.sourcePurposeBusinessType) !== 'guarantee' ||
+          Number(line.guaranteeAvailableAmount ?? line.amount) <= 0
+      )
+    )
+  }
+  function pushMenuDisabled(rows: Record<string, unknown>[]): boolean {
+    const refundOrPaymentDisabled =
+      !props.permissions.Push || !hasAuth(props.permissions.Push) || actionDisabled('push', rows)
+    return props.kind === 'payment'
+      ? refundOrPaymentDisabled && guaranteeConversionDisabled(rows)
+      : refundOrPaymentDisabled
   }
   async function reload(id: string): Promise<PayableSettlementDocument> {
     const response = await fetchPayableSettlements(props.kind, { id, current: 1, size: 1 })
@@ -436,19 +472,31 @@
       await tableRef.value?.refreshData()
     })
   }
-  async function push(id: string): Promise<void> {
-    if (!props.permissions.Push || !hasAuth(props.permissions.Push) || !canPushToTarget.value)
+  async function push(id: string, command: string): Promise<void> {
+    const guarantee = props.kind === 'payment' && command === 'guarantee'
+    if (
+      guarantee
+        ? !canConvertGuarantee.value
+        : !props.permissions.Push || !hasAuth(props.permissions.Push) || !canPushToTarget.value
+    )
       return
     await run(async () => {
       const isCurrentRoute = captureRouteOperation()
-      const targetPath =
-        props.kind === 'payment' ? financePaths.payableRefund : financePaths.payablePayment
-      const created = await pushPayableSettlement(
-        id,
-        props.kind === 'payment' ? 'refund' : 'payment',
-        props.kind === 'payment' ? 'payment' : 'application'
+      const targetPath = guarantee
+        ? financePaths.payablePayment
+        : props.kind === 'payment'
+          ? financePaths.payableRefund
+          : financePaths.payablePayment
+      const created = guarantee
+        ? await convertGuaranteeToPurchasePayment(id)
+        : await pushPayableSettlement(
+            id,
+            props.kind === 'payment' ? 'refund' : 'payment',
+            props.kind === 'payment' ? 'payment' : 'application'
+          )
+      ElMessage.success(
+        guarantee ? `保证金转货款单已生成：${created.documentNo}` : `已生成 ${created.documentNo}`
       )
-      ElMessage.success(`已生成 ${created.documentNo}`)
       if (!isCurrentRoute()) return
       await router.push({
         path: targetPath,
@@ -525,7 +573,6 @@
           {
             key: 'push',
             slot: 'payment-push',
-            permission: props.permissions.Push,
             selectionRequired: true
           }
         ]

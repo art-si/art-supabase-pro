@@ -1,5 +1,8 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import type { FinanceVoucherPreviewLine } from '@/api/finance-voucher.types'
 import type { MasterDataDeleteDependencyDetail } from '@/api/master-data-delete'
+import { isPayableStockCostPreview } from '@/utils/finance/payable-stock-cost'
+import { isPlainObjectRecord } from '@/utils/type-guards'
 import type {
   PurchasePayableDocument,
   PurchasePayableKind,
@@ -7,7 +10,8 @@ import type {
   PayableAction,
   PayableOption,
   PaymentTerm,
-  PayableCurrencyContext
+  PayableCurrencyContext,
+  PayableStockCostPreview
 } from './purchase-payable.types'
 export * from './purchase-payable.types'
 
@@ -191,13 +195,7 @@ export async function generatePayableVoucher(
 
 export interface PayableVoucherPreview {
   message: string
-  lines: Array<{
-    summary: string
-    subjectCode: string
-    subjectName: string
-    debitAmount: number
-    creditAmount: number
-  }>
+  lines: FinanceVoucherPreviewLine[]
 }
 
 export async function previewPayableVoucher(id: string): Promise<PayableVoucherPreview> {
@@ -232,4 +230,40 @@ export async function savePaymentTerm(term: Partial<PaymentTerm>): Promise<void>
     () => supabase.rpc('mdm_save_payment_term_secure', { p_term: keysToSnakeDeep(term) }),
     options
   )
+}
+
+export async function previewPayableStockCost(id: string): Promise<PayableStockCostPreview> {
+  const { data } = await responseHandle<unknown>(
+    () => supabase.rpc('fms_preview_payable_stock_cost_secure', { p_id: id }),
+    options
+  )
+  if (!isPayableStockCostPreview(data) || data.id !== id)
+    throw new Error('成本预览数据不完整，请重新预览后重试')
+  return data
+}
+
+export async function matchPayableStockCost(
+  preview: PayableStockCostPreview,
+  date: string,
+  acknowledgeBaseline: boolean
+): Promise<number> {
+  const { data } = await responseHandle<unknown>(
+    () =>
+      supabase.rpc('fms_match_payable_stock_cost_secure', {
+        p_id: preview.id,
+        p_date: date,
+        p_ack_baseline: acknowledgeBaseline,
+        p_preview_token: preview.previewToken
+      }),
+    options
+  )
+  if (
+    !isPlainObjectRecord(data) ||
+    data.documentId !== preview.id ||
+    !Number.isSafeInteger(data.affected) ||
+    Number(data.affected) < 0 ||
+    Number(data.affected) > preview.lines.length
+  )
+    throw new Error('成本勾稽结果未确认，请重新预览并核对库存成本记录')
+  return Number(data.affected)
 }

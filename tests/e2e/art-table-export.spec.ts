@@ -4,6 +4,49 @@ import ExcelJS from 'exceljs'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
+test('默认导出读取字典名称、历史停用值、动态值和嵌套字段，保留零与否', async ({ page }) => {
+  await page.route('**/rest/v1/sys_dictionary?**', (route) => {
+    const parameters = new URL(route.request().url()).searchParams
+    const code = parameters.get('dict_type_table.code')?.replace(/^eq\./, '') || ''
+    const value = parameters.get('value')?.replace(/^eq\./, '')
+    const item =
+      code === 'qaExportState'
+        ? value === 'retired'
+          ? { value: 'retired', label: '历史停用', status: '0' }
+          : { value: 'approved', label: '已审核', status: '1' }
+        : code === 'qaExportKind'
+          ? { value: 'financial', label: '', name: '财务应付', status: '1' }
+          : { value: 'false', label: '否', status: '1' }
+    return route.fulfill({
+      json: [
+        {
+          id: `${code}-${item.value}`,
+          type_id: code,
+          code: item.value,
+          sort: 1,
+          ...item,
+          dict_type_table: { code, name: code }
+        }
+      ]
+    })
+  })
+  await page.goto('/tests/e2e/fixtures/art-table-export.html?mode=dictionary')
+  await expect(page.getByText('测试记录-0', { exact: true })).toBeVisible()
+  const pending = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出', exact: true }).click()
+  const path = await (await pending).path()
+  if (!path) throw new Error('字典导出未生成文件')
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.readFile(path)
+  const worksheet = workbook.worksheets[0]
+  expect(worksheet.rowCount).toBe(3)
+  expect(worksheet.getCell('B2').value).toBe('已审核')
+  expect(worksheet.getCell('B3').value).toBe('历史停用')
+  expect(worksheet.getCell('C2').value).toBe('财务应付')
+  expect(worksheet.getCell('D2').value).toBe('否')
+  expect(worksheet.getCell('E2').value).toBe('0')
+})
+
 for (const mode of ['complete', 'incomplete', 'over-limit']) {
   test(`共享表格默认分页导出 ${mode}`, async ({ page }) => {
     const errors: string[] = []

@@ -200,7 +200,7 @@ test('应付核销两组明细零金额阻断、失败恢复和精确分配', as
           json: { code: 'P0001', message: '核销保存失败，请重试' }
         })
       done = true
-      return route.fulfill({ json: [] })
+      return route.fulfill({ json: ['writeoff-1', 'writeoff-2'] })
     }
     if (name === 'fms_reverse_payable_writeoff_secure') {
       reversals.push(body)
@@ -227,7 +227,9 @@ test('应付核销两组明细零金额阻断、失败恢复和精确分配', as
   await headers.nth(1).click()
   await page.getByRole('button', { name: '核销', exact: true }).click()
   await expect(
-    page.getByText('本次核销金额须大于零，且不能超过允许核销金额', { exact: true })
+    page
+      .locator('.el-message__content')
+      .filter({ hasText: '本次核销金额须大于零，且不能超过允许核销金额' })
   ).toBeVisible()
   await expect(page.locator('.el-message-box')).not.toBeVisible()
   expect(writes).toEqual([])
@@ -250,8 +252,18 @@ test('应付核销两组明细零金额阻断、失败恢复和精确分配', as
   for (const write of writes) {
     expect(write.p_scheme_id).toBe('scheme')
     expect(write.p_items).toEqual([
-      { payable_id: 'payable-1', payment_line_id: 'payment-1', amount: 100 },
-      { payable_id: 'payable-2', payment_line_id: 'payment-2', amount: 200 }
+      {
+        payable_id: 'payable-1',
+        payment_line_id: 'payment-1',
+        amount: 100,
+        payment_face_amount: 100
+      },
+      {
+        payable_id: 'payable-2',
+        payment_line_id: 'payment-2',
+        amount: 200,
+        payment_face_amount: 200
+      }
     ])
   }
   await page.getByRole('tab', { name: '核销记录（2）', exact: true }).click()

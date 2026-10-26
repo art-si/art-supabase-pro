@@ -30,6 +30,7 @@ const movementTypeLabels: Record<string, string> = {
   count_gain: '盘盈',
   count_loss: '盘亏',
   adjustment: '库存调整',
+  payable_cost_adjustment: '库存成本调整',
   adjustment_in: '调整调入',
   adjustment_out: '调整调出'
 }

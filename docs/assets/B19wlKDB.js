@@ -1,0 +1,1 @@
+import{Yt as e,Zn as t,hn as n,zt as r}from"./D1G0yLle.js";import{t as i}from"./CNAVEbhw.js";import{i as a}from"./CeQAo5Sp.js";var o=e({name:`WmsPurchaseInbound`,__name:`index`,setup(e){let o=a;return(e,a)=>(n(),r(i,{kind:`purchase_inbound`,permissions:t(o)},null,8,[`permissions`]))}});export{o as default};

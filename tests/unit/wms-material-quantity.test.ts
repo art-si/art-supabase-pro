@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   convertWmsMaterialQuantity,
+  getWmsMaterialUnitFactor,
   scaleWmsMaterialBaseQuantity
 } from '../../src/utils/wms/material-quantity'
 
@@ -12,6 +13,47 @@ const material = {
     { sourceUnitId: 'case', sourceFactor: 1, baseFactor: 60 }
   ]
 }
+
+test('单位因子保留有效换算，拒绝非有限、非正数和无法表示的比例', () => {
+  assert.equal(getWmsMaterialUnitFactor(material, 'piece'), 1)
+  assert.equal(getWmsMaterialUnitFactor(material, 'box'), 12)
+  assert.equal(
+    getWmsMaterialUnitFactor(
+      {
+        baseUnitId: 'piece',
+        unitConversions: [{ sourceUnitId: 'box', sourceFactor: 0.2, baseFactor: 0.3 }]
+      },
+      'box'
+    ),
+    1.5
+  )
+  assert.equal(getWmsMaterialUnitFactor(undefined, 'box'), null)
+  assert.equal(getWmsMaterialUnitFactor(material, ''), null)
+  assert.equal(getWmsMaterialUnitFactor(material, 'missing'), null)
+  for (const [sourceFactor, baseFactor] of [
+    [0, 1],
+    [-1, 1],
+    [NaN, 1],
+    [Infinity, 1],
+    [1, 0],
+    [1, -1],
+    [1, NaN],
+    [1, Infinity],
+    [Number.MIN_VALUE, Number.MAX_VALUE],
+    [Number.MAX_VALUE, Number.MIN_VALUE]
+  ]) {
+    assert.equal(
+      getWmsMaterialUnitFactor(
+        {
+          baseUnitId: 'piece',
+          unitConversions: [{ sourceUnitId: 'box', sourceFactor, baseFactor }]
+        },
+        'box'
+      ),
+      null
+    )
+  }
+})
 
 test('库存单位、基本单位与辅助单位按同一物料换算关系计算', () => {
   assert.equal(convertWmsMaterialQuantity(material, 2, 'box', 'piece'), 24)

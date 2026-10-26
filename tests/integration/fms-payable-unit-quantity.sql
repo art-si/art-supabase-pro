@@ -9,7 +9,8 @@ declare
  first_source_estimate uuid;second_source_estimate uuid;
 begin
  select auth_user_id into actor from public.sys_user where auth_user_id is not null and user_roles @>array['R_SUPER'] limit 1;
- select receipt.* into receipt_template from public.wms_purchase_document receipt where receipt.kind='purchase_inbound' and receipt.status='approved' and not receipt.is_initialization and receipt.supplier_id is not null and exists(select 1 from public.wms_purchase_document_line source join public.mdm_material master on master.id=source.material_id and master.tenant_id=source.tenant_id where source.document_id=receipt.id and master.base_unit_id is not null) limit 1;
+ select receipt.* into receipt_template from public.wms_purchase_document receipt where receipt.kind='purchase_inbound' and receipt.status='approved' and not receipt.is_initialization and receipt.supplier_id is not null and exists(select 1 from public.wms_purchase_document_line source join public.mdm_material master on master.id=source.material_id and master.tenant_id=source.tenant_id where source.document_id=receipt.id and master.base_unit_id is not null)
+ and not exists(select 1 from public.fms_payable_accrual_policy policy where policy.tenant_id=receipt.tenant_id and policy.organization_id=receipt.organization_id) limit 1;
  select source.* into source_template from public.wms_purchase_document_line source join public.mdm_material master on master.id=source.material_id and master.tenant_id=source.tenant_id where source.document_id=receipt_template.id and master.base_unit_id is not null limit 1;
  select * into material from public.mdm_material where id=source_template.material_id;
  if actor is null or material.id is null then raise exception 'Missing payable unit conversion fixtures';end if;

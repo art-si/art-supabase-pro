@@ -223,17 +223,33 @@ test('两笔普通账号红字新增、编辑、提交审核、冻结和凭证�
     if (!(await row.getByRole('checkbox').isChecked()))
       await row.getByRole('checkbox').locator('..').click()
     await expect(page.getByRole('button', { name: '下推', exact: true })).toBeDisabled()
-    await row.getByRole('button', { name: '冻结', exact: true }).click()
-    const freeze = page.getByRole('dialog', { name: '冻结财务应付 · CNY', exact: true })
-    expect(Number(await freeze.getByRole('spinbutton').inputValue())).toBe(grossAmount)
-    await freeze.getByRole('textbox').fill('独立验收红字冻结使用正的控制金额')
-    await freeze.getByRole('button', { name: '保存冻结状态', exact: true }).click()
-    await expect(row.getByRole('button', { name: '解冻', exact: true })).toBeEnabled()
-    await row.getByRole('button', { name: '解冻', exact: true }).click()
-    const unfreeze = page.getByRole('dialog', { name: '解冻财务应付 · CNY', exact: true })
-    await unfreeze.getByRole('textbox').fill('独立验收恢复红字核销能力')
-    await unfreeze.getByRole('button', { name: '保存冻结状态', exact: true }).click()
-    await expect(row.getByRole('button', { name: '冻结', exact: true })).toBeEnabled()
+    const current = rows(
+      record(
+        await rpc(client, 'fms_purchase_payable_list_secure', {
+          p_kind: 'financial',
+          p_id: id,
+          p_limit: 1
+        })
+      ).data
+    )[0]
+    const availableAmount = Math.abs(Number(current.unpaid_amount))
+    if (availableAmount === 0) {
+      await expect(
+        row.getByRole('button', { name: '冻结（无未核销余额）', exact: true })
+      ).toBeDisabled()
+    } else {
+      await row.getByRole('button', { name: '冻结', exact: true }).click()
+      const freeze = page.getByRole('dialog', { name: '冻结财务应付 · CNY', exact: true })
+      expect(Number(await freeze.getByRole('spinbutton').inputValue())).toBe(availableAmount)
+      await freeze.getByRole('textbox').fill('独立验收红字冻结使用正的控制金额')
+      await freeze.getByRole('button', { name: '保存冻结状态', exact: true }).click()
+      await expect(row.getByRole('button', { name: '解冻', exact: true })).toBeEnabled()
+      await row.getByRole('button', { name: '解冻', exact: true }).click()
+      const unfreeze = page.getByRole('dialog', { name: '解冻财务应付 · CNY', exact: true })
+      await unfreeze.getByRole('textbox').fill('独立验收恢复红字核销能力')
+      await unfreeze.getByRole('button', { name: '保存冻结状态', exact: true }).click()
+      await expect(row.getByRole('button', { name: '冻结', exact: true })).toBeEnabled()
+    }
     await row.getByRole('button', { name: '查看', exact: true }).click()
     const detail = page.getByRole('dialog', { name: '财务应付单详情', exact: true })
     await expect(detail).toContainText('红字冲减')
@@ -432,6 +448,21 @@ test('两笔真实红字应付有数据详情与图标刷新视觉验收', async
     assert.ok(typeof document.document_no === 'string')
     const row = await openCredit(page, identifier(document), document.document_no)
     await expect(row).toContainText('红字冲减')
+    const current = rows(
+      record(
+        await rpc(client, 'fms_purchase_payable_list_secure', {
+          p_kind: 'financial',
+          p_id: identifier(document),
+          p_limit: 1
+        })
+      ).data
+    )[0]
+    expect(Number(current.frozen_amount)).toBe(0)
+    if (Number(current.unpaid_amount) === 0)
+      await expect(
+        row.getByRole('button', { name: '冻结（无未核销余额）', exact: true })
+      ).toBeDisabled()
+    else await expect(row.getByRole('button', { name: '冻结', exact: true })).toBeEnabled()
     await row.getByRole('button', { name: '查看', exact: true }).click()
     const drawer = page.getByRole('dialog', { name: '财务应付单详情', exact: true })
     await expect(drawer.getByText('付款计划', { exact: true })).toHaveCount(0)

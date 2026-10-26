@@ -1,1 +1,0 @@
-import{Jt as e,Rt as t,mn as n}from"./B2BaADVT.js";import{t as r}from"./Bb8do8XF.js";var i=e({name:`WmsSalesReturnDocument`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`return`}))}});export{i as default};

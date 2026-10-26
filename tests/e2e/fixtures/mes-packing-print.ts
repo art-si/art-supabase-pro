@@ -30,9 +30,56 @@ const app = createApp({
   }
 })
 app.use(store)
+useUserStore().setDictMap({
+  wmsPackInboundStatus: [
+    {
+      name: '包入库状态',
+      code: 'wmsPackInboundStatus',
+      label: '未入库',
+      value: 'pending',
+      status: '1'
+    },
+    {
+      name: '包入库状态',
+      code: 'wmsPackInboundStatus',
+      label: '已入库',
+      value: 'received',
+      status: '1'
+    },
+    {
+      name: '包入库状态',
+      code: 'wmsPackInboundStatus',
+      label: '已退库',
+      value: 'returned',
+      status: '1'
+    }
+  ],
+  wmsFinishedInboundMode: [
+    {
+      name: '入库模式',
+      code: 'wmsFinishedInboundMode',
+      label: '按工单汇总',
+      value: 'order',
+      status: '1'
+    },
+    {
+      name: '入库模式',
+      code: 'wmsFinishedInboundMode',
+      label: '按排包明细',
+      value: 'pack',
+      status: '1'
+    }
+  ]
+})
 useUserStore().info = { userId: 'packing-test-user', tenantId: 'packing-test-tenant' }
 useMenuStore().setButtonList(
-  ['View', 'Print', 'Manual', 'Spec']
+  [
+    'View',
+    'Print',
+    'Manual',
+    'Spec',
+    ...(new URLSearchParams(location.search).get('edit') === '1' ? ['Auto', 'Save'] : [])
+  ]
     .filter(
       (action) => action !== 'Print' || new URLSearchParams(location.search).get('print') !== '0'
     )

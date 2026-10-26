@@ -130,6 +130,12 @@
         :delete-permission="permission('AccrualDelete')"
         :execute-permission="permission('AccrualExecute')"
       />
+      <StockCostMatch
+        v-if="kind === 'financial' && permissions.CostMatch"
+        ref="stockCostRef"
+        :permission="permissions.CostMatch"
+        @success="tableRef?.refreshData()"
+      />
     </div>
   </ArtPermissionGuard>
 </template>
@@ -175,6 +181,7 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import PayableDocumentDrawer from './modules/payable-document-drawer.vue'
+  import StockCostMatch from './modules/stock-cost-match.vue'
   import { formatCurrencyValue } from '@/utils/ui/format'
   import { payableStatusLabels } from '@/utils/finance/payable'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -187,6 +194,7 @@
 
   const props = defineProps<{ kind: PurchasePayableKind; permissions: PayablePermissions }>()
   const accrualRef = ref<InstanceType<typeof PayableAccrualManager>>()
+  const stockCostRef = ref<InstanceType<typeof StockCostMatch>>()
   const route = useRoute()
   const tenantScope = useTenantScopeStore()
   const router = useRouter()
@@ -733,6 +741,25 @@
       permission: permission('Voucher'),
       selectionRequired: true
     },
+    ...(props.kind === 'financial' && props.permissions.CostMatch
+      ? [
+          {
+            key: 'cost-match',
+            label: '成本勾稽',
+            icon: 'ri:scales-3-line',
+            permission: props.permissions.CostMatch,
+            selectionRequired: true,
+            disabled: ({ selectedRows }: { selectedRows: Record<string, unknown>[] }) =>
+              selectedRows.length !== 1 ||
+              selectionDisabled(selectedRows, 'approved') ||
+              !selectedRows[0]?.sourceDocumentId ||
+              selectedRows[0]?.standardPurchase !== true ||
+              selectedRows[0]?.isCredit === true,
+            onClick: ({ selectedRows }: { selectedRows: Record<string, unknown>[] }) =>
+              stockCostRef.value?.open(String(selectedRows[0]?.id))
+          }
+        ]
+      : []),
     {
       key: 'print',
       label: '打印',

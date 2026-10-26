@@ -173,7 +173,7 @@
         <ArtEntitySummary
           icon="ri:bill-line"
           title="应付单已生成"
-          description="所选入库明细已带入应付草稿，重复下推会由服务端阻止。"
+          description="所选明细已带入应付草稿，系统按剩余可关联数量控制后续下推。"
         />
         <div class="mt-4 grid gap-3">
           <div
@@ -197,15 +197,12 @@
                 )
               "
               @click="
-                router.push({
-                  name:
-                    record.kind === 'estimated'
-                      ? 'FinanceEstimatedPayable'
-                      : 'FinancePurchasePayable',
-                  query: { recordId: record.id }
-                })
+                payableSourceLink.open(
+                  record.kind === 'estimated' ? 'estimated_payable' : 'financial_payable',
+                  record.id
+                )
               "
-              >查看应付单</ElButton
+              ><ArtSvgIcon icon="ri:file-search-line" />查看应付单</ElButton
             >
           </div>
         </div>
@@ -234,6 +231,7 @@
     type PurchasePayableKind
   } from '@/api/purchase-payable'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { usePayableSourceLink } from '@/hooks/core/usePayableSourceLink'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useDocumentBulkDelete } from '@/hooks/business/useDocumentBulkDelete'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
@@ -401,6 +399,10 @@
     }>
   >([])
   const payableResultRef = ref<ArtDialogExpose>()
+  const payableSourceLink = usePayableSourceLink(
+    async () => payableResultRef.value?.handleClose(true),
+    false
+  )
   const pushSourceRows = ref<typeof selectedRows.value>([])
   const pushingPayable = ref(false)
   const generatedPayables = ref<PurchasePayableDocument[]>([])

@@ -36,7 +36,7 @@
     "data-asset",
     "eda"
   ],
-  "copiedAt": "2026-10-25T15:02:09.217Z",
+  "copiedAt": "2026-10-26T12:55:18.396Z",
   "assets": [
     {
       "rendererId": "pdf",
@@ -97,22 +97,6 @@
       "rendererId": "office-presentation-binary",
       "id": "ppt-frame-cache",
       "to": "D:\\spa\\art-supabase-pro\\docs\\vendor\\ppt\\frame-cache.mjs",
-      "copied": true,
-      "sourcePackage": "@file-viewer/ppt",
-      "sourceVersion": "0.3.4"
-    },
-    {
-      "rendererId": "office-presentation-binary",
-      "id": "ppt-wasm",
-      "to": "D:\\spa\\art-supabase-pro\\docs\\vendor\\ppt\\ppt-native.wasm",
-      "copied": true,
-      "sourcePackage": "@file-viewer/ppt",
-      "sourceVersion": "0.3.4"
-    },
-    {
-      "rendererId": "office-presentation-binary",
-      "id": "ppt-cjk-font",
-      "to": "D:\\spa\\art-supabase-pro\\docs\\vendor\\ppt\\ppt-font-cjk.otf",
       "copied": true,
       "sourcePackage": "@file-viewer/ppt",
       "sourceVersion": "0.3.4"

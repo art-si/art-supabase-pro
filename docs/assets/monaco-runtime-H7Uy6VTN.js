@@ -1,1 +1,0 @@
-import{a as e,i as t,p as n,s as r}from"./monaco-dUz8vYHv.js";r.config({monaco:n}),self.MonacoEnvironment={getWorker(n,r){return r===`json`?new t:new e}};

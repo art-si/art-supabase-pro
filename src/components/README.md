@@ -49,6 +49,7 @@ Examples:
 - `BusinessAttachmentRowActions`: attachment preview/download actions with shared row spacing. The caller supplies its authorized `removable` state and handles the `remove` event; the component does not delete or persist records.
 - `BusinessMenuFilter`: menu-tree search, selection, counts and complete states; each feature supplies its own visible menus and business statistics.
 - Business record links, history, and permission-aware action surfaces.
+- `MasterDataDeleteGuard` supports an explicit `applicationCode` together with `routeName` and `routePath` for cross-application references. It uses the registered local route first; otherwise it reuses authorized application navigation instead of pushing an unavailable standalone route. Source business permissions still control whether the action is offered.
 
 An employee selector belongs in `business`, not `core/forms`, because it depends on the employee domain and its API contract. A generic paged table selector remains in `core/forms`.
 

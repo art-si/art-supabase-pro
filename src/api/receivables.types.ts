@@ -53,6 +53,15 @@ export interface ArOption {
   sameCurrency?: boolean
   sameProject?: boolean
   sameSource?: boolean
+  plateNo?: string | null
+  driverName?: string | null
+  shippingContactName?: string | null
+  shippingAddress?: string | null
+  originStation?: string | null
+  destinationStation?: string | null
+  transferStation?: string | null
+  shippingCustomerName?: string | null
+  receivingCustomerName?: string | null
 }
 
 export interface ArReportRow {

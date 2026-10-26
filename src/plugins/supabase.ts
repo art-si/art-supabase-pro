@@ -2,7 +2,6 @@ import cloudbase from '@cloudbase/js-sdk'
 import type { ICloudbaseRequest } from '@cloudbase/js-sdk/types/request'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isSupabaseApi } from '@/config/api-provider'
-import { isCloudBaseBaas } from '@/config/baas-provider'
 import { decodeFunctionResponse } from '@/utils/http/response'
 import {
   normalizePlatformTenantReadUrl,
@@ -16,10 +15,10 @@ import {
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost'
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'java-api-provider'
-const tenantScopeHeader = isCloudBaseBaas ? CLOUDBASE_TENANT_SCOPE_HEADER : TENANT_SCOPE_HEADER
+const tenantScopeHeader = __CLOUDBASE_BUILD__ ? CLOUDBASE_TENANT_SCOPE_HEADER : TENANT_SCOPE_HEADER
 if (
   isSupabaseApi &&
-  !isCloudBaseBaas &&
+  !__CLOUDBASE_BUILD__ &&
   (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_KEY)
 ) {
   throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_KEY')
@@ -194,7 +193,7 @@ const createCloudBaseClient = (): SupabaseClient => {
   }) as SupabaseClient
 }
 
-export const supabase = isCloudBaseBaas
+export const supabase = __CLOUDBASE_BUILD__
   ? createCloudBaseClient()
   : createClient(supabaseUrl, supabaseKey, {
       global: { fetch: tenantScopeFetch },

@@ -1,1 +1,0 @@
-function e(e,t=`未识别租户`){let n=e.tenant?.tenantName?.trim(),r=e.tenant?.tenantCode?.trim();return n&&r?`${n}（${r}）`:n||r||e.tenantId||t}export{e as t};

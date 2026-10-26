@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./BU0XCrNy.js";var i=e({name:`MdmDataQuality`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{"initial-view":`quality`}))}});export{i as default};

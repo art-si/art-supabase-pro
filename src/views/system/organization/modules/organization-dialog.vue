@@ -45,6 +45,7 @@
 </template>
 
 <script setup lang="ts">
+  import { normalizeIdentityDisplayText } from '@/utils/identity-display'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -110,16 +111,11 @@
       : '层级和租户变更会影响成员、角色与菜单权限的治理视图，请谨慎调整。'
   )
 
-  const normalizeUserIdentity = (value: unknown): string => {
-    const text = String(value ?? '').trim()
-    return /^(null|undefined)$/i.test(text) ? '' : text
-  }
-
   const getOrganizationUserLabel = (item: Record<string, unknown>): string => {
-    const email = normalizeUserIdentity(item.userEmail)
+    const email = normalizeIdentityDisplayText(item.userEmail)
     const displayName =
-      normalizeUserIdentity(item.nickName) ||
-      normalizeUserIdentity(item.userName) ||
+      normalizeIdentityDisplayText(item.nickName) ||
+      normalizeIdentityDisplayText(item.userName) ||
       email ||
       '未命名用户'
 

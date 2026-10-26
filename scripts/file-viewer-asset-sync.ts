@@ -11,6 +11,8 @@ const MAX_FS_ATTEMPTS = 6
 // copies and workers already emitted by Vite add bytes without another consumer.
 export const REDUNDANT_FILE_VIEWER_ASSETS = [
   'vendor/pptx/pptx.worker.js',
+  'vendor/ppt/ppt-font-cjk.otf',
+  'vendor/ppt/ppt-native.wasm',
   'vendor/libarchive/worker-bundle.js',
   'wasm/cad/dwg-worker.js',
   'wasm/cad/libredwg-web.js',

@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./DrTp6y8W.js";var i=e({name:`AiSafetyCommand`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{kind:`ai-safety`}))}});export{i as default};

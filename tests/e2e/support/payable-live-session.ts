@@ -38,9 +38,12 @@ export async function assertPayableAcceptanceSession(
   context: BrowserContext
 ): Promise<SupabaseClient> {
   const state = await context.storageState()
+  const baseURL = process.env.E2E_BASE_URL
+  if (!baseURL) throw new Error('真实验收必须显式指定与已登录会话一致的应用地址')
+  const origin = new URL(baseURL).origin
   const stored = state.origins
-    .flatMap((origin) => origin.localStorage)
-    .find((item) => item.name === 'sb-ckbftoopuyophiebamwy-auth-token')
+    .find((entry) => entry.origin === origin)
+    ?.localStorage.find((item) => item.name === 'sb-ckbftoopuyophiebamwy-auth-token')
   const session: unknown = stored ? JSON.parse(stored.value) : null
   if (
     !session ||

@@ -87,6 +87,7 @@ export default async ({ mode }: { mode: string }) => {
   const enableVueDevTools = env.VITE_DEVTOOLS === 'true'
   const enableFileViewerPlugin = !isE2E && (isProduction || env.VITE_FILE_VIEWER === 'true')
   const enableFileViewerAssets = !isE2E && (isProduction || env.VITE_FILE_VIEWER_ASSETS === 'true')
+  const enableCloudBaseSdk = mode === 'cloudbase' || env.VITE_BAAS_PROVIDER === 'cloudbase'
   const [devToolsModule, compressionModule, fileViewerModule, analyzerModule] = await Promise.all([
     !isProduction && !isE2E && enableVueDevTools ? import('vite-plugin-vue-devtools') : undefined,
     enableBuildCompression ? import('vite-plugin-compression') : undefined,
@@ -129,7 +130,8 @@ export default async ({ mode }: { mode: string }) => {
   return defineConfig({
     cacheDir: path.resolve(root, 'node_modules/.vite', mode),
     define: {
-      __APP_VERSION__: JSON.stringify(VITE_VERSION)
+      __APP_VERSION__: JSON.stringify(VITE_VERSION),
+      __CLOUDBASE_BUILD__: JSON.stringify(enableCloudBaseSdk)
     },
     base: VITE_BASE_URL,
     server: {
@@ -151,6 +153,14 @@ export default async ({ mode }: { mode: string }) => {
     resolve: {
       dedupe: [...new Set([...hostedModuleSharedDependencies, 'three'])],
       alias: [
+        ...(enableCloudBaseSdk
+          ? []
+          : [
+              {
+                find: /^@cloudbase\/js-sdk$/,
+                replacement: resolvePath('src/plugins/cloudbase-sdk-disabled.ts')
+              }
+            ]),
         // ES2020 supplies the native APIs omitted by ExcelJS's official bare build.
         {
           find: /^exceljs$/,

@@ -706,6 +706,8 @@
 </template>
 
 <script setup lang="ts">
+  import { getWmsMaterialUnitFactor } from '@/utils/wms/material-quantity'
+  import { createWmsMaterialFromSelectRow } from '@/utils/wms/material-select'
   import { getMaterialCategoryIds } from '@/utils/business/material-category'
   import { readWmsDocumentImportRows } from '@/utils/wms/document-import'
   import { createImportReferenceLookup } from '@/utils/business/import-reference'
@@ -719,7 +721,7 @@
   import { parseSerialNumberText } from '@/utils/file/serial-number-text'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import dayjs from 'dayjs'
-  import { cloneDeep, uniq } from 'lodash-es'
+  import { cloneDeep, round, uniq } from 'lodash-es'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase/error'
   import { ElMessage } from 'element-plus'
   import { normalizeNullableText } from '@/utils/form/normalize'
@@ -1072,7 +1074,7 @@
       quantity: sourceLine.quantity,
       unitPrice: sourceLine.unitPrice,
       taxRate: sourceLine.taxRate,
-      taxInclusiveUnitPrice: round(sourceLine.unitPrice * (1 + sourceLine.taxRate / 100)),
+      taxInclusiveUnitPrice: round(sourceLine.unitPrice * (1 + sourceLine.taxRate / 100), 4),
       discountMethod: sourceLine.discountRate > 0 ? 'rate' : 'none',
       unitDiscountRate: sourceLine.discountRate / 100,
       stockType: sourceLine.gift ? 'gift' : 'normal',
@@ -1576,10 +1578,6 @@
     { prop: 'quantity', label: '现存数量', width: 120, align: 'right' },
     { prop: 'receivedAt', label: '入库时间', minWidth: 170 }
   ]
-  function round(value: number, digits = 4): number {
-    const factor = 10 ** digits
-    return Math.round((value + Number.EPSILON) * factor) / factor
-  }
   function displayQuantity(value: number): number {
     return isReturn.value && !isOpeningReturn.value
       ? -Math.abs(Number(value || 0))
@@ -1606,27 +1604,18 @@
   function projectName(id: string | null): string {
     return projects.value.find((item) => item.id === id)?.name || '—'
   }
-  function conversionFactor(
-    material: WmsPurchaseMaterial | null | undefined,
-    unitId: string | null
-  ): number | null {
-    if (!material || !unitId) return null
-    if (unitId === material.baseUnitId) return 1
-    const entry = material.unitConversions?.find((item) => item.sourceUnitId === unitId)
-    return entry && entry.sourceFactor > 0 ? entry.baseFactor / entry.sourceFactor : null
-  }
   function baseQuantity(line: WmsPurchaseLine): number {
-    const inventoryFactor = conversionFactor(line.material, line.inventoryUnitId)
-    const baseFactor = conversionFactor(line.material, line.baseUnitId)
+    const inventoryFactor = getWmsMaterialUnitFactor(line.material, line.inventoryUnitId)
+    const baseFactor = getWmsMaterialUnitFactor(line.material, line.baseUnitId)
     return inventoryFactor && baseFactor
-      ? round((Math.abs(Number(line.quantity || 0)) * inventoryFactor) / baseFactor)
+      ? round((Math.abs(Number(line.quantity || 0)) * inventoryFactor) / baseFactor, 4)
       : 0
   }
   function auxQuantity(line: WmsPurchaseLine, unitId: string | null): string {
-    const inventoryFactor = conversionFactor(line.material, line.inventoryUnitId)
-    const auxFactor = conversionFactor(line.material, unitId)
+    const inventoryFactor = getWmsMaterialUnitFactor(line.material, line.inventoryUnitId)
+    const auxFactor = getWmsMaterialUnitFactor(line.material, unitId)
     return inventoryFactor && auxFactor
-      ? round((Math.abs(Number(line.quantity || 0)) * inventoryFactor) / auxFactor).toString()
+      ? round((Math.abs(Number(line.quantity || 0)) * inventoryFactor) / auxFactor, 4).toString()
       : '—'
   }
   function lineFinancial(line: WmsPurchaseLine): {
@@ -1653,27 +1642,9 @@
   function updatePrice(line: WmsPurchaseLine, basis: 'untaxed' | 'taxed'): void {
     line.priceBasis = basis
     const factor = 1 + Number(line.taxRate || 0) / 100
-    if (basis === 'taxed') line.unitPrice = round(Number(line.taxInclusiveUnitPrice || 0) / factor)
-    else line.taxInclusiveUnitPrice = round(Number(line.unitPrice || 0) * factor)
-  }
-  function materialFromRow(row: DataSelectRecord): WmsPurchaseMaterial | null {
-    if (typeof row.id !== 'string' || typeof row.code !== 'string' || typeof row.name !== 'string')
-      return null
-    return {
-      id: row.id,
-      tenantId: form.tenantId,
-      code: row.code,
-      name: row.name,
-      description: typeof row.description === 'string' ? row.description : null,
-      specificationModel:
-        typeof row.specificationModel === 'string' ? row.specificationModel : null,
-      inventoryUnitId: typeof row.inventoryUnitId === 'string' ? row.inventoryUnitId : null,
-      baseUnitId: typeof row.baseUnitId === 'string' ? row.baseUnitId : null,
-      auxiliaryUnitId: typeof row.auxiliaryUnitId === 'string' ? row.auxiliaryUnitId : null,
-      auxiliaryUnit2Id: typeof row.auxiliaryUnit2Id === 'string' ? row.auxiliaryUnit2Id : null,
-      unitConversions: Array.isArray(row.unitConversions) ? row.unitConversions : [],
-      serialManagementEnabled: row.serialManagementEnabled === true
-    }
+    if (basis === 'taxed')
+      line.unitPrice = round(Number(line.taxInclusiveUnitPrice || 0) / factor, 4)
+    else line.taxInclusiveUnitPrice = round(Number(line.unitPrice || 0) * factor, 4)
   }
   function makeLine(material: WmsPurchaseMaterial): WmsPurchaseLine {
     return {
@@ -1735,7 +1706,7 @@
   function addMaterials(_ids: unknown, rows: DataSelectRecord[]): void {
     lines.value.push(
       ...rows
-        .map(materialFromRow)
+        .map((row) => createWmsMaterialFromSelectRow(row, form.tenantId))
         .filter((row): row is WmsPurchaseMaterial => row !== null)
         .map(makeLine)
     )
@@ -2047,7 +2018,7 @@
         line.quantity = amounts.quantity
         line.unitPrice = amounts.unitPrice
         line.taxRate = amounts.taxRate
-        line.taxInclusiveUnitPrice = round(line.unitPrice * (1 + line.taxRate / 100))
+        line.taxInclusiveUnitPrice = round(line.unitPrice * (1 + line.taxRate / 100), 4)
         line.batchNo = String(row['批号'] || row.batchNo || '') || null
         importedLines.push(line)
       }

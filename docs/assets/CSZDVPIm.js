@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./Cftv7u1-.js";var i=e({__name:`index`,setup(e){return(e,i)=>(t(),n(r,{kind:`repair`}))}});export{i as default};

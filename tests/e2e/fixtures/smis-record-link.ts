@@ -1,6 +1,10 @@
 import { createApp, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import BusinessRecordLink from '@/components/business/business-record-link/index.vue'
+import { store } from '@/store'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -22,6 +26,22 @@ const records = [
     title: '查看演练记录：危险化学品泄漏综合演练记录'
   }
 ]
+const sourceRecords = [
+  {
+    label: 'CWYF-20261025-000000000000000001',
+    title: '查看来源单据详情',
+    interactive: true
+  },
+  {
+    label: 'CYSDZ-20261025-000000000000000002',
+    title: '暂无来源单据查看权限'
+  },
+  {
+    label: 'CGRK-20261025-000000000000000003',
+    title: '查看来源采购入库',
+    to: '/source'
+  }
+]
 
 const app = createApp({
   render: () =>
@@ -38,8 +58,36 @@ const app = createApp({
           })
         ])
       ),
+      ...sourceRecords.map((record) =>
+        h(
+          'section',
+          {
+            class: 'art-card-xs min-w-0',
+            style: { width: '192px', maxWidth: '100%' },
+            'aria-label': '来源编号截断验收'
+          },
+          [
+            h(BusinessRecordLink, {
+              ...record,
+              compact: true,
+              onClick: () => {
+                selected.value = record.label
+              }
+            })
+          ]
+        )
+      ),
       h('output', { class: 'sr-only', 'aria-label': '已选记录' }, selected.value)
     ])
 })
+app.use(store)
+const parameters = new URLSearchParams(location.search)
+const setting = useSettingStore(store)
+const theme = parameters.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+setting.setGlobalTheme(theme, theme)
+setting.boxBorderMode = parameters.get('box') !== 'shadow-mode'
+document.documentElement.dataset.boxMode = setting.boxBorderMode ? 'border-mode' : 'shadow-mode'
+initializeTheme()
+setting.setCustomRadius(setting.customRadius)
 app.use(createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: {} }] }))
 app.mount('#smis-record-link')

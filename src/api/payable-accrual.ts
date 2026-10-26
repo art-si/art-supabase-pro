@@ -1,6 +1,7 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import type { MasterDataDeleteDependencyDetail } from '@/api/master-data-delete'
 import { normalizeNonNullableText } from '@/utils/form/normalize'
+import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
 import { fetchOrganizationOptionsTree } from '@/api/system-manage'
 import {
   buildOrganizationSelectTree,
@@ -89,6 +90,7 @@ export async function fetchPayableAccrualWorkspace(query: {
   keyword?: string
   periodId?: string
 }): Promise<PayableAccrualWorkspace> {
+  const assertScope = createTenantScopeReadGuard()
   const { data } = await responseHandle<
     Omit<PayableAccrualWorkspace, 'organizations'> & { organizations: AccrualOption[] }
   >(
@@ -112,6 +114,7 @@ export async function fetchPayableAccrualWorkspace(query: {
     throw new Error('自动暂估资料不完整，请刷新后重试')
   }
   const tree = await fetchOrganizationOptionsTree({}, { showErrorMessage: false })
+  assertScope()
   if (tree.error) throw tree.error
   return {
     ...data,
@@ -139,10 +142,12 @@ export async function savePayableAccrualPolicy(input: PayableAccrualInput): Prom
 export async function fetchPayableAccrualDeleteDependencies(
   ids: string[]
 ): Promise<MasterDataDeleteDependencyDetail[]> {
+  const assertScope = createTenantScopeReadGuard()
   const { data } = await responseHandle<MasterDataDeleteDependencyDetail[]>(
     () => supabase.rpc('fms_payable_accrual_delete_dependencies_secure', { p_ids: ids }),
     options
   )
+  assertScope()
   if (!Array.isArray(data)) throw new Error('自动暂估关联检查失败，请重新检查后再删除')
   return data
 }

@@ -287,6 +287,26 @@ export function isSupabaseAccessFailure(...values: unknown[]): boolean {
   )
 }
 
+export function isSupabaseTransactionRejection(...values: unknown[]): boolean {
+  const details: ErrorDetails = { codes: [], names: [], messages: [], statuses: [] }
+  values.forEach((value) => collectErrorDetails(value, details))
+  return details.codes.some((code) =>
+    [
+      'P0001',
+      'P0002',
+      '22023',
+      '23502',
+      '23503',
+      '23505',
+      '23514',
+      '40001',
+      '40P01',
+      '42501',
+      '57014'
+    ].includes(code)
+  )
+}
+
 /**
  * 识别由 AbortSignal 主动取消的 Supabase 请求。
  * 取消是“旧请求让位给新请求”的正常控制流，不应展示为接口加载失败。

@@ -396,6 +396,9 @@ verify_jwt = true
 [functions.ai-invoice-ocr]
 verify_jwt = true
 
+[functions.ai-tms-driver-document-ocr]
+verify_jwt = true
+
 [functions.ai-waybill-expense-ocr]
 verify_jwt = true
 

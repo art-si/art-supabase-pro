@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MES 生产详情导语样式验收</title>
+    <style>
+      body {
+        margin: 0;
+      }
+
+      #detail-preview {
+        box-sizing: border-box;
+        min-height: 100vh;
+        padding: 16px;
+      }
+
+      .detail-frame {
+        width: calc(100vw - 32px);
+        max-width: 620px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="detail-preview"></div>
+    <script type="module" src="./mes-production-detail-intro.ts"></script>
+  </body>
+</html>

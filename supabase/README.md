@@ -1,5 +1,52 @@
 # Supabase source of truth
 
+## MES packing and finished receipt modes (2026-10-26)
+
+New MES package numbers use `<work-order-no>-PK-<four-digit-minimum-sequence>` for manual,
+automatic and split packing. Existing numbers and package IDs are retained. The tenant/package
+unique constraint remains authoritative. A package's work order and tenant cannot change.
+
+Finished receipts support two mutually exclusive modes, stored as `mes_work_order.finished_inbound_mode`:
+`order` records the work order's summarized receipt without package inventory; `pack` binds each
+inventory batch to its original package. The first actual receipt fixes the mode for later batches,
+including after a return. Projects may remain null when the originating work order has no project.
+
+The secure `wms_finished_pack_options_secure` reader uses the work order's publication state,
+so historically published packages do not depend on an unused per-package confirmation flag.
+It excludes received packages and packages reserved by another active receipt document, while
+allowing a draft to reload its own references. Closed or void unposted receipts release their package
+reservation. It repeats the ordinary/platform-all/platform-selected
+tenant contract and checks the business view/select permissions.
+
+The advisor's authenticated `SECURITY DEFINER` notice for this reader is intentional: anonymous
+execution is revoked, private metric helpers are not executable by authenticated clients, and the
+four tenant contexts are verified by the regression. Package reservations use the partial
+`wms_production_material_line_pack_idx` index.
+
+Package geometry is calculated from each board row's total area divided by its pieces, multiplied
+by the pieces in that package. The canonical material conversion helper converts that area into
+inventory and production units. Stock retains pieces, area and package identity; a package must
+be received, picked, issued or transferred as a whole. Duplicate receipts and mixed receipt modes
+are rejected again under database row locks.
+
+`finished_inbound_area_sqm` stores cumulative net finished receipt area independently of
+`completed_quantity` (production reporting) and `warehoused_quantity` (net receipt in production
+units). Packages retain `inbound_quantity`, `inbound_area_sqm` and their first `inbound_at` timestamp.
+Finished returns reverse net quantities/area while preserving receipt history and the fixed mode.
+Received package production data and its referenced board specifications stay locked. Repacking
+keeps those packages unchanged while allowing the unreceived remainder to be adjusted and
+published for later receipt batches. The original packing-rule binding is retained.
+
+Production document pushes enforce their own button permission and tenant before calling the
+private stock-posting boundary; an ordinary authorized operator does not need an additional
+general stock-operation permission. Direct stock operations retain their separate permission check.
+
+The reviewed database changes were applied directly after verified recoverable backups under
+`.artifacts/finished-inbound-backup` and rollback validation. No migration or runbook files were
+created. `tests/integration/wms-finished-inbound-modes.sql` verifies summary and package batches,
+ordinary/forged-header/platform-selected/platform-all behavior, create/edit, duplicate and partial
+package rejection, area accounting, and finished returns without retaining test business data.
+
 ## System identity and runtime parameters (2026-10-09)
 
 Platform authorization requires the server-managed `sys_user.system_protected` identity,

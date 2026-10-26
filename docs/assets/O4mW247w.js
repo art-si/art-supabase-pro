@@ -1,0 +1,1 @@
+function e(e,t=`未识别租户`){let n=e.tenant?.tenantName?.trim(),r=e.tenant?.tenantCode?.trim();return n&&r?`${n}（${r}）`:n||r||e.tenantId||t}function t(e){return e.map(e=>{let t=e.tenantCode?.trim()??``,n=e.tenantName?.trim()||t;return{label:n&&t&&n!==t?`${n}（${t}）`:n||e.id,value:e.id}})}export{t as n,e as t};
