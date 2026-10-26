@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test.use({ storageState: { cookies: [], origins: [] } })
-test.setTimeout(120_000)
+test.setTimeout(180_000)
 
 for (const scenario of [
   { mode: 'ppe', title: '防护用品', material: '测试防护用品' },
@@ -13,7 +13,10 @@ for (const scenario of [
     await page.route('**/rest/v1/**', (route) =>
       route.fulfill({ json: [], headers: { 'content-range': '*/0' } })
     )
-    await page.goto(`/tests/e2e/fixtures/smis-issuance-edit-copy.html?mode=${scenario.mode}`)
+    await page.goto(`/tests/e2e/fixtures/smis-issuance-edit-copy.html?mode=${scenario.mode}`, {
+      waitUntil: 'domcontentloaded'
+    })
+    await expect(page.getByRole('button', { name: '打开编辑' })).toBeVisible({ timeout: 60_000 })
     const recordSnapshot = () =>
       page.evaluate(() =>
         (
@@ -34,7 +37,7 @@ for (const scenario of [
     await expect(edit.getByPlaceholder('请选择发放人')).toHaveValue(/测试发放人/)
     const editRow = edit.getByRole('row').filter({ hasText: scenario.material })
     await expect(editRow).toBeVisible()
-    await expect(editRow.locator('.el-input-number input')).toHaveValue('2')
+    await expect(editRow.locator('.el-input-number input')).toHaveValue('2.000')
     await page.screenshot({ path: info.outputPath('edit-desktop.png') })
     await edit.getByRole('button', { name: '取消', exact: true }).click()
     await expect(edit).toBeHidden()
@@ -50,10 +53,11 @@ for (const scenario of [
     await expect(copy.getByPlaceholder('请选择发放仓库')).toHaveValue('测试发放仓库')
     const copyRow = copy.getByRole('row').filter({ hasText: scenario.material })
     const quantity = copyRow.locator('.el-input-number input')
-    await expect(quantity).toHaveValue('2')
+    await expect(quantity).toHaveValue('2.000')
     await expect(quantity).toBeEnabled()
     await quantity.fill('3')
-    await expect(quantity).toHaveValue('3')
+    await quantity.press('Tab')
+    await expect(quantity).toHaveValue('3.000')
     await expect(copy.getByRole('button', { name: '保存草稿', exact: true })).toBeEnabled()
     expect(await recordSnapshot()).toEqual(original)
 

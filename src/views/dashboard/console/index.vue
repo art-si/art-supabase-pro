@@ -5,7 +5,7 @@
     :loading-mode="loadingMode"
     :error="pageError"
     min-height="520px"
-    @retry="refreshData"
+    @retry="refreshWorkspace"
   >
     <BusinessWorkspaceHeader
       eyebrow="TRANSPORT CONTROL"
@@ -18,7 +18,7 @@
       refreshable
       refresh-label="刷新运营数据"
       :refresh-loading="overview.loading"
-      @refresh="refreshData"
+      @refresh="refreshWorkspace"
     >
       <template #actions>
         <ElButton :icon="Van" @click="navigateTo('/tms/waybill-management/pending')">
@@ -31,6 +31,18 @@
     </BusinessWorkspaceHeader>
 
     <DashboardMetricCards :items="metricCards" @select="navigateTo" />
+
+    <DashboardCertificateRisks
+      v-if="canViewCertificates"
+      :loading="certificateRisks.loading"
+      :error="certificateRisks.error"
+      :expired="certificateRisks.expired"
+      :due-soon="certificateRisks.dueSoon"
+      :records="certificateRisks.records"
+      @retry="refreshCertificateRisks"
+      @view-all="navigateTo('/vms/certificate-center')"
+      @open-record="openCertificate"
+    />
 
     <section class="operations-dashboard__operations">
       <DashboardTransit
@@ -82,14 +94,19 @@
     type BusinessWorkspaceTag
   } from '@/components/business/business-workspace-header/index.vue'
   import {
+    fetchDashboardCertificateRisks,
     fetchDashboardData,
+    type DashboardCertificateRisk,
     type DashboardData,
     type DashboardTrendPeriod
   } from '@/api/dashboard'
   import { useUserStore } from '@/store/modules/user'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { useAuth } from '@/hooks/core/useAuth'
   import { formatCurrencyValue, formatNumberValue } from '@/utils/ui'
   import { navigateToApplication } from '@/utils/application-navigation'
   import DashboardFleetRisk from './modules/dashboard-fleet-risk.vue'
+  import DashboardCertificateRisks from './modules/dashboard-certificate-risks.vue'
   import DashboardMetricCards from './modules/dashboard-metric-cards.vue'
   import DashboardOrderFlow from './modules/dashboard-order-flow.vue'
   import DashboardRecentOrders from './modules/dashboard-recent-orders.vue'
@@ -108,6 +125,10 @@
   }
 
   const router = useRouter()
+  const { hasAuth } = useAuth()
+  const tenantScopeStore = useTenantScopeStore()
+  const { revision: tenantScopeRevision } = storeToRefs(tenantScopeStore)
+  const canViewCertificates = computed(() => hasAuth('CertificateCenter:View'))
   const { info, language } = storeToRefs(useUserStore())
   const createEmptyDashboard = (): DashboardData => ({
     todayOrderCount: 0,
@@ -132,6 +153,14 @@
     requestId: 0,
     period: 'month',
     data: createEmptyDashboard()
+  })
+  const certificateRisks = reactive({
+    loading: false,
+    error: null as Error | null,
+    expired: 0,
+    dueSoon: 0,
+    records: [] as DashboardCertificateRisk[],
+    requestId: 0
   })
   const statusDefinitions = [
     { key: 'pending_load', label: '待配载', color: 'var(--el-color-primary)' },
@@ -221,18 +250,29 @@
   const reminderTotal = computed(() =>
     overview.data.reminders.reduce((total, item) => total + item.count, 0)
   )
+  const certificateRiskTotal = computed(() => certificateRisks.expired + certificateRisks.dueSoon)
   const loadingMode = computed<'mask' | 'skeleton'>(() => (overview.loaded ? 'mask' : 'skeleton'))
   const pageError = computed(() => (overview.loaded ? null : overview.error))
   const metricCards = computed<DashboardMetric[]>(() => [
     {
       key: 'risk',
-      label: '风险待处理',
-      value: formatNumberValue(reminderTotal.value, locale.value),
+      label: canViewCertificates.value ? '证照待处理' : '车辆运行提醒',
+      value:
+        canViewCertificates.value && certificateRisks.error
+          ? '--'
+          : formatNumberValue(
+              canViewCertificates.value ? certificateRiskTotal.value : reminderTotal.value,
+              locale.value
+            ),
       unit: '项',
-      hint: `${overview.data.pendingAuditVehicleCount} 台车辆待审核`,
+      hint: canViewCertificates.value
+        ? certificateRisks.error
+          ? '证件风险读取失败，请重试'
+          : '车辆与司机证件到期风险'
+        : `${overview.data.pendingAuditVehicleCount} 台车辆待审核`,
       icon: 'ri:alarm-warning-line',
       tone: 'danger',
-      route: '/vms/reminder-manage'
+      route: canViewCertificates.value ? '/vms/certificate-center' : '/vms/reminder-manage'
     },
     {
       key: 'pending-dispatch',
@@ -302,6 +342,28 @@
       if (requestId === overview.requestId) overview.loading = false
     }
   }
+  async function refreshCertificateRisks(): Promise<void> {
+    if (!canViewCertificates.value) return
+    const requestId = ++certificateRisks.requestId
+    certificateRisks.loading = true
+    certificateRisks.error = null
+    try {
+      const data = await fetchDashboardCertificateRisks()
+      if (requestId !== certificateRisks.requestId) return
+      certificateRisks.expired = data.expired
+      certificateRisks.dueSoon = data.dueSoon
+      certificateRisks.records = data.records
+    } catch (error) {
+      if (requestId !== certificateRisks.requestId) return
+      certificateRisks.error =
+        error instanceof Error ? error : new Error('证件风险加载失败，请重试')
+    } finally {
+      if (requestId === certificateRisks.requestId) certificateRisks.loading = false
+    }
+  }
+  async function refreshWorkspace(): Promise<void> {
+    await Promise.all([refreshData(), refreshCertificateRisks()])
+  }
   function handleTrendPeriodChange(period: DashboardTrendPeriod): void {
     if (overview.period === period) return
     overview.period = period
@@ -319,8 +381,17 @@
   function openOrder(id?: string): void {
     if (id) void router.push({ name: 'TmsOrderDetail', params: { id } })
   }
+  function openCertificate(record: DashboardCertificateRisk): void {
+    void navigateToApplication('vms', '/vms/certificate-center', {
+      subjectType: record.subjectType,
+      subjectId: record.subjectId
+    }).catch((error) => ElMessage.error(getFriendlySupabaseErrorMessage(error, '证件中心跳转失败')))
+  }
   onMounted(() => {
-    void refreshData()
+    void refreshWorkspace()
+  })
+  watch(tenantScopeRevision, () => {
+    void refreshWorkspace()
   })
   defineOptions({ name: 'Console' })
 </script>

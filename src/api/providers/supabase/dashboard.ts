@@ -239,12 +239,7 @@ export async function fetchDashboardData(
 }
 
 export async function fetchDashboardCertificateRisks(): Promise<DashboardCertificateRiskSummary> {
-  const statuses: DashboardCertificateRiskStatus[] = [
-    'expired',
-    'due_today',
-    'due_15',
-    'due_30'
-  ]
+  const statuses: DashboardCertificateRiskStatus[] = ['expired', 'due_today', 'due_15', 'due_30']
   const pages = await Promise.all(
     statuses.map(async (status) => {
       const { data } = await responseHandle<{
