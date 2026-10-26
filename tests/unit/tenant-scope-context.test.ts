@@ -12,6 +12,7 @@ import {
   resolveTenantWorkspaceId,
   resolveTenantWriteTargetId,
   shouldAttachTenantScopeHeader,
+  shouldAttachStorageTenantScopeHeader,
   TENANT_SCOPE_MODE_STORAGE_KEY,
   TENANT_SCOPE_STORAGE_KEY,
   writePlatformTenantScopeActive,
@@ -378,6 +379,32 @@ test('tenant scope header is attached only to Supabase Data API requests', () =>
     false
   )
   assert.equal(shouldAttachTenantScopeHeader('not a Supabase request'), false)
+})
+
+test('storage tenant header is limited to same-origin object API requests', () => {
+  const projectUrl = 'https://example.supabase.co'
+  assert.equal(
+    shouldAttachStorageTenantScopeHeader(
+      'https://example.supabase.co/storage/v1/object/sign/private-a/tenant/file?token=x',
+      projectUrl
+    ),
+    true
+  )
+  assert.equal(
+    shouldAttachStorageTenantScopeHeader(
+      'https://evil.example/storage/v1/object/sign/private-a/tenant/file?token=x',
+      projectUrl
+    ),
+    false
+  )
+  assert.equal(
+    shouldAttachStorageTenantScopeHeader(
+      'https://example.supabase.co/storage/v1/bucket',
+      projectUrl
+    ),
+    false
+  )
+  assert.equal(shouldAttachStorageTenantScopeHeader('not a url', projectUrl), false)
 })
 
 test('platform read normalization supports CloudBase PostgreSQL Data API paths', () => {

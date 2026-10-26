@@ -54,7 +54,8 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     menuName: 'TmsCompanyCertification',
     buttons: [
       button('View', '查看公司认证信息', 'TmsCompanyCertification:View'),
-      button('Submit', '提交认证申请', 'TmsCompanyCertification:Submit')
+      button('Submit', '提交认证申请', 'TmsCompanyCertification:Submit'),
+      button('ViewSensitive', '查看敏感认证附件', 'TmsCompanyCertification:ViewSensitive')
     ]
   },
   {
