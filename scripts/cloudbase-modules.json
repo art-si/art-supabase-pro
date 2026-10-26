@@ -2,7 +2,7 @@
   {
     "path": "modules/art-supabase-vms",
     "url": "https://gitee.com/art-si/art-supabase-vms.git",
-    "ref": "30534a78ddfe1283fbd40dfe77cd91215516bc25"
+    "ref": "2b846cd50d1653efbd0930e354c0b17f5e78600a"
   },
   {
     "path": "modules/art-supabase-fms",
@@ -27,7 +27,7 @@
   {
     "path": "modules/art-supabase-doc",
     "url": "https://gitee.com/art-si/art-supabase-doc.git",
-    "ref": "5fbbad8c9915b6d350468daef63b9496765f8c17"
+    "ref": "a587798f287f9ae132835080bb619143921b41e1"
   },
   {
     "path": "modules/art-supabase-mdm",
