@@ -87,6 +87,22 @@ export const shouldAttachTenantScopeHeader = (requestUrl: string): boolean => {
   }
 }
 
+/** Storage object requests use the same selected-tenant scope as the Data API. */
+export const shouldAttachStorageTenantScopeHeader = (
+  requestUrl: string,
+  supabaseUrl: string
+): boolean => {
+  try {
+    const request = new URL(requestUrl)
+    return (
+      request.origin === new URL(supabaseUrl).origin &&
+      request.pathname.startsWith('/storage/v1/object/')
+    )
+  } catch {
+    return false
+  }
+}
+
 export const readTenantScopeId = (): string | null => {
   if (typeof sessionStorage === 'undefined') return null
   try {

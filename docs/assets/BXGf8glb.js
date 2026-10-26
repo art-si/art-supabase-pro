@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./DyQn968t.js";var i=e({name:`FleetComplianceCommand`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{kind:`fleet-compliance`}))}});export{i as default};

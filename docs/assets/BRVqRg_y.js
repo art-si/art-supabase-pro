@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./BA9nMNBe.js";var i=e({name:`WmsSalesReturnDocument`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{kind:`return`}))}});export{i as default};

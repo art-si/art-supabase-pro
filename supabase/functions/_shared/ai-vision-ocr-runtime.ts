@@ -38,6 +38,7 @@ export interface VisionOcrConfig<TInput, TResult extends VisionOcrNormalizedResu
   entityTable: string
   envPrefix: string
   inlineImages?: boolean
+  imageInputMode?: 'url' | 'private_path'
   strictProvider?: boolean
   requiredPermission?: string | ((body: Record<string, unknown>) => string | null)
   allowReview?: boolean
@@ -51,6 +52,10 @@ export interface VisionOcrConfig<TInput, TResult extends VisionOcrNormalizedResu
     supabaseUrl: string
     body: Record<string, unknown>
   }) => Promise<boolean>
+  resolveAuthorizedImages?: (context: {
+    admin: SupabaseClient
+    imageUrls: string[]
+  }) => Promise<string[]>
   defaultPrompt: string
   expectedShape: Record<string, unknown>
   defaultMaxTokens?: number
@@ -333,7 +338,10 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
 
       const imageUrls = (Array.isArray(body.imageUrls) ? body.imageUrls : [])
         .map(stringValue)
-        .filter((item): item is string => Boolean(item && /^https?:\/\//i.test(item)))
+        .filter((item): item is string => Boolean(
+          item && item.length <= 500 &&
+          (config.imageInputMode === 'private_path' || /^https?:\/\//i.test(item))
+        ))
         .slice(0, 3)
       if (!imageUrls.length) {
         return json({ code: 'invalid_input', message: config.labels.invalidImages }, 400)
@@ -435,9 +443,12 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
       if (config.inlineImages && !config.authorizeImageUrls) {
         throw new Error('Inline OCR images require an image authorization policy')
       }
-      const providerImageUrls = config.inlineImages
-        ? await Promise.all(imageUrls.map((url) => loadImageDataUrl(url)))
+      const authorizedImageUrls = config.resolveAuthorizedImages
+        ? await config.resolveAuthorizedImages({ admin, imageUrls })
         : imageUrls
+      const providerImageUrls = config.inlineImages
+        ? await Promise.all(authorizedImageUrls.map((url) => loadImageDataUrl(url)))
+        : authorizedImageUrls
       if (providerImageUrls.some((url) => !url)) {
         return json(
           {

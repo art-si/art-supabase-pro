@@ -37,12 +37,10 @@ async function openSurvey(page: Page): Promise<void> {
   await page.evaluate(() => window.dispatchEvent(new Event('hr-experience-open-survey')))
 }
 
-async function selectTenant(page: Page, dialog: ReturnType<Page['getByRole']>): Promise<void> {
-  await dialog.getByRole('combobox', { name: /所属租户/ }).click()
-  await page
-    .locator('.el-select-dropdown:visible')
-    .getByText('乙租户（B）', { exact: true })
-    .click()
+async function selectTenantScope(page: Page, tenantId: string): Promise<void> {
+  await page.evaluate((id) => {
+    window.dispatchEvent(new CustomEvent('hr-experience-set-scope', { detail: id }))
+  }, tenantId)
 }
 
 function surveyRow(tenantId: string, index: number) {
@@ -58,9 +56,11 @@ function surveyRow(tenantId: string, index: number) {
 
 test('行动选租户后读取该租户全部调查分页', async ({ page }) => {
   await prepareDialogFixture(page)
+  await selectTenantScope(page, tenantA)
   const ranges: Array<{ tenantId: string | null; from: number; to: number }> = []
   await page.route('**/rest/v1/rpc/hr_list_employee_experience_records_secure', (route) => {
     const body = route.request().postDataJSON()
+    if (body.p_tenant_id !== tenantB) return route.fulfill({ json: { records: [], total: 0 } })
     ranges.push({ tenantId: body.p_tenant_id, from: body.p_from, to: body.p_to })
     const start = Number(body.p_from)
     const count = Math.min(200, 205 - start)
@@ -75,7 +75,7 @@ test('行动选租户后读取该租户全部调查分页', async ({ page }) => 
   await openAction(page)
   const dialog = page.getByRole('dialog', { name: '新增员工体验改善行动' })
   await expect(dialog).toBeVisible()
-  await selectTenant(page, dialog)
+  await selectTenantScope(page, tenantB)
   await expect.poll(() => ranges.length).toBe(2)
   expect(ranges).toEqual([
     { tenantId: tenantB, from: 0, to: 199 },
@@ -136,6 +136,7 @@ for (const kind of ['action', 'survey'] as const) {
   test(`${kind} 关联选项失败后阻止确认并支持重试`, async ({ page }, testInfo) => {
     await prepareDialogFixture(page)
     await page.setViewportSize({ width: 390, height: 900 })
+    await selectTenantScope(page, tenantB)
     let failedRequests = 0
     if (kind === 'action') {
       await page.route('**/rest/v1/rpc/hr_list_employee_experience_records_secure', (route) => {
@@ -168,9 +169,10 @@ for (const kind of ['action', 'survey'] as const) {
       name: kind === 'action' ? '新增员工体验改善行动' : '新建员工体验调查'
     })
     await expect(dialog).toBeVisible()
-    await selectTenant(page, dialog)
     await expect(
-      dialog.getByText(kind === 'action' ? '行动所需资料加载失败' : '调查所需资料加载失败')
+      dialog.getByText(kind === 'action' ? '行动所需资料加载失败' : '调查所需资料加载失败', {
+        exact: true
+      })
     ).toBeVisible()
     const confirm = dialog.getByRole('button', {
       name: kind === 'action' ? '创建行动' : '创建草稿'

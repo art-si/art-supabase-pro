@@ -9,6 +9,7 @@ import {
   readMutationTenantScopeId,
   readTenantScopeId,
   shouldAttachTenantScopeHeader,
+  shouldAttachStorageTenantScopeHeader,
   CLOUDBASE_TENANT_SCOPE_HEADER,
   TENANT_SCOPE_HEADER
 } from '@/utils/tenant-scope-context'
@@ -27,6 +28,7 @@ if (
 const tenantScopeFetch: typeof fetch = async (input, init) => {
   const selectedTenantScopeId = readTenantScopeId()
   const requestUrl = input instanceof Request ? input.url : String(input)
+  const isStorageObjectRequest = shouldAttachStorageTenantScopeHeader(requestUrl, supabaseUrl)
   const requestMethod = (
     init?.method ?? (input instanceof Request ? input.method : 'GET')
   ).toUpperCase()
@@ -45,7 +47,7 @@ const tenantScopeFetch: typeof fetch = async (input, init) => {
     ? normalizePlatformTenantReadUrl(requestUrl)
     : requestUrl
 
-  if (!tenantScopeId || !isDataApiRequest) {
+  if (!tenantScopeId || (!isDataApiRequest && !isStorageObjectRequest)) {
     if (normalizedUrl === requestUrl) return fetch(input, init)
     const normalizedInput =
       input instanceof Request ? new Request(normalizedUrl, input) : normalizedUrl

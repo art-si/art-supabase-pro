@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./BUd8xlPz.js";var i=e({name:`PmisInspectionDetail`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{mode:`detail`}))}});export{i as default};
