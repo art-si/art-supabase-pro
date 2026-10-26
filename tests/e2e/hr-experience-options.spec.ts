@@ -189,6 +189,21 @@ for (const kind of ['action', 'survey'] as const) {
     await dialog.getByRole('button', { name: '重新加载' }).click()
     await expect(dialog.getByText(/所需资料加载失败/)).toHaveCount(0)
     await expect(confirm).toBeEnabled()
+    if (kind === 'action') {
+      const survey = dialog.getByRole('combobox', { name: /关联调查/ })
+      await expect(survey).toBeVisible({ timeout: 60_000 })
+      await survey.click()
+      await page
+        .locator('.el-select-dropdown:visible')
+        .getByText(`${tenantB}-0（CODE-${tenantB}-0）`, { exact: true })
+        .click()
+    } else {
+      await expect(dialog.getByPlaceholder('例如 ENGAGEMENT-2027-Q1')).toBeVisible({
+        timeout: 60_000
+      })
+      await expect(dialog.getByPlaceholder('输入员工可理解的调查名称')).toBeEnabled()
+    }
+    await expect(page.locator('.el-message--error')).toHaveCount(0)
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
       .toBe(true)
