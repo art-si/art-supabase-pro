@@ -18,6 +18,21 @@ function Assert-Throws {
 }
 
 try {
+  $functionConfig = Set-BackupFunctionJwtConfig -Config @'
+[functions.driver-auth]
+verify_jwt = true
+entrypoint = "./functions/driver-auth/index.ts"
+[auth]
+enabled = true
+'@ -Functions @(
+    [pscustomobject]@{slug='driver-auth';verify_jwt=$false},
+    [pscustomobject]@{slug='ai-assistant';verify_jwt=$true})
+  if ($functionConfig -notmatch '(?s)\[functions.driver-auth\].*?verify_jwt = false.*?entrypoint' -or
+      $functionConfig -notmatch '(?s)\[functions.ai-assistant\].*?verify_jwt = true' -or
+      $functionConfig -notmatch '(?s)\[auth\].*?enabled = true') {
+    throw 'Local function JWT settings must preserve remote login behavior and unrelated config.'
+  }
+  Assert-Throws { Set-BackupFunctionJwtConfig -Config 'project_id="test"' -Functions @([pscustomobject]@{slug='../unsafe';verify_jwt=$false}) }
   $secretHeaders = New-StorageAdminHeaders -Key 'sb_secret_fixture'
   $legacyHeaders = New-StorageAdminHeaders -Key 'legacy-jwt-fixture'
   if ($secretHeaders.ContainsKey('Authorization') -or
@@ -34,9 +49,13 @@ try {
     'database/migration-history-schema.sql' = '-- migration schema'
     'database/migration-history-data.sql' = '-- SOURCE_MIGRATION_SECRET'
     'database/managed-schema-snapshot.sql' = '-- SOURCE_MANAGED_SECRET'
+    'database/managed-project-objects.sql' = '-- reviewed project-owned Auth/Storage policies and triggers'
+    'database/recovery-snapshot-data.sql' = '-- SOURCE_OWNER_RECOVERY_SECRET'
     'metadata/functions.json' = '[]'
     'metadata/storage-buckets.json' = '[]'
     'metadata/realtime-publication-tables.json' = '[]'
+    'metadata/encryption-root-key.json' = '{"key":"SOURCE_ROOT_KEY_SECRET"}'
+    'metadata/cron-jobs.json' = '[{"command":"SOURCE_SCHEDULER_SECRET"}]'
   }
   foreach ($relativePath in $contents.Keys) {
     [IO.File]::WriteAllText(
@@ -60,9 +79,22 @@ try {
 
   $archive = Join-Path $tempRoot 'backup.zip'
   & (Join-Path $projectRoot 'supabase/package-supabase-backup.ps1') `
-    -BackupPath $backup -ArchivePath $archive | Out-Null
+    -BackupPath $backup -ArchivePath $archive -SplitForGit | Out-Null
   if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Archive was not created.' }
   $sha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+  $partsManifest = Join-Path "$archive.parts" 'manifest.json'
+  $partsDownload = Join-Path $tempRoot 'parts-downloaded'
+  & (Join-Path $projectRoot 'supabase/download-supabase-backup.ps1') `
+    -PartsManifestPath $partsManifest -ExpectedSha256 $sha256 -Destination $partsDownload | Out-Null
+  $firstPart = Join-Path "$archive.parts" 'part-001.bin'
+  [IO.File]::AppendAllText($firstPart, 'corrupted')
+  Assert-Throws {
+    & (Join-Path $projectRoot 'supabase/download-supabase-backup.ps1') `
+      -PartsManifestPath $partsManifest -Destination (Join-Path $tempRoot 'bad-parts') | Out-Null
+  }
+  if (Test-Path -LiteralPath (Join-Path $tempRoot 'bad-parts')) {
+    throw 'Corrupted archive parts were extracted.'
+  }
   Assert-Throws {
     & (Join-Path $projectRoot 'supabase/publish-supabase-backup.ps1') `
       -ArchivePath $archive -DistributionProjectRef 'abcdefghijklmnopqrst' | Out-Null
@@ -100,6 +132,18 @@ COPY auth.users (id, email, encrypted_password, confirmation_token, raw_app_meta
 COPY auth.refresh_tokens (token) FROM stdin;
 SOURCE_REFRESH_TOKEN
 \.
+COPY vault.secrets (secret) FROM stdin;
+SOURCE_VAULT_SECRET
+\.
+COPY cron.job (command) FROM stdin;
+SOURCE_CRON_TOKEN
+\.
+COPY net.http_request_queue (headers) FROM stdin;
+SOURCE_HTTP_TOKEN
+\.
+COPY public.fixture (value) FROM stdin;
+BUSINESS_DATA
+\.
 "@, [Text.UTF8Encoding]::new($false))
   $sensitiveManifestPath = Join-Path $sensitiveBackup 'manifest.json'
   $sensitiveManifest = Get-Content -LiteralPath $sensitiveManifestPath -Raw | ConvertFrom-Json
@@ -116,14 +160,23 @@ SOURCE_REFRESH_TOKEN
     -ExpectedSha256 (Get-FileHash -LiteralPath $shareableArchive -Algorithm SHA256).Hash `
     -Destination $shareableDownload | Out-Null
   $shareableData = Get-Content -LiteralPath (Join-Path $shareableDownload 'database/data.sql') -Raw
-  if ($shareableData -match 'SOURCE_PASSWORD_HASH|SOURCE_CONFIRMATION_TOKEN|SOURCE_REFRESH_TOKEN|SOURCE_METADATA_SECRET|SOURCE_USER_SECRET' -or
-      $shareableData -notmatch 'test@example.com') {
+  if ($shareableData -match 'SOURCE_PASSWORD_HASH|SOURCE_CONFIRMATION_TOKEN|SOURCE_REFRESH_TOKEN|SOURCE_METADATA_SECRET|SOURCE_USER_SECRET|SOURCE_VAULT_SECRET|SOURCE_CRON_TOKEN|SOURCE_HTTP_TOKEN' -or
+      $shareableData -notmatch 'test@example.com' -or $shareableData -notmatch 'BUSINESS_DATA') {
     throw 'Recipient archive retained source Auth credentials or lost user IDs.'
   }
   if ((Get-Content -LiteralPath (Join-Path $shareableDownload 'database/migration-history-data.sql') -Raw) -match 'SOURCE_MIGRATION_SECRET' -or
-      (Test-Path -LiteralPath (Join-Path $shareableDownload 'database/managed-schema-snapshot.sql'))) {
+      (Test-Path -LiteralPath (Join-Path $shareableDownload 'database/managed-schema-snapshot.sql')) -or
+      (Test-Path -LiteralPath (Join-Path $shareableDownload 'metadata/encryption-root-key.json')) -or
+      (Test-Path -LiteralPath (Join-Path $shareableDownload 'database/recovery-snapshot-data.sql')) -or
+      (Test-Path -LiteralPath (Join-Path $shareableDownload 'metadata/cron-jobs.json'))) {
     throw 'Recipient archive retained owner-only migration or managed-schema content.'
   }
+  foreach ($runtime in @('start.ps1', 'tools/restore-local-supabase.ps1', 'tools/transfer-common.ps1', 'database/managed-project-objects.sql')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $shareableDownload $runtime))) {
+      throw 'Recipient archive is missing its standalone Docker restore tools.'
+    }
+  }
+  & (Join-Path $shareableDownload 'start.ps1') -VerifyBackupOnly | Out-Null
 
   Assert-Throws {
     & (Join-Path $projectRoot 'supabase/download-supabase-backup.ps1') `

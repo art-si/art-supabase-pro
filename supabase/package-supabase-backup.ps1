@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })][string]$BackupPath,
-  [string]$ArchivePath
+  [string]$ArchivePath,
+  [string]$CliRuntimePath,
+  [switch]$SplitForGit
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,7 +36,7 @@ function ConvertTo-ShareableDataDump {
     while ($null -ne ($line = $reader.ReadLine())) {
       if ($copyTable) {
         if ($line -eq '\.') {
-          if ($copyTable -eq 'auth.users' -or -not $copyTable.StartsWith('auth.')) {
+          if ($copyTable -eq 'auth.users' -or $copyTable -notmatch '^(auth|vault|cron|net)\.') {
             $writer.WriteLine($line)
           }
           $copyTable = $null
@@ -57,21 +59,18 @@ function ConvertTo-ShareableDataDump {
           }
           $writer.WriteLine(($fields -join "`t"))
         }
-        elseif (-not $copyTable.StartsWith('auth.')) {
+        elseif ($copyTable -notmatch '^(auth|vault|cron|net)\.') {
           $writer.WriteLine($line)
         }
         continue
       }
 
-      if ($line -match '^\s*(?:COPY|INSERT\s+INTO)\s+(?:"?auth"?|"?vault"?)\.' -and
-          $line -notmatch '^\s*COPY\s+"?auth"?\."?[A-Za-z0-9_]+"?\s*\([^)]*\)\s+FROM\s+stdin;\s*$') {
-        throw 'Unexpected Auth or Vault data statement; refusing to make a shareable archive.'
+      if ($line -match '^\s*(?:COPY|INSERT\s+INTO)\s+"?(auth|vault|cron|net)"?\.' -and
+          $line -notmatch '^\s*COPY\s+"?(auth|vault|cron|net)"?\."?[A-Za-z0-9_]+"?\s*\([^)]*\)\s+FROM\s+stdin;\s*$') {
+        throw 'Unexpected credential or operational data statement; refusing to make a shareable archive.'
       }
-      if ($line -match '^\s*COPY\s+"?(auth|vault)"?\."?([A-Za-z0-9_]+)"?\s*\(([^)]*)\)\s+FROM\s+stdin;\s*$') {
-        if ($Matches[1] -eq 'vault') {
-          throw 'Vault data is present in the dump; refusing to make a shareable archive.'
-        }
-        $copyTable = "auth.$($Matches[2])"
+      if ($line -match '^\s*COPY\s+"?([A-Za-z0-9_]+)"?\."?([A-Za-z0-9_]+)"?\s*\(([^)]*)\)\s+FROM\s+stdin;\s*$') {
+        $copyTable = "$($Matches[1]).$($Matches[2])"
         if ($copyTable -eq 'auth.users') {
           $authUsersSeen = $true
           $userColumns = @(($Matches[3] -split '\s*,\s*') | ForEach-Object { $_.Trim('"') })
@@ -80,6 +79,7 @@ function ConvertTo-ShareableDataDump {
           }
           $writer.WriteLine($line)
         }
+        elseif ($copyTable -notmatch '^(auth|vault|cron|net)\.') { $writer.WriteLine($line) }
         continue
       }
       $writer.WriteLine($line)
@@ -135,8 +135,47 @@ try {
   if ($migrationEntry.Count -ne 1) { throw 'Backup manifest is missing one migration-history-data.sql entry.' }
   $migrationEntry[0].bytes = (Get-Item -LiteralPath $safeMigrationPath).Length
   $migrationEntry[0].sha256 = (Get-FileHash -LiteralPath $safeMigrationPath -Algorithm SHA256).Hash
-  $manifest.files = @($manifest.files | Where-Object { $_.path.Replace('\', '/') -ne 'database/managed-schema-snapshot.sql' })
+  # Owner backups may also contain encryption keys, raw operational metadata,
+  # staging copies, and diagnostic manifests. Ship only restore inputs.
+  $recipientMetadata = @(
+    'metadata/functions.json', 'metadata/storage-buckets.json',
+    'metadata/storage-object-counts.json', 'metadata/storage-object-inventory.json',
+    'metadata/realtime-publication-tables.json', 'metadata/database-inventory.json',
+    'metadata/service-versions.json')
+  $manifest.files = @($manifest.files | Where-Object {
+    $path = $_.path.Replace('\', '/')
+    $path -eq 'config.toml' -or
+      $path -in @('database/roles.sql', 'database/schema.sql', 'database/data.sql',
+        'database/migration-history-schema.sql', 'database/migration-history-data.sql',
+        'database/managed-project-objects.sql') -or
+      $path.StartsWith('functions/') -or $path.StartsWith('storage/') -or
+      $path -in $recipientMetadata
+  })
+  $runtimeFiles = @(
+    @{ Source = (Join-Path $PSScriptRoot 'start-local-backup.ps1'); Path = 'start.ps1' },
+    @{ Source = (Join-Path $PSScriptRoot 'restore-local-supabase.ps1'); Path = 'tools/restore-local-supabase.ps1' },
+    @{ Source = (Join-Path $PSScriptRoot 'transfer-common.ps1'); Path = 'tools/transfer-common.ps1' },
+    @{ Source = (Join-Path (Split-Path -Parent $PSScriptRoot) 'LICENSE'); Path = 'LICENSE' },
+    @{ Source = (Join-Path $PSScriptRoot 'download-supabase-backup.ps1'); Path = 'tools/download-supabase-backup.ps1' })
+  if ($CliRuntimePath) {
+    foreach ($binary in @('supabase.exe', 'supabase-go.exe')) {
+      $source = Join-Path $CliRuntimePath $binary
+      if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "CLI runtime is missing $binary." }
+      $runtimeFiles += @{Source=$source;Path="tools/runtime/$binary"}
+    }
+  }
+  foreach ($runtime in $runtimeFiles) {
+    $source = $runtime.Source
+    $manifest.files += [pscustomobject]@{
+      path = $runtime.Path
+      bytes = (Get-Item -LiteralPath $source).Length
+      sha256 = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+    }
+  }
   $manifest | Add-Member -NotePropertyName recipient_safe_auth -NotePropertyValue $true -Force
+  $manifest | Add-Member -NotePropertyName includes -NotePropertyValue @('application schema and data', 'Auth user IDs without source credentials',
+    'Storage files and bucket metadata', 'Edge Function source and JWT configuration',
+    'project-owned Auth/Storage policies and triggers', 'standalone local Docker restore tools') -Force
   [IO.File]::WriteAllText(
     $safeManifestPath,
     ($manifest | ConvertTo-Json -Depth 12),
@@ -153,6 +192,10 @@ try {
         }
         elseif ($relativePath -eq 'database/migration-history-data.sql') {
           $safeMigrationPath
+        }
+        elseif (@($runtimeFiles | Where-Object Path -EQ $relativePath).Count -eq 1) {
+          $runtime = @($runtimeFiles | Where-Object Path -EQ $relativePath)[0]
+          $runtime.Source
         }
         else { Join-Path $BackupPath $entry.path }
         [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
@@ -178,6 +221,40 @@ finally {
 }
 
 $sha256 = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash
+if ($SplitForGit) {
+  $partsRoot = "$ArchivePath.parts"
+  if (Test-Path -LiteralPath $partsRoot) { throw "Parts directory already exists: $partsRoot" }
+  New-Item -ItemType Directory -Path $partsRoot | Out-Null
+  $inputStream = [IO.File]::OpenRead($ArchivePath)
+  $parts = @()
+  try {
+    $buffer = New-Object byte[] (40 * 1024 * 1024)
+    while ($inputStream.Position -lt $inputStream.Length) {
+      $length = [int][Math]::Min($buffer.Length, $inputStream.Length - $inputStream.Position)
+      $offset = 0
+      while ($offset -lt $length) {
+        $read = $inputStream.Read($buffer, $offset, $length - $offset)
+        if ($read -eq 0) { throw 'Unexpected end of archive while splitting.' }
+        $offset += $read
+      }
+      $name = 'part-{0:D3}.bin' -f ($parts.Count + 1)
+      $partPath = Join-Path $partsRoot $name
+      $outputStream = [IO.File]::Open($partPath, [IO.FileMode]::CreateNew)
+      try { $outputStream.Write($buffer, 0, $length) }
+      finally { $outputStream.Dispose() }
+      $parts += [pscustomobject]@{path=$name;bytes=$length;sha256=(Get-FileHash -LiteralPath $partPath -Algorithm SHA256).Hash}
+    }
+  }
+  finally { $inputStream.Dispose() }
+  [pscustomobject]@{
+    format_version=1
+    archive_name=(Split-Path -Leaf $ArchivePath)
+    bytes=(Get-Item -LiteralPath $ArchivePath).Length
+    sha256=$sha256
+    parts=$parts
+  } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $partsRoot 'manifest.json') -Encoding utf8
+  Write-Host "Git parts: $partsRoot ($($parts.Count) files, at most 40 MiB each)" -ForegroundColor Green
+}
 Write-Host "Archive: $ArchivePath" -ForegroundColor Green
 Write-Host "SHA256: $sha256"
 Write-Host 'Auth credentials were removed from this shareable ZIP. Review business data and Storage files before sharing.'

@@ -287,12 +287,15 @@ function Invoke-StorageObjectUpload {
     [Parameter(Mandatory = $true)][string]$ServiceRoleKey,
     [Parameter(Mandatory = $true)][string]$BucketId,
     [Parameter(Mandatory = $true)][string]$ObjectName,
-    [Parameter(Mandatory = $true)][string]$FilePath
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [string]$ContentType = 'application/octet-stream',
+    [string]$CacheControl
   )
 
   $encodedBucket = [uri]::EscapeDataString($BucketId)
   $encodedObject = ConvertTo-StorageApiPath $ObjectName
   $headers = New-StorageAdminHeaders -Key $ServiceRoleKey -Upsert
+  if ($CacheControl) { $headers['cache-control'] = $CacheControl }
   for ($attempt = 1; $attempt -le 3; $attempt++) {
     try {
       Invoke-WebRequest `
@@ -300,7 +303,7 @@ function Invoke-StorageObjectUpload {
         -Uri "$($ApiUrl.TrimEnd('/'))/storage/v1/object/$encodedBucket/$encodedObject" `
         -Headers $headers `
         -InFile $FilePath `
-        -ContentType 'application/octet-stream' `
+        -ContentType $ContentType `
         -UseBasicParsing `
         -TimeoutSec 180 | Out-Null
       return
@@ -311,6 +314,31 @@ function Invoke-StorageObjectUpload {
       Start-Sleep -Seconds (3 * $attempt)
     }
   }
+}
+
+function Set-BackupFunctionJwtConfig {
+  param(
+    [Parameter(Mandatory = $true)][string]$Config,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Functions
+  )
+
+  foreach ($function in $Functions) {
+    if ($function.slug -notmatch '^[a-z0-9][a-z0-9_-]*$' -or $function.verify_jwt -isnot [bool]) {
+      throw 'Invalid function slug or JWT setting in backup metadata.'
+    }
+    $jwt = if ($function.verify_jwt) { 'true' } else { 'false' }
+    $slug = [regex]::Escape([string]$function.slug)
+    $section = [regex]::Match($Config, "(?ms)^\[functions\.$slug\][^\r\n]*\r?\n.*?(?=^\[|\z)")
+    if ($section.Success) {
+      $replacement = if ($section.Value -match '(?m)^verify_jwt\s*=') {
+        $section.Value -replace '(?m)^verify_jwt\s*=[^\r\n]*', "verify_jwt = $jwt"
+      }
+      else { $section.Value.TrimEnd() + "`nverify_jwt = $jwt`n`n" }
+      $Config = $Config.Remove($section.Index, $section.Length).Insert($section.Index, $replacement)
+    }
+    else { $Config = $Config.TrimEnd() + "`n`n[functions.$($function.slug)]`nverify_jwt = $jwt`n" }
+  }
+  return $Config
 }
 
 function Assert-BackupManifest {

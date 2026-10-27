@@ -55,6 +55,21 @@ Set-Location 'D:\spa\art-supabase-pro'
 
 ## 在自己电脑先试：ZIP → 本地 Supabase
 
+仓库中的交付包使用 `art-supabase-local.zip.parts/` 普通 Git 分片，不依赖 Gitee 付费 LFS。每片最多 40 MiB；它们属于同一个 ZIP。克隆仓库后运行下面两步，download 会逐片校验、合并 ZIP、校验完整 ZIP 并解压：
+
+```powershell
+.\supabase\download-supabase-backup.ps1 `
+  -PartsManifestPath '.\supabase\art-supabase-local.zip.parts\manifest.json' `
+  -Destination '.\supabase-local-package'
+.\supabase-local-package\start.ps1
+```
+
+`Destination` 必须是尚不存在的目录。所有者生成分片时给打包命令加 `-SplitForGit`；本机完整的 `art-supabase-local.zip` 被 Git 忽略，避免重复提交大文件。分片损坏、缺失或完整 ZIP 校验失败时，download 会停止，不运行恢复脚本。
+
+交付 ZIP 自带 `start.ps1` 和 `tools/`，解压后可直接运行 `powershell -File .\start.ps1`。打包时可用 `-CliRuntimePath '<CLI二进制目录>'` 一并放入官方 Windows x64 `supabase.exe` 与 `supabase-go.exe`；接收者只需启动 Docker Desktop。未随包携带 CLI 且本机版本低于 2.122.0 时，入口会下载固定版本并校验 SHA-256，不需要原项目登录。Linux/macOS 接收者需使用未捆绑 Windows CLI 的包，先安装 Supabase CLI 2.122.0 以上版本与 PowerShell，再运行 `pwsh ./start.ps1`。本地栈默认创建在解压目录旁边；首次启动需要下载 Docker 镜像。恢复脚本依据服务版本元数据匹配来源数据库、Auth 和 Storage 版本。
+
+分享包保留业务表、用户 ID、附件、函数源码和本地恢复必需元数据，移除源 Auth 凭据、Vault 数据、生产定时任务及待发送 HTTP 队列、加密根密钥和所有者诊断文件。若包含经审核的 `database/managed-project-objects.sql`，恢复时还会导入应用在 Auth/Storage 表上的自定义策略与触发器；不会重建平台托管的基础 schema。函数 JWT 开关以远端导出元数据为准。源项目凭据不会成为接收者的登录方式；接收者需在本地设置用户密码和第三方服务密钥。原始完整备份仍只保存在所有者的备份目录。
+
 把下方时间戳换成备份实际路径。运行打包脚本，它先校验清单和每个文件，清除分享包中的 Auth 凭据，再生成新的 ZIP、清单和 SHA-256。原始备份目录不会被改写：
 
 ```powershell

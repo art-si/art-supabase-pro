@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
 
-test('不同工单生成组合包号，历史空包可补板材，保存失败可重试，拆包继续编号', async ({
+test('不同工单可生成同名短包号，历史空包可补板材，保存失败可重试，拆包继续编号', async ({
   page
 }, testInfo) => {
   const errors: string[] = []
@@ -142,25 +142,25 @@ test('不同工单生成组合包号，历史空包可补板材，保存失败�
   await page.getByRole('button', { name: '取消目标', exact: true }).click()
   await page.getByRole('button', { name: '排包', exact: true }).click()
   await expect(
-    results.getByRole('button', { name: '选定 QA-MO-001-PK-0001 为并入目标', exact: true })
+    results.getByRole('button', { name: '选定 PK-0001 为并入目标', exact: true })
   ).toBeVisible()
   await page.getByRole('button', { name: '保存数据' }).click()
   await expect(page.locator('.el-message--error')).toContainText('数据已被其他操作更新')
   await expect(results.getByText('未保存', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '保存数据' }).click()
   await expect.poll(() => saved.length).toBe(1)
-  expect(saved[0]).toEqual(['LEGACY-EMPTY-01', 'QA-MO-001-PK-0001'])
+  expect(saved[0]).toEqual(['LEGACY-EMPTY-01', 'PK-0001'])
   await expect(results.getByText('未保存', { exact: true })).toHaveCount(0)
 
   await page.getByRole('button', { name: /QA-MO-002/ }).click()
   await expect(results.getByText('暂无关联排包', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '自动排包', exact: true }).click()
   await expect(
-    results.getByRole('button', { name: '选定 QA-MO-002-PK-0001 为并入目标', exact: true })
+    results.getByRole('button', { name: '选定 PK-0001 为并入目标', exact: true })
   ).toBeVisible()
   await page.getByRole('button', { name: '保存数据' }).click()
   await expect.poll(() => saved.length).toBe(2)
-  expect(saved[1]).toEqual(['QA-MO-002-PK-0001', 'QA-MO-002-PK-0002'])
+  expect(saved[1]).toEqual(['PK-0001', 'PK-0002'])
   await expect(results.getByText('未保存', { exact: true })).toHaveCount(0)
   await results.locator('.el-table__body-wrapper .el-checkbox').first().click()
   await results.getByRole('button', { name: '拆包', exact: true }).click()
@@ -168,14 +168,14 @@ test('不同工单生成组合包号，历史空包可补板材，保存失败�
   await expect(prompt).toBeVisible()
   await prompt.getByRole('button', { name: '确定', exact: true }).click()
   await expect(
-    results.getByRole('button', { name: '选定 QA-MO-002-PK-0003 为并入目标', exact: true })
+    results.getByRole('button', { name: '选定 PK-0003 为并入目标', exact: true })
   ).toBeVisible()
   await page.getByRole('button', { name: '保存数据' }).click()
   await expect.poll(() => saved.length).toBe(3)
-  expect(saved[2]).toEqual(['QA-MO-002-PK-0001', 'QA-MO-002-PK-0002', 'QA-MO-002-PK-0003'])
+  expect(saved[2]).toEqual(['PK-0001', 'PK-0002', 'PK-0003'])
   await expect(results.getByText('未保存', { exact: true })).toHaveCount(0)
   await page.screenshot({
-    path: testInfo.outputPath('packing-composite-numbers.png'),
+    path: testInfo.outputPath('packing-order-scoped-numbers.png'),
     fullPage: true
   })
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(

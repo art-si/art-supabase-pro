@@ -376,6 +376,36 @@
     border-radius: var(--art-surface-radius);
   }
 
+  :global(.art-icon-picker-dialog.is-fullscreen .art-icon-picker__toolbar) {
+    flex: none;
+  }
+
+  :global(.art-icon-picker-dialog.is-fullscreen .art-icon-picker__panel) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  :global(.art-icon-picker-dialog.is-fullscreen .art-icon-picker__panel .art-overlay-loading),
+  :global(
+    .art-icon-picker-dialog.is-fullscreen .art-icon-picker__panel .art-overlay-loading__content
+  ) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  :global(.art-icon-picker-dialog.is-fullscreen .art-icon-picker__panel .el-scrollbar) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  :global(.art-icon-picker-dialog.is-fullscreen .art-icon-picker__summary) {
+    flex: none;
+  }
+
   .art-icon-picker__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));

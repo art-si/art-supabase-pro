@@ -37,12 +37,12 @@
   {
     "path": "modules/art-supabase-wms",
     "url": "https://gitee.com/art-si/art-supabase-wms.git",
-    "ref": "7b1385ee369c55c80cf14ac15d48fc26d02d25e2"
+    "ref": "6ff8f61e420f5212d96229c23d4d93d19747e9c9"
   },
   {
     "path": "modules/art-supabase-mes",
     "url": "https://gitee.com/art-si/art-supabase-mes.git",
-    "ref": "773b897280126825ca0d2911351752f111ca5bd5"
+    "ref": "adf915eae43b6ef6cab5346cb1bd11561478b563"
   },
   {
     "path": "modules/art-supabase-pmis",

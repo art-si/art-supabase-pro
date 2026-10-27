@@ -3,7 +3,12 @@ param(
   [Parameter(Mandatory = $true, ParameterSetName = 'SignedUrl')][uri]$SignedUrl,
   [Parameter(Mandatory = $true, ParameterSetName = 'LocalArchive')]
   [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })][string]$ArchivePath,
-  [Parameter(Mandatory = $true)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ExpectedSha256,
+  [Parameter(Mandatory = $true, ParameterSetName = 'PartsArchive')]
+  [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })][string]$PartsManifestPath,
+  [Parameter(Mandatory = $true, ParameterSetName = 'SignedUrl')]
+  [Parameter(Mandatory = $true, ParameterSetName = 'LocalArchive')]
+  [Parameter(ParameterSetName = 'PartsArchive')]
+  [ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ExpectedSha256,
   [Parameter(Mandatory = $true)][string]$Destination
 )
 
@@ -21,7 +26,34 @@ if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
 
 $temporaryArchive = $null
 try {
-  if ($PSCmdlet.ParameterSetName -eq 'SignedUrl') {
+  if ($PSCmdlet.ParameterSetName -eq 'PartsArchive') {
+    $partsRoot = Split-Path -Parent (Resolve-Path -LiteralPath $PartsManifestPath).Path
+    $partsManifest = Get-Content -LiteralPath $PartsManifestPath -Raw | ConvertFrom-Json
+    if ($partsManifest.format_version -ne 1 -or $partsManifest.sha256 -notmatch '^[A-Fa-f0-9]{64}$' -or
+        @($partsManifest.parts).Count -eq 0) { throw 'Invalid archive parts manifest.' }
+    if ($ExpectedSha256 -and $ExpectedSha256 -ne $partsManifest.sha256) { throw 'Archive parts differ from the expected SHA256.' }
+    $ExpectedSha256 = [string]$partsManifest.sha256
+    $temporaryArchive = Join-Path ([IO.Path]::GetTempPath()) "supabase-download-$([guid]::NewGuid().ToString('N')).zip"
+    $outputStream = [IO.File]::Open($temporaryArchive, [IO.FileMode]::CreateNew)
+    try {
+      $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+      foreach ($part in @($partsManifest.parts)) {
+        if ($part.path -notmatch '^part-[0-9]{3,}\.bin$' -or -not $seen.Add([string]$part.path)) { throw 'Unsafe or duplicate archive part.' }
+        $partPath = Join-Path $partsRoot $part.path
+        $partFile = Get-Item -LiteralPath $partPath
+        if (($partFile.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+            $partFile.Length -ne [long]$part.bytes -or
+            (Get-FileHash -LiteralPath $partPath -Algorithm SHA256).Hash -ne $part.sha256) { throw "Archive part failed integrity check: $($part.path)" }
+        $inputStream = [IO.File]::OpenRead($partPath)
+        try { $inputStream.CopyTo($outputStream) }
+        finally { $inputStream.Dispose() }
+      }
+      if ($outputStream.Length -ne [long]$partsManifest.bytes) { throw 'Assembled archive length mismatch.' }
+    }
+    finally { $outputStream.Dispose() }
+    $archive = $temporaryArchive
+  }
+  elseif ($PSCmdlet.ParameterSetName -eq 'SignedUrl') {
     if ($SignedUrl.Scheme -ne 'https' -or -not $SignedUrl.IsAbsoluteUri) {
       throw 'Only an HTTPS signed download URL is accepted.'
     }
