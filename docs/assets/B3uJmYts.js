@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./B7hwSZlU.js";var i=e({name:`MdmEmployeeDirectory`,__name:`index`,setup(e){return(e,i)=>(t(),n(r))}});export{i as default};

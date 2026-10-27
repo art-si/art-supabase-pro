@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./CplWMeSX.js";var i=e({name:`MesInspection`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{mode:`inspection`}))}});export{i as default};
