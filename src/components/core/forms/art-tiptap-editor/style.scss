@@ -1,4 +1,4 @@
-$editor-radius: 10px;
+$editor-radius: var(--art-surface-radius);
 
 .art-tiptap-editor {
   --tt-bg: var(--el-bg-color, #fff);
@@ -112,7 +112,7 @@ $editor-radius: 10px;
   cursor: pointer;
   background: transparent;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--art-surface-radius);
   transition-duration: 120ms;
   transition-property: color, background-color, opacity;
 
@@ -182,7 +182,7 @@ $editor-radius: 10px;
   color: var(--tt-text);
   background: var(--tt-bg);
   border: 1px solid var(--tt-border);
-  border-radius: 13px;
+  border-radius: var(--art-surface-radius);
   box-shadow: var(--tt-shadow);
 
   .art-tiptap-editor__tool-group + .art-tiptap-editor__tool-group {
@@ -326,7 +326,7 @@ $editor-radius: 10px;
   height: 34px;
   color: var(--tt-brand);
   background: var(--tt-brand-soft);
-  border-radius: 9px;
+  border-radius: var(--art-surface-radius);
 
   .art-svg-icon {
     font-size: 18px;
@@ -344,7 +344,7 @@ $editor-radius: 10px;
   outline: 0;
   background: var(--tt-bg);
   border: 1px solid var(--tt-border-strong);
-  border-radius: 8px;
+  border-radius: var(--art-surface-radius);
   transition:
     border-color 120ms ease,
     box-shadow 120ms ease;
@@ -375,7 +375,7 @@ $editor-radius: 10px;
     cursor: pointer;
     background: var(--tt-brand);
     border: 1px solid var(--tt-brand);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
 
     &.is-secondary {
       color: var(--tt-text-muted);
@@ -449,7 +449,7 @@ $editor-radius: 10px;
   color: var(--tt-brand);
   background: var(--tt-bg);
   border: 1px solid var(--tt-border);
-  border-radius: 10px;
+  border-radius: var(--art-surface-radius);
 
   .art-svg-icon {
     font-size: 20px;
@@ -491,7 +491,7 @@ $editor-radius: 10px;
     cursor: pointer;
     background: var(--tt-brand);
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
 
     &:disabled {
       cursor: not-allowed;
@@ -530,7 +530,7 @@ $editor-radius: 10px;
   cursor: pointer;
   background: var(--tt-bg);
   border: 1px solid var(--tt-border-strong);
-  border-radius: 4px;
+  border-radius: var(--art-surface-radius);
 
   &:hover,
   &.is-active {
@@ -585,7 +585,7 @@ $editor-radius: 10px;
   height: 16px;
   color: #fff;
   border: 1px solid var(--tt-border-strong);
-  border-radius: 5px;
+  border-radius: var(--art-surface-radius);
 }
 
 .art-tiptap-table-picker__header-toggle.is-active .art-tiptap-table-picker__check {
@@ -736,7 +736,7 @@ $editor-radius: 10px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.9em;
     background: var(--tt-surface);
-    border-radius: 5px;
+    border-radius: var(--art-surface-radius);
   }
 
   pre {
@@ -745,7 +745,7 @@ $editor-radius: 10px;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
     background: var(--tt-surface);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
 
     code {
       padding: 0;
@@ -763,7 +763,7 @@ $editor-radius: 10px;
   img {
     max-width: 100%;
     height: auto;
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
 
     &.ProseMirror-selectednode {
       outline: 2px solid var(--tt-brand);
@@ -777,7 +777,7 @@ $editor-radius: 10px;
     max-height: 520px;
     margin: 1em 0;
     background: #111;
-    border-radius: 10px;
+    border-radius: var(--art-surface-radius);
 
     &.ProseMirror-selectednode {
       outline: 2px solid var(--tt-brand);
@@ -809,7 +809,7 @@ $editor-radius: 10px;
     text-decoration: none;
     background: color-mix(in srgb, var(--tt-surface) 70%, var(--tt-bg));
     border: 1px solid var(--tt-border);
-    border-radius: 10px;
+    border-radius: var(--art-surface-radius);
 
     [data-file-icon] {
       display: grid;
@@ -819,7 +819,7 @@ $editor-radius: 10px;
       font-size: 16px;
       color: var(--tt-brand);
       background: var(--tt-brand-soft);
-      border-radius: 8px;
+      border-radius: var(--art-surface-radius);
     }
 
     [data-file-name] {
@@ -920,7 +920,7 @@ $editor-radius: 10px;
   color: var(--tt-text);
   background: var(--tt-bg) !important;
   border: 0 !important;
-  border-radius: 14px !important;
+  border-radius: var(--art-surface-radius) !important;
   box-shadow:
     0 16px 48px rgb(17 24 39 / 8%),
     0 6px 12px rgb(17 24 39 / 7%) !important;
@@ -942,7 +942,7 @@ $editor-radius: 10px;
     min-height: 34px;
     padding: 6px 9px;
     color: var(--tt-text-muted);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
 
     &:not(.is-disabled):hover,
     &.is-selected {

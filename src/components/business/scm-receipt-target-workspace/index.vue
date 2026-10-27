@@ -952,7 +952,7 @@
     justify-content: space-between;
     padding: 16px;
     background: var(--el-fill-color-light);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
 
     > div {
       display: grid;

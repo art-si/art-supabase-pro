@@ -8,13 +8,13 @@ $hover-bg-color: var(--art-gray-200);
 $popup-menu-height: 40px;
 $popup-menu-padding: 8px;
 $popup-menu-margin: 5px;
-$popup-menu-radius: 6px;
+$popup-menu-radius: var(--art-surface-radius);
 
 // 通用菜单项样式
 @mixin menu-item-base {
   width: calc(100% - 16px);
   margin-left: 8px;
-  border-radius: 6px;
+  border-radius: var(--art-surface-radius);
 
   .menu-icon {
     margin-left: -7px;
@@ -351,7 +351,7 @@ $popup-menu-radius: 6px;
         color-mix(in srgb, var(--theme-color) 13%, transparent),
         color-mix(in srgb, var(--theme-color) 4%, transparent)
       );
-      border-radius: 0 8px 8px 0;
+      border-radius: 0 var(--art-surface-radius) var(--art-surface-radius) 0;
 
       .art-svg-icon {
         color: var(--theme-color) !important;

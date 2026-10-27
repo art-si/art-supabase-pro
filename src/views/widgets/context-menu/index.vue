@@ -162,7 +162,12 @@
     },
     { name: 'menuPadding', type: 'number', defaultValue: '5', desc: '菜单容器内边距。' },
     { name: 'itemPaddingX', type: 'number', defaultValue: '6', desc: '菜单项左右内边距。' },
-    { name: 'borderRadius', type: 'number', defaultValue: '6', desc: '菜单圆角。' },
+    {
+      name: 'borderRadius',
+      type: 'number',
+      defaultValue: '全局浮层圆角',
+      desc: '浮层圆角；菜单项跟随全局表面圆角。'
+    },
     { name: 'animationDuration', type: 'number', defaultValue: '100', desc: '显示/隐藏动画时长。' }
   ]
 

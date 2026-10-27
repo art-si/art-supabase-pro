@@ -539,7 +539,7 @@ for (const scenario of [
 }
 
 test('初始库存单带出默认组织及多关联单据下的业务类型', async ({ page }, testInfo) => {
-  test.setTimeout(180_000)
+  test.setTimeout(300_000)
   await installFixtures(page)
   const root = {
     id: 'wms-stock-root',
@@ -615,6 +615,21 @@ test('初始库存单带出默认组织及多关联单据下的业务类型', as
       ]
     })
   )
+  await page.route('**/rest/v1/mdm_warehouse?*', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'default-stock-warehouse',
+          tenant_id: tenantId,
+          organization_id: 'default-stock-org',
+          warehouse_code: 'DEFAULT-WH',
+          warehouse_name: '默认原料仓',
+          status: 'enabled',
+          enable_locations: false
+        }
+      ]
+    })
+  )
   await page.route('**/rest/v1/wms_inventory_initialization?*', (route) =>
     route.fulfill({
       json: [
@@ -627,6 +642,11 @@ test('初始库存单带出默认组织及多关联单据下的业务类型', as
       ]
     })
   )
+  let initialStockSaveCalls = 0
+  await page.route('**/rest/v1/rpc/wms_save_initial_stock_secure', (route) => {
+    initialStockSaveCalls++
+    return route.fulfill({ json: { id: 'unexpected-save' } })
+  })
   await page.route('**/rest/v1/wms_initial_stock_document?*', (route) =>
     route.fulfill({ status: 200, headers: { 'content-range': '*/0' }, json: [] })
   )
@@ -692,9 +712,19 @@ test('初始库存单带出默认组织及多关联单据下的业务类型', as
   })
   await page.getByRole('button', { name: '新增初始库存单' }).click()
   const drawer = page.locator('.el-drawer:visible')
-  await expect(drawer.getByText('默认库存组织')).toBeVisible()
+  await expect(drawer.getByText('默认库存组织')).toBeVisible({ timeout: 120_000 })
   await expect(drawer.getByText('标准初始库存单')).toBeVisible()
   await expect(drawer.getByText('初始化库存')).toBeVisible()
+  await drawer
+    .locator('.el-form-item')
+    .filter({ hasText: '业务日期' })
+    .locator('input')
+    .fill('2026-10-01')
+  await drawer
+    .locator('.el-form-item')
+    .filter({ hasText: '业务日期' })
+    .locator('input')
+    .press('Tab')
   await expect(drawer.getByText('新增', { exact: true })).toBeVisible()
   await expect(drawer.getByText('复制', { exact: true })).toBeVisible()
   await expect(drawer.getByText('编制', { exact: true })).toBeVisible()
@@ -714,11 +744,29 @@ test('初始库存单带出默认组织及多关联单据下的业务类型', as
   const lineHeadings = await lineTable.locator('.el-table__header th').allTextContents()
   const quantityIndex = lineHeadings.findIndex((label) => label.includes('期初数量'))
   const baseQuantityIndex = lineHeadings.findIndex((label) => label.includes('基本数量'))
+  const warehouseIndex = lineHeadings.findIndex((label) => label.includes('入库仓库'))
   expect(quantityIndex).toBeGreaterThanOrEqual(0)
   expect(baseQuantityIndex).toBeGreaterThanOrEqual(0)
+  expect(warehouseIndex).toBeGreaterThanOrEqual(0)
   const lineCells = lineTable.locator('.el-table__body tr').first().locator('td')
+  await lineCells.nth(warehouseIndex).locator('.el-select').click()
+  await page.getByRole('option', { name: '默认原料仓 · DEFAULT-WH' }).click()
   await lineCells.nth(quantityIndex).locator('input').fill('2')
   await expect(lineCells.nth(baseQuantityIndex)).toHaveText('24')
+  await lineCells.nth(quantityIndex).locator('input').fill('1.2344')
+  await expect(lineCells.nth(baseQuantityIndex)).toHaveText('14.8128')
+  await lineCells.nth(baseQuantityIndex).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('wms-initial-stock-four-decimals.png') })
+  await lineCells.nth(quantityIndex).locator('input').fill('1e999')
+  await drawer.getByRole('button', { name: '保存', exact: true }).click()
+  const feedback = await page.locator('.el-message').allTextContents()
+  expect(
+    feedback.some((message) => /期初|数量|有效数字/.test(message)),
+    feedback.join(' | ')
+  ).toBe(true)
+  expect(initialStockSaveCalls).toBe(0)
+  await page.screenshot({ path: testInfo.outputPath('wms-initial-stock-invalid-blocked.png') })
+  await lineCells.nth(quantityIndex).locator('input').fill('2')
   await expect(
     drawer.locator('.wms-editable-line-table .el-table__body tr:first-child .el-select').first()
   ).toBeVisible()

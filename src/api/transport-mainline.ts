@@ -16,6 +16,27 @@ export interface TransportMainlineRelation {
   driverName: string | null
   departedAt: string | null
   completedAt: string | null
+  detailsAvailable: boolean
+  originStation: string | null
+  destinationStation: string | null
+  executionKind: string | null
+  dispatchMode: string | null
+  dispatchTargetName: string | null
+  shippingAddress: string | null
+  receivingAddress: string | null
+  orderCreatedAt: string | null
+  arrivedAt: string | null
+  signedAt: string | null
+  receiptAt: string | null
+  cargoType: string | null
+  cargoQuantity: number | null
+  cargoVolumeM3: number | null
+  cargoWeightKg: number | null
+  insuranceFee: number | string | null
+  deliveryFee: number | string | null
+  unloadingFee: number | string | null
+  orderTotalFee: number | string | null
+  relationFreightAmount: number | string | null
 }
 
 export interface TransportMainlineQuery {
@@ -47,6 +68,23 @@ function readNullableText(row: Record<string, unknown>, key: string): string | n
   return value
 }
 
+function readNullableNumber(row: Record<string, unknown>, key: string): number | null {
+  const value = row[key]
+  if (value === null || value === undefined) return null
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error('主线关联数值格式异常，请刷新后重试')
+  }
+  return value
+}
+
+function readNullableAmount(row: Record<string, unknown>, key: string): number | string | null {
+  const value = row[key]
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) return value
+  throw new Error('主线关联金额格式异常，请刷新后重试')
+}
+
 export function parseTransportMainlineRelations(value: unknown): {
   data: TransportMainlineRelation[]
   total: number
@@ -76,7 +114,28 @@ export function parseTransportMainlineRelations(value: unknown): {
       driverId: readNullableText(row, 'driverId'),
       driverName: readNullableText(row, 'driverName'),
       departedAt: readNullableText(row, 'departedAt'),
-      completedAt: readNullableText(row, 'completedAt')
+      completedAt: readNullableText(row, 'completedAt'),
+      detailsAvailable: row.detailsAvailable === true,
+      originStation: readNullableText(row, 'originStation'),
+      destinationStation: readNullableText(row, 'destinationStation'),
+      executionKind: readNullableText(row, 'executionKind'),
+      dispatchMode: readNullableText(row, 'dispatchMode'),
+      dispatchTargetName: readNullableText(row, 'dispatchTargetName'),
+      shippingAddress: readNullableText(row, 'shippingAddress'),
+      receivingAddress: readNullableText(row, 'receivingAddress'),
+      orderCreatedAt: readNullableText(row, 'orderCreatedAt'),
+      arrivedAt: readNullableText(row, 'arrivedAt'),
+      signedAt: readNullableText(row, 'signedAt'),
+      receiptAt: readNullableText(row, 'receiptAt'),
+      cargoType: readNullableText(row, 'cargoType'),
+      cargoQuantity: readNullableNumber(row, 'cargoQuantity'),
+      cargoVolumeM3: readNullableNumber(row, 'cargoVolumeM3'),
+      cargoWeightKg: readNullableNumber(row, 'cargoWeightKg'),
+      insuranceFee: readNullableAmount(row, 'insuranceFee'),
+      deliveryFee: readNullableAmount(row, 'deliveryFee'),
+      unloadingFee: readNullableAmount(row, 'unloadingFee'),
+      orderTotalFee: readNullableAmount(row, 'orderTotalFee'),
+      relationFreightAmount: readNullableAmount(row, 'relationFreightAmount')
     } satisfies TransportMainlineRelation
   })
   return { data, total: value.total }

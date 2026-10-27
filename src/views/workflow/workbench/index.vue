@@ -967,7 +967,7 @@
       font-size: 26px;
       color: #fff;
       background: linear-gradient(145deg, var(--el-color-primary), #7868f8);
-      border-radius: calc(var(--el-border-radius-base) + 8px);
+      border-radius: var(--art-surface-radius);
       box-shadow: 0 12px 25px rgb(76 91 220 / 23%);
     }
 
@@ -1014,7 +1014,7 @@
       width: 43px;
       height: 43px;
       font-size: 21px;
-      border-radius: calc(var(--el-border-radius-base) + 5px);
+      border-radius: var(--art-surface-radius);
     }
 
     &__metrics article > span.is-primary {

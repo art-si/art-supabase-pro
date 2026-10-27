@@ -631,7 +631,7 @@
     color: #fff;
     background: rgb(31 33 47 / 96%);
     border: 1px solid rgb(255 255 255 / 8%);
-    border-radius: 7px;
+    border-radius: var(--art-surface-radius);
     box-shadow: 0 8px 24px rgb(15 18 32 / 18%);
   }
 </style>

@@ -33,7 +33,9 @@ const handler = createVisionOcrHandler({
   authorizeImageUrls: async ({
     admin, userClient, appUser, userId, imageUrls, requestedTenantId, body
   }) => authorizeDriverOcrImages({
-    body, imageUrls, requestedTenantId, appTenantId: appUser.tenant_id, userId,
+    body, imageUrls, requestedTenantId,
+    targetTenantId: typeof body.targetTenantId === 'string' ? body.targetTenantId : null,
+    appTenantId: appUser.tenant_id, userId,
     checkPermission: async (permission) => {
       const { data, error } = await userClient.rpc(
         'current_has_permission', { p_permission: permission }

@@ -36,10 +36,12 @@ export interface DashboardReminder {
   severity: 'danger' | 'warning'
 }
 
-export type DashboardCertificateRiskStatus = 'expired' | 'due_today' | 'due_15' | 'due_30'
+export type DashboardCertificateRiskStatus =
+  'expired' | 'due_today' | 'due_15' | 'due_30' | 'due_3_months'
 
 export interface DashboardCertificateRisk {
   id: string
+  sourceKind?: 'certificate' | 'legacy_insurance' | 'legacy_inspection'
   subjectType: 'vehicle' | 'driver'
   subjectId: string
   subjectLabel: string
@@ -239,7 +241,13 @@ export async function fetchDashboardData(
 }
 
 export async function fetchDashboardCertificateRisks(): Promise<DashboardCertificateRiskSummary> {
-  const statuses: DashboardCertificateRiskStatus[] = ['expired', 'due_today', 'due_15', 'due_30']
+  const statuses: DashboardCertificateRiskStatus[] = [
+    'expired',
+    'due_today',
+    'due_15',
+    'due_30',
+    'due_3_months'
+  ]
   const pages = await Promise.all(
     statuses.map(async (status) => {
       const { data } = await responseHandle<{

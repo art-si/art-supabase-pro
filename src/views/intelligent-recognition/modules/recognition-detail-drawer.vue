@@ -135,6 +135,8 @@
   import OcrOriginalText from '@/components/business/ocr-original-text/index.vue'
   import RecognitionSourceGallery from './recognition-source-gallery.vue'
   import { fetchRecognitionArtifactDetail } from '@/api/intelligent-recognition'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { createFriendlySupabaseError } from '@/utils/supabase'
   import { buildRecognitionBusinessRoute } from '@/utils/intelligent-recognition'
   import {
     confidencePercent,
@@ -170,10 +172,12 @@
   }
 
   const router = useRouter()
+  const tenantScope = useTenantScopeStore()
   const drawerRef = ref<ArtDrawerExpose<Artifact>>()
   const detail = reactive<{ data?: Artifact; loading: boolean }>({ loading: false })
   const loadError = shallowRef<Error | null>(null)
   const requestedArtifactId = ref('')
+  let detailRequestId = 0
   const confidence = computed(() => confidencePercent(detail.data?.confidence))
   const confidenceClass = computed(() =>
     confidence.value >= 85 ? 'is-high' : confidence.value >= 65 ? 'is-medium' : 'is-low'
@@ -301,16 +305,19 @@
   const formatDateTime = createDateTimeFormatter({ format: 'YYYY-MM-DD HH:mm', emptyText: '-' })
 
   async function loadDetail(id: string): Promise<void> {
+    const requestId = ++detailRequestId
     detail.loading = true
     loadError.value = null
     try {
       const { data, error } = await fetchRecognitionArtifactDetail(id)
+      if (requestId !== detailRequestId) return
       if (error) throw error
       detail.data = data ?? undefined
     } catch (error) {
-      loadError.value = error instanceof Error ? error : new Error('识别详情加载失败')
+      if (requestId !== detailRequestId) return
+      loadError.value = createFriendlySupabaseError(error, '识别详情加载失败，请重试')
     } finally {
-      detail.loading = false
+      if (requestId === detailRequestId) detail.loading = false
     }
   }
 
@@ -345,13 +352,31 @@
       contentHeight: 'calc(100vh - 132px)',
       onOpen: () => loadDetail(id),
       onReset: () => {
+        detailRequestId += 1
         detail.data = undefined
+        detail.loading = false
         loadError.value = null
         requestedArtifactId.value = ''
       },
       drawerProps: { appendToBody: true, resizable: true, closeOnClickModal: false }
     })
   }
+
+  watch(
+    () => tenantScope.revision,
+    () => {
+      detailRequestId += 1
+      requestedArtifactId.value = ''
+      detail.data = undefined
+      detail.loading = false
+      loadError.value = null
+      void drawerRef.value?.handleClose(true)
+    },
+    { flush: 'sync' }
+  )
+  onBeforeUnmount(() => {
+    detailRequestId += 1
+  })
 
   defineExpose({ handleOpen })
 </script>

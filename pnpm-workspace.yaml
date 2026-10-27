@@ -4,6 +4,7 @@ allowBuilds:
   core-js-pure: false
   es5-ext: true
   esbuild: true
+  tesseract.js: false
   vue-demi: true
 minimumReleaseAgeExclude:
   - '@playwright/test@1.64.0'

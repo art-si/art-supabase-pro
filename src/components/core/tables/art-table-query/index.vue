@@ -1928,12 +1928,15 @@
     rows: ComputedRef<readonly object[]>
     loading: ComputedRef<boolean>
     error: ComputedRef<unknown>
+    /** 替代视图复用当前分页状态。 */
+    pagination: ComputedRef<PaginationConfig | undefined>
   }
 
   const dataState: ArtTableQueryDataState = {
     rows: resolvedData,
     loading: computed(() => Boolean(resolvedLoading.value)),
-    error: computed(() => (isManaged.value ? managedTable.error.value : null))
+    error: computed(() => (isManaged.value ? managedTable.error.value : null)),
+    pagination: resolvedPagination
   }
 
   export interface ArtTableQueryExpose {
@@ -1959,6 +1962,8 @@
     clearSelection: () => void
     /** 重新执行列工厂；用于字段权限等运行时条件改变后刷新列结构。 */
     resetColumns: () => void
+    /** 替代视图复用表格的分页请求。 */
+    changePage: (page: number) => void
     /** 业务工作区头部与表格共享的显示状态和动作挂载控制器。 */
     workspaceController: ArtTableQueryWorkspaceController
   }
@@ -1989,6 +1994,7 @@
     resetSearchParams,
     clearSelection: clearSelectedRows,
     resetColumns: () => managedTable.resetColumns?.(),
+    changePage: handleCurrentChange,
     workspaceController
   })
 </script>

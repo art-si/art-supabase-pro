@@ -941,7 +941,7 @@
         height: 30px;
         color: var(--el-color-warning-dark-2);
         background: color-mix(in srgb, var(--el-color-warning) 14%, var(--default-box-color));
-        border-radius: 9px;
+        border-radius: var(--art-surface-radius);
       }
 
       strong {
@@ -1264,7 +1264,7 @@
         font-size: 11px;
         color: var(--el-text-color-secondary);
         background: color-mix(in srgb, var(--el-fill-color) 68%, transparent);
-        border-radius: 5px;
+        border-radius: var(--art-surface-radius);
       }
     }
 
@@ -1336,7 +1336,7 @@
       padding: 5px 8px;
       white-space: nowrap;
       background: color-mix(in srgb, var(--el-fill-color-light) 76%, transparent);
-      border-radius: 8px;
+      border-radius: var(--art-surface-radius);
 
       > span {
         font-size: 10px;

@@ -3,8 +3,14 @@ import { expect, test } from '@playwright/test'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
 
-for (const mode of ['order', 'pack'] as const) {
-  test(`完工入库 ${mode} 模式选单、面积数量和首次模式锁定`, async ({ page }, testInfo) => {
+for (const { mode, systemDraft } of [
+  { mode: 'order', systemDraft: false },
+  { mode: 'pack', systemDraft: false },
+  { mode: 'pack', systemDraft: true }
+] as const) {
+  test(`完工入库 ${mode} 模式选单、面积数量和首次模式锁定${systemDraft ? '（系统草稿补仓库）' : ''}`, async ({
+    page
+  }, testInfo) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     let fixed = false
@@ -94,7 +100,7 @@ for (const mode of ['order', 'pack'] as const) {
           kind: 'finished_inbound',
           document_no: 'INBOUND-001',
           organization_id: 'org-test',
-          warehouse_id: 'warehouse-test',
+          warehouse_id: systemDraft && !fixed ? null : 'warehouse-test',
           work_order_id: 'order-test',
           project_id: null,
           document_type_id: 'type-test',
@@ -102,6 +108,13 @@ for (const mode of ['order', 'pack'] as const) {
           business_date: '2026-10-26',
           status: 'draft',
           material_status: 'pending',
+          source_report_id: systemDraft ? 'source-report' : null,
+          source_report_quantity: systemDraft ? 42 : null,
+          workOrder: {
+            work_order_no: order.work_order_no,
+            finished_inbound_mode: fixed ? mode : null,
+            unit_snapshot: '平米'
+          },
           lines: []
         },
         wms_finished_pack_options_secure: [
@@ -118,6 +131,7 @@ for (const mode of ['order', 'pack'] as const) {
             linear_meters: 42,
             area_sqm: 42,
             stock_quantity: 42,
+            production_quantity: 42,
             items: [{ board_id: 'board-test', pieces: 7 }]
           }
         ]
@@ -145,13 +159,31 @@ for (const mode of ['order', 'pack'] as const) {
     await expect(trigger).toBeVisible({ timeout: 120_000 })
     await trigger.click()
     const drawer = page.locator('.el-drawer')
-    await expect(drawer.getByRole('radio', { name: '按工单汇总', exact: true })).toBeChecked()
+    if (systemDraft && !fixed) {
+      await expect(
+        drawer.getByText('末道工序报工自动生成的完工入库单', { exact: true })
+      ).toBeVisible({ timeout: 120_000 })
+      const warehouse = drawer.getByRole('combobox', { name: /仓库/ })
+      await warehouse.click()
+      await page.getByRole('option', { name: /测试成品仓/ }).click()
+      await expect(drawer.getByRole('combobox', { name: /生产工单（单工单模式）/ })).toBeDisabled()
+    }
+    await expect(drawer.getByRole('radio', { name: '按工单汇总', exact: true })).toBeChecked({
+      timeout: 120_000
+    })
     if (mode === 'pack') {
-      await drawer.getByRole('radio', { name: '按排包明细', exact: true }).check()
+      const packMode = drawer.getByRole('radio', { name: '按排包明细', exact: true })
+      await packMode.focus()
+      await packMode.press('Space')
+      await expect(packMode).toBeChecked()
       await expect(drawer.getByRole('button', { name: '选生产工单', exact: true })).toHaveCount(0)
       await drawer.getByRole('button', { name: '选排包单', exact: true }).click()
       const picker = page.getByRole('dialog', { name: '参选排包未入库明细', exact: true })
-      await expect(picker.getByText('MO-INBOUND-001-PK-0001', { exact: true })).toBeVisible()
+      const packageNumber = picker.getByText('MO-INBOUND-001-PK-0001', { exact: true })
+      await expect(packageNumber).toBeVisible()
+      expect(
+        await packageNumber.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
+      ).toBe(true)
       await page.screenshot({
         path: testInfo.outputPath('pack-receipt-picker.png'),
         fullPage: true

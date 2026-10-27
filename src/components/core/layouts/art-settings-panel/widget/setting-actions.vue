@@ -275,7 +275,7 @@
       width: 100%;
       height: 38px;
       margin: 0;
-      border-radius: calc(var(--custom-radius) + 2px);
+      border-radius: var(--art-surface-radius);
     }
   }
 </style>

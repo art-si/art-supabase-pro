@@ -424,7 +424,7 @@
       minWidth: 180,
       formatter: (row) => (
         <div class="notification-reminder-page__schedule-cell">
-          <strong>提前 {row.leadDays} 天</strong>
+          <strong>提前 {row.leadMonths ? `${row.leadMonths} 个月` : `${row.leadDays} 天`}</strong>
           <span>
             {row.repeatEveryDays ? `每 ${row.repeatEveryDays} 天` : '仅一次'} ·{' '}
             {String(row.sendHour).padStart(2, '0')}:00

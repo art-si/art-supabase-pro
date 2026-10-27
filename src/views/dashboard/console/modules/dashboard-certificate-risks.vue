@@ -2,7 +2,7 @@
   <ArtSectionCard
     class="dashboard-certificate-risks"
     title="车辆与司机证件"
-    subtitle="到期风险由责任人跟进，登记续证后闭环。"
+    subtitle="集中跟进到期风险，旧台账补录证件后纳入责任人闭环。"
     :loading="loading"
     :error="error"
     :empty="!loading && !error && records.length === 0"
@@ -37,7 +37,10 @@
           </span>
           <span class="dashboard-certificate-risks__name">
             <strong :title="record.subjectLabel">{{ record.subjectLabel }}</strong>
-            <small>{{ record.subjectType === 'vehicle' ? '车辆' : '司机' }}</small>
+            <small>
+              {{ record.subjectType === 'vehicle' ? '车辆' : '司机' }}
+              <template v-if="record.sourceKind?.startsWith('legacy_')"> · 旧台账待补录</template>
+            </small>
           </span>
         </span>
         <span class="dashboard-certificate-risks__type">{{
@@ -100,7 +103,8 @@
     expired: '已过期',
     due_today: '今天到期',
     due_15: '15 天内',
-    due_30: '30 天内'
+    due_30: '30 天内',
+    due_3_months: '3 个月内'
   }
   const certificateTypeLabel = (type: string): string => typeLabels[type] ?? '其他证件'
   const statusLabel = (status: DashboardCertificateRiskStatus): string => statusLabels[status]

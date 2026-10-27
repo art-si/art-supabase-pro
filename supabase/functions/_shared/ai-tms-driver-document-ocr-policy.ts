@@ -12,6 +12,7 @@ export interface DriverOcrImageAuthorization {
   body: Record<string, unknown>
   imageUrls: string[]
   requestedTenantId: string | null
+  targetTenantId: string | null
   appTenantId: string
   userId: string
   checkPermission: (permission: 'TmsDriver:Add' | 'TmsDriver:Edit') => Promise<boolean>
@@ -41,10 +42,16 @@ export async function authorizeDriverOcrImages(input: DriverOcrImageAuthorizatio
       !uuidPattern.test(input.requestedTenantId)) {
     return false
   }
+  if (input.targetTenantId !== null && !uuidPattern.test(input.targetTenantId)) return false
 
   let imageTenantId = isPlatformSuper
-    ? input.requestedTenantId ?? input.appTenantId
+    ? input.targetTenantId ?? input.requestedTenantId ?? input.appTenantId
     : input.appTenantId
+  if (!isPlatformSuper && input.targetTenantId && input.targetTenantId !== input.appTenantId) {
+    return false
+  }
+  if (isPlatformSuper && input.requestedTenantId &&
+      input.requestedTenantId !== imageTenantId) return false
   if (driverId) {
     const scopedDriver = await input.getScopedDriver(driverId)
     const access = scopedDriver?.field_access

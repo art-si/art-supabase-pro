@@ -255,7 +255,7 @@
         var(--theme-color)
       );
       border: 8px solid color-mix(in srgb, var(--default-box-color) 84%, transparent);
-      border-radius: 32px;
+      border-radius: var(--art-surface-radius);
       box-shadow: 0 22px 44px color-mix(in srgb, var(--theme-color) 24%, transparent);
       transform: rotate(-4deg);
     }
@@ -352,7 +352,7 @@
       font-size: 20px;
       color: var(--art-warning);
       background: color-mix(in srgb, var(--art-warning) 14%, var(--default-box-color));
-      border-radius: 12px;
+      border-radius: var(--art-surface-radius);
     }
 
     &__actions {
@@ -404,7 +404,7 @@
         width: 86px;
         height: 86px;
         font-size: 40px;
-        border-radius: 26px;
+        border-radius: var(--art-surface-radius);
       }
 
       &__status {

@@ -206,6 +206,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.3.4(@types/node@26.6.5)(jiti@2.7.0)(sass-embedded@1.105.1)(sass@1.105.1)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      '@tesseract.js-data/chi_sim':
+        specifier: 1.0.0
+        version: 1.0.0
       '@tiptap/core':
         specifier: 3.31.4
         version: 3.31.4(@tiptap/pm@3.31.4)
@@ -338,6 +341,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
+      tesseract.js:
+        specifier: 7.0.0
+        version: 7.0.0
       three:
         specifier: 0.186.1
         version: 0.186.1
@@ -1956,6 +1962,9 @@ packages:
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
 
+  '@tesseract.js-data/chi_sim@1.0.0':
+    resolution: {integrity: sha512-iuErURkPbECDUazgsLn/r3c+tU2y5o5S/w14d0A/YiagfsjYyZKgTo75RUpsGJ311qtu0dIX4hqnXAAjmqf2CA==}
+
   '@tiptap/core@3.31.4':
     resolution: {integrity: sha512-cIVUQYBycighzsk6GbmCef8ZiEDVxoT5EuAe4xg2q9dNkDqCXVqI4YGr9aavCQEiAS4uHiRwqvcsPqJHipFDfg==}
     peerDependencies:
@@ -2724,6 +2733,9 @@ packages:
 
   bluebird@3.4.7:
     resolution: {integrity: sha512-iD3898SR7sWVRHbiQv+sHUtHnMvC1o3nW5rAcqnq3uOn07DSAppZYUkIGslDz6gXC7HfunPe7YVBgoEJASPcHA==}
+
+  bmp-js@0.1.0:
+    resolution: {integrity: sha512-vHdS19CnY3hwiNdkaqk93DvjVLfbEcI8mys4UjuWrlX1haDmroo8o4xCzh4wD6DGV6HxRCyauwhHRqMTfERtjw==}
 
   boolbase@1.0.0:
     resolution: {integrity: sha512-JZOSA7Mo9sNGB8+UjSgzdLtokWAky1zbztM3WRLCbZ70/3cTANmQmOdR7y2g+J0e2WXywy1yS468tY+IruqEww==}
@@ -3871,6 +3883,9 @@ packages:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
     engines: {node: '>=0.10.0'}
 
+  idb-keyval@6.3.0:
+    resolution: {integrity: sha512-um+2dgAWmYsu615EXpWVwSmapJhON0G43t3Ka/EVaohzPQXSMqKEqeDK/oIW3Ow+BXaF2PvSc+oBTFp793A5Ow==}
+
   idb@7.1.1:
     resolution: {integrity: sha512-gchesWBzyvGHRO9W8tzUWFDycow5gwjvFKfyV9FF32Y7F50yZMp7mP+T2mJIWFx49zicqyC4uefHM17o6xKIVQ==}
 
@@ -3991,6 +4006,9 @@ packages:
 
   is-unsafe@2.0.2:
     resolution: {integrity: sha512-HgbIHPBH0KHHCcjLfGsCvhtPTVxjaAZlXjwdz7/GQC40SjSe4sfQsar8J5VFo8JOSbarkpV0OLG95bbaNd9aAQ==}
+
+  is-url@1.2.4:
+    resolution: {integrity: sha512-ITvGim8FhRiYe4IQ5uHSkj7pVaPDrCTkNd3yq3cV7iZAcJdHTUMPMEHcqSOy9xZ9qFenQCvi+2wjH9a1nXqHww==}
 
   is-utf8@0.2.1:
     resolution: {integrity: sha512-rMYPYvCzsXywIsldgLaSoPlw5PfoB/ssr7hY4pLfcodrA5M/eArza1a9VmTiNIBNMjOGr1Ow9mTyU2o69U6U9Q==}
@@ -4611,6 +4629,10 @@ packages:
     resolution: {integrity: sha512-smsWv2LzFjP03xmvFoJ331ss6h+jixfA4UUV/Bsiyuu4YJPfN+FIQGOIiv4w9/+MoHkfkJ22UIaQWRVFRfH6Vw==}
     engines: {node: '>=20'}
 
+  opencollective-postinstall@2.0.3:
+    resolution: {integrity: sha512-8AV/sCtuzUeTo8gQK5qDZzARrulB3egtLzFgteqB2tcT4Mw7B8Kt7JcDHmltjz6FOAHsvTevk70gZEbhM4ZS9Q==}
+    hasBin: true
+
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
@@ -4963,6 +4985,9 @@ packages:
   readdirp@5.0.0:
     resolution: {integrity: sha512-9u/XQ1pvrQtYyMpZe7DXKv2p5CNvyVwzUB6uhLAnQwHMSgKMBR62lc7AHljaeteeHXn11XTAaLLUVZYVZyuRBQ==}
     engines: {node: '>= 20.19.0'}
+
+  regenerator-runtime@0.13.11:
+    resolution: {integrity: sha512-kY1AZVr2Ra+t+piVaJ4gxaFaReZVH40AKNo7UCX6W+dEwBo/2oZJzqfuN1qLq1oL45o56cPaTXELwrTh8Fpggg==}
 
   regenerator-runtime@0.14.1:
     resolution: {integrity: sha512-dYnhHh0nJoMfnkZs6GmmhFknAGRrLznOu5nc9ML+EJxGvrx6H7teuevqVqCuPcPK//3eDrrjQhehXVx9cnkGdw==}
@@ -5474,6 +5499,12 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  tesseract.js-core@7.0.0:
+    resolution: {integrity: sha512-WnNH518NzmbSq9zgTPeoF8c+xmilS8rFIl1YKbk/ptuuc7p6cLNELNuPAzcmsYw450ca6bLa8j3t0VAtq435Vw==}
+
+  tesseract.js@7.0.0:
+    resolution: {integrity: sha512-exPBkd+z+wM1BuMkx/Bjv43OeLBxhL5kKWsz/9JY+DXcXdiBjiAch0V49QR3oAJqCaL5qURE0vx9Eo+G5YE7mA==}
+
   text-encoding-shim@1.0.5:
     resolution: {integrity: sha512-H7yYW+jRn4yhu60ygZ2f/eMhXPITRt4QSUTKzLm+eCaDsdX8avmgWpmtmHAzesjBVUTAypz9odu5RKUjX5HNYA==}
 
@@ -5892,6 +5923,9 @@ packages:
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
 
+  wasm-feature-detect@1.9.0:
+    resolution: {integrity: sha512-zonE+xlIIYtxPy++L24ow0hAD8CICb4+FgPyROd3buyXIqsJvUEDkBgfCCoXOd1Hu3DUr0GOfnPIdcGV+YpNaA==}
+
   wcwidth@1.0.1:
     resolution: {integrity: sha512-XHPEwS0q6TaxcvG85+8EYkbiCux2XtWG2mkc47Ng2A77BQu9+DqIOJldST4HgPkuea7dvKSj5VgX3P1d4rW8Tg==}
 
@@ -6007,6 +6041,9 @@ packages:
   zip-stream@4.0.0:
     resolution: {integrity: sha512-JhB4OLtlalLz1jXW7o+HcpEZA0LMVL2sumEaCJKrbRyug2z3Ki1xuqLg1yGUsnFMFdLmOkbwT4a67UavcgcThw==}
     engines: {node: '>= 10'}
+
+  zlibjs@0.3.1:
+    resolution: {integrity: sha512-+J9RrgTKOmlxFSDHo0pI1xM6BLVUv+o0ZT9ANtCxGkjIVCCUdx9alUF8Gm+dGLKbkkkidWIHFDZHDMpfITt4+w==}
 
   zrender@6.1.0:
     resolution: {integrity: sha512-oEGMDB6pOP2S6OwRR4PdVv610zrjnA3Bh+JnSG12fYJlBKjtNAoEb5fSUoCOOINlH96I2fU38/A2UpRKs67xYQ==}
@@ -7512,6 +7549,8 @@ snapshots:
       tailwindcss: 4.3.3
       vite: 8.3.4(@types/node@26.6.5)(jiti@2.7.0)(sass-embedded@1.105.1)(sass@1.105.1)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
 
+  '@tesseract.js-data/chi_sim@1.0.0': {}
+
   '@tiptap/core@3.31.4(@tiptap/pm@3.31.4)':
     dependencies:
       '@tiptap/pm': 3.31.4
@@ -8440,6 +8479,8 @@ snapshots:
       readable-stream: 3.6.2
 
   bluebird@3.4.7: {}
+
+  bmp-js@0.1.0: {}
 
   boolbase@1.0.0: {}
 
@@ -9674,6 +9715,8 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
+  idb-keyval@6.3.0: {}
+
   idb@7.1.1: {}
 
   ieee754@1.2.1: {}
@@ -9766,6 +9809,8 @@ snapshots:
   is-unicode-supported@0.1.0: {}
 
   is-unsafe@2.0.2: {}
+
+  is-url@1.2.4: {}
 
   is-utf8@0.2.1: {}
 
@@ -10266,7 +10311,6 @@ snapshots:
   node-fetch@2.7.0:
     dependencies:
       whatwg-url: 5.0.0
-    optional: true
 
   node-releases@2.0.51: {}
 
@@ -10316,6 +10360,8 @@ snapshots:
       is-inside-container: 1.0.0
       powershell-utils: 0.1.0
       wsl-utils: 0.3.1
+
+  opencollective-postinstall@2.0.3: {}
 
   optionator@0.9.4:
     dependencies:
@@ -10669,6 +10715,8 @@ snapshots:
       minimatch: 3.1.5
 
   readdirp@5.0.0: {}
+
+  regenerator-runtime@0.13.11: {}
 
   regenerator-runtime@0.14.1: {}
 
@@ -11196,6 +11244,22 @@ snapshots:
       commander: 2.20.0
       source-map-support: 0.5.21
 
+  tesseract.js-core@7.0.0: {}
+
+  tesseract.js@7.0.0:
+    dependencies:
+      bmp-js: 0.1.0
+      idb-keyval: 6.3.0
+      is-url: 1.2.4
+      node-fetch: 2.7.0
+      opencollective-postinstall: 2.0.3
+      regenerator-runtime: 0.13.11
+      tesseract.js-core: 7.0.0
+      wasm-feature-detect: 1.9.0
+      zlibjs: 0.3.1
+    transitivePeerDependencies:
+      - encoding
+
   text-encoding-shim@1.0.5: {}
 
   three@0.186.1: {}
@@ -11223,8 +11287,7 @@ snapshots:
 
   totalist@3.0.1: {}
 
-  tr46@0.0.3:
-    optional: true
+  tr46@0.0.3: {}
 
   traverse@0.3.9: {}
 
@@ -11619,14 +11682,15 @@ snapshots:
 
   w3c-keyname@2.2.8: {}
 
+  wasm-feature-detect@1.9.0: {}
+
   wcwidth@1.0.1:
     dependencies:
       defaults: 1.0.4
 
   web-streams-polyfill@4.3.0: {}
 
-  webidl-conversions@3.0.1:
-    optional: true
+  webidl-conversions@3.0.1: {}
 
   webpack-virtual-modules@0.6.2: {}
 
@@ -11634,7 +11698,6 @@ snapshots:
     dependencies:
       tr46: 0.0.3
       webidl-conversions: 3.0.1
-    optional: true
 
   which@1.2.14:
     dependencies:
@@ -11729,6 +11792,8 @@ snapshots:
       archiver-utils: 2.1.0
       compress-commons: 3.0.0
       readable-stream: 3.6.2
+
+  zlibjs@0.3.1: {}
 
   zrender@6.1.0:
     dependencies:

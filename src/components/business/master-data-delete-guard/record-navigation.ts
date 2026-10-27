@@ -1,5 +1,6 @@
 import {
   fetchEquipmentInspectionDeleteDestination,
+  fetchVehicleBackupDriverDeleteDestination,
   fetchScmPurchaseDeleteDestination,
   fetchScmSalesDeleteDestination,
   fetchWmsDocumentDeleteDestination
@@ -99,6 +100,49 @@ export function createRecordReferenceNavigation(
       applicationCode: 'vms',
       routePath: '/vms/vehicle-manage/fuel-card-archive',
       ...permitted('FuelCardArchive:View')
+    },
+    vms_part_stock: {
+      routeName: 'VehiclePartsManage',
+      applicationCode: 'vms',
+      routePath: '/vms/vehicle-manage/part-manage',
+      ...permitted('VmsPartInventory:View'),
+      routeQuery: (record) => ({
+        tab: 'inventory',
+        referenceSourceTable: 'vms_part_stock',
+        referenceRecordId: record.targetId
+      })
+    },
+    vms_part_stock_movement: {
+      routeName: 'VehiclePartsManage',
+      applicationCode: 'vms',
+      routePath: '/vms/vehicle-manage/part-manage',
+      ...permitted('VmsPartInventory:View'),
+      routeQuery: (record) => ({
+        tab: 'inventory',
+        referenceSourceTable: 'vms_part_stock_movement',
+        referenceRecordId: record.targetId
+      })
+    },
+    vms_part_issue_line: {
+      routeName: 'VehiclePartsManage',
+      applicationCode: 'vms',
+      routePath: '/vms/vehicle-manage/part-manage',
+      ...permitted('VmsPartIssue:View'),
+      routeQuery: (record) => ({
+        tab: 'issues',
+        referenceSourceTable: 'vms_part_issue_line',
+        referenceRecordId: record.targetId
+      })
+    },
+    vehicle_backup_driver: {
+      routeName: 'VehicleArchiveDetail',
+      applicationCode: 'vms',
+      routePath: '/vms/vehicle-archive-manage',
+      ...permitted('VehicleArchive:View'),
+      routeParams: async (record) => {
+        const assignment = await fetchVehicleBackupDriverDeleteDestination(record.targetId)
+        return assignment ? { id: assignment.vehicleId } : null
+      }
     },
     tms_waybill_cost: {
       routeName: 'FinanceWaybillCostDetail',

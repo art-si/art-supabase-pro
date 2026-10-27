@@ -215,6 +215,7 @@ declare module 'vue' {
     MenuLayoutSettings: typeof import('./../../components/core/layouts/art-settings-panel/widget/menu-layout-settings.vue')['default']
     MenuStyleSettings: typeof import('./../../components/core/layouts/art-settings-panel/widget/menu-style-settings.vue')['default']
     OcrOriginalText: typeof import('./../../components/business/ocr-original-text/index.vue')['default']
+    OrderMainlineCostsPanel: typeof import('./../../components/business/order-mainline-costs-panel/index.vue')['default']
     PageDesignReference: typeof import('./../../components/business/page-design-reference/index.vue')['default']
     Panel: typeof import('./../../components/core/forms/art-resource-picker/panel.vue')['default']
     PayableAccrualManager: typeof import('./../../components/business/payable-accrual-manager/index.vue')['default']
@@ -260,6 +261,9 @@ declare module 'vue' {
     WorkflowBusinessHistory: typeof import('./../../components/business/workflow-business-history/index.vue')['default']
     WorkflowBusinessHistoryDrawer: typeof import('./../../components/business/workflow-business-history/workflow-business-history-drawer.vue')['default']
     WorkflowFlowMap: typeof import('./../../components/business/workflow-flow-map/index.vue')['default']
+  }
+  export interface GlobalDirectives {
+    vLoading: typeof import('element-plus/es')['ElLoadingDirective']
   }
 }
 
@@ -468,6 +472,7 @@ declare global {
   const MenuLayoutSettings: typeof import('./../../components/core/layouts/art-settings-panel/widget/menu-layout-settings.vue')['default']
   const MenuStyleSettings: typeof import('./../../components/core/layouts/art-settings-panel/widget/menu-style-settings.vue')['default']
   const OcrOriginalText: typeof import('./../../components/business/ocr-original-text/index.vue')['default']
+  const OrderMainlineCostsPanel: typeof import('./../../components/business/order-mainline-costs-panel/index.vue')['default']
   const PageDesignReference: typeof import('./../../components/business/page-design-reference/index.vue')['default']
   const Panel: typeof import('./../../components/core/forms/art-resource-picker/panel.vue')['default']
   const PayableAccrualManager: typeof import('./../../components/business/payable-accrual-manager/index.vue')['default']

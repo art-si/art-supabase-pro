@@ -393,7 +393,7 @@
         var(--exception-soft);
       background-size: 28px 28px;
       border: 1px solid color-mix(in srgb, var(--exception-accent) 16%, var(--art-card-border));
-      border-radius: calc(var(--art-feature-radius, var(--custom-radius)) - 4px);
+      border-radius: var(--art-surface-radius);
     }
 
     &__visual-header {

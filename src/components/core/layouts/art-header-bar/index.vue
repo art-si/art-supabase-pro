@@ -88,7 +88,7 @@
           v-if="shouldShowGlobalSearch"
           type="button"
           aria-label="打开全局搜索"
-          class="art-header-bar__search flex-cb w-40 h-9 px-2.5 c-p border rounded-custom-sm max-md:!hidden"
+          class="art-header-bar__search flex-cb w-40 h-9 px-2.5 c-p border rounded-surface max-md:!hidden"
           @click="openSearchDialog"
         >
           <div class="flex-c">
@@ -430,7 +430,7 @@
       height: 44px;
       padding-right: var(--art-space-2);
       color: var(--art-gray-900);
-      border-radius: var(--art-control-radius);
+      border-radius: var(--art-surface-radius);
 
       &:focus-visible {
         outline: none;

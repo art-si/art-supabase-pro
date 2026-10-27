@@ -69,6 +69,13 @@ BEGIN
   IF NOT app_private.vms_certificate_private_read_allowed(own_path) THEN
     RAISE EXCEPTION 'Referenced private attachment unavailable to authorized viewer';
   END IF;
+  PERFORM set_config('request.jwt.claim.sub','2e294b61-24a9-4eaf-8fac-1daffc1e6131',true);
+  PERFORM set_config('request.jwt.claims','{"sub":"2e294b61-24a9-4eaf-8fac-1daffc1e6131","role":"authenticated"}',true);
+  IF NOT app_private.vms_certificate_private_read_allowed(own_path)
+    OR app_private.vms_certificate_private_read_allowed(other_path)
+  THEN RAISE EXCEPTION 'Authorized non-owner certificate view or cross-tenant denial failed'; END IF;
+  PERFORM set_config('request.jwt.claim.sub',ordinary_uid::text,true);
+  PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',ordinary_uid,'role','authenticated')::text,true);
   BEGIN
     UPDATE public.vehicle_certificate
       SET attachments=jsonb_build_array(jsonb_build_object('name','他人附件','url',unowned_path))
@@ -95,5 +102,31 @@ BEGIN
   END IF;
 END;
 $test$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','ab881b32-87d4-4dce-9014-ce488b8069df',true);
+SELECT set_config('request.jwt.claims','{"sub":"ab881b32-87d4-4dce-9014-ce488b8069df","role":"authenticated"}',true);
+SELECT set_config('request.headers','{}',true);
+INSERT INTO storage.objects(bucket_id,name,owner_id,owner,metadata)
+VALUES (
+  'vms-certificate-private',
+  '7529f951-938e-4e2c-ac0d-316c136ae1f9/ab881b32-87d4-4dce-9014-ce488b8069df/5af0059a-d776-46e9-95a0-fba743e236fa.pdf',
+  'ab881b32-87d4-4dce-9014-ce488b8069df',
+  'ab881b32-87d4-4dce-9014-ce488b8069df',
+  '{"mimetype":"application/pdf","size":100}'::jsonb
+);
+SELECT public.vms_save_certificate_secure(
+  '1131289c-a753-4de5-9f16-6093ec397616',
+  '{"subject_type":"vehicle","subject_id":"a9fc0004-1023-4620-9220-000000000001","certificate_type":"compulsory_insurance","certificate_no":"VMS演示-交强险-001","issue_date":"2025-12-30","valid_from":"2025-12-30","expires_on":"2026-11-07","responsible_user_id":"51080ef5-46a4-4d0c-a229-c97c6fccda93","attachments":[{"name":"测试证件.pdf","url":"7529f951-938e-4e2c-ac0d-316c136ae1f9/ab881b32-87d4-4dce-9014-ce488b8069df/5af0059a-d776-46e9-95a0-fba743e236fa.pdf"}]}'::jsonb
+);
+SELECT set_config('storage.operation','object.sign',true);
+DO $signed$
+BEGIN
+  IF (SELECT count(*) FROM storage.objects
+    WHERE bucket_id='vms-certificate-private'
+      AND name='7529f951-938e-4e2c-ac0d-316c136ae1f9/ab881b32-87d4-4dce-9014-ce488b8069df/5af0059a-d776-46e9-95a0-fba743e236fa.pdf')<>1
+  THEN RAISE EXCEPTION 'Authorized certificate attachment could not be signed'; END IF;
+END;
+$signed$;
 
 ROLLBACK;

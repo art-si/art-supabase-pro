@@ -152,7 +152,8 @@
   import type { Resource } from '@/components/core/forms/art-resource-picker/type'
   import {
     normalizeUploadModelUrls,
-    shouldSyncUploadFileList
+    shouldSyncUploadFileList,
+    getSafeUploadDisplayName
   } from '@/components/core/forms/upload-model-utils'
   import ArtAttachmentLink from '@/components/core/media/art-file-viewer/attachment-link.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
@@ -254,7 +255,7 @@
         const urls = normalizeUploadModelUrls(value)
         lastSyncedModelUrls.value = urls
         fileList.value = urls.map((url) => ({
-          name: decodeURIComponent(url.split('/').pop() || '附件'),
+          name: getSafeUploadDisplayName(url),
           url
         }))
       }

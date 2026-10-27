@@ -28,8 +28,9 @@
         $slots.header ||
         options.headerIcon ||
         hasSubtitle ||
-        formCount ||
-        options.showFullscreenButton
+        (formCount && options.showFormFocusButton) ||
+        options.showFullscreenButton ||
+        showCloseButton
       "
       #header="{ titleId, titleClass }"
     >
@@ -75,20 +76,35 @@
             </slot>
           </div>
         </div>
-        <ArtIconButton
-          v-if="formCount"
-          :icon="isFocusMode ? 'ri:focus-2-line' : 'ri:focus-3-line'"
-          :label="isFocusMode ? '退出专注填单' : '进入专注填单'"
-          :aria-pressed="isFocusMode"
-          @click="toggleFocusMode"
-        />
-        <ArtIconButton
-          v-if="options.showFullscreenButton"
-          class="art-drawer__fullscreen-button"
-          :icon="fullscreenIcon"
-          :label="fullscreenLabel"
-          @click.stop="toggleFullscreen"
-        />
+        <div
+          v-if="
+            options.showFullscreenButton ||
+            (formCount && options.showFormFocusButton) ||
+            showCloseButton
+          "
+          class="art-drawer__header-actions"
+        >
+          <ArtIconButton
+            v-if="options.showFullscreenButton"
+            class="art-drawer__fullscreen-button"
+            :icon="fullscreenIcon"
+            :label="fullscreenLabel"
+            @click.stop="toggleFullscreen"
+          />
+          <ArtIconButton
+            v-if="formCount && options.showFormFocusButton"
+            :icon="isFocusMode ? 'ri:focus-2-line' : 'ri:focus-3-line'"
+            :label="isFocusMode ? '退出专注填单' : '进入专注填单'"
+            :aria-pressed="isFocusMode"
+            @click="toggleFocusMode"
+          />
+          <ArtIconButton
+            v-if="showCloseButton"
+            icon="ri:close-line"
+            label="关闭抽屉"
+            @click="() => handleClose()"
+          />
+        </div>
       </div>
     </template>
 
@@ -192,6 +208,7 @@
     size: '40%',
     fullscreen: false,
     showFullscreenButton: true,
+    showFormFocusButton: true,
     fullscreenText: '全屏',
     exitFullscreenText: '退出全屏',
     direction: 'rtl',
@@ -257,6 +274,7 @@
     size: props.size,
     fullscreen: props.fullscreen,
     showFullscreenButton: props.showFullscreenButton,
+    showFormFocusButton: props.showFormFocusButton,
     fullscreenText: props.fullscreenText,
     exitFullscreenText: props.exitFullscreenText,
     direction: props.direction,
@@ -457,10 +475,10 @@
       modalPenetrable: props.modalPenetrable,
       closeOnClickModal: props.closeOnClickModal,
       closeOnPressEscape: props.closeOnPressEscape,
-      showClose: props.showClose,
       lockScroll: props.lockScroll,
       modal: props.modal,
       ...runtimeBindings,
+      showClose: false,
       beforeClose: (done: () => void) =>
         overlay.handleBeforeClose(
           done,
@@ -474,6 +492,10 @@
       direction: options.value.direction ?? inheritedAttrs.direction ?? 'rtl'
     }
   })
+
+  const showCloseButton = computed(
+    () => options.value.drawerProps?.showClose !== false && props.showClose !== false
+  )
 
   const getDrawerInstance = () => drawerRef.value
 
@@ -587,6 +609,20 @@
     align-items: center;
     width: 100%;
     min-width: 0;
+  }
+
+  .art-drawer__header-actions {
+    display: flex;
+    flex: none;
+    gap: 8px;
+    align-items: center;
+
+    :deep(.art-icon-button) {
+      flex: none;
+      width: 32px;
+      height: 32px;
+      font-size: 18px;
+    }
   }
 
   .art-drawer__fullscreen-button {

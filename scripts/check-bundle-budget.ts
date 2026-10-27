@@ -1,7 +1,12 @@
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import { isLazyCapabilityAsset, isLazyCapabilityStyle } from './bundle-boundaries'
+import {
+  isLazyCapabilityAsset,
+  isLazyCapabilityStyle,
+  isSelfHostedOcrJavascriptAsset,
+  SELF_HOSTED_OCR_JAVASCRIPT_PATHS
+} from './bundle-boundaries'
 
 const KIB = 1024
 const MIB = 1024 * KIB
@@ -31,7 +36,24 @@ for (const relativePath of relativePaths) {
   }
 }
 
-const javascriptAssets = assets.filter((asset) => asset.path.endsWith('.js'))
+const requiredOcrRuntimePaths = [
+  ...SELF_HOSTED_OCR_JAVASCRIPT_PATHS,
+  'ocr/driver/langs/chi_sim.traineddata.gz'
+]
+const publishedJavascriptAssets = assets.filter((asset) => asset.path.endsWith('.js'))
+const staticOcrJavascriptAssets = publishedJavascriptAssets.filter((asset) =>
+  isSelfHostedOcrJavascriptAsset(asset.path)
+)
+const staticOcrWorkerAssets = staticOcrJavascriptAssets.filter(
+  (asset) => asset.path === 'ocr/driver/worker.min.js'
+)
+const staticOcrCoreAssets = staticOcrJavascriptAssets.filter(
+  (asset) => asset.path !== 'ocr/driver/worker.min.js'
+)
+const staticOcrRuntimeAssets = assets.filter((asset) => asset.path.startsWith('ocr/driver/'))
+const javascriptAssets = publishedJavascriptAssets.filter(
+  (asset) => !isSelfHostedOcrJavascriptAsset(asset.path)
+)
 const cssAssets = assets.filter((asset) => asset.path.endsWith('.css'))
 const applicationChunks = javascriptAssets.filter((asset) => !isLazyCapabilityAsset(asset.path))
 const lazyCapabilityChunks = javascriptAssets.filter((asset) => isLazyCapabilityAsset(asset.path))
@@ -45,6 +67,16 @@ const initialCssAssets = cssAssets.filter((asset) => initialAssetPaths.has(asset
 const routeCssChunks = applicationCssChunks.filter((asset) => !initialAssetPaths.has(asset.path))
 const violations: string[] = []
 
+for (const path of requiredOcrRuntimePaths) {
+  if (!staticOcrRuntimeAssets.some((asset) => asset.path === path))
+    violations.push(`本地 OCR 静态运行时缺失 ${path}`)
+}
+
+checkLargest('本地 OCR worker', staticOcrWorkerAssets, 112 * KIB)
+checkLargest('本地 OCR core', staticOcrCoreAssets, 3.75 * MIB)
+checkTotal('本地 OCR 静态运行时发布总体积', staticOcrRuntimeAssets, 13 * MIB)
+checkTotal('本地 OCR 静态脚本 gzip 传输总体积', staticOcrJavascriptAssets, 4.25 * MIB, true)
+
 checkLargest('单个 JavaScript 文件', javascriptAssets, 7 * MIB)
 checkLargest('普通应用/路由 JavaScript 分包', applicationChunks, 900 * KIB)
 checkLargest('单个 CSS 文件', cssAssets, 360 * KIB)
@@ -53,17 +85,21 @@ checkLargest('单个 CSS 文件', cssAssets, 360 * KIB)
 checkLargest('普通页面 CSS 分包', routeCssChunks, 96 * KIB)
 // A format parser is only fetched when its renderer opens. Keep route and optional-tool
 // budgets separate so a rarely used document format does not masquerade as app startup cost.
-// The expanded FMS/TMS route catalog adds business code, while provider-specific SDKs remain excluded.
-// Keep less than 0.1 MiB headroom so a synchronous heavy dependency still fails this gate.
-checkTotal('普通应用/路由 JavaScript 发布总体积', applicationChunks, 26.1 * MIB)
+// New VMS/TMS business routes add about 0.4 MiB after the self-hosted OCR runtime is excluded.
+// Keep only about 0.1 MiB headroom so a synchronous heavy dependency still fails this gate.
+checkTotal('普通应用/路由 JavaScript 发布总体积', applicationChunks, 26.6 * MIB)
 checkTotal('按需能力 JavaScript gzip 传输总体积', lazyCapabilityChunks, 6 * MIB, true)
-checkTotal('JavaScript 发布总体积', javascriptAssets, 48 * MIB)
-checkTotal('JavaScript gzip 传输总体积', javascriptAssets, 14.1 * MIB, true)
+checkTotal('JavaScript 发布总体积', javascriptAssets, 48.5 * MIB)
+checkTotal('JavaScript gzip 传输总体积', javascriptAssets, 14.35 * MIB, true)
 checkTotal('普通应用/路由 CSS 发布总体积', applicationCssChunks, 3 * MIB)
 checkTotal('普通应用/路由 CSS gzip 传输总体积', applicationCssChunks, 520 * KIB, true)
 checkTotal('按需工具 CSS 总体积', lazyStyleChunks, 500 * KIB)
 checkTotal('首屏 JavaScript', initialJavascriptAssets, 1.5 * MIB)
 checkTotal('首屏 CSS', initialCssAssets, 420 * KIB)
+
+console.log(
+  `[bundle:check] 实际发布 JS ${formatBytes(sumSize(publishedJavascriptAssets))}（含本地 OCR 静态脚本 ${formatBytes(sumSize(staticOcrJavascriptAssets))}）· 本地 OCR 静态运行时 ${formatBytes(sumSize(staticOcrRuntimeAssets))}`
+)
 
 if (violations.length) {
   console.error('[bundle:check] 构建体积预算未通过：')
@@ -77,7 +113,7 @@ if (violations.length) {
       sumSize(initialJavascriptAssets)
     )} · 首屏 CSS ${formatBytes(sumSize(initialCssAssets))} · 应用 CSS ${formatBytes(
       sumSize(applicationCssChunks)
-    )} / gzip ${formatBytes(sumSize(applicationCssChunks, true))} · JS 总量 ${formatBytes(
+    )} / gzip ${formatBytes(sumSize(applicationCssChunks, true))} · 受管 JS 总量 ${formatBytes(
       sumSize(javascriptAssets)
     )} · 最大普通分包 ${
       largestApplicationChunk?.path || '-'

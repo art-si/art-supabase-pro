@@ -1277,7 +1277,7 @@
       justify-content: center;
       padding: 4px;
       background-color: rgb(229 231 235 / 100%); /* bg-gray-2 */
-      border-radius: 12px;
+      border-radius: var(--art-surface-radius);
       transform: translate(-50%);
 
       /* dark-bg-dark-9 */
@@ -1315,7 +1315,7 @@
         width: 40px;
         height: 40px;
         background-color: rgb(209 213 219 / 100%); /* bg-gray-3 */
-        border-radius: 10px;
+        border-radius: var(--art-surface-radius);
         box-shadow:
           inset 0 4px 6px -1px rgb(0 0 0 / 10%),
           inset 0 2px 4px -2px rgb(0 0 0 / 10%);
@@ -1437,7 +1437,7 @@
     user-select: none;
     background-color: var(--default-box-color);
     border: 1px solid var(--default-border);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
     box-shadow: 0 2px 7px rgb(15 23 42 / 4%);
     transition:
       border-color 160ms ease,

@@ -252,7 +252,7 @@
     size-7.5
     text-g-600 
     cursor-pointer
-    rounded 
+    rounded-surface
     -translate-y-1/2 
     hover:text-g-900 
     hover:bg-g-200;
@@ -291,7 +291,7 @@
 
   .menu-item {
     margin: 10px 2px;
-    border-radius: var(--el-border-radius-base);
+    border-radius: var(--art-surface-radius);
     transition:
       color 0.18s ease,
       background-color 0.18s ease,

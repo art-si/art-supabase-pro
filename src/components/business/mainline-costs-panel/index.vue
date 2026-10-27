@@ -1,6 +1,6 @@
 <template>
   <ArtSectionCard
-    title="费用流水"
+    title="运单费用明细"
     :subtitle="
       scope === 'vehicle'
         ? '按明确绑定本车的执行运单归集；一单多车时不将整单费用重复计入每台车'

@@ -1,5 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { applyCreateTimeRange, type SupabaseQueryLike } from '@/api/providers/supabase/query'
+import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
 
 type Artifact = Api.IntelligentRecognition.RecognitionArtifact
 type SearchParams = Api.IntelligentRecognition.ArtifactSearchParams
@@ -39,6 +40,7 @@ function applyArtifactFilters<TQuery extends SupabaseQueryLike>(
 }
 
 export async function fetchRecognitionArtifactList(params: SearchParams) {
+  const assertScope = createTenantScopeReadGuard()
   const { from = 0, to = 9 } = params
   let query = supabase
     .from('ai_artifact_review')
@@ -55,21 +57,32 @@ export async function fetchRecognitionArtifactList(params: SearchParams) {
   query = query.order('create_time', { ascending: false }).range(from, to)
   const filterableQuery = query
   const filteredQuery = applyArtifactFilters(filterableQuery, params)
-  return await responseHandle<Artifact[]>(() => filteredQuery, {
-    showErrorMessage: true
+  const response = await responseHandle<Artifact[]>(() => filteredQuery, {
+    showErrorMessage: false
   })
+  assertScope()
+  return response
 }
 
 export async function fetchRecognitionArtifactDetail(id: string) {
-  return await responseHandle<Artifact>(
+  const assertScope = createTenantScopeReadGuard()
+  const response = await responseHandle<Artifact>(
     () => supabase.from('ai_artifact_review').select(ARTIFACT_SELECT).eq('id', id).single(),
     { showErrorMessage: true }
   )
+  assertScope()
+  return response
 }
 
 export async function fetchRecognitionOverview() {
-  return await responseHandle<Overview>(() => supabase.rpc('ai_ocr_recognition_overview'), {
-    showErrorMessage: true,
-    convertToCamelShadow: true
-  })
+  const assertScope = createTenantScopeReadGuard()
+  const response = await responseHandle<Overview>(
+    () => supabase.rpc('ai_ocr_recognition_overview'),
+    {
+      showErrorMessage: false,
+      convertToCamelShadow: true
+    }
+  )
+  assertScope()
+  return response
 }

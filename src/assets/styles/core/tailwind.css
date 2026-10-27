@@ -13,6 +13,22 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* 普通 rounded 工具类与组件库共用系统圆角；rounded-full 保留圆形/胶囊语义。 */
+@theme inline {
+  --radius-xs: var(--art-surface-radius);
+  --radius-sm: var(--art-surface-radius);
+  --radius-md: var(--art-surface-radius);
+  --radius-lg: var(--art-surface-radius);
+  --radius-xl: var(--art-surface-radius);
+  --radius-2xl: var(--art-surface-radius);
+  --radius-3xl: var(--art-surface-radius);
+  --radius-4xl: var(--art-surface-radius);
+}
+
+@utility rounded {
+  border-radius: var(--art-surface-radius);
+}
+
 /* ==================== Light Mode Variables ==================== */
 :root {
   /* Base Colors */
@@ -213,12 +229,16 @@
 }
 
 /* ==================== Custom Border Radius Utilities ==================== */
+@utility rounded-surface {
+  border-radius: var(--art-surface-radius);
+}
+
 @utility rounded-custom-xs {
-  border-radius: calc(var(--custom-radius) / 2);
+  border-radius: var(--art-surface-radius);
 }
 
 @utility rounded-custom-sm {
-  border-radius: calc(var(--custom-radius) / 2 + 2px);
+  border-radius: var(--art-surface-radius);
 }
 
 /* ==================== Custom Utility Classes ==================== */

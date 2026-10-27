@@ -155,7 +155,7 @@
     cursor: pointer;
     background: var(--default-box-color);
     border: 1px solid var(--art-card-border);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
     transition:
       border-color 0.2s ease,
       color 0.2s ease;
@@ -191,7 +191,7 @@
     height: 32px;
     color: var(--main-color);
     background: color-mix(in srgb, var(--main-color) 10%, transparent);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
   }
 
   .application-switcher__item-copy {

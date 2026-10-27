@@ -373,7 +373,7 @@
       font-size: 18px;
       color: var(--el-text-color-secondary);
       background: var(--art-gray-50);
-      border-radius: calc(var(--el-border-radius-base) - 1px);
+      border-radius: var(--art-surface-radius);
       transition:
         color var(--art-motion-duration-fast) var(--art-motion-ease-out),
         background-color var(--art-motion-duration-fast) var(--art-motion-ease-out),

@@ -23,7 +23,7 @@ interface DeliveryJob {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-notification-dispatch-token',
+    'authorization, x-client-info, apikey, content-type, x-notification-dispatch-token, x-art-tenant-scope',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 }
 
@@ -168,6 +168,8 @@ Deno.serve(async (request: Request) => {
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
   const cronToken = request.headers.get('x-notification-dispatch-token')?.trim() || ''
+  const requestBody = (await request.json().catch(() => ({}))) as JsonRecord
+  const requestedTenantId = getText(requestBody.tenantId)
   let tenantScope: string | null = null
 
   if (cronToken) {
@@ -179,9 +181,16 @@ Deno.serve(async (request: Request) => {
   } else {
     const authorization = request.headers.get('authorization')
     if (!authorization) return json({ error: 'Missing authorization' }, 401)
+    const requestedTenantScope = request.headers.get('x-art-tenant-scope')
     const userClient = createClient(supabaseUrl, anonKey, {
       auth: { persistSession: false },
-      global: { headers: { Authorization: authorization } }
+      global: {
+        headers: {
+          Authorization: authorization,
+          ...(requestedTenantScope ? { 'x-art-tenant-scope': requestedTenantScope } : {}),
+          ...(requestedTenantId ? { 'x-notification-target-tenant': requestedTenantId } : {})
+        }
+      }
     })
     const { data: scope, error: scopeError } = await userClient.rpc(
       'get_notification_dispatch_scope'
@@ -190,7 +199,6 @@ Deno.serve(async (request: Request) => {
     tenantScope = String(scope)
   }
 
-  const requestBody = (await request.json().catch(() => ({}))) as JsonRecord
   const limit = Math.min(Math.max(Number(requestBody.limit) || 50, 1), 200)
   const { data, error } = await admin.rpc('claim_notification_deliveries', {
     p_limit: limit,
@@ -201,8 +209,19 @@ Deno.serve(async (request: Request) => {
   const jobs = Array.isArray(data) ? (data as DeliveryJob[]) : []
   let deliveredCount = 0
   let failedCount = 0
+  let skippedCount = 0
   for (const job of jobs) {
     try {
+      const { data: eligible, error: eligibilityError } = await admin.rpc(
+        'notification_delivery_eligible_secure',
+        { p_delivery_id: job.id }
+      )
+      if (eligibilityError) throw eligibilityError
+      if (eligible === false) {
+        skippedCount += 1
+        continue
+      }
+      if (eligible !== true) throw new Error('投递资格校验未完成')
       const result = await deliver(job)
       const { error: finishError } = await admin.rpc('finish_notification_delivery', {
         p_delivery_id: job.id,
@@ -227,6 +246,6 @@ Deno.serve(async (request: Request) => {
     }
   }
 
-  return json({ claimedCount: jobs.length, deliveredCount, failedCount })
+  return json({ claimedCount: jobs.length, deliveredCount, failedCount, skippedCount })
 })
 

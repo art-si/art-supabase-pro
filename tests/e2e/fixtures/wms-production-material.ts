@@ -11,11 +11,19 @@ import ProductionDrawer from '../../../modules/art-supabase-wms/src/views/produc
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
+const requestedKind = new URLSearchParams(location.search).get('kind')
 const kind =
-  new URLSearchParams(location.search).get('kind') === 'finished_inbound'
+  requestedKind === 'finished_inbound'
     ? 'finished_inbound'
-    : 'issue'
-const pageName = kind === 'issue' ? 'WmsProductionIssue' : 'WmsFinishedInbound'
+    : requestedKind === 'return'
+      ? 'return'
+      : 'issue'
+const pageName =
+  kind === 'issue'
+    ? 'WmsProductionIssue'
+    : kind === 'return'
+      ? 'WmsProductionReturn'
+      : 'WmsFinishedInbound'
 const app = createApp({
   setup() {
     const drawer = ref<InstanceType<typeof ProductionDrawer>>()

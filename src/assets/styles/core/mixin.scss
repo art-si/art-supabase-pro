@@ -15,7 +15,7 @@
   cursor: pointer;
   background: var(--art-gray-100);
   border: 1px solid transparent;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--art-surface-radius);
   transition:
     background-color var(--art-motion-duration-fast),
     border-color var(--art-motion-duration-fast),
@@ -34,6 +34,16 @@
   &:focus-visible {
     outline: 2px solid var(--theme-color);
     outline-offset: 2px;
+  }
+
+  > span:first-child {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    color: var(--theme-color);
+    background: var(--default-box-color);
+    border-radius: var(--el-border-radius-base);
   }
 }
 

@@ -6,6 +6,10 @@ declare
   v_missing text[];
   v_invalid text[];
 begin
+  -- Compare the guard's actual predicate, not its name. Older tables use an
+  -- equivalent null-safe current_read_tenant_id expression, while newer ones
+  -- call tenant_in_current_read_scope directly. Accept only these reviewed
+  -- expressions so an added platform-super OR cannot pass this test.
   select array_agg(p.tablename order by p.tablename)
     into v_missing
   from pg_policies p
@@ -15,12 +19,30 @@ begin
     and not exists (
       select 1
       from pg_policies scope
+      cross join lateral (
+        select replace(replace(
+          regexp_replace(lower(scope.qual), '[()[:space:]]', '', 'g'),
+          lower(scope.tablename) || '.tenant_id', 'tenant_id'
+        ), '::text', '') as predicate
+      ) normalized
       where scope.schemaname = p.schemaname
         and scope.tablename = p.tablename
-        and scope.policyname = 'canonical_tenant_read_scope'
         and scope.permissive = 'RESTRICTIVE'
         and scope.cmd = 'SELECT'
         and scope.roles = '{authenticated}'::name[]
+        and (
+          normalized.predicate in (
+            'app_private.tenant_in_current_read_scopetenant_id',
+            'selectapp_private.tenant_in_current_read_scopetenant_idastenant_in_current_read_scope',
+            'selectapp_private.current_read_tenant_idascurrent_read_tenant_idisnullortenant_id=selectapp_private.current_read_tenant_idascurrent_read_tenant_id'
+          )
+          or (p.tablename in ('ai_feature_config', 'sys_param')
+            and normalized.predicate =
+              'tenant_id=app_private.platform_tenant_idorapp_private.tenant_in_current_read_scopetenant_id')
+          or (p.tablename = 'sys_table_column_profile'
+            and normalized.predicate =
+              'scope=''platform''andtenant_idisnullortenant_idisnotnullandapp_private.tenant_in_current_read_scopetenant_id')
+        )
     );
 
   if v_missing is not null then
@@ -43,6 +65,23 @@ begin
   if v_invalid is not null then
     raise exception 'Tenant SELECT guard can bypass selected scope on: %',
       array_to_string(v_invalid, ', ');
+  end if;
+
+  if exists (
+    select 1 from (values
+      ('fms_expense_reimbursement_line'), ('fms_expense_reimbursement_payee')
+    ) as children(table_name)
+    where not exists (
+      select 1 from pg_policies grant_policy
+      where grant_policy.schemaname = 'public'
+        and grant_policy.tablename = children.table_name
+        and grant_policy.cmd = 'SELECT'
+        and grant_policy.permissive = 'PERMISSIVE'
+        and grant_policy.roles = '{authenticated}'::name[]
+        and grant_policy.qual = 'app_private.tenant_in_current_read_scope(tenant_id)'
+    )
+  ) then
+    raise exception 'Ordinary reimbursement-child SELECT grant missing';
   end if;
 
   if not exists (
@@ -188,12 +227,12 @@ begin
 end
 $tenant_scope_test$;
 
-select count(*) as protected_tenant_tables
+select count(distinct tablename) as protected_tenant_tables
 from pg_policies
 where schemaname = 'public'
-  and policyname = 'canonical_tenant_read_scope'
   and permissive = 'RESTRICTIVE'
-  and cmd = 'SELECT';
+  and cmd = 'SELECT'
+  and roles = '{authenticated}'::name[];
 
 -- MDM business types can belong to several document types; WMS writes must check
 -- the selected document against that set and its menu assignment.

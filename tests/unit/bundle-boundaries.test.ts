@@ -4,7 +4,9 @@ import test from 'node:test'
 import {
   isLazyCapabilityAsset,
   isLazyCapabilityStyle,
+  isSelfHostedOcrJavascriptAsset,
   platformChunkFileName,
+  SELF_HOSTED_OCR_JAVASCRIPT_PATHS,
   shouldPreloadHtmlDependency
 } from '../../scripts/bundle-boundaries'
 
@@ -17,6 +19,7 @@ test('compact production URLs preserve every lazy-capability budget boundary', (
     'charts',
     'file-viewer',
     'iwork.parser',
+    'local-ocr',
     'receivable-workspace',
     'framework'
   ]) {
@@ -39,7 +42,8 @@ test('heavy capabilities remain outside ordinary application chunk budgets', () 
     'assets/3d-runtime.123.js',
     'assets/exceljs.123.js',
     'assets/file-viewer.123.js',
-    'assets/monaco.123.js'
+    'assets/monaco.123.js',
+    'assets/local-ocr.123.js'
   ]) {
     assert.equal(isLazyCapabilityAsset(asset), true, asset)
     assert.equal(shouldPreloadHtmlDependency(asset), false, asset)
@@ -47,6 +51,30 @@ test('heavy capabilities remain outside ordinary application chunk budgets', () 
 
   assert.equal(isLazyCapabilityAsset('assets/dashboard.123.js'), false)
   assert.equal(shouldPreloadHtmlDependency('assets/framework.123.js'), true)
+})
+
+test('only pinned self-hosted OCR scripts leave application JavaScript budgets', () => {
+  assert.deepEqual(SELF_HOSTED_OCR_JAVASCRIPT_PATHS, [
+    'ocr/driver/worker.min.js',
+    'ocr/driver/core/tesseract-core-lstm.wasm.js',
+    'ocr/driver/core/tesseract-core-simd-lstm.wasm.js',
+    'ocr/driver/core/tesseract-core-relaxedsimd-lstm.wasm.js'
+  ])
+  for (const asset of SELF_HOSTED_OCR_JAVASCRIPT_PATHS) {
+    assert.equal(isSelfHostedOcrJavascriptAsset(asset), true, asset)
+  }
+  for (const asset of [
+    'ocr/driver/core/unknown.wasm.js',
+    'ocr/driver/extra-worker.js',
+    'ocr/driver/langs/chi_sim.traineddata.gz',
+    'assets/tesseract-core-lstm.wasm.js'
+  ]) {
+    assert.equal(isSelfHostedOcrJavascriptAsset(asset), false, asset)
+  }
+  // The generic worker rule still matches this file; budget accounting removes it first.
+  assert.equal(isLazyCapabilityAsset('ocr/driver/worker.min.js'), true)
+  assert.equal(isLazyCapabilityAsset('assets/local-ocr-ABC12345.js'), true)
+  assert.equal(shouldPreloadHtmlDependency('assets/local-ocr-ABC12345.js'), false)
 })
 
 test('only known lazy capability styles are excluded from application CSS totals', () => {

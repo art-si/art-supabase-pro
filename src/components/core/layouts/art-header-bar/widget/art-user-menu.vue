@@ -173,7 +173,7 @@
 
   @layer components {
     .btn-item {
-      @apply flex w-full items-center p-2 mb-3 text-left select-none rounded-md cursor-pointer;
+      @apply flex w-full items-center p-2 mb-3 text-left select-none rounded-surface cursor-pointer;
 
       color: inherit;
       text-decoration: none;
@@ -205,7 +205,7 @@
     text-center
     border
     border-g-400
-    rounded-md
+    rounded-surface
     hover:shadow-xl;
 
     cursor: pointer;

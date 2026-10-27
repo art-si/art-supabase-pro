@@ -576,6 +576,10 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('Cancel', '取消运单', 'TmsWaybill:Cancel')
     ]
   },
+  {
+    menuName: 'TmsWaybillDetail',
+    buttons: [button('OverrideCommission', '调整司机提成')]
+  },
   ...['TmsPickupAppointment', 'TmsDeliveryAppointment'].map((menuName) => ({
     menuName,
     buttons: [

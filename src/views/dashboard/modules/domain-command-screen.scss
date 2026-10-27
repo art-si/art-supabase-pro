@@ -143,7 +143,7 @@
   cursor: pointer;
   background: rgb(138 182 213 / 8%);
   border: 1px solid var(--screen-line);
-  border-radius: 8px;
+  border-radius: var(--art-surface-radius);
   transition:
     color var(--art-motion-duration-fast) ease,
     background-color var(--art-motion-duration-fast) ease,
@@ -172,7 +172,7 @@
   padding: 4px;
   background: rgb(4 17 29 / 70%);
   border: 1px solid var(--screen-line);
-  border-radius: 9px;
+  border-radius: var(--art-surface-radius);
 
   &__scrollbar {
     max-width: 100%;
@@ -197,7 +197,7 @@
     font-weight: 640;
     color: var(--screen-text-muted);
     text-decoration: none;
-    border-radius: 6px;
+    border-radius: var(--art-surface-radius);
 
     &:hover {
       color: var(--screen-text-strong);
@@ -290,7 +290,7 @@
   overflow: hidden;
   background: rgb(11 32 51 / 93%);
   border: 1px solid var(--screen-line);
-  border-radius: 9px;
+  border-radius: var(--art-surface-radius);
 
   &__icon {
     display: grid;
@@ -301,7 +301,7 @@
     font-size: 19px;
     color: var(--screen-accent-soft);
     background: color-mix(in srgb, var(--screen-accent) 13%, transparent);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
 
     &.is-success {
       color: var(--screen-success);
@@ -703,7 +703,7 @@
     ),
     var(--screen-surface);
   border: 1px solid var(--screen-line);
-  border-radius: 9px;
+  border-radius: var(--art-surface-radius);
 
   &::before {
     position: absolute;
@@ -831,7 +831,7 @@
   color: var(--screen-text-muted);
   background: radial-gradient(circle at center, rgb(50 211 162 / 7%), transparent 64%);
   border: 1px dashed var(--screen-line);
-  border-radius: 7px;
+  border-radius: var(--art-surface-radius);
 
   .art-svg-icon {
     font-size: 28px;
@@ -893,7 +893,7 @@
   min-height: 44px;
   padding: 7px 9px;
   background: rgb(141 181 210 / 6%);
-  border-radius: 6px;
+  border-radius: var(--art-surface-radius);
 
   > i {
     width: 3px;

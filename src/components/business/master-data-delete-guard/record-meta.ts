@@ -56,6 +56,10 @@ const recordReferences: Record<string, RecordReferenceMeta> = {
   },
   mdm_part_category: { label: '子类别', statusDictCode: 'status' },
   vehicle_part_usage: { label: '零部件使用记录', statusDictCode: 'vehiclePartUsageStatus' },
+  vms_part_stock: { label: '配件库存台账', routeName: 'VehiclePartsManage' },
+  vms_part_stock_movement: { label: '配件出入库流水', routeName: 'VehiclePartsManage' },
+  vms_part_issue_line: { label: '车辆配件领用明细', routeName: 'VehiclePartsManage' },
+  vehicle_backup_driver: { label: '车辆备用司机', routeName: 'VehicleArchiveDetail' },
   vehicle_fuel_card: {
     label: '油卡档案',
     routeName: 'FuelCardArchive',

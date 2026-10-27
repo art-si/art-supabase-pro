@@ -353,7 +353,7 @@
     padding: 18px 24px;
     margin-bottom: 20px;
     border: 1px solid var(--el-border-color);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
   }
 
   .art-icon-picker__toolbar :deep(.el-input) {
@@ -373,7 +373,7 @@
   .art-icon-picker__panel {
     padding: 24px 24px 14px;
     border: 1px solid var(--el-border-color);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
   }
 
   .art-icon-picker__grid {
@@ -393,7 +393,7 @@
     cursor: pointer;
     background: var(--el-fill-color-blank);
     border: 1px solid var(--el-border-color);
-    border-radius: 8px;
+    border-radius: var(--art-surface-radius);
     transition:
       color 0.15s ease,
       background-color 0.15s ease,

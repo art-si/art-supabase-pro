@@ -201,7 +201,7 @@
       white-space: nowrap;
       background: transparent;
       border: 0;
-      border-radius: var(--el-border-radius-small);
+      border-radius: var(--art-surface-radius);
       transition:
         color var(--art-motion-duration-fast) ease,
         background-color var(--art-motion-duration-fast) ease,

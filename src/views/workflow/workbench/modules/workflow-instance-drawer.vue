@@ -265,7 +265,7 @@
       font-size: 20px;
       color: var(--el-color-primary);
       background: var(--el-color-primary-light-9);
-      border-radius: calc(var(--el-border-radius-base) + 3px);
+      border-radius: var(--art-surface-radius);
     }
 
     div {
@@ -319,7 +319,7 @@
         font-size: 22px;
         color: #fff;
         background: linear-gradient(145deg, var(--el-color-primary), #7467f6);
-        border-radius: calc(var(--el-border-radius-base) + 6px);
+        border-radius: var(--art-surface-radius);
       }
 
       div {

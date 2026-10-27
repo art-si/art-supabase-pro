@@ -13,6 +13,7 @@
       </template>
     </RecognitionPageHero>
     <RecognitionTable
+      :key="tenantScope.revision"
       ref="tableRef"
       mode="review"
       :artifact-id="artifactId"
@@ -31,6 +32,7 @@
   import RecognitionTable from '../modules/recognition-table.vue'
   import RecognitionDetailDrawer from '../modules/recognition-detail-drawer.vue'
   import { buildRecognitionBusinessRoute } from '@/utils/intelligent-recognition'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { confidencePercent } from '../modules/recognition-config'
   import { useRecognitionOverview } from '../modules/use-recognition-overview'
 
@@ -46,6 +48,7 @@
 
   const route = useRoute()
   const router = useRouter()
+  const tenantScope = useTenantScopeStore()
   const tableRef = ref<RecognitionTableExpose>()
   const detailRef = ref<DetailExpose>()
   const artifactId = computed(() => String(route.query.artifactId || ''))

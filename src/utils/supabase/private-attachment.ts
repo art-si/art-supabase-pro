@@ -1,4 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { privateAttachmentPathFromSignedUrl as parsePrivateAttachmentPath } from './private-attachment-path'
+export { isPrivateAttachmentPath } from './private-attachment-path'
 
 const { supabase, responseHandle } = useSupabase()
 
@@ -10,11 +12,12 @@ const MIME_EXTENSIONS: Record<string, string> = {
 }
 
 const SIGNED_URL_SECONDS = 15 * 60
-const PRIVATE_ATTACHMENT_PATH =
-  /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(?:png|jpg|webp|pdf)$/i
 
-export const isPrivateAttachmentPath = (value: string): boolean =>
-  PRIVATE_ATTACHMENT_PATH.test(value)
+export const privateAttachmentPathFromSignedUrl = (value: string, bucket: string): string => {
+  const projectUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
+  if (!projectUrl) throw new Error('私有附件服务尚未配置，请联系管理员')
+  return parsePrivateAttachmentPath(value, bucket, projectUrl)
+}
 
 interface UploadPrivateAttachmentOptions {
   bucket: string
@@ -69,25 +72,6 @@ export async function uploadPrivateAttachment(
       url: data.signedUrl
     }
   ]
-}
-
-/** Extract the immutable object path from a signed Storage URL before a business RPC write. */
-export function privateAttachmentPathFromSignedUrl(value: string, bucket: string): string {
-  let url: URL
-  try {
-    url = new URL(value)
-  } catch {
-    throw new Error('附件地址无效，请重新上传')
-  }
-  const prefix = `/storage/v1/object/sign/${bucket}/`
-  if (!url.pathname.startsWith(prefix) || !url.searchParams.has('token')) {
-    throw new Error('附件来源无效，请重新上传私有附件')
-  }
-  const storagePath = decodeURIComponent(url.pathname.slice(prefix.length))
-  if (!isPrivateAttachmentPath(storagePath)) {
-    throw new Error('附件路径无效，请重新上传')
-  }
-  return storagePath
 }
 
 /** Re-sign stored paths for an authorized viewer; never persist these temporary URLs. */

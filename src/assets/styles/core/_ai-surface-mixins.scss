@@ -9,7 +9,7 @@
     ),
     var(--default-box-color);
   border: 1px solid color-mix(in srgb, var(--theme-color) 16%, var(--el-border-color));
-  border-radius: calc(var(--el-border-radius-base) + 2px);
+  border-radius: var(--art-surface-radius);
   box-shadow: none;
 
   &::before {
@@ -40,7 +40,7 @@
     color-mix(in srgb, var(--theme-color) 78%, var(--default-box-color))
   );
   border: 1px solid rgb(255 255 255 / 28%);
-  border-radius: calc(var(--el-border-radius-base) + 2px);
+  border-radius: var(--art-surface-radius);
   box-shadow: 0 7px 18px color-mix(in srgb, var(--theme-color) 18%, transparent);
 }
 
@@ -74,5 +74,5 @@
   padding: 7px;
   color: var(--ai-capability-color);
   background: color-mix(in srgb, var(--ai-capability-color) 10%, transparent);
-  border-radius: 9px;
+  border-radius: var(--art-surface-radius);
 }

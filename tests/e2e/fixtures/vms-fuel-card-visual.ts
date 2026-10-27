@@ -25,6 +25,8 @@ useMenuStore(store).setButtonList(
     'FuelCardLedger:Recharge',
     'FuelCardLedger:Consume',
     'FuelCardLedger:Reverse',
+    'FuelCardLedger:Import',
+    'FuelCardLedger:Reconcile',
     'FuelCardLedger:Export',
     'VehicleQuery:View'
   ].map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))

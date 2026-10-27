@@ -92,7 +92,7 @@
     :deep(.el-menu--horizontal > .el-sub-menu .el-sub-menu__title) {
       height: 40px;
       margin: 10px 2px;
-      border-radius: var(--el-border-radius-base);
+      border-radius: var(--art-surface-radius);
       transition:
         color 0.18s ease,
         background-color 0.18s ease,

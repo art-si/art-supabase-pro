@@ -392,7 +392,7 @@
       height: 56px;
       margin: 0 auto;
       font-size: 26px;
-      border-radius: 16px;
+      border-radius: var(--art-surface-radius);
     }
   }
 
