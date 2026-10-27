@@ -99,7 +99,6 @@
         title="管理已打开页面"
         class="art-work-tab__menu-button flex-cc art-card-xs relative top-0 size-8 leading-8 text-center c-p tad-200 hover:!bg-hover-color"
         :style="{
-          borderRadius: 'calc(var(--custom-radius) / 2.5 + 0px)',
           marginTop: tabStyle === 'tab-google' ? '-2px' : ''
         }"
         @click="(e: MouseEvent) => showMenu(e, activeTab)"
@@ -108,13 +107,7 @@
       </button>
     </div>
 
-    <ArtMenuRight
-      ref="menuRef"
-      :menu-items="menuItems"
-      :menu-width="140"
-      :border-radius="10"
-      @select="handleSelect"
-    />
+    <ArtMenuRight ref="menuRef" :menu-items="menuItems" :menu-width="140" @select="handleSelect" />
   </div>
 </template>
 
@@ -647,7 +640,7 @@
     li[role='tab'] {
       min-width: 0;
       max-width: 156px;
-      border-radius: calc(var(--custom-radius) / 2.5 + 2px) !important;
+      border-radius: var(--art-surface-radius) !important;
       transition:
         color 0.18s ease,
         background-color 0.18s ease,
@@ -761,7 +754,7 @@
 
       li[role='tab'] {
         margin-right: 0 !important;
-        border-radius: calc(var(--custom-radius) / 2.5 + 4px) !important;
+        border-radius: var(--art-surface-radius) !important;
       }
     }
   }
@@ -815,7 +808,7 @@
     color: var(--art-gray-900) !important;
     background-color: color-mix(in srgb, var(--art-gray-200) 78%, transparent) !important;
     border-color: transparent !important;
-    border-radius: calc(var(--custom-radius) / 2.5 + 4px) !important;
+    border-radius: var(--art-surface-radius) !important;
     opacity: 1;
   }
 

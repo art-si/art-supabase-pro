@@ -396,7 +396,7 @@
         var(--theme-color),
         color-mix(in srgb, var(--theme-color) 64%, #7c3aed)
       );
-      border-radius: 16px;
+      border-radius: var(--art-surface-radius);
       box-shadow: 0 12px 28px color-mix(in srgb, var(--theme-color) 28%, transparent);
       transform: translateX(-50%);
       transition:

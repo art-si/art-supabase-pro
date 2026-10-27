@@ -32,6 +32,7 @@ declare namespace Api {
       moduleCode?: ModuleCode
       ruleName: string
       leadDays: number
+      leadMonths?: number | null
       repeatEveryDays?: number | null
       sendHour: number
       recipientStrategy: RecipientStrategy
@@ -90,6 +91,7 @@ declare namespace Api {
       claimedCount?: number
       deliveredCount?: number
       failedCount?: number
+      skippedCount?: number
     }
   }
 }

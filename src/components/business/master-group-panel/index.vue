@@ -261,16 +261,6 @@
     &__all {
       @include master-group-all-button;
 
-      > span:first-child {
-        display: grid;
-        place-items: center;
-        width: 36px;
-        height: 36px;
-        color: var(--theme-color);
-        background: var(--default-box-color);
-        border-radius: var(--el-border-radius-base);
-      }
-
       > span:nth-child(2) {
         display: grid;
         min-width: 0;

@@ -11,13 +11,13 @@
   --el-component-custom-height: 36px !important;
   --el-component-size: var(--el-component-custom-height) !important;
 
-  // 全局圆角层级：控件 < 浮层 < 模态框。所有值跟随系统圆角设置联动。
-  --art-control-radius: calc(var(--custom-radius) / 3 + 2px);
-  --art-control-radius-small: calc(var(--custom-radius) / 3);
-  --art-floating-radius: calc(var(--custom-radius) / 3 + 4px);
-  --art-modal-radius: calc(var(--custom-radius) / 1.2 + 2px);
+  // 所有组件外框、浮层和交互背景使用同一个配置值，不再按组件加减或缩放圆角。
   --art-surface-radius: var(--custom-radius);
-  --art-feature-radius: calc(var(--custom-radius) * 2);
+  --art-control-radius: var(--art-surface-radius);
+  --art-control-radius-small: var(--art-surface-radius);
+  --art-floating-radius: var(--art-surface-radius);
+  --art-modal-radius: var(--art-surface-radius);
+  --art-feature-radius: var(--art-surface-radius);
   --art-floating-shadow: var(--el-box-shadow-light);
   --art-modal-shadow: var(--el-box-shadow);
   --art-motion-duration-fast: 180ms;
@@ -31,10 +31,45 @@
   --el-messagebox-border-radius: var(--art-modal-radius) !important;
   --el-notification-radius: var(--art-floating-radius) !important;
   --el-popover-border-radius: var(--art-floating-radius) !important;
+  --el-popper-border-radius: var(--art-surface-radius) !important;
 
   .region .el-radio-button__original-radio:checked + .el-radio-button__inner {
     color: var(--theme-color);
   }
+}
+
+// 库内局部变量和固定值也必须跟随系统配置，包含 Teleport 到 body 的浮层。
+// 组合控件接缝、箭头、圆形按钮与状态标记仍由各自的形状契约管理。
+.el-popper,
+.el-select-dropdown,
+.el-picker-panel,
+.el-time-panel,
+.el-time-range-picker,
+.el-cascader-panel,
+.el-card,
+.el-alert,
+.el-message,
+.el-transfer-panel,
+.el-upload-dragger,
+.el-upload--picture-card,
+.el-upload-list--picture-card .el-upload-list__item,
+.el-tag:not(.is-round),
+.el-segmented__item,
+.el-segmented__item-selected,
+.el-menu-item,
+.el-sub-menu__title,
+.el-dropdown-menu__item,
+.el-dropdown__popper .el-dropdown-menu__item,
+.el-select-dropdown__item,
+.el-select__popper .el-select-dropdown__item,
+.el-tree-node__content,
+.el-tree-select__popper .el-tree-node__content,
+.el-cascader-node,
+.el-cascader__dropdown .el-cascader-node,
+.el-dialog__close,
+.el-drawer__close-btn,
+.el-message-box__close {
+  border-radius: var(--art-surface-radius) !important;
 }
 
 // 优化 el-form-item 标签高度
@@ -182,7 +217,7 @@ html.dark .el-card {
     display: flex;
     align-items: center;
     min-height: 56px;
-    padding: 16px 64px 16px 24px !important;
+    padding: 16px 24px !important;
     margin-right: 0;
     background: color-mix(in srgb, var(--theme-color) 2%, var(--default-box-color));
     border-bottom: 1px solid var(--art-card-border);
@@ -293,7 +328,6 @@ html.dark .el-card {
 
   .el-dropdown-menu__item {
     padding: 6px 16px !important;
-    border-radius: var(--art-control-radius) !important;
 
     &:hover:not(.is-disabled) {
       color: var(--art-gray-900) !important;
@@ -618,7 +652,6 @@ html.dark .el-card {
       right: 7px;
       width: 30px;
       height: 30px;
-      border-radius: var(--art-control-radius);
       transition:
         color 0.3s,
         background-color 0.3s;
@@ -639,7 +672,6 @@ html.dark .el-card {
     width: 30px;
     height: 30px;
     padding: 0;
-    border-radius: var(--art-control-radius);
     transition:
       color 0.3s,
       background-color 0.3s;
@@ -664,7 +696,6 @@ html.dark .el-card {
       right: 7px;
       width: 30px;
       height: 30px;
-      border-radius: var(--art-control-radius);
       transition:
         color 0.3s,
         background-color 0.3s;
@@ -897,7 +928,6 @@ html.dark .el-card {
     .el-select-dropdown__item {
       height: 34px !important;
       line-height: 34px !important;
-      border-radius: 6px !important;
     }
   }
 }
@@ -910,7 +940,6 @@ html.dark .el-card {
     .el-tree-node {
       .el-tree-node__content {
         height: 36px !important;
-        border-radius: 6px !important;
 
         &:hover {
           background-color: var(--art-gray-200) !important;
@@ -936,7 +965,6 @@ html.dark .el-card {
 .el-tree-node__content {
   padding: 1px 0;
   margin-bottom: 4px;
-  border-radius: 4px;
 
   &:hover {
     background-color: var(--art-hover-color) !important;

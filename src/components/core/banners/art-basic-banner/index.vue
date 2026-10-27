@@ -167,7 +167,7 @@
       text: '查看',
       color: '#fff',
       textColor: '#333',
-      radius: '6px'
+      radius: 'var(--art-surface-radius)'
     }),
     meteorConfig: () => ({ enabled: false, count: 10 }),
     imageConfig: () => ({ src: '', width: '12rem', bottom: '-3rem', right: '0' })
@@ -182,7 +182,7 @@
   // 计算按钮样式属性
   const buttonColor = computed(() => props.buttonConfig?.color ?? '#fff')
   const buttonTextColor = computed(() => props.buttonConfig?.textColor ?? '#333')
-  const buttonRadius = computed(() => props.buttonConfig?.radius ?? '6px')
+  const buttonRadius = computed(() => props.buttonConfig?.radius ?? 'var(--art-surface-radius)')
   const resolvedImageConfig = computed<ImageConfig>(
     () => props.imageConfig ?? { src: '', width: '12rem', bottom: '-3rem', right: '0' }
   )
@@ -228,7 +228,7 @@
     padding: 0 2rem;
     overflow: hidden;
     color: white;
-    border-radius: calc(var(--custom-radius) + 2px) !important;
+    border-radius: var(--art-surface-radius) !important;
 
     &__content {
       position: relative;

@@ -93,7 +93,7 @@
         color-mix(in srgb, var(--theme-color) 58%, #2563eb) 62%,
         #06b6d4
       );
-      border-radius: calc(var(--custom-radius) + 5px);
+      border-radius: var(--art-surface-radius);
       box-shadow: 0 9px 20px color-mix(in srgb, var(--theme-color) 26%, transparent);
     }
 
@@ -109,7 +109,7 @@
     overflow: hidden;
     background: color-mix(in srgb, var(--default-box-color) 82%, transparent);
     border: 1px solid var(--art-card-border);
-    border-radius: calc(var(--custom-radius) + 10px);
+    border-radius: var(--art-surface-radius);
 
     &__toggle {
       display: flex;
@@ -227,7 +227,7 @@
         overflow: hidden;
         background: var(--default-box-color);
         border: 1px solid var(--art-card-border);
-        border-radius: calc(var(--custom-radius) + 4px);
+        border-radius: var(--art-surface-radius);
         box-shadow: 0 6px 14px rgb(31 41 55 / 6%);
         transition:
           border-color 0.18s ease,
@@ -275,7 +275,7 @@
       &:focus-visible {
         outline: 2px solid var(--theme-color);
         outline-offset: 3px;
-        border-radius: calc(var(--custom-radius) + 4px);
+        border-radius: var(--art-surface-radius);
       }
 
       .name {

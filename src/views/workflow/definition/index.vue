@@ -676,7 +676,7 @@
       font-size: 26px;
       color: #fff;
       background: linear-gradient(145deg, var(--el-color-primary), #7568f8);
-      border-radius: calc(var(--el-border-radius-base) + 8px);
+      border-radius: var(--art-surface-radius);
       box-shadow: 0 12px 25px rgb(64 120 255 / 24%);
     }
 
@@ -777,7 +777,7 @@
       height: 34px;
       color: var(--el-color-primary);
       background: var(--el-color-primary-light-9);
-      border-radius: calc(var(--el-border-radius-base) + 1px);
+      border-radius: var(--art-surface-radius);
     }
 
     :deep(.workflow-definition__name-cell > div) {

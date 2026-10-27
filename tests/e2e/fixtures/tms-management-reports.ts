@@ -51,6 +51,11 @@ const router = createRouter({
         pages[`../../../modules/art-supabase-tms/src/views/${item.group}/${item.slug}/index.vue`]
     })),
     {
+      path: '/tms/waybill-management/detail/:id',
+      name: 'TmsWaybillDetail',
+      component: { render: () => h('h1', '验收运输任务详情') }
+    },
+    {
       path: '/tms/order/detail/:id',
       name: 'TmsOrderDetail',
       component: { render: () => h('h1', '验收订单详情') }

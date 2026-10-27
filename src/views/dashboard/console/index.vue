@@ -56,7 +56,7 @@
         :pending-audit-vehicle-count="overview.data.pendingAuditVehicleCount"
         :reminder-total="reminderTotal"
         :reminders="overview.data.reminders"
-        @view-reminder="navigateTo('/vms/reminder-manage')"
+        @view-reminder="openFleetReminder"
       />
     </section>
 
@@ -112,7 +112,12 @@
   import DashboardRecentOrders from './modules/dashboard-recent-orders.vue'
   import DashboardTransit from './modules/dashboard-transit.vue'
   import DashboardTrend from './modules/dashboard-trend.vue'
-  import type { DashboardMetric, DashboardStatusItem, DashboardTrendData } from './modules/types'
+  import type {
+    DashboardMetric,
+    DashboardReminder,
+    DashboardStatusItem,
+    DashboardTrendData
+  } from './modules/types'
 
   interface OverviewState {
     loading: boolean
@@ -380,6 +385,13 @@
   }
   function openOrder(id?: string): void {
     if (id) void router.push({ name: 'TmsOrderDetail', params: { id } })
+  }
+  function openFleetReminder(key: DashboardReminder['key']): void {
+    navigateTo(
+      key === 'insurance' || key === 'inspection'
+        ? '/vms/certificate-center'
+        : '/vms/reminder-manage'
+    )
   }
   function openCertificate(record: DashboardCertificateRisk): void {
     void navigateToApplication('vms', '/vms/certificate-center', {

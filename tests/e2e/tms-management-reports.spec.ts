@@ -99,6 +99,114 @@ test('长口径说明有界滚动及排名分屏', async ({ page }, info) => {
   await expect(page.locator('.el-table__body tr')).toHaveCount(2)
   await expect(chart).toHaveCount(0)
 })
+test('线路与返程切换保持紧凑分段及完整异步状态', async ({ page }, info) => {
+  test.setTimeout(120_000)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  let state: 'loaded' | 'loading' | 'empty' | 'error' = 'loaded'
+  let release: (() => void) | undefined
+  await page.route('**/rest/v1/rpc/tms_management_report', (route) =>
+    route.fulfill({ json: reportResult('route-profit') })
+  )
+  await page.route('**/rest/v1/rpc/tms_return_profit_report_secure', async (route) => {
+    if (state === 'loading') await new Promise<void>((resolve) => (release = resolve))
+    if (state === 'error') return route.fulfill({ status: 500, json: { message: 'test failure' } })
+    await route.fulfill({
+      json: {
+        records:
+          state === 'empty'
+            ? []
+            : [
+                {
+                  legId: 'return-1',
+                  waybillId: 'waybill-1',
+                  waybillNo: 'YD-返程验收01',
+                  waybillStatus: 'completed',
+                  departureAt: '2026-10-26T08:00:00+08:00',
+                  tenantId: 'tenant-1',
+                  tenantName: '验收租户',
+                  returnCustomerName: '验收返程客户',
+                  originStation: '北京',
+                  destinationStation: '上海',
+                  plateNo: '测A验收001',
+                  driverName: '验收司机',
+                  sharedCostAllocationPct: 50,
+                  plannedRevenue: 5000,
+                  projectedGrossProfit: 2000,
+                  actualGrossProfit: null,
+                  accountingStatus: 'pending_receivable'
+                }
+              ],
+        total: state === 'empty' ? 0 : 1,
+        summary: {
+          returnCount: state === 'empty' ? 0 : 1,
+          approvedCount: 0,
+          pendingCount: state === 'empty' ? 0 : 1,
+          projectedRevenue: state === 'empty' ? null : 5000,
+          projectedGrossProfit: state === 'empty' ? null : 2000,
+          approvedRevenueToDate: null,
+          approvedCostToDate: null,
+          approvedGrossProfitToDate: null,
+          moneyVisible: true
+        }
+      }
+    })
+  })
+  await mkdir('.artifacts/tms-reports/pages', { recursive: true })
+  for (const theme of ['light', 'dark']) {
+    await page.goto(`${fixture}?report=route-profit&theme=${theme}`)
+    await expect(page.getByRole('textbox', { name: '关键词', exact: true })).toBeVisible({
+      timeout: 60_000
+    })
+    await waitReady(page)
+    const segmented = page.getByRole('radiogroup', { name: '选择线路或返程配货报表' })
+    const initialWidth = (await segmented.boundingBox())!.width
+    expect(initialWidth).toBeLessThan(260)
+    async function expectCompact() {
+      await expect(segmented).toBeVisible()
+      expect(Math.abs((await segmented.boundingBox())!.width - initialWidth)).toBeLessThan(2)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true
+      )
+    }
+    await page.getByRole('tab', { name: '图表分析', exact: true }).click()
+    release = undefined
+    state = 'loading'
+    await segmented.getByText('返程配货', { exact: true }).click()
+    await expect(page.getByText('正在加载表格数据…', { exact: true })).toBeVisible()
+    await expectCompact()
+    await page.screenshot({
+      path: `.artifacts/tms-reports/pages/return-segment-${info.project.name}-${theme}-loading.png`
+    })
+    state = 'loaded'
+    await expect.poll(() => Boolean(release)).toBe(true)
+    release?.()
+    await waitReady(page, 1)
+    await expectCompact()
+    await page.screenshot({
+      path: `.artifacts/tms-reports/pages/return-segment-${info.project.name}-${theme}-loaded.png`
+    })
+    state = 'empty'
+    await page.getByRole('button', { name: '查询', exact: true }).click()
+    await expect(page.getByText('当前范围没有返程配货', { exact: true })).toBeVisible()
+    await expectCompact()
+    state = 'error'
+    await page.getByRole('button', { name: '查询', exact: true }).click()
+    await expect(page.getByText('数据加载失败', { exact: true })).toBeVisible()
+    await expectCompact()
+    state = 'empty'
+    await page.getByRole('button', { name: '重新加载', exact: true }).click()
+    await expect(page.getByText('当前范围没有返程配货', { exact: true })).toBeVisible()
+    await expectCompact()
+    await segmented.getByText('线路总览', { exact: true }).click()
+    await expect(page.locator('.management-report-chart [role="img"]')).toBeVisible()
+    await expectCompact()
+    await page.getByRole('tab', { name: '表格明细', exact: true }).click()
+    await waitReady(page)
+  }
+  expect(errors).toEqual([])
+})
+
 test('经营风险显示分级依据及未评级', async ({ page }, info) => {
   await page.route('**/rest/v1/rpc/tms_management_report', async (route) => {
     const result = reportResult('business-risk')

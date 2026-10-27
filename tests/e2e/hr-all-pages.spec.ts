@@ -34,6 +34,12 @@ const pages = [
   'talent/talent-inventory'
 ] as const
 
+const lifecyclePages = new Set<string>([
+  'operations/contingent-workforce',
+  'operations/policy-acknowledgement',
+  'personnel/organization-design'
+])
+
 test.use({ storageState: { cookies: [], origins: [] } })
 for (const name of pages) {
   for (const width of [1440, 570]) {
@@ -73,6 +79,31 @@ for (const name of pages) {
         .toBe(true)
       expect(errors).toEqual([])
       await workspace.screenshot({ path: testInfo.outputPath('page.png'), animations: 'disabled' })
+      if (lifecyclePages.has(name)) {
+        const commandIcon = workspace.locator('[class$="__command-icon"]').first()
+        const stageIcon = workspace.locator('[class$="__stage-icon"]').first()
+        for (const theme of ['light', 'dark'] as const) {
+          for (const boxMode of ['border-mode', 'shadow-mode'] as const) {
+            await page.evaluate(
+              ({ theme, boxMode }) => {
+                document.documentElement.classList.toggle('dark', theme === 'dark')
+                document.documentElement.dataset.boxMode = boxMode
+              },
+              { theme, boxMode }
+            )
+            await expect(commandIcon).toBeVisible()
+            await expect(stageIcon).toBeVisible()
+            await expect(commandIcon).toHaveCSS('width', '42px')
+            await expect(commandIcon).toHaveCSS('height', '42px')
+            await expect(stageIcon).toHaveCSS('width', '30px')
+            await expect(stageIcon).toHaveCSS('height', '30px')
+            await workspace.screenshot({
+              path: testInfo.outputPath(`page-${theme}-${boxMode}.png`),
+              animations: 'disabled'
+            })
+          }
+        }
+      }
     })
   }
 }

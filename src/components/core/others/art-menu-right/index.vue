@@ -20,7 +20,7 @@
               <button
                 type="button"
                 role="menuitem"
-                class="menu-item art-icon-label relative w-full c-p select-none rounded text-sm transition-colors duration-150"
+                class="menu-item art-icon-label relative w-full c-p select-none text-sm transition-colors duration-150"
                 :style="menuItemStyle"
                 :disabled="item.disabled"
                 @click="handleMenuClick(item)"
@@ -44,7 +44,7 @@
                 type="button"
                 role="menuitem"
                 aria-haspopup="menu"
-                class="menu-item submenu-title art-icon-label w-full c-p select-none rounded text-sm transition-colors duration-150"
+                class="menu-item submenu-title art-icon-label w-full c-p select-none text-sm transition-colors duration-150"
                 :style="menuItemStyle"
               >
                 <ArtSvgIcon
@@ -78,7 +78,7 @@
                   <button
                     type="button"
                     role="menuitem"
-                    class="menu-item art-icon-label relative w-full c-p select-none rounded text-sm transition-colors duration-150"
+                    class="menu-item art-icon-label relative w-full c-p select-none text-sm transition-colors duration-150"
                     :style="menuItemStyle"
                     :disabled="child.disabled"
                     @click="handleMenuClick(child)"
@@ -140,7 +140,7 @@
     menuPadding?: number
     /** 菜单项水平内边距 */
     itemPaddingX?: number
-    /** 菜单圆角 */
+    /** 显式指定浮层圆角；默认跟随全局配置，菜单项始终使用全局表面圆角 */
     borderRadius?: number
     /** 动画持续时间 */
     animationDuration?: number
@@ -153,7 +153,6 @@
     boundaryDistance: 10,
     menuPadding: 5,
     itemPaddingX: 6,
-    borderRadius: 6,
     animationDuration: 100
   })
 
@@ -196,15 +195,14 @@
   // 计算菜单项样式
   const menuItemStyle = computed((): CSSProperties => ({
     height: `${props.itemHeight}px`,
-    padding: `0 ${props.itemPaddingX}px`,
-    borderRadius: '4px'
+    padding: `0 ${props.itemPaddingX}px`
   }))
 
   // 计算子菜单列表样式
   const submenuListStyle = computed((): CSSProperties => ({
     minWidth: `${props.submenuWidth}px`,
     padding: `${props.menuPadding}px 0`,
-    borderRadius: `${props.borderRadius}px`
+    borderRadius: props.borderRadius === undefined ? undefined : `${props.borderRadius}px`
   }))
 
   // 计算菜单高度（用于边界检测）
@@ -329,7 +327,9 @@
 <style scoped>
   .menu-right {
     --menu-width: v-bind('props.menuWidth + "px"');
-    --border-radius: v-bind('props.borderRadius + "px"');
+    --border-radius: v-bind(
+      'props.borderRadius === undefined ? "var(--art-floating-radius)" : props.borderRadius + "px"'
+    );
 
     border-radius: var(--border-radius) !important;
   }
@@ -344,6 +344,7 @@
     text-align: left;
     background: transparent;
     border: 0;
+    border-radius: var(--art-surface-radius);
 
     &:hover:not(:disabled) {
       background: var(--art-hover-color);

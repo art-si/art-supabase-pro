@@ -399,7 +399,13 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
           model: runtimeConfig.visionModel || runtimeConfig.model,
           fallbackModel: runtimeConfig.fallbackModel
         },
-        { openAiModel: Deno.env.get(`AI_${config.envPrefix}_OPENAI_MODEL`) }
+        {
+          openAiModel:
+            Deno.env.get(`AI_${config.envPrefix}_OPENAI_MODEL`) ||
+            (runtimeConfig.provider === 'openai'
+              ? runtimeConfig.visionModel || runtimeConfig.model
+              : undefined)
+        }
       )
       const endpoints = config.strictProvider
         ? resolvedEndpoints.filter((endpoint) => endpoint.id === runtimeConfig.provider)

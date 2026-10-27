@@ -29,7 +29,7 @@
         :key="item.key"
         type="button"
         :class="`is-${item.severity}`"
-        @click="emit('view-reminder')"
+        @click="emit('view-reminder', item.key)"
       >
         <i class="fleet-risk__severity" />
         <span>{{ item.label }}</span>
@@ -53,7 +53,7 @@
     reminderTotal: number
     reminders: DashboardReminder[]
   }>()
-  const emit = defineEmits<{ 'view-reminder': [] }>()
+  const emit = defineEmits<{ 'view-reminder': [key: DashboardReminder['key']] }>()
 </script>
 
 <style scoped lang="scss">

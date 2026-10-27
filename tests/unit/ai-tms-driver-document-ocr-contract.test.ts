@@ -14,10 +14,12 @@ test('driver OCR maps every supported certificate image to its document kind', (
 
 test('driver OCR keeps dates and classes structured for manual review', () => {
   const result = normalizeDriverOcrResponse({
-    rawText: '档案编号 1234', confidence: 0.87,
+    rawText: '档案编号 1234',
+    confidence: 0.87,
     fieldConfidence: { licenseArchiveNo: 0.7 },
     document: {
-      licenseArchiveNo: ' 1234 ', licenseClasses: ['A2', 'B2'],
+      licenseArchiveNo: ' 1234 ',
+      licenseClasses: ['A2', 'B2'],
       licenseExpireDate: '2029/12/31'
     }
   })
@@ -28,15 +30,31 @@ test('driver OCR keeps dates and classes structured for manual review', () => {
 })
 
 test('driver OCR rejects empty images and invalid confidence', () => {
-  assert.equal(validateDriverOcrPayload({
-    rawText: '', confidence: 0.9, fieldConfidence: {}, document: { driverName: null }
-  }).valid, false)
-  assert.equal(validateDriverOcrPayload({
-    rawText: '司机姓名 张某', confidence: 1.3,
-    fieldConfidence: {}, document: { driverName: '张某' }
-  }).valid, false)
-  assert.equal(validateDriverOcrPayload({
-    rawText: '司机姓名 张某', confidence: 0.9,
-    fieldConfidence: {}, document: { driverName: '张某' }
-  }).valid, true)
+  assert.equal(
+    validateDriverOcrPayload({
+      rawText: '',
+      confidence: 0.9,
+      fieldConfidence: {},
+      document: { driverName: null }
+    }).valid,
+    false
+  )
+  assert.equal(
+    validateDriverOcrPayload({
+      rawText: '司机姓名 张某',
+      confidence: 1.3,
+      fieldConfidence: {},
+      document: { driverName: '张某' }
+    }).valid,
+    false
+  )
+  assert.equal(
+    validateDriverOcrPayload({
+      rawText: '司机姓名 张某',
+      confidence: 0.9,
+      fieldConfidence: {},
+      document: { driverName: '张某' }
+    }).valid,
+    true
+  )
 })

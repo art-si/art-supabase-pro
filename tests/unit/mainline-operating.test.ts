@@ -76,4 +76,3 @@ test('cost records preserve field masking and reject malformed amounts', () => {
     })
   )
 })
-

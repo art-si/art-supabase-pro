@@ -113,7 +113,7 @@
       text-align: left;
       background: rgb(141 181 210 / 6%);
       border: 1px solid var(--screen-line);
-      border-radius: 8px;
+      border-radius: var(--art-surface-radius);
     }
 
     b {

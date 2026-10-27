@@ -10,7 +10,7 @@
     popper-class="fast-enter-popover"
     :popper-style="{
       border: '1px solid var(--default-border)',
-      borderRadius: 'calc(var(--custom-radius) / 2 + 4px)'
+      borderRadius: 'var(--art-surface-radius)'
     }"
   >
     <template #reference>
@@ -34,7 +34,7 @@
             :key="application.name"
             :is="resolveNavigationComponent(application)"
             v-bind="getNavigationProps(application)"
-            class="fast-enter-item mr-3 c-p flex-c gap-3 rounded-lg p-2 hover:bg-g-200/70 dark:hover:bg-g-200/90 hover:[&_.app-icon]:!bg-transparent"
+            class="fast-enter-item mr-3 c-p flex-c gap-3 rounded-surface p-2 hover:bg-g-200/70 dark:hover:bg-g-200/90 hover:[&_.app-icon]:!bg-transparent"
             @click="closePopover"
           >
             <div class="app-icon size-12 flex-cc rounded-lg bg-g-200/80 dark:bg-g-300/30">

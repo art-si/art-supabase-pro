@@ -24,6 +24,8 @@ export interface ArtDrawerOptions<TData = unknown> extends ArtOverlayOptions<
   fullscreen?: boolean
   /** 是否显示全屏切换按钮 */
   showFullscreenButton?: boolean
+  /** 是否显示表单专注填单按钮，默认 true；仅在包含 ArtForm 时显示 */
+  showFormFocusButton?: boolean
   /** 进入全屏按钮提示文本 */
   fullscreenText?: string
   /** 退出全屏按钮提示文本 */

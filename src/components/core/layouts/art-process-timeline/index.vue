@@ -177,7 +177,7 @@
       padding: 13px 14px;
       background: linear-gradient(145deg, var(--el-bg-color), var(--el-fill-color-blank));
       border: 1px solid var(--el-border-color-lighter);
-      border-radius: calc(var(--el-border-radius-base) + 3px);
+      border-radius: var(--art-surface-radius);
       box-shadow: 0 5px 18px rgb(31 45 61 / 4%);
     }
 

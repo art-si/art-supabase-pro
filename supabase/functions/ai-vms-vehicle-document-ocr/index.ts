@@ -1,11 +1,13 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import {
-  areVmsVehicleDocumentImageUrlsInScope,
   compareVmsVehicleDocumentOcrPayloads,
-  isValidVmsVehicleDocumentTenantScope,
   normalizeVmsVehicleDocumentOcrResponse,
   validateVmsVehicleDocumentOcrPayload
 } from '../_shared/ai-vms-vehicle-document-ocr-contract.ts'
+import {
+  authorizeVehicleOcrImages,
+  isVmsPrivateOcrImagePath
+} from '../_shared/ai-vms-vehicle-document-ocr-policy.ts'
 import { createVisionOcrHandler } from '../_shared/ai-vision-ocr-runtime.ts'
 
 const defaultPrompt = [
@@ -25,24 +27,47 @@ const handler = createVisionOcrHandler({
   entityTable: 'mdm_vehicle',
   envPrefix: 'VMS_VEHICLE_DOCUMENT_OCR',
   inlineImages: true,
+  imageInputMode: 'private_path',
   strictProvider: true,
   requiredPermission: 'VehicleArchive:Ocr',
   allowReview: false,
-  authorizeImageUrls: async ({
-    userClient,
-    appUser,
-    imageUrls,
-    requestedTenantId,
-    supabaseUrl
-  }) => {
-    const { data: isPlatformSuper, error } = await userClient.rpc('current_is_super')
-    if (error || typeof isPlatformSuper !== 'boolean') return false
-    if (isPlatformSuper && !isValidVmsVehicleDocumentTenantScope(requestedTenantId)) return false
-    return areVmsVehicleDocumentImageUrlsInScope(
-      imageUrls,
-      supabaseUrl,
-      isPlatformSuper ? requestedTenantId : appUser.tenant_id
-    )
+  authorizeImageUrls: async ({ admin, userClient, appUser, userId, imageUrls, requestedTenantId, supabaseUrl, body }) =>
+    authorizeVehicleOcrImages({
+      body, imageUrls, requestedTenantId, supabaseUrl, userId, appTenantId: appUser.tenant_id,
+      checkPermission: async (permission) => {
+        const { data, error } = await userClient.rpc('current_has_permission', { p_permission: permission })
+        return !error && data === true
+      },
+      isPlatformSuper: async () => {
+        const { data, error } = await userClient.rpc('current_is_super')
+        return error || typeof data !== 'boolean' ? null : data
+      },
+      getScopedVehicle: async (id) => {
+        const { data, error } = await userClient.rpc('vms_get_vehicle_archive_secure', { p_id: id })
+        return error || !data || typeof data !== 'object' ? null : data as Record<string, unknown>
+      },
+      getVehicleTenant: async (id) => {
+        const { data, error } = await admin.from('mdm_vehicle').select('tenant_id').eq('id', id).maybeSingle()
+        return error ? null : data?.tenant_id ?? null
+      },
+      getStoredImage: async (id, type) => {
+        const column = type === 'driving_license' ? 'driving_license_front_url' : 'operation_license_url'
+        const { data, error } = await admin.from('mdm_vehicle').select(column).eq('id', id).maybeSingle()
+        if (error || !data) return null
+        const value = (data as Record<string, unknown>)[column]
+        return typeof value === 'string' ? value : null
+      },
+      canSignPrivateImage: async (path) => {
+        const { data, error } = await userClient.storage.from('vms-vehicle-private').createSignedUrl(path, 30)
+        return !error && Boolean(data?.signedUrl)
+      }
+    }),
+  resolveAuthorizedImages: async ({ admin, imageUrls }) => {
+    const image = imageUrls[0]
+    if (!isVmsPrivateOcrImagePath(image)) return imageUrls
+    const { data, error } = await admin.storage.from('vms-vehicle-private').createSignedUrl(image, 60)
+    if (error || !data?.signedUrl) throw new Error('Private vehicle image signing failed')
+    return [data.signedUrl]
   },
   defaultPrompt,
   defaultMaxTokens: 1800,

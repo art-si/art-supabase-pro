@@ -203,7 +203,7 @@
         color-mix(in srgb, var(--theme-color) 46%, #2563eb) 100%
       );
     border: 1px solid rgb(255 255 255 / 13%);
-    border-radius: calc(var(--custom-radius) + 12px);
+    border-radius: var(--art-surface-radius);
     box-shadow: 0 18px 42px color-mix(in srgb, var(--theme-color) 24%, transparent);
 
     &__intro {
@@ -291,7 +291,7 @@
     cursor: pointer;
     background: rgb(255 255 255 / 9%);
     border: 1px solid rgb(255 255 255 / 10%);
-    border-radius: calc(var(--custom-radius) + 7px);
+    border-radius: var(--art-surface-radius);
     transition:
       background-color 0.2s ease,
       border-color 0.2s ease,
@@ -322,7 +322,7 @@
       overflow: hidden;
       background: #f8faff;
       border: 1px solid rgb(255 255 255 / 45%);
-      border-radius: 8px;
+      border-radius: var(--art-surface-radius);
       box-shadow: 0 8px 18px rgb(17 24 39 / 18%);
 
       i {

@@ -243,6 +243,11 @@ export default async ({ mode }: { mode: string }) => {
                 priority: 45
               },
               {
+                name: 'local-ocr',
+                test: (id) => matchPackages(id, ['tesseract.js/']),
+                priority: 45
+              },
+              {
                 name: 'monaco',
                 test: (id) =>
                   matchPackages(id, [

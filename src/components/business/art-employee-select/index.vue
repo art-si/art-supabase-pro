@@ -8,7 +8,7 @@
     :resolve-selected="selectedReferenceLoader"
     :api-fn="fetchEmployees"
     :columns="columns"
-    :placeholder="canFetchEmployees ? placeholder : '请先选择目标租户'"
+    :placeholder="canFetchEmployees ? placeholder : missingTenantPlaceholder"
     :disabled="disabled || !canFetchEmployees"
     :clearable="clearable"
     row-key="id"
@@ -72,6 +72,7 @@
     title?: string
     subtitle?: string
     placeholder?: string
+    missingTenantPlaceholder?: string
     searchPlaceholder?: string
     disabled?: boolean
     clearable?: boolean
@@ -92,6 +93,7 @@
     title: '选择员工',
     subtitle: '按姓名、工号、组织或岗位检索员工档案',
     placeholder: '请选择员工',
+    missingTenantPlaceholder: '请先选择目标租户',
     searchPlaceholder: '搜索姓名、工号、组织或岗位',
     disabled: false,
     clearable: true,

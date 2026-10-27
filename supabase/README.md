@@ -1,5 +1,12 @@
 # Supabase source of truth
 
+## Operation reporting automation (2026-10-27)
+
+See [operation reporting architecture](mes-operation-report-architecture.md) for first-operation
+start control, SY06 preceding-operation backfill, SY05 finished receipts, immutable report
+provenance, deferred warehouse/bin selection and the rollback regression. Database rules are
+deployed; this does not publish the frontend.
+
 ## MES packing and finished receipt modes (2026-10-26)
 
 New MES package numbers use `<work-order-no>-PK-<four-digit-minimum-sequence>` for manual,
@@ -46,6 +53,16 @@ The reviewed database changes were applied directly after verified recoverable b
 created. `tests/integration/wms-finished-inbound-modes.sql` verifies summary and package batches,
 ordinary/forged-header/platform-selected/platform-all behavior, create/edit, duplicate and partial
 package rejection, area accounting, and finished returns without retaining test business data.
+
+Verification on 2026-10-27: the four summary/package receipt browser cases passed at 1440 and
+1280 pixels, including picking, quantity conversion, saving and mode locking. The BOM remaining
+quantity picker and the packing number/retry/split/print browser regressions also passed. A fresh
+server rerun additionally verified the widened package-number column without truncation at 1280
+pixels and repeated the package receipt save/lock flow successfully. The
+14 focused packing unit tests, main/MES/WMS type checks, WMS build and UI audit passed. The
+broader root unit run retained three unrelated failures in public module assets and audit fixture
+expectations; the reuse audit retained the existing TMS driver nullable-text finding. These are
+not evidence of a fully passing repository release gate. Frontend publication is outside this change.
 
 ## System identity and runtime parameters (2026-10-09)
 

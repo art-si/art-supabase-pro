@@ -50,7 +50,7 @@
       cursor: pointer;
       background: var(--default-box-color);
       border: 1px solid var(--art-card-border);
-      border-radius: calc(var(--custom-radius) + 4px);
+      border-radius: var(--art-surface-radius);
 
       > svg {
         grid-row: 1 / 3;

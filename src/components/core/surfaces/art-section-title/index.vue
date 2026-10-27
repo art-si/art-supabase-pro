@@ -140,7 +140,7 @@
       cursor: pointer;
       background: transparent;
       border: 0;
-      border-radius: var(--art-control-radius-sm);
+      border-radius: var(--art-surface-radius);
       transition:
         color var(--art-motion-duration-fast) ease,
         background-color var(--art-motion-duration-fast) ease;

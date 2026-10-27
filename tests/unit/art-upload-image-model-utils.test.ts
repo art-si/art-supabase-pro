@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  getSafeUploadDisplayName,
   normalizeUploadModelUrls,
   shouldSyncUploadFileList
 } from '../../src/components/core/forms/upload-model-utils'
@@ -11,6 +12,16 @@ test('父组件传入内容相同的新数组时不重建上传列表', () => {
 
   assert.notEqual(recreatedModel, lastSyncedUrls)
   assert.equal(shouldSyncUploadFileList(recreatedModel, lastSyncedUrls), false)
+})
+
+test('签名附件名称只来自 URL 路径，不包含访问令牌', () => {
+  const signed =
+    'https://example.supabase.co/storage/v1/object/sign/private/tenant/%E8%90%A5%E4%B8%9A%E6%89%A7%E7%85%A7.png?token=secret-value#preview'
+  assert.equal(getSafeUploadDisplayName(signed), '营业执照.png')
+  assert.equal(getSafeUploadDisplayName('/folder/demo.pdf?token=secret-value'), 'demo.pdf')
+  assert.equal(getSafeUploadDisplayName('https://example.com/folder/'), '附件')
+  assert.equal(getSafeUploadDisplayName('https://example.com/%ZZ?token=secret-value'), '附件')
+  assert.equal(getSafeUploadDisplayName('data:image/png;base64,secret-value'), '附件')
 })
 
 test('URL 内容、顺序或清空发生变化时重新同步上传列表', () => {

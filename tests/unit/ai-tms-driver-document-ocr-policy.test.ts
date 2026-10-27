@@ -15,9 +15,14 @@ const image = (tenantId: string, owner = userId) => `${tenantId}/${owner}/${obje
 
 function input(overrides: Partial<DriverOcrImageAuthorization> = {}): DriverOcrImageAuthorization {
   return {
-    body: { imageSide: 'idCardFrontUrl' }, imageUrls: [image(ownTenant)],
-    requestedTenantId: otherTenant, appTenantId: ownTenant, userId,
-    checkPermission: async () => true, isPlatformSuper: async () => false,
+    body: { imageSide: 'idCardFrontUrl' },
+    imageUrls: [image(ownTenant)],
+    requestedTenantId: otherTenant,
+    targetTenantId: ownTenant,
+    appTenantId: ownTenant,
+    userId,
+    checkPermission: async () => true,
+    isPlatformSuper: async () => false,
     getScopedDriver: async () => ({
       field_access: { identityDocuments: 'edit', idCardNo: 'edit' }
     }),
@@ -30,43 +35,99 @@ function input(overrides: Partial<DriverOcrImageAuthorization> = {}): DriverOcrI
 
 test('ordinary add uses authenticated tenant despite a forged header', async () => {
   let checkedPermission = ''
-  const allowed = await authorizeDriverOcrImages(input({
-    checkPermission: async (permission) => { checkedPermission = permission; return true }
-  }))
+  const allowed = await authorizeDriverOcrImages(
+    input({
+      checkPermission: async (permission) => {
+        checkedPermission = permission
+        return true
+      }
+    })
+  )
   assert.equal(allowed, true)
   assert.equal(checkedPermission, 'TmsDriver:Add')
   assert.equal(await authorizeDriverOcrImages(input({ imageUrls: [image(otherTenant)] })), false)
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        targetTenantId: otherTenant,
+        imageUrls: [image(otherTenant)]
+      })
+    ),
+    false
+  )
 })
 
 test('existing driver requires edit permission, scoped row and editable sensitive fields', async () => {
   const existing = input({ body: { imageSide: 'idCardFrontUrl', driverId } })
   assert.equal(await authorizeDriverOcrImages(existing), true)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...existing, checkPermission: async (permission) => permission !== 'TmsDriver:Edit'
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...existing, getScopedDriver: async () => null
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...existing, getScopedDriver: async () => ({
-      field_access: { identityDocuments: 'read', idCardNo: 'edit' }
-    })
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...existing, getScopedDriver: async () => ({
-      field_access: { identityDocuments: 'edit', idCardNo: 'masked' }
-    })
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...existing, imageUrls: [image(ownTenant, otherUserId)]
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...existing, imageUrls: [image(ownTenant, otherUserId)],
-    getStoredImagePath: async () => image(ownTenant, otherUserId)
-  })), true)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...existing, canSignImage: async () => false
-  })), false)
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...existing,
+        checkPermission: async (permission) => permission !== 'TmsDriver:Edit'
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...existing,
+        getScopedDriver: async () => null
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...existing,
+        getScopedDriver: async () => ({
+          field_access: { identityDocuments: 'read', idCardNo: 'edit' }
+        })
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...existing,
+        getScopedDriver: async () => ({
+          field_access: { identityDocuments: 'edit', idCardNo: 'masked' }
+        })
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...existing,
+        imageUrls: [image(ownTenant, otherUserId)]
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...existing,
+        imageUrls: [image(ownTenant, otherUserId)],
+        getStoredImagePath: async () => image(ownTenant, otherUserId)
+      })
+    ),
+    true
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...existing,
+        canSignImage: async () => false
+      })
+    ),
+    false
+  )
 })
 
 test('platform selected tenant follows row tenant and blocks cross-tenant image', async () => {
@@ -74,33 +135,74 @@ test('platform selected tenant follows row tenant and blocks cross-tenant image'
     body: { imageSide: 'driverLicenseBackUrl', driverId },
     isPlatformSuper: async () => true,
     requestedTenantId: otherTenant,
+    targetTenantId: otherTenant,
     imageUrls: [image(otherTenant)],
     getDriverTenant: async () => otherTenant
   })
   assert.equal(await authorizeDriverOcrImages(selected), true)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...selected, imageUrls: [image(ownTenant)]
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...selected, getDriverTenant: async () => ownTenant
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    ...selected, requestedTenantId: null
-  })), true)
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...selected,
+        imageUrls: [image(ownTenant)]
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...selected,
+        getDriverTenant: async () => ownTenant
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        ...selected,
+        requestedTenantId: null
+      })
+    ),
+    true
+  )
 })
 
 test('public URL, malformed path, invalid side and extra images fail closed', async () => {
   assert.equal(await authorizeDriverOcrImages(input({ imageUrls: ['not-a-url'] })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    imageUrls: [`https://example.supabase.co/storage/v1/object/public/attachments/${ownTenant}/x.png`]
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    body: { imageSide: 'portraitUrl' }
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    imageUrls: [image(ownTenant), image(ownTenant)]
-  })), false)
-  assert.equal(await authorizeDriverOcrImages(input({
-    body: { imageSide: 'idCardFrontUrl', driverId: 'invalid' }
-  })), false)
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        imageUrls: [
+          `https://example.supabase.co/storage/v1/object/public/attachments/${ownTenant}/x.png`
+        ]
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        body: { imageSide: 'portraitUrl' }
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        imageUrls: [image(ownTenant), image(ownTenant)]
+      })
+    ),
+    false
+  )
+  assert.equal(
+    await authorizeDriverOcrImages(
+      input({
+        body: { imageSide: 'idCardFrontUrl', driverId: 'invalid' }
+      })
+    ),
+    false
+  )
 })

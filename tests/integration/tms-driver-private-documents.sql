@@ -31,6 +31,15 @@ BEGIN
     SELECT 1 FROM public.sys_menu WHERE name='TmsDriver:UploadDocument'
       AND parent_id=(SELECT id FROM public.sys_menu WHERE name='TmsDriver')
   ) THEN RAISE EXCEPTION 'Driver upload button permission missing'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.mdm_driver d WHERE
+      coalesce(d.id_card_front_url,'') LIKE '%/storage/v1/object/public/%' OR
+      coalesce(d.id_card_back_url,'') LIKE '%/storage/v1/object/public/%' OR
+      coalesce(d.driver_license_front_url,'') LIKE '%/storage/v1/object/public/%' OR
+      coalesce(d.driver_license_back_url,'') LIKE '%/storage/v1/object/public/%' OR
+      coalesce(d.id_card_front_url,'') LIKE '%/storage/v1/object/sign/%' OR
+      coalesce(d.driver_license_front_url,'') LIKE '%/storage/v1/object/sign/%'
+  ) THEN RAISE EXCEPTION 'Driver sensitive images still reference public or temporary URLs'; END IF;
 
   own_path := own_tenant::text || '/' || ordinary_user::text || '/' || object_id;
   other_path := other_tenant::text || '/' || ordinary_user::text || '/' || object_id;
@@ -49,6 +58,17 @@ BEGIN
   IF app_private.tms_driver_private_path_valid('../private.png')
     OR app_private.tms_driver_private_path_valid(own_tenant::text || '/' || ordinary_user::text || '/' || object_id || '/extra')
   THEN RAISE EXCEPTION 'Malformed private document path accepted'; END IF;
+
+  INSERT INTO storage.objects(bucket_id,name,owner,owner_id,metadata)
+  VALUES ('tms-driver-private',own_path,ordinary_user,ordinary_user::text,
+    '{"mimetype":"image/png","size":3}'::jsonb);
+  UPDATE public.mdm_driver SET id_card_front_url=own_path WHERE id=own_driver;
+  IF NOT app_private.tms_driver_private_read_allowed(own_path) THEN
+    RAISE EXCEPTION 'Referenced own driver image not readable';
+  END IF;
+  IF app_private.tms_driver_private_read_allowed(other_path) THEN
+    RAISE EXCEPTION 'Foreign driver image became readable';
+  END IF;
 
   PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',platform_user,'role','authenticated')::text,true);
   PERFORM set_config('request.headers','{}',true);

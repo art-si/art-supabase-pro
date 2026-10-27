@@ -3,7 +3,7 @@
   <button
     v-auth="permission"
     type="button"
-    class="art-icon-button inline-flex flex-cc c-p border-0 bg-transparent text-g-600 dark:text-g-800 rounded tad-300 hover:bg-hover-color"
+    class="art-icon-button inline-flex flex-cc c-p border-0 bg-transparent text-g-600 dark:text-g-800 rounded-surface tad-300 hover:bg-hover-color"
     :class="[
       `art-icon-button--${tone}`,
       `art-icon-button--${variant}`,

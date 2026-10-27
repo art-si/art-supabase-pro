@@ -3,6 +3,20 @@ import { financePaths } from '@/router/business-paths'
 
 type Artifact = Api.IntelligentRecognition.RecognitionArtifact
 
+export function createEmptyRecognitionOverview(): Api.IntelligentRecognition.RecognitionOverview {
+  return {
+    total: 0,
+    pending: 0,
+    applied: 0,
+    rejected: 0,
+    lowConfidence: 0,
+    pendingLowConfidence: 0,
+    today: 0,
+    avgConfidence: 0,
+    byFeature: {}
+  }
+}
+
 export function getRecognitionMetadataText(artifact: Artifact, key: string): string {
   const value = artifact.metadata?.[key]
   return typeof value === 'string' ? value : ''

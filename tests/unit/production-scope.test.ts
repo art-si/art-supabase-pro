@@ -1,7 +1,47 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import TreeUtils from '../../src/utils/tree'
-import { getDepartmentsWithWorkCenters } from '../../src/utils/business/production-scope'
+import {
+  formatProductionDepartmentPath,
+  getDepartmentsWithWorkCenters
+} from '../../src/utils/business/production-scope'
+
+test('production department labels retain tenant context only for platform-wide reads', () => {
+  const department = { id: 'workshop', name: '装配车间', tenantId: 'tenant-b' }
+  const paths = new Map([['workshop', '第一工厂 / 装配车间']])
+  const tenants = [{ id: 'tenant-b', tenantName: '乙公司' }]
+
+  assert.equal(
+    formatProductionDepartmentPath(department, paths, 'tenant-b', tenants),
+    '第一工厂 / 装配车间'
+  )
+  assert.equal(
+    formatProductionDepartmentPath(department, paths, null, tenants),
+    '乙公司 / 第一工厂 / 装配车间'
+  )
+  assert.equal(
+    formatProductionDepartmentPath(department, new Map(), null, []),
+    '当前租户 / 装配车间'
+  )
+})
+
+test('production department paths keep numeric map keys distinct from string keys', () => {
+  const department = { id: 7, name: '数值车间', tenantId: 'tenant-b' }
+  const paths = new Map<string | number, string>([
+    [7, '第二工厂 / 数值车间'],
+    ['7', '错误路径']
+  ])
+  const tenants = [{ id: 'tenant-b', tenantName: '乙公司' }]
+
+  assert.equal(
+    formatProductionDepartmentPath(department, paths, null, tenants),
+    '乙公司 / 第二工厂 / 数值车间'
+  )
+  assert.equal(
+    formatProductionDepartmentPath(department, paths, 'tenant-b', tenants),
+    '第二工厂 / 数值车间'
+  )
+})
 
 test('center membership includes same-tenant ancestors without mutating input', () => {
   const departments = Object.freeze([

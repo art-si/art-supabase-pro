@@ -27,11 +27,15 @@
   import type { ArtTableQueryExpose } from '@/components/core/tables/art-table-query/index.vue'
   import { hasLocatedRecord } from './record-location'
 
+  type RecordLocationTable = {
+    dataState: Pick<ArtTableQueryExpose['dataState'], 'rows' | 'loading' | 'error'>
+  }
+
   const props = withDefaults(
     defineProps<{
       actionHint?: string
       locationReady?: boolean
-      table?: Pick<ArtTableQueryExpose, 'dataState'> | null
+      table?: RecordLocationTable | null
       recordId?: string | number
       recordKey?: string
       recordRows?: readonly object[]

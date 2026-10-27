@@ -42,7 +42,7 @@
     padding: 4px;
     background: var(--art-gray-200);
     border: 1px solid var(--art-card-border);
-    border-radius: calc(var(--custom-radius) + 4px);
+    border-radius: var(--art-surface-radius);
 
     button {
       height: 36px;
@@ -53,7 +53,7 @@
       cursor: pointer;
       background: transparent;
       border: 0;
-      border-radius: var(--custom-radius);
+      border-radius: var(--art-surface-radius);
 
       &:hover {
         color: var(--art-gray-900);

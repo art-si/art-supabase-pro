@@ -52,7 +52,42 @@ test('辅助数量按物料单位换算关系计算', () => {
     unitConversions: [{ sourceUnitId: 'box', sourceFactor: 1, baseFactor: 10 }]
   } as ScmMaterialOption
   assert.equal(contractAuxiliaryQuantity(25, 'box', material), 2.5)
+  assert.equal(contractAuxiliaryQuantity(-25, 'box', material), -2.5)
+  const oneToOne = {
+    unitConversions: [{ sourceUnitId: 'box', sourceFactor: 1, baseFactor: 1 }]
+  } as ScmMaterialOption
+  assert.equal(contractAuxiliaryQuantity(1.23449, 'box', oneToOne), 1.234)
+  assert.equal(contractAuxiliaryQuantity(1.23451, 'box', oneToOne), 1.235)
   assert.equal(contractAuxiliaryQuantity(25, 'missing', material), undefined)
+})
+
+test('辅助数量拒绝非有限输入、无效系数和无法表示的比例', () => {
+  const valid = {
+    unitConversions: [{ sourceUnitId: 'box', sourceFactor: 1, baseFactor: 10 }]
+  } as ScmMaterialOption
+  for (const quantity of [NaN, Infinity, -Infinity]) {
+    assert.equal(contractAuxiliaryQuantity(quantity, 'box', valid), undefined)
+  }
+  for (const [sourceFactor, baseFactor] of [
+    [NaN, 1],
+    [Infinity, 1],
+    [1, NaN],
+    [1, Infinity],
+    [Number.MIN_VALUE, Number.MAX_VALUE]
+  ]) {
+    assert.equal(
+      contractAuxiliaryQuantity(1, 'box', {
+        unitConversions: [{ sourceUnitId: 'box', sourceFactor, baseFactor }]
+      } as ScmMaterialOption),
+      undefined
+    )
+  }
+  assert.equal(
+    contractAuxiliaryQuantity(1e308, 'box', {
+      unitConversions: [{ sourceUnitId: 'box', sourceFactor: 1e308, baseFactor: 1 }]
+    } as ScmMaterialOption),
+    undefined
+  )
 })
 
 test('空数量不产生合同金额或辅助数量', () => {

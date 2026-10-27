@@ -153,7 +153,8 @@
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import {
     normalizeUploadModelUrls,
-    shouldSyncUploadFileList
+    shouldSyncUploadFileList,
+    getSafeUploadDisplayName
   } from '@/components/core/forms/upload-model-utils'
   import ResourceListItem = Api.DataCenter.Resources.ResourceListItem
   import { uploadAttachment } from '@/api/attachments'
@@ -266,7 +267,7 @@
       const nextUrls = normalizeUploadModelUrls(val)
       lastSyncedModelUrls.value = nextUrls
       fileList.value = nextUrls.map((url) => ({
-        name: url.split('/').pop() ?? url,
+        name: title || getSafeUploadDisplayName(url, '图片'),
         url
       }))
     },
@@ -420,7 +421,7 @@
     background: var(--art-gray-200);
     border: 0;
     border-bottom: 1px dashed var(--el-border-color);
-    border-radius: 0.375rem 0.375rem 0 0;
+    border-radius: var(--art-surface-radius) var(--art-surface-radius) 0 0;
 
     &:hover {
       color: var(--el-color-primary);
@@ -497,7 +498,7 @@
     border-color: var(--el-border-color);
     border-style: dashed;
     border-width: 1px;
-    border-radius: 0.375rem;
+    border-radius: var(--art-surface-radius);
     transition:
       color 300ms ease,
       background-color 300ms ease,

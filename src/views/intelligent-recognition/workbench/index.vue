@@ -121,7 +121,10 @@
     fetchRecognitionOverview
   } from '@/api/intelligent-recognition'
   import { formatWithDayjs } from '@/utils/time'
+  import { createEmptyRecognitionOverview } from '@/utils/intelligent-recognition'
+  import { createFriendlySupabaseError } from '@/utils/supabase'
   import { useWorkspaceFocus } from '@/hooks/core/useWorkspaceFocus'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import RecognitionPageHero from '../modules/recognition-page-hero.vue'
   import RecognitionWorkbenchDrawer from '../modules/recognition-workbench-drawer.vue'
   import RecognitionDetailDrawer from '../modules/recognition-detail-drawer.vue'
@@ -144,6 +147,7 @@
   }
 
   const router = useRouter()
+  const tenantScope = useTenantScopeStore()
   const { focusMode } = useWorkspaceFocus()
   const loading = ref(false)
   const motionReady = ref(false)
@@ -151,17 +155,10 @@
   const runnerRef = ref<RunnerExpose>()
   const detailRef = ref<DetailExpose>()
   const recentArtifacts = ref<Artifact[]>([])
-  const overview = reactive<Api.IntelligentRecognition.RecognitionOverview>({
-    total: 0,
-    pending: 0,
-    applied: 0,
-    rejected: 0,
-    lowConfidence: 0,
-    pendingLowConfidence: 0,
-    today: 0,
-    avgConfidence: 0,
-    byFeature: {}
-  })
+  const overview = reactive<Api.IntelligentRecognition.RecognitionOverview>(
+    createEmptyRecognitionOverview()
+  )
+  let loadRequestId = 0
 
   const heroMetrics = computed(() => [
     { label: '今日识别', value: overview.today, note: '当前可见范围', tone: 'primary' as const },
@@ -213,6 +210,7 @@
   ]
 
   async function loadData(): Promise<void> {
+    const requestId = ++loadRequestId
     motionReady.value = false
     loading.value = true
     loadError.value = null
@@ -221,16 +219,20 @@
         fetchRecognitionOverview(),
         fetchRecognitionArtifactList({ from: 0, to: 5 })
       ])
+      if (requestId !== loadRequestId) return
       if (overviewResponse.error) throw overviewResponse.error
       if (recentResponse.error) throw recentResponse.error
       if (overviewResponse.data) Object.assign(overview, overviewResponse.data)
       recentArtifacts.value = recentResponse.data ?? []
     } catch (error) {
-      loadError.value = error instanceof Error ? error : new Error('智能识别工作台加载失败')
+      if (requestId !== loadRequestId) return
+      loadError.value = createFriendlySupabaseError(error, '智能识别工作台加载失败，请重试')
     } finally {
-      loading.value = false
-      await nextTick()
-      motionReady.value = true
+      if (requestId === loadRequestId) {
+        loading.value = false
+        await nextTick()
+        if (requestId === loadRequestId) motionReady.value = true
+      }
     }
   }
 
@@ -239,6 +241,17 @@
   }
 
   onMounted(loadData)
+  watch(
+    () => tenantScope.revision,
+    () => {
+      Object.assign(overview, createEmptyRecognitionOverview())
+      recentArtifacts.value = []
+      void loadData()
+    }
+  )
+  onBeforeUnmount(() => {
+    loadRequestId += 1
+  })
 </script>
 
 <style scoped lang="scss">

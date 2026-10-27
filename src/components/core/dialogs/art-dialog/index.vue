@@ -22,16 +22,14 @@
         $slots.header ||
         hasSubtitle ||
         $slots['header-actions'] ||
-        formCount ||
-        options.showFullscreenButton
+        (formCount && options.showFormFocusButton) ||
+        options.showFullscreenButton ||
+        showCloseButton
       "
       #header="{ titleId, titleClass }"
     >
       <div class="art-dialog__header">
-        <div
-          class="art-dialog__header-main"
-          :class="{ 'has-header-actions': $slots['header-actions'] || formCount }"
-        >
+        <div class="art-dialog__header-main">
           <slot v-if="$slots.header" name="header" :data="openData" :api="exposedApi" />
           <span
             v-else
@@ -47,23 +45,37 @@
             </slot>
           </div>
         </div>
-        <div v-if="$slots['header-actions'] || formCount" class="art-dialog__header-actions">
+        <div
+          v-if="
+            $slots['header-actions'] ||
+            options.showFullscreenButton ||
+            (formCount && options.showFormFocusButton) ||
+            showCloseButton
+          "
+          class="art-dialog__header-actions"
+        >
           <slot name="header-actions" :data="openData" :api="exposedApi" />
           <ArtIconButton
-            v-if="formCount"
+            v-if="options.showFullscreenButton"
+            class="art-dialog__fullscreen-button"
+            :icon="fullscreenIcon"
+            :label="fullscreenLabel"
+            @click.stop="toggleFullscreen"
+          />
+          <ArtIconButton
+            v-if="formCount && options.showFormFocusButton"
             :icon="isFocusMode ? 'ri:focus-2-line' : 'ri:focus-3-line'"
             :label="isFocusMode ? '退出专注填单' : '进入专注填单'"
             :aria-pressed="isFocusMode"
             @click="toggleFocusMode"
           />
+          <ArtIconButton
+            v-if="showCloseButton"
+            icon="ri:close-line"
+            label="关闭弹窗"
+            @click="() => handleClose()"
+          />
         </div>
-        <ArtIconButton
-          v-if="options.showFullscreenButton"
-          class="el-dialog__headerbtn art-dialog__fullscreen-button"
-          :icon="fullscreenIcon"
-          :label="fullscreenLabel"
-          @click.stop="toggleFullscreen"
-        />
       </div>
     </template>
 
@@ -188,6 +200,7 @@
     size: undefined,
     fullscreen: false,
     showFullscreenButton: true,
+    showFormFocusButton: true,
     fullscreenText: '全屏',
     exitFullscreenText: '退出全屏',
     loading: false,
@@ -256,6 +269,7 @@
     size: props.size,
     fullscreen: props.fullscreen,
     showFullscreenButton: props.showFullscreenButton,
+    showFormFocusButton: props.showFormFocusButton,
     fullscreenText: props.fullscreenText,
     exitFullscreenText: props.exitFullscreenText,
     loading: props.loading,
@@ -490,10 +504,10 @@
       transition: props.transition,
       closeOnClickModal: props.closeOnClickModal,
       closeOnPressEscape: props.closeOnPressEscape,
-      showClose: props.showClose,
       lockScroll: props.lockScroll,
       modal: props.modal,
       ...runtimeBindings,
+      showClose: false,
       beforeClose: (done: () => void) =>
         overlay.handleBeforeClose(
           done,
@@ -507,6 +521,10 @@
       fullscreen: Boolean(options.value.fullscreen)
     }
   })
+
+  const showCloseButton = computed(
+    () => options.value.dialogProps?.showClose !== false && props.showClose !== false
+  )
 
   const getDialogInstance = () => dialogRef.value
 
@@ -639,7 +657,9 @@
   .art-dialog {
     &__header {
       display: flex;
+      gap: 8px;
       align-items: center;
+      width: 100%;
       min-width: 0;
       min-height: 24px;
     }
@@ -647,24 +667,25 @@
     &__header-main {
       flex: 1;
       min-width: 0;
-
-      &.has-header-actions {
-        padding-right: 72px;
-      }
     }
 
     &__header-actions {
-      position: absolute;
-      top: 12px;
-      right: 92px;
       display: flex;
+      flex: none;
       gap: 8px;
       align-items: center;
       min-height: 32px;
+
+      :deep(.art-icon-button) {
+        flex: none;
+        width: 32px;
+        height: 32px;
+        font-size: 18px;
+      }
     }
 
     &__fullscreen-button {
-      right: 52px !important;
+      flex: none;
     }
 
     &__viewport {

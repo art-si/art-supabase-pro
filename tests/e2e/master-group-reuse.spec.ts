@@ -121,7 +121,14 @@ for (const theme of ['light', 'dark']) {
       await expect(panel.getByRole('button', { name: '更多操作', exact: true })).toHaveCount(0)
       await expect(panel.getByRole('button', { name: '新增分组', exact: true })).toHaveCount(0)
       await panel.getByRole('textbox', { name: '搜索分组', exact: true }).fill('')
-      await panel.getByRole('button', { name: /全部分组/ }).click()
+      const allGroupsButton = panel.getByRole('button', { name: /全部分组/ })
+      await allGroupsButton.click()
+      expect(
+        await allGroupsButton.locator(':scope > span:first-child').evaluate((icon) => {
+          const style = getComputedStyle(icon)
+          return [style.display, style.width, style.height]
+        })
+      ).toEqual(['grid', '36px', '36px'])
       await page.screenshot({ path: info.outputPath('panel-success.png'), animations: 'disabled' })
       expect((await panel.boundingBox())?.height ?? Infinity).toBeLessThanOrEqual(
         mobile ? 440 : 520

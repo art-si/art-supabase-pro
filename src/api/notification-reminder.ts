@@ -1,6 +1,15 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { readTenantScopeId, TENANT_SCOPE_HEADER } from '@/utils/tenant-scope-context'
 
 const { supabase, responseHandle } = useSupabase()
+
+function dispatcherOptions(tenantId: string, limit: number) {
+  const selectedTenantId = readTenantScopeId()
+  return {
+    body: { limit, tenantId },
+    ...(selectedTenantId ? { headers: { [TENANT_SCOPE_HEADER]: selectedTenantId } } : {})
+  }
+}
 
 export async function fetchNotificationReminderWorkspace(tenantId?: string) {
   return await responseHandle<Api.NotificationReminder.Workspace>(
@@ -76,7 +85,7 @@ export async function testNotificationChannel(tenantId: string, channelCode: str
   )
   if (channelCode !== 'in_app') {
     await responseHandle<Api.NotificationReminder.DispatchResult>(
-      () => supabase.functions.invoke('notification-dispatcher', { body: { limit: 20 } }),
+      () => supabase.functions.invoke('notification-dispatcher', dispatcherOptions(tenantId, 20)),
       {
         showErrorMessage: true,
         errorMessage: '通知渠道测试投递失败，请稍后重试'
@@ -95,7 +104,7 @@ export async function runNotificationRemindersNow(tenantId: string) {
     }
   )
   const dispatchResult = await responseHandle<Api.NotificationReminder.DispatchResult>(
-    () => supabase.functions.invoke('notification-dispatcher', { body: { limit: 100 } }),
+    () => supabase.functions.invoke('notification-dispatcher', dispatcherOptions(tenantId, 100)),
     {
       showErrorMessage: true,
       errorMessage: '外部通知投递失败，请稍后重试'

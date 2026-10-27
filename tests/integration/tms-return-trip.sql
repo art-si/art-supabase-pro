@@ -10,6 +10,7 @@ declare
   v_after_fms_profit numeric;
   v_created jsonb;
   v_summary jsonb;
+  v_return_customer_id uuid;
 begin
   perform set_config(
     'request.jwt.claims',
@@ -25,10 +26,17 @@ begin
   where waybill_id = v_waybill_id;
   select gross_profit into v_before_fms_profit from public.tms_waybill_profit
   where waybill_id = v_waybill_id;
+  select id into v_return_customer_id from public.mdm_customer
+  where tenant_id = (select tenant_id from public.tms_waybill where id = v_waybill_id)
+    and enabled order by id limit 1;
+  if v_return_customer_id is null then
+    raise exception 'Return-trip QA tenant needs an enabled customer';
+  end if;
 
   v_created := public.tms_create_return_leg_secure(
     v_waybill_id,
-    '{"origin_station":"广州","destination_station":"上海","distance_km":1300,"cargo_weight_tons":12,"cargo_volume_m3":26,"freight_income":1800,"information_fee":100,"technical_service_fee":50,"direct_toll_fee":200,"direct_misc_fee":20,"shared_cost_allocation_pct":35}'::jsonb
+    '{"return_customer_id":"a9fc0001-1023-4620-9220-000000000001","origin_station":"广州","destination_station":"上海","distance_km":1300,"cargo_weight_tons":12,"cargo_volume_m3":26,"freight_income":1800,"information_fee":100,"technical_service_fee":50,"direct_toll_fee":200,"direct_misc_fee":20,"shared_cost_allocation_pct":35}'::jsonb
+      || jsonb_build_object('return_customer_id', v_return_customer_id)
   );
   if v_created->>'waybill_id' is distinct from v_waybill_id::text then
     raise exception 'Return leg was not attached to the master trip';
@@ -59,7 +67,8 @@ begin
   begin
     perform public.tms_create_return_leg_secure(
       v_waybill_id,
-      '{"origin_station":"广州","destination_station":"上海","freight_income":100}'::jsonb
+      '{"return_customer_id":"a9fc0001-1023-4620-9220-000000000001","origin_station":"广州","destination_station":"上海","freight_income":100}'::jsonb
+        || jsonb_build_object('return_customer_id', v_return_customer_id)
     );
     raise exception 'Duplicate return leg unexpectedly succeeded';
   exception when unique_violation then

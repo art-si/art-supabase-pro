@@ -344,9 +344,11 @@ test('订单详情读取失败显示中文错误并可重试', async ({ page }) 
     return route.fulfill({ json: [] })
   })
   await page.goto('/tests/e2e/fixtures/tms-order-contract-visual.html', { waitUntil: 'commit' })
-  await expect(page.getByText('订单综合信息加载失败，请刷新后重试。', { exact: true })).toBeVisible({
-    timeout: 300_000
-  })
+  await expect(page.getByText('订单综合信息加载失败，请刷新后重试。', { exact: true })).toBeVisible(
+    {
+      timeout: 300_000
+    }
+  )
   await page.getByRole('button', { name: '重新加载' }).click()
   await expect(page.getByText('QA-ORDER-RETRIED').first()).toBeVisible()
   expect(attempts).toBe(2)

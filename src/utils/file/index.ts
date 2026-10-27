@@ -1,5 +1,6 @@
 import type { ColInfo } from '@/vendor/sheetjs/xlsx.mjs'
 export { formatSize } from './format-size'
+export { removeAttachmentRow } from './attachment'
 import { createTenantScopeReadGuard } from '../tenant-scope-context'
 import { ElMessage } from 'element-plus'
 import { openFilePreview, type FilePreviewTarget } from '@/hooks/core/useFilePreview'

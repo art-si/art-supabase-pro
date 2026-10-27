@@ -49,6 +49,7 @@
 
   interface RuleForm extends Api.NotificationReminder.Rule {
     repeatMode: 'once' | 'repeat'
+    leadUnit: 'days' | 'months'
   }
 
   interface RuleFormExpose {
@@ -78,6 +79,8 @@
     scenarioId: props.scenarios[0]?.id ?? '',
     ruleName: '',
     leadDays: 30,
+    leadMonths: null,
+    leadUnit: 'days',
     repeatEveryDays: null,
     repeatMode: 'once',
     sendHour: 9,
@@ -89,6 +92,18 @@
 
   const form = reactive<RuleForm>(createInitialForm())
   const roleSelection = reactive<RoleSelectionState>({ loaded: false, availableCodes: [] })
+  const isDriverCertificateScenario = computed(
+    () =>
+      props.scenarios.find((scenario) => scenario.id === form.scenarioId)?.scenarioCode ===
+      'vms_driver_certificate_expiry'
+  )
+  const recipientModeOptions = computed(() =>
+    notificationRecipientsModeOptions.map((option) =>
+      isDriverCertificateScenario.value && option.value === 'owner_then_roles'
+        ? { ...option, label: '责任人优先，缺失时角色兜底' }
+        : option
+    )
+  )
   const unavailableRoleCodes = computed(() =>
     roleSelection.loaded
       ? form.recipientRoleCodes.filter((code) => !roleSelection.availableCodes.includes(code))
@@ -143,12 +158,34 @@
       { max: 80, message: '规则名称不能超过 80 个字符', trigger: 'blur' }
     ],
     leadDays: [{ required: true, message: '请输入提前天数', trigger: 'blur' }],
+    leadMonths: [
+      {
+        validator: (_rule, value, callback) => {
+          if (
+            form.leadUnit === 'months' &&
+            (!Number.isInteger(value) || value < 1 || value > 120)
+          ) {
+            callback(new Error('请输入 1—120 个月的提前量'))
+            return
+          }
+          callback()
+        },
+        trigger: 'blur'
+      }
+    ],
     recipientRoleCodes: [
       {
-        required: true,
-        type: 'array',
-        min: 1,
-        message: '请至少选择一个通知角色',
+        validator: (_rule, value, callback) => {
+          if (isDriverCertificateScenario.value && form.recipientStrategy === 'owner_then_roles') {
+            callback()
+            return
+          }
+          if (!Array.isArray(value) || value.length === 0) {
+            callback(new Error('请至少选择一个通知角色'))
+            return
+          }
+          callback()
+        },
         trigger: 'change'
       },
       {
@@ -181,11 +218,31 @@
       props: { maxlength: 80, placeholder: '如：提前 30 天提醒一次' }
     },
     {
+      label: '提前单位',
+      key: 'leadUnit',
+      type: 'segment',
+      props: {
+        options: [
+          { label: '按天', value: 'days' },
+          { label: '按日历月', value: 'months' }
+        ]
+      }
+    },
+    {
       label: '提前天数',
       key: 'leadDays',
       type: 'number',
+      hidden: () => form.leadUnit === 'months',
       props: { min: 0, max: 3650, controlsPosition: 'right' },
       description: '0 表示到期当天开始提醒。'
+    },
+    {
+      label: '提前月数',
+      key: 'leadMonths',
+      type: 'number',
+      hidden: () => form.leadUnit === 'days',
+      props: { min: 1, max: 120, controlsPosition: 'right' },
+      description: '按到期日倒推日历月，例如 1 月 31 日到期，提前 3 个月为 10 月 31 日。'
     },
     {
       label: '执行时段',
@@ -222,7 +279,7 @@
       type: 'radioGroup',
       span: 24,
       props: {
-        options: notificationRecipientsModeOptions
+        options: recipientModeOptions.value
       }
     },
     {
@@ -254,9 +311,13 @@
       },
       description: unavailableRoleCodes.value.length
         ? `检测到 ${unavailableRoleCodes.value.length} 个历史角色已失效，请移除后重新选择。`
-        : form.recipientRoleCodes.length
-          ? `已选择 ${form.recipientRoleCodes.length} 个角色；可按角色名称或编码继续搜索。`
-          : '负责人缺失时将由所选角色兜底接收，请至少选择一个。'
+        : isDriverCertificateScenario.value && form.recipientStrategy === 'owner_then_roles'
+          ? form.recipientRoleCodes.length
+            ? '责任人有效时仅发给责任人；责任人失效时由所选角色兜底。'
+            : '责任人失效且未配置兜底角色时不发送消息；风险仍在证件看板显示。'
+          : form.recipientRoleCodes.length
+            ? `已选择 ${form.recipientRoleCodes.length} 个角色；可按角色名称或编码继续搜索。`
+            : '负责人缺失时将由所选角色兜底接收，请至少选择一个。'
     },
     {
       label: '通知渠道',
@@ -292,7 +353,8 @@
         tenantId: props.tenantId,
         scenarioId: form.scenarioId,
         ruleName: form.ruleName.trim(),
-        leadDays: Number(form.leadDays),
+        leadDays: form.leadUnit === 'months' ? 0 : Number(form.leadDays),
+        leadMonths: form.leadUnit === 'months' ? Number(form.leadMonths) : null,
         repeatEveryDays:
           form.repeatMode === 'repeat' ? Math.max(Number(form.repeatEveryDays) || 1, 1) : null,
         sendHour: Number(form.sendHour),
@@ -317,7 +379,8 @@
         ? {
             ...base,
             ...structuredClone(toRaw(row)),
-            repeatMode: row.repeatEveryDays ? 'repeat' : 'once'
+            repeatMode: row.repeatEveryDays ? 'repeat' : 'once',
+            leadUnit: row.leadMonths ? 'months' : 'days'
           }
         : base
     )
