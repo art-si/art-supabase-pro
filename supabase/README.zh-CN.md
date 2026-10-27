@@ -55,16 +55,18 @@ Set-Location 'D:\spa\art-supabase-pro'
 
 ## 在自己电脑先试：ZIP → 本地 Supabase
 
-仓库中的交付包使用 `art-supabase-local.zip.parts/` 普通 Git 分片，不依赖 Gitee 付费 LFS。每片最多 40 MiB；它们属于同一个 ZIP。克隆仓库后运行下面两步，download 会逐片校验、合并 ZIP、校验完整 ZIP 并解压：
+交付包保存在 GitHub Release，不占用 Gitee 仓库的 Git 文件容量，也不依赖 Git LFS。克隆仓库后运行以下命令，脚本会下载 ZIP、使用仓库中的 SHA-256 校验并解压：
 
 ```powershell
+$sha = ((Get-Content '.\supabase\art-supabase-local.zip.sha256' -Raw).Trim() -split '\s+')[0]
 .\supabase\download-supabase-backup.ps1 `
-  -PartsManifestPath '.\supabase\art-supabase-local.zip.parts\manifest.json' `
+  -SignedUrl 'https://github.com/art-si/art-supabase-pro/releases/download/supabase-local-20261027/art-supabase-local.zip' `
+  -ExpectedSha256 $sha `
   -Destination '.\supabase-local-package'
 .\supabase-local-package\start.ps1
 ```
 
-`Destination` 必须是尚不存在的目录。所有者生成分片时给打包命令加 `-SplitForGit`；本机完整的 `art-supabase-local.zip` 被 Git 忽略，避免重复提交大文件。分片损坏、缺失或完整 ZIP 校验失败时，download 会停止，不运行恢复脚本。
+`Destination` 必须是尚不存在的目录。ZIP 校验失败时，download 会停止，不运行恢复脚本。仓库中的 SHA-256 与指定 Release 对应；更新包时需要同步更新二者。
 
 交付 ZIP 自带 `start.ps1` 和 `tools/`，解压后可直接运行 `powershell -File .\start.ps1`。打包时可用 `-CliRuntimePath '<CLI二进制目录>'` 一并放入官方 Windows x64 `supabase.exe` 与 `supabase-go.exe`；接收者只需启动 Docker Desktop。未随包携带 CLI 且本机版本低于 2.122.0 时，入口会下载固定版本并校验 SHA-256，不需要原项目登录。Linux/macOS 接收者需使用未捆绑 Windows CLI 的包，先安装 Supabase CLI 2.122.0 以上版本与 PowerShell，再运行 `pwsh ./start.ps1`。本地栈默认创建在解压目录旁边；首次启动需要下载 Docker 镜像。恢复脚本依据服务版本元数据匹配来源数据库、Auth 和 Storage 版本。
 
