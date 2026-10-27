@@ -639,6 +639,22 @@
     min-height: 0;
   }
 
+  :global(
+    .art-dialog.is-fullscreen .art-dialog__scrollbar > .el-scrollbar__wrap > .el-scrollbar__view
+  ) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 100%;
+  }
+
+  :global(.art-dialog.is-fullscreen .art-dialog__content) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
   :global(.art-dialog.is-focus-mode .art-dialog__content) {
     box-sizing: border-box;
     width: min(100%, 1120px);

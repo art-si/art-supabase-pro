@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./BfD6xc2W.js";var i=e({name:`MdmGoldenRecord`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{"initial-view":`matches`}))}});export{i as default};

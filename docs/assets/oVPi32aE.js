@@ -1,1 +1,0 @@
-import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./CB8hERiB.js";var i=e({name:`WorkflowEfficiencyCommand`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{kind:`workflow-efficiency`}))}});export{i as default};

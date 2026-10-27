@@ -582,7 +582,9 @@
       return undefined
     const rowCount = tableRows.value.length
     if (rowCount > 6) return undefined
-    return { height: `${rowCount ? Math.max(220, 118 + rowCount * 62) : 300}px` }
+    return {
+      '--art-data-select-body-height': `${rowCount ? Math.max(220, 118 + rowCount * 62) : 300}px`
+    }
   })
   const treeUtils = computed(
     () => new TreeUtils({ childrenKey: props.childrenKey, deepClone: false })
@@ -1214,8 +1216,13 @@
   .art-data-select-dialog__body {
     display: flex;
     flex-direction: column;
-    height: min(548px, calc(100dvh - 260px));
+    height: var(--art-data-select-body-height, min(548px, calc(100dvh - 260px)));
     min-height: 0;
+  }
+
+  :global(.art-data-select-dialog.is-fullscreen .art-data-select-dialog__body) {
+    flex: 1;
+    height: auto;
   }
 
   .art-data-select-dialog__search {

@@ -25,3 +25,6 @@ public/wasm/
 
 # CloudBase builds must never replace the GitHub Pages docs output.
 /cloudbase-dist/
+
+# Reconstructed delivery ZIP; commit its ordinary Git parts instead (Gitee has no free LFS).
+/supabase/art-supabase-local.zip

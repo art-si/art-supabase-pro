@@ -3040,6 +3040,7 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('Edit', '编辑'),
       button('Delete', '删除'),
       ...(menuName === 'WmsFinishedInbound' ? [button('Import', '导入')] : []),
+      ...(menuName === 'WmsFinishedInbound' ? [button('SaveAndPost', '保存并入库')] : []),
       button('Export', '导出'),
       button('Select', '选单'),
       button('Push', '过账'),

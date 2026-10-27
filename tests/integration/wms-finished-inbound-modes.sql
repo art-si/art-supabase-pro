@@ -44,9 +44,17 @@ begin
  join public.mdm_business_type bt on bt.tenant_id=dt.tenant_id and dt.id=any(bt.document_type_ids)
  where dt.tenant_id=receipt.tenant_id and dt.enabled and bt.enabled and menu.id=any(bt.menu_ids) limit 1;
  select p.id into strict qa_pack_id from public.mes_work_order_pack p
- where p.work_order_id=receipt.id and p.inbound_at is null order by p.pack_no limit 1;
+ where p.work_order_id=receipt.id and p.inbound_at is null
+  and not exists(select 1 from public.wms_production_material_line l
+    join public.wms_production_material_document d on d.id=l.document_id
+    where l.pack_id=p.id and d.material_status not in ('closed','void'))
+ order by p.pack_no limit 1;
  select p.id into strict second_pack from public.mes_work_order_pack p
- where p.work_order_id=receipt.id and p.id<>qa_pack_id order by p.pack_no limit 1;
+ where p.work_order_id=receipt.id and p.id<>qa_pack_id and p.inbound_at is null
+  and not exists(select 1 from public.wms_production_material_line l
+    join public.wms_production_material_document d on d.id=l.document_id
+    where l.pack_id=p.id and d.material_status not in ('closed','void'))
+ order by p.pack_no limit 1;
  options:=public.wms_finished_pack_options_secure(receipt.id);
  if not exists(select 1 from jsonb_array_elements(options) x where x->>'id'=qa_pack_id::text) then
    raise exception 'Published legacy packs must be selectable even when confirmed is false';

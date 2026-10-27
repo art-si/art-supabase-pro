@@ -131,6 +131,11 @@
     min-height: 0;
   }
 
+  :global(.art-dialog.is-fullscreen .art-resource-picker__content) {
+    flex: 1;
+    height: auto;
+  }
+
   .art-resource-picker__footer {
     width: 100%;
   }

@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
+  <ArtDialog ref="dialogRef" size="xl" :use-scrollbar="false">
     <div class="workflow-catalog">
       <ArtWorkspaceSplitter
         primary-size="264px"
@@ -215,7 +215,7 @@
 <style scoped lang="scss">
   .workflow-catalog {
     min-width: 0;
-    height: 100%;
+    height: min(78vh, calc(100dvh - 176px));
     min-height: 0;
 
     &__menu,
@@ -544,14 +544,9 @@
     }
   }
 
-  :global(.workflow-catalog-dialog > .el-dialog__body) {
-    height: min(78vh, calc(100vh - 136px));
-    min-height: 420px;
-    overflow: hidden;
-  }
-
-  :global(.workflow-catalog-dialog > .el-dialog__body > .art-dialog__content) {
-    height: 100%;
+  :global(.workflow-catalog-dialog.is-fullscreen .workflow-catalog) {
+    flex: 1;
+    height: auto;
   }
 
   @media only screen and (width <= 1080px) {
@@ -564,8 +559,6 @@
 
   @media (width <= 900px) {
     .workflow-catalog {
-      height: 100%;
-
       &__grid {
         grid-template-columns: 1fr;
       }

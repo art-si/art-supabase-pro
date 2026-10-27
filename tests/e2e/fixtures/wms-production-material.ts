@@ -24,6 +24,8 @@ const pageName =
     : kind === 'return'
       ? 'WmsProductionReturn'
       : 'WmsFinishedInbound'
+const saveAndPost = new URLSearchParams(location.search).has('saveAndPost')
+const missingPermission = new URLSearchParams(location.search).get('missingPermission')
 const app = createApp({
   setup() {
     const drawer = ref<InstanceType<typeof ProductionDrawer>>()
@@ -53,11 +55,22 @@ const app = createApp({
 app.use(store)
 useUserStore().setUserInfo({ userId: 'user-test', tenantId: 'tenant-test', platformSuper: false })
 useMenuStore().setButtonList(
-  ['View', 'Select', 'Add', 'Edit', 'Copy', 'Delete', 'Import'].map((action) => ({
-    name: `${pageName}:${action}`,
-    path: '',
-    type: 'button'
-  }))
+  [
+    'View',
+    'Select',
+    'Add',
+    'Edit',
+    'Copy',
+    'Delete',
+    'Import',
+    ...(saveAndPost ? ['SaveAndPost', 'Submit', 'Approve', 'Push'] : [])
+  ]
+    .filter((action) => action !== missingPermission)
+    .map((action) => ({
+      name: `${pageName}:${action}`,
+      path: '',
+      type: 'button'
+    }))
 )
 const dictionaries: Record<string, [string, string][]> = {
   wmsFinishedInboundMode: [

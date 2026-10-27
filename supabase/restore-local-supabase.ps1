@@ -74,6 +74,20 @@ if (-not $Resume) {
   # The platform frontend runs on port 3006 in this repository.
   $configText = $configText -replace '(?m)^site_url\s*=\s*"[^"]+"', 'site_url = "http://127.0.0.1:3006"'
   $configText = $configText -replace '(?m)^additional_redirect_urls\s*=\s*\[[^\r\n]*\]', 'additional_redirect_urls = ["http://127.0.0.1:3006", "http://localhost:3006"]'
+  $deployedFunctions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath (Join-Path $BackupPath 'metadata/functions.json') -Raw) -Description 'the function deployment settings')
+  $configText = Set-BackupFunctionJwtConfig -Config $configText -Functions $deployedFunctions
+  $serviceMetadataPath = Join-Path $BackupPath 'metadata/service-versions.json'
+  if (Test-Path -LiteralPath $serviceMetadataPath) {
+    $services = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $serviceMetadataPath -Raw) -Description 'the source service versions')
+    $versionFiles = @{'supabase/postgres'='postgres-version';'supabase/gotrue'='gotrue-version';'supabase/storage-api'='storage-version'}
+    $versionRoot = Join-Path $supabaseRoot '.temp'
+    New-Item -ItemType Directory -Path $versionRoot -Force | Out-Null
+    foreach ($service in $services) {
+      if (-not $versionFiles.ContainsKey([string]$service.name) -or -not $service.remote) { continue }
+      if ($service.remote -notmatch '^v?\d+(\.\d+){1,3}$') { throw 'Invalid source service version.' }
+      [IO.File]::WriteAllText((Join-Path $versionRoot $versionFiles[[string]$service.name]), [string]$service.remote, [Text.UTF8Encoding]::new($false))
+    }
+  }
   [IO.File]::WriteAllText(
     (Join-Path $supabaseRoot 'config.toml'),
     $configText,
@@ -137,8 +151,8 @@ function Invoke-LocalPsql {
     $env:PGPASSWORD = $parts[1]
     $ErrorActionPreference = 'Continue'
     $output = & docker run --rm --add-host host.docker.internal:host-gateway `
-      -v "${BackupPath}:/backup:ro" -e PGPASSWORD postgres:17-alpine `
-      psql -X $connection @Arguments 2>&1
+      -v "${BackupPath}:/backup:ro" -e PGPASSWORD --entrypoint psql $postgresClientImage `
+      -X $connection @Arguments 2>&1
     $exitCode = $LASTEXITCODE
   }
   finally {
@@ -158,12 +172,50 @@ function Invoke-LocalPsqlRestore {
     [Parameter(Mandatory = $true)][uri]$DbUri,
     [switch]$MigrationSchemaExists
   )
+  # NOT VALID checks can intentionally coexist with historical invalid rows.
+  # COPY still enforces them, so restore them after the data in this same
+  # transaction, preserving their definitions and NOT VALID state.
+  $deferChecks = @'
+CREATE TEMP TABLE art_backup_deferred_checks AS
+SELECT n.nspname AS schema_name, t.relname AS table_name, c.conname,
+       pg_get_constraintdef(c.oid) AS definition,
+       obj_description(c.oid, 'pg_constraint') AS description
+FROM pg_constraint c
+JOIN pg_class t ON t.oid = c.conrelid
+JOIN pg_namespace n ON n.oid = t.relnamespace
+WHERE c.contype = 'c' AND NOT c.convalidated
+  AND t.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user);
+DO $restore$ DECLARE item record; BEGIN
+  FOR item IN SELECT * FROM pg_temp.art_backup_deferred_checks LOOP
+    EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', item.schema_name, item.table_name, item.conname);
+  END LOOP;
+END $restore$;
+'@
+  $restoreChecks = @'
+DO $restore$ DECLARE item record; BEGIN
+  FOR item IN SELECT * FROM pg_temp.art_backup_deferred_checks LOOP
+    EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I %s', item.schema_name, item.table_name, item.conname, item.definition);
+    IF item.description IS NOT NULL THEN
+      EXECUTE format('COMMENT ON CONSTRAINT %I ON %I.%I IS %L', item.conname, item.schema_name, item.table_name, item.description);
+    END IF;
+  END LOOP;
+END $restore$;
+DROP TABLE pg_temp.art_backup_deferred_checks;
+'@
   $arguments = @(
     '--single-transaction', '--variable', 'ON_ERROR_STOP=1',
     '--file', '/backup/database/roles.sql',
     '--file', '/backup/database/schema.sql',
+    '--command', $deferChecks,
     '--command', 'SET session_replication_role = replica',
     '--file', '/backup/database/data.sql')
+  if (Test-Path -LiteralPath (Join-Path $BackupPath 'database/recovery-snapshot-data.sql')) {
+    $arguments += @('--file', '/backup/database/recovery-snapshot-data.sql')
+  }
+  $arguments += @('--command', $restoreChecks)
+  if (Test-Path -LiteralPath (Join-Path $BackupPath 'database/managed-project-objects.sql')) {
+    $arguments += @('--file', '/backup/database/managed-project-objects.sql')
+  }
   if (-not $MigrationSchemaExists) {
     $arguments += @('--file', '/backup/database/migration-history-schema.sql')
   }
@@ -188,6 +240,16 @@ try {
   }
   $status = Get-LocalStatus
   $dbUri = [uri]$status.DB_URL
+  # Reuse the database image already started by the CLI instead of pulling a
+  # separate PostgreSQL client image (which can fail on restricted networks).
+  $localConfig = Get-Content -LiteralPath (Join-Path $supabaseRoot 'config.toml') -Raw
+  if ($localConfig -notmatch '(?m)^project_id\s*=\s*"([A-Za-z0-9_-]+)"') {
+    throw 'Unable to identify the local database container.'
+  }
+  $postgresClientImage = (& docker inspect --format '{{.Config.Image}}' "supabase_db_$($Matches[1])" | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $postgresClientImage -notmatch '^[A-Za-z0-9][A-Za-z0-9./_:@-]+$') {
+    throw 'Unable to identify the running local database image.'
+  }
   $countText = Invoke-LocalPsqlQuery -DbUri $dbUri -Sql "select (select count(*) from pg_tables where schemaname = 'public') + (select count(*) from auth.users) + (select count(*) from storage.buckets) + (select count(*) from storage.objects)"
   $targetCount = [long]0
   if (-not [long]::TryParse($countText, [ref]$targetCount)) {
@@ -229,22 +291,30 @@ try {
   }
 
   $storageRoot = Join-Path $BackupPath 'storage'
+  $storageMetadata = @{}
+  $inventoryPath = Join-Path $BackupPath 'metadata/storage-object-inventory.json'
+  if (Test-Path -LiteralPath $inventoryPath) {
+    foreach ($object in @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $inventoryPath -Raw) -Description 'the Storage object metadata')) {
+      $storageMetadata["$($object.bucket_id)/$($object.name)"] = $object
+    }
+  }
   if (Test-Path -LiteralPath $storageRoot -PathType Container) {
     foreach ($bucket in @(Get-ChildItem -LiteralPath $storageRoot -Directory)) {
       $files = @(Get-ChildItem -LiteralPath $bucket.FullName -File -Recurse)
       if ($files.Count -eq 0) { continue }
       Write-Host "Restoring local Storage bucket '$($bucket.Name)'..."
-      $copy = Invoke-SupabaseQuiet @('storage', 'cp', $bucket.FullName, "ss:///$($bucket.Name)", '--recursive', '--local', '--experimental', '--jobs', '4')
-      if ($copy.Succeeded) { continue }
-      Write-Warning "Local Storage CLI copy failed for '$($bucket.Name)'; using the local Storage API. $($copy.Error)"
       foreach ($file in $files) {
         $objectName = $file.FullName.Substring($bucket.FullName.Length + 1).Replace('\', '/')
+        $objectMetadata = $storageMetadata["$($bucket.Name)/$objectName"]
+        $contentType = if ($objectMetadata.content_type) { [string]$objectMetadata.content_type } else { 'application/octet-stream' }
         Invoke-StorageObjectUpload `
           -ApiUrl ([string]$status.API_URL) `
           -ServiceRoleKey ([string]$status.SERVICE_ROLE_KEY) `
           -BucketId $bucket.Name `
           -ObjectName $objectName `
-          -FilePath $file.FullName
+          -FilePath $file.FullName `
+          -ContentType $contentType `
+          -CacheControl ([string]$objectMetadata.cache_control)
       }
     }
   }

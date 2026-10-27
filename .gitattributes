@@ -1,2 +1,3 @@
 *.html linguist-detectable=false
 *.vue linguist-detectable=true
+supabase/art-supabase-local.zip.parts/*.bin -text

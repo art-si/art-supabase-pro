@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./tsRYJ4gx.js";var i=e({name:`MesMiscReport`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{mode:`misc_report`}))}});export{i as default};
