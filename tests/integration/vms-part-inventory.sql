@@ -50,6 +50,12 @@ BEGIN
   IF (public.vms_list_part_stock_secure(qa_part)->'records'->0->>'stockQty')::numeric<>10 THEN
     RAISE EXCEPTION 'QA tarp stock not 10';
   END IF;
+  IF NOT app_private.vms_part_private_upload_allowed(
+    qa_tenant::text||'/'||ordinary_auth::text||'/4f0c28aa-dcef-4eee-a422-3ab6563b7cd9.png')
+     OR app_private.vms_part_private_upload_allowed(
+       other_tenant::text||'/'||ordinary_auth::text||'/4f0c28aa-dcef-4eee-a422-3ab6563b7cd9.png') THEN
+    RAISE EXCEPTION 'Private part image upload path escaped tenant scope';
+  END IF;
   qa_line := (public.vms_get_part_issue_secure(qa_issue)->'lines'->0->>'id')::uuid;
   IF (public.vms_get_part_issue_secure(qa_issue)->'lines'->0->>'returnedQty')::numeric<>2
      OR public.vms_get_part_issue_secure(qa_issue)->'lines'->0->>'status'<>'in_use' THEN
@@ -97,11 +103,30 @@ BEGIN
     'lines',jsonb_build_array(jsonb_build_object('part_id',qa_part,'issued_qty',1)))) THEN
     RAISE EXCEPTION 'Issue retry not idempotent';
   END IF;
+  blocked := false;
+  BEGIN
+    PERFORM public.vms_create_part_issue_secure(jsonb_build_object(
+      'vehicle_id','d7670b37-2283-433e-95d2-7315829b0edc',
+      'idempotency_key','d1361001-9bdd-43d8-9cc2-619000000001',
+      'lines',jsonb_build_array(jsonb_build_object('part_id',qa_part,'issued_qty',2))));
+  EXCEPTION WHEN invalid_parameter_value THEN blocked := true;
+  END;
+  IF NOT blocked THEN RAISE EXCEPTION 'Changed payload reused issue idempotency key'; END IF;
   trial_line := (public.vms_get_part_issue_secure(trial_issue)->'lines'->0->>'id')::uuid;
   PERFORM public.vms_return_part_issue_line_secure(trial_line,jsonb_build_object(
     'returned_qty',1,'status','damaged','idempotency_key','d1361001-9bdd-43d8-9cc2-619000000002'));
   IF (public.vms_list_part_stock_secure(qa_part)->'records'->0->>'stockQty')::numeric<>before_qty-1 THEN
     RAISE EXCEPTION 'Damaged part incorrectly returned to stock';
+  END IF;
+  trial_issue := public.vms_create_part_issue_secure(jsonb_build_object(
+    'vehicle_id','d7670b37-2283-433e-95d2-7315829b0edc',
+    'idempotency_key','d1361001-9bdd-43d8-9cc2-619000000003',
+    'lines',jsonb_build_array(
+      jsonb_build_object('part_id',qa_part,'issued_qty',1),
+      jsonb_build_object('part_id','bfd5e0a1-2478-46e6-b6d8-100000000002','issued_qty',2))));
+  IF jsonb_array_length(public.vms_get_part_issue_secure(trial_issue)->'lines')<>2
+     OR (public.vms_get_part_issue_secure(trial_issue)->'lines'->1->>'lineNo')::int<>2 THEN
+    RAISE EXCEPTION 'Multiple issue lines lost their document order';
   END IF;
 
   PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',platform_auth,'role','authenticated')::text,true);

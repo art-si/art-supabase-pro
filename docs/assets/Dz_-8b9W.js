@@ -1,0 +1,1 @@
+function e(e,t,n=`-`){let r=Array.isArray(e)?e.filter(e=>typeof e==`string`&&e.trim().length>0):[];return r.length?r.join(` → `):typeof t==`string`&&t.trim()?t.trim():n}export{e as t};

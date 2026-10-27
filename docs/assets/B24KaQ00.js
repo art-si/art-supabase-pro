@@ -1,0 +1,1 @@
+import{r as e}from"./BH_pqFrf.js";function t(t,n=`—`){return e().getDictDisplayLabelByValue(`mdmProcessRouteSequenceType`,t,t===`main`?`标准序列`:t||n)}export{t};

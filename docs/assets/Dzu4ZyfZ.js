@@ -1,0 +1,1 @@
+import{Mn as e,Yt as t,hn as n,qt as r,zt as i}from"./D1G0yLle.js";import{t as a}from"./ws465Jha.js";import{t as o}from"./D-HKyI82.js";var s=t({name:`SmisRequiredKnowledge`,__name:`index`,setup(t){return(t,s)=>(n(),i(a,{permission:`SmisRequiredKnowledge:View`,"resource-name":`应知应会`},{default:e(()=>[r(o,{kind:`required_knowledge`})]),_:1}))}});export{s as default};
