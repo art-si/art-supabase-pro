@@ -51,6 +51,16 @@ export interface ElectricCardEntry {
   balanceAfter: number
   cardBalance: number
   occurredAt: string
+  waybillId: string | null
+  waybillNo: string | null
+  expenseLocation: string
+  expenseLongitude: number | null
+  expenseLatitude: number | null
+  expenseCoordinateSystem: string | null
+  expenseCoordinateSource: string | null
+  expenseCoordinateStatus: string
+  expenseGeocodeProvider: string | null
+  expenseGeocodedAt: string | null
   chargeKwh: number | null
   unitPrice: number | null
   stationName: string
@@ -78,11 +88,29 @@ export interface ElectricCardEntryFilters {
   occurredTo?: string
 }
 
+export interface ElectricCardWaybillOption {
+  id: string
+  tenantId: string
+  waybillNo: string
+  vehicleId: string
+  status: string
+  createTime: string
+}
+
 export interface ElectricCardTransactionInput {
   cardId: string
   entryType: 'recharge' | 'consume' | 'reversal'
   amount: number
   occurredAt: string
+  waybillId?: string | null
+  expenseLocation?: string
+  expenseLongitude?: number | null
+  expenseLatitude?: number | null
+  expenseCoordinateSystem?: string | null
+  expenseCoordinateSource?: string | null
+  expenseCoordinateStatus?: string
+  expenseGeocodeProvider?: string | null
+  expenseGeocodedAt?: string | null
   chargeKwh?: number | null
   unitPrice?: number | null
   stationName?: string
@@ -197,6 +225,16 @@ function parseEntry(row: Record<string, unknown>): ElectricCardEntry {
     balanceAfter: readNumber(row, 'balanceAfter'),
     cardBalance: readNumber(row, 'cardBalance'),
     occurredAt: readText(row, 'occurredAt'),
+    waybillId: readOptionalText(row, 'waybillId'),
+    waybillNo: readOptionalText(row, 'waybillNo'),
+    expenseLocation: readText(row, 'expenseLocation'),
+    expenseLongitude: row.expenseLongitude === null ? null : readNumber(row, 'expenseLongitude'),
+    expenseLatitude: row.expenseLatitude === null ? null : readNumber(row, 'expenseLatitude'),
+    expenseCoordinateSystem: readOptionalText(row, 'expenseCoordinateSystem'),
+    expenseCoordinateSource: readOptionalText(row, 'expenseCoordinateSource'),
+    expenseCoordinateStatus: readText(row, 'expenseCoordinateStatus'),
+    expenseGeocodeProvider: readOptionalText(row, 'expenseGeocodeProvider'),
+    expenseGeocodedAt: readOptionalText(row, 'expenseGeocodedAt'),
     chargeKwh: row.chargeKwh === null ? null : readNumber(row, 'chargeKwh'),
     unitPrice: row.unitPrice === null ? null : readNumber(row, 'unitPrice'),
     stationName: readText(row, 'stationName'),
@@ -247,6 +285,29 @@ export async function fetchElectricCardEntries(
     { breakReturn: true, showErrorMessage: false, errorMessage: '电卡流水加载失败，请重试' }
   )
   return parsePage(data, parseEntry)
+}
+
+/** Waybills from the selected electric card's own tenant and vehicle. */
+export async function fetchElectricCardWaybillOptions(params: {
+  cardId: string
+  from?: number
+  to?: number
+  keyword?: string
+}): Promise<{ data: ElectricCardWaybillOption[]; total: number }> {
+  const range = buildSupabaseRpcRange(params.from ?? 0, params.to ?? 19)
+  const { data } = await responseHandle<{
+    records: ElectricCardWaybillOption[]
+    total: number
+  }>(
+    () =>
+      supabase.rpc('vms_list_electric_card_waybill_options_secure', {
+        p_card_id: params.cardId,
+        ...range,
+        p_keyword: normalizeNullableText(params.keyword)
+      }),
+    { breakReturn: true, showErrorMessage: false, errorMessage: '电卡关联运单加载失败，请重试' }
+  )
+  return { data: data?.records ?? [], total: data?.total ?? 0 }
 }
 
 export async function fetchElectricCardEmployeeOptions(
@@ -335,7 +396,7 @@ export async function recordElectricCardTransaction(
 ): Promise<string> {
   const { data } = await responseHandle<string>(
     () =>
-      supabase.rpc('vms_record_electric_card_transaction', {
+      supabase.rpc('vms_record_electric_card_transaction_v2', {
         p_card_id: input.cardId,
         p_entry_type: input.entryType,
         p_amount: input.amount,
@@ -350,10 +411,32 @@ export async function recordElectricCardTransaction(
         p_voucher_paths: input.voucherPaths ?? [],
         p_driver_id: input.driverId ?? null,
         p_reverses_entry_id: input.reversesEntryId ?? null,
-        p_remark: input.remark ?? ''
+        p_remark: input.remark ?? '',
+        p_waybill_id: input.waybillId ?? null,
+        p_expense_location: input.expenseLocation ?? '',
+        p_expense_longitude: input.expenseLongitude ?? null,
+        p_expense_latitude: input.expenseLatitude ?? null,
+        p_expense_coordinate_system: input.expenseCoordinateSystem ?? null,
+        p_expense_coordinate_source: input.expenseCoordinateSource ?? null,
+        p_expense_coordinate_status: input.expenseCoordinateStatus ?? 'pending',
+        p_expense_geocode_provider: input.expenseGeocodeProvider ?? null,
+        p_expense_geocoded_at: input.expenseGeocodedAt ?? null
       }),
     { breakReturn: true, showErrorMessage: false, errorMessage: '电卡流水登记失败，请重试' }
   )
   if (!data) throw new Error('电卡流水登记结果异常，请重试')
   return data
+}
+
+/** Append evidence to an existing ledger row without changing its financial posting. */
+export async function appendElectricCardEntryVouchers(id: string, paths: string[]): Promise<void> {
+  await responseHandle(
+    () =>
+      supabase.rpc('vms_append_card_entry_vouchers_secure', {
+        p_card_kind: 'electric',
+        p_entry_id: id,
+        p_paths: paths
+      }),
+    { breakReturn: true, showErrorMessage: false, errorMessage: '现场凭证补传失败，请重试' }
+  )
 }

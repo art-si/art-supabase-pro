@@ -163,6 +163,7 @@
     customRadius.value === preset.radius
 
   const applyPreset = (preset: LayoutPreset): void => {
+    settingStore.rememberLocalAppearance()
     switchMenuLayouts(preset.menuType)
     settingStore.switchMenuStyles(preset.menuTheme)
     settingStore.setMenuOpenWidth(preset.menuWidth)

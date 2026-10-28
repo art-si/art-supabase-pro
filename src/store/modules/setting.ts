@@ -37,6 +37,7 @@ import { SystemThemeEnum, MenuThemeEnum, MenuTypeEnum, ContainerWidthEnum } from
 import { setElementThemeColor } from '@/utils/ui'
 import { useCurrentFestival } from '@/hooks/core/useCurrentFestival'
 import { StorageConfig } from '@/utils/storage/storage-config'
+import { StorageKeyManager } from '@/utils/storage/storage-key-manager'
 import { SETTING_DEFAULT_CONFIG } from '@/config/setting'
 
 /**
@@ -46,6 +47,15 @@ import { SETTING_DEFAULT_CONFIG } from '@/config/setting'
 export const useSettingStore = defineStore(
   'settingStore',
   () => {
+    // 在主题初始化触发持久化之前，记录本次启动是否已有本地外观。
+    const initialAppearanceConfig = localStorage.getItem(
+      new StorageKeyManager().getStorageKey('setting')
+    )
+    const getInitialAppearanceConfig = (): string | null => initialAppearanceConfig
+    const hasLocalAppearance = ref(false)
+    const rememberLocalAppearance = (): void => {
+      hasLocalAppearance.value = true
+    }
     const { currentFestivalData, currentFestivalDate } = useCurrentFestival()
     // 菜单相关设置
     /** 菜单类型 */
@@ -396,6 +406,9 @@ export const useSettingStore = defineStore(
     }
 
     return {
+      getInitialAppearanceConfig,
+      hasLocalAppearance,
+      rememberLocalAppearance,
       menuType,
       menuOpenWidth,
       systemThemeType,

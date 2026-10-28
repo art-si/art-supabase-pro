@@ -49,8 +49,9 @@
       </div>
       <ElButton
         class="download-btn"
-        @click="downloadFile(temImgPath, 'image.png')"
-        :disabled="!temImgPath"
+        @click="handleDownload"
+        :disabled="!temImgPath || downloading"
+        :loading="downloading"
         v-ripple
         >下载图片</ElButton
       >
@@ -61,7 +62,8 @@
 <script setup lang="ts">
   import ImgCutter from 'vue-img-cutter'
   import 'vue-img-cutter/vue-img-cutter.css'
-  import { downloadFile } from '@/utils/file'
+  import { ElMessage } from 'element-plus'
+  import { downloadBlob, downloadFile } from '@/utils/file'
   import { useImage } from '@vueuse/core'
 
   defineOptions({ name: 'ArtCutterImg' })
@@ -181,6 +183,7 @@
   }>()
 
   const temImgPath = ref('')
+  const downloading = ref(false)
   const imgCutterModal = ref<{
     handleOpen: (source: { name: string; src: string }) => void
     clearAll: () => void
@@ -236,6 +239,28 @@
   // 裁剪完成
   function cutDownImg(result: CutterResult) {
     emit('update:imgUrl', result.dataURL)
+  }
+
+  async function handleDownload(): Promise<void> {
+    if (!temImgPath.value || downloading.value) return
+    downloading.value = true
+    try {
+      if (!/^data:/i.test(temImgPath.value)) {
+        downloadFile(temImgPath.value, 'image.png')
+        return
+      }
+      if (!/^data:image\/(?:png|jpeg|webp|gif|bmp|avif)(?:;[^,]*)?,/i.test(temImgPath.value))
+        throw new Error('Unsupported image data URL')
+      const response = await fetch(temImgPath.value)
+      if (!response.ok) throw new Error('Image data URL could not be read')
+      const blob = await response.blob()
+      if (!blob.size) throw new Error('Image data URL is empty')
+      downloadBlob(blob, 'image.png')
+    } catch {
+      ElMessage.error('图片下载失败，请重新裁剪后重试')
+    } finally {
+      downloading.value = false
+    }
   }
 
   // 图片加载完成

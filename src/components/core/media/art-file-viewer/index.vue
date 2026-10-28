@@ -15,7 +15,7 @@
         :sub-title="preview.error"
       >
         <template v-if="preview.canRetry" #extra>
-          <ElButton type="primary" :loading="preview.loading" @click="loadFullRenderer()">
+          <ElButton type="primary" :loading="preview.loading" @click="loadPreview()">
             重新加载
           </ElButton>
         </template>
@@ -23,7 +23,8 @@
 
       <FileViewer
         v-else-if="preview.file?.url && themedViewerOptions"
-        :url="preview.file.url"
+        :file="blobFile"
+        :url="blobFile ? undefined : preview.file.url"
         :options="themedViewerOptions"
       />
       <div v-else-if="preview.loading" class="art-file-viewer-page__loading" role="status">
@@ -90,6 +91,7 @@
   }
   // The image package narrows its handler to HTMLDivElement; the Vue wrapper declares HTMLElement.
   const imageRenderers = [imageRenderer] as unknown as FileViewerOptions['renderers']
+  const blobFile = shallowRef<File>()
   const viewerOptions = shallowRef<FileViewerOptions | null>(null)
   const themedViewerOptions = computed<FileViewerOptions | null>(() =>
     viewerOptions.value
@@ -97,55 +99,101 @@
       : null
   )
   let previewVersion = 0
+  let blobController: AbortController | undefined
 
-  async function loadFullRenderer(version = previewVersion): Promise<void> {
+  async function loadPreview(): Promise<void> {
+    const version = ++previewVersion
+    blobController?.abort()
+    blobController = undefined
+    blobFile.value = undefined
+    viewerOptions.value = null
+    const source = preview.file
+    if (!source?.url) {
+      preview.loading = false
+      return
+    }
+
     preview.loading = true
     preview.error = ''
     preview.canRetry = false
+    const isBlob = source.url.startsWith('blob:')
+    let readingBlob = isBlob
+    let controller: AbortController | undefined
     try {
-      const { default: allRenderers } = await import('@file-viewer/preset-all')
-      if (version !== previewVersion) return
-      viewerOptions.value = {
-        ...commonViewerOptions,
-        preset: allRenderers as unknown as FileViewerOptions['preset']
+      let localFile: File | undefined
+      if (isBlob) {
+        controller = new AbortController()
+        blobController = controller
+        const response = await fetch(source.url, { signal: controller.signal })
+        if (!response.ok) throw new Error('Blob preview failed')
+        const blob = await response.blob()
+        if (version !== previewVersion || controller.signal.aborted) return
+        const fileType = getFileExtension(undefined, source.fileType || blob.type)
+        const fallbackExtension = fileType.startsWith('image/')
+          ? fileType.slice('image/'.length).split('+')[0]
+          : fileType === 'application/pdf'
+            ? 'pdf'
+            : /^[a-z0-9]+$/i.test(fileType)
+              ? fileType
+              : 'bin'
+        const sourceName = source.name?.trim()
+        const filename =
+          sourceName && getFileExtension(sourceName)
+            ? sourceName
+            : `${sourceName || '预览文件'}.${fallbackExtension}`
+        localFile = new File([blob], filename, { type: blob.type })
+        readingBlob = false
       }
-    } catch {
+
+      const fileType = source.fileType || getFileExtension(source.name, source.fileType)
+      const isImage =
+        fileType.startsWith('image/') ||
+        imageExtensions.has(fileType) ||
+        imageExtensions.has(getFileExtension(localFile?.name || source.name))
+      let options: FileViewerOptions
+      if (isImage) {
+        options = { ...commonViewerOptions, renderers: imageRenderers }
+      } else {
+        const { default: allRenderers } = await import('@file-viewer/preset-all')
+        if (version !== previewVersion) return
+        options = {
+          ...commonViewerOptions,
+          preset: allRenderers as unknown as FileViewerOptions['preset']
+        }
+      }
       if (version !== previewVersion) return
-      preview.error = '预览组件加载失败，请检查网络后重试'
+      blobFile.value = localFile
+      viewerOptions.value = options
+    } catch {
+      if (version !== previewVersion || controller?.signal.aborted) return
+      preview.error = readingBlob
+        ? '本地附件读取失败，请从附件名称重新打开后重试'
+        : '预览组件加载失败，请检查网络后重试'
       preview.canRetry = true
     } finally {
       if (version === previewVersion) preview.loading = false
+      if (blobController === controller) blobController = undefined
     }
   }
 
   watch(
     () => route.query.key,
     (queryKey) => {
-      const version = ++previewVersion
       const key = Array.isArray(queryKey) ? queryKey[0] : queryKey
       const file = getFilePreviewTarget(typeof key === 'string' ? key : undefined)
       preview.file = file
       preview.fileType = file?.fileType || getFileExtension(file?.name, file?.fileType)
       preview.error = file ? '' : '预览地址不存在或已过期，请从附件名称重新打开'
       preview.canRetry = false
-      viewerOptions.value = null
-      if (!file?.url) {
-        preview.loading = false
-        return
-      }
-      const isImage =
-        preview.fileType.startsWith('image/') ||
-        imageExtensions.has(preview.fileType) ||
-        imageExtensions.has(getFileExtension(file.name))
-      if (isImage) {
-        viewerOptions.value = { ...commonViewerOptions, renderers: imageRenderers }
-        preview.loading = false
-      } else {
-        void loadFullRenderer(version)
-      }
+      void loadPreview()
     },
     { immediate: true }
   )
+
+  onBeforeUnmount(() => {
+    previewVersion += 1
+    blobController?.abort()
+  })
 
   useTitle(computed(() => `${preview.file?.name || '文件预览'} - ${brandName.value}`))
 </script>

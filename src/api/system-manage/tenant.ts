@@ -1,12 +1,16 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { applyFilters } from '@/utils/supabase'
+import type { ApiFeedbackOptions } from '@/types/api/request'
 
 type TenantListItem = Api.SystemManage.TenantListItem
 type TenantSearchParams = Api.SystemManage.TenantSearchParams
 
 const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
 
-export async function fetchTenantList(params: TenantSearchParams) {
+export async function fetchTenantList(
+  params: TenantSearchParams,
+  options: ApiFeedbackOptions = {}
+) {
   const { tenantCode, tenantName, status, from = 0, to = 9 } = params
   const specs = [
     { col: 'tenant_code', op: 'ilike', val: tenantCode ? `%${tenantCode}%` : undefined },
@@ -22,7 +26,7 @@ export async function fetchTenantList(params: TenantSearchParams) {
 
   query = applyFilters(query, specs, { skipEmpty: true, camelToSnake: false })
   return await responseHandle<TenantListItem[]>(() => query, {
-    showErrorMessage: true
+    showErrorMessage: options.showErrorMessage ?? true
   })
 }
 

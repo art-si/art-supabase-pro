@@ -1,6 +1,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prepareAppearance } from './support/appearance'
 import { blockExternalIconRequests } from './support/icons'
+import { prepareIsolatedSession } from './support/isolated-session'
+import { mockApplicationMenus } from './support/menu-rpc'
+import { contrast } from './text-contrast'
 
 interface VisualPage {
   name: string
@@ -165,5 +168,138 @@ for (const visualPage of visualPages) {
       await expect(page).toHaveScreenshot(`${visualPage.name}-lower.png`, screenshotOptions)
     }
     expect(pageErrors, `页面出现未捕获错误：\n${pageErrors.join('\n')}`).toEqual([])
+  })
+}
+
+for (const scenario of [
+  { name: 'light-1440', project: 'desktop-1440', theme: 'light' as const },
+  { name: 'dark-390', project: 'mobile-390', theme: 'dark' as const }
+]) {
+  test(`supabase-ai-assistant 三面板标题 ${scenario.name}`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== scenario.project)
+    test.setTimeout(300_000)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    const externalIconRequests = await blockExternalIconRequests(page)
+    await page.clock.setFixedTime(VISUAL_TEST_TIME)
+    await prepareIsolatedSession(page)
+    await prepareAppearance(page, { theme: scenario.theme, boxBorderMode: true })
+    await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
+      route.fulfill({ json: [{ code: 'platform', name: '测试平台', baseUrl: '/' }] })
+    )
+    const assistantPath = '/data-center/supabase-ai-assistant'
+    await mockApplicationMenus(page, {
+      platform: [
+        {
+          id: 'assistant-menu',
+          parentId: null,
+          name: 'SupabaseAiAssistant',
+          path: assistantPath,
+          component: assistantPath,
+          type: 'menu',
+          sort: 1,
+          meta: { title: 'Supabase AI 助手', is_enable: true, is_hide: false, roles: [] }
+        }
+      ]
+    })
+    await page.route('**/functions/v1/ai-project-assistant', (route) => {
+      const request: unknown = route.request().postDataJSON()
+      const payload = request && typeof request === 'object' ? request : {}
+      const action = 'action' in payload ? payload.action : ''
+      const catalogAction = 'catalogAction' in payload ? payload.catalogAction : ''
+      if (action === 'capabilities')
+        return route.fulfill({
+          json: {
+            version: 'test',
+            features: {},
+            access: {},
+            allowedSafetyModes: ['read_only']
+          }
+        })
+      const data: Record<string, unknown> = {
+        overview: { projectRef: 'test-project', databaseVersion: 'PostgreSQL 16', tables: 1 },
+        schemas: ['public'],
+        edge_functions: { projectRef: 'test-project', source: 'management_api', functions: [] },
+        list_objects: [
+          {
+            schemaName: 'public',
+            objectName: 'test_orders',
+            objectType: 'table',
+            description: '测试订单表'
+          }
+        ],
+        object_detail: {
+          schemaName: 'public',
+          objectName: 'test_orders',
+          objectType: 'table',
+          description: '测试订单表'
+        },
+        relationships: []
+      }
+      return route.fulfill({ json: { data: data[String(catalogAction)] ?? [] } })
+    })
+    await page.goto('#/data-center/supabase-ai-assistant', { waitUntil: 'domcontentloaded' })
+    await expect(page).not.toHaveURL(/#\/auth\/login/)
+    await waitForPageReady(page, '.project-assistant')
+    if (scenario.theme === 'dark') await expect(page.locator('html')).toHaveClass(/dark/)
+    else await expect(page.locator('html')).not.toHaveClass(/dark/)
+    await expect(page.locator('html')).toHaveAttribute('data-box-mode', 'border-mode')
+
+    const titles = {
+      objects: page.locator('.project-assistant-object-browser__title'),
+      detail: page.locator('.project-assistant__detail .project-assistant__panel-title'),
+      chat: page.locator('.project-assistant__chat .project-assistant__panel-title')
+    }
+    const checkTitle = async (title: Locator): Promise<void> => {
+      await expect(title).toBeVisible()
+      await expect(title).toHaveCSS('display', 'flex')
+      await expect(title).toHaveCSS('border-bottom-width', '1px')
+      expect(
+        await title.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
+      ).toBe(true)
+      await expectNoHorizontalOverflow(page)
+    }
+    const capture = async (panel: string): Promise<void> => {
+      await page.screenshot({
+        path: testInfo.outputPath(`project-assistant-${scenario.name}-${panel}.png`),
+        mask: [page.locator('.art-header-bar img[alt="用户头像"]')],
+        maskColor: '#808080'
+      })
+    }
+    await checkTitle(titles.objects)
+    if (scenario.project === 'mobile-390') await capture('objects')
+
+    const firstObject = page.locator('.project-assistant-object-browser__list button').first()
+    await expect(firstObject).toBeVisible({ timeout: 60_000 })
+    await firstObject.click()
+    await checkTitle(titles.detail)
+    if (scenario.project === 'mobile-390') {
+      await capture('detail')
+      await page
+        .getByRole('navigation', { name: 'AI 助手工作区' })
+        .getByRole('button', { name: '助手' })
+        .click()
+    }
+    await checkTitle(titles.chat)
+    const historyButton = titles.chat.getByRole('button', { name: '会话历史' })
+    const newChatButton = titles.chat.getByRole('button', { name: '新对话' })
+    await expect(historyButton).toBeVisible()
+    await expect(newChatButton).toBeVisible()
+    await expect(newChatButton).toBeEnabled()
+    if (scenario.theme === 'dark') {
+      expect(await contrast(titles.chat.locator('strong').first())).toBeGreaterThanOrEqual(4.5)
+      expect(await contrast(titles.chat.locator('small').first())).toBeGreaterThanOrEqual(4.5)
+      expect(await contrast(historyButton)).toBeGreaterThanOrEqual(3)
+      await historyButton.focus()
+      await page.keyboard.press('Shift+Tab')
+      await page.keyboard.press('Tab')
+      await expect(historyButton).toBeFocused()
+      expect(
+        await historyButton.evaluate((element) => getComputedStyle(element).boxShadow)
+      ).not.toBe('none')
+    }
+    await capture(scenario.project === 'mobile-390' ? 'chat' : 'all')
+    expect(externalIconRequests).toEqual([])
+    expect(pageErrors).toEqual([])
   })
 }

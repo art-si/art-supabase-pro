@@ -1,7 +1,8 @@
 import {
   financePaths,
   getExpenseReimbursementDetailPath,
-  getWaybillCostDetailPath
+  getWaybillCostDetailPath,
+  resolveLegacyBusinessPath
 } from '@/router/business-paths'
 
 export interface WorkflowBusinessContract {
@@ -378,6 +379,18 @@ export const workflowBusinessContracts = Object.values(contracts).filter(
 
 export function getWorkflowBusinessContract(businessType: string): WorkflowBusinessContract {
   return contracts[businessType] ?? contracts.generic
+}
+
+export function getWorkflowBusinessSourcePath(
+  businessType: string,
+  businessId: string,
+  snapshotPath?: string | null
+): string | undefined {
+  const contract = getWorkflowBusinessContract(businessType)
+  if (contract.businessType !== 'generic' && businessId) {
+    return contract.routePath(businessId)
+  }
+  return snapshotPath ? resolveLegacyBusinessPath(snapshotPath) || snapshotPath : undefined
 }
 
 export function getWorkflowBusinessTypeLabel(businessType?: string | null): string {

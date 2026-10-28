@@ -1,6 +1,13 @@
 import type { ColInfo } from '@/vendor/sheetjs/xlsx.mjs'
+import { resolveFileActionUrl } from './url'
 export { formatSize } from './format-size'
-export { removeAttachmentRow } from './attachment'
+export { resolveFileActionUrl }
+export {
+  getAttachmentNameFromUrl,
+  getAttachmentDisplayName,
+  getFileExtension,
+  removeAttachmentRow
+} from './attachment'
 import { createTenantScopeReadGuard } from '../tenant-scope-context'
 import { ElMessage } from 'element-plus'
 import { openFilePreview, type FilePreviewTarget } from '@/hooks/core/useFilePreview'
@@ -241,27 +248,26 @@ export async function calcFileHash(file: File): Promise<string> {
 
 export type FileActionTarget = FilePreviewTarget
 
-export const getFileExtension = (fileName?: string, suffix?: string): string => {
-  const normalizedSuffix = suffix || fileName?.split('.').pop() || ''
-  return normalizedSuffix.replace(/^\./, '').trim().toLowerCase()
-}
-
-export const viewFile = (url?: string): void => {
-  if (!url) return
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
+const invalidFileUrlMessage = '附件地址不可用，请重新上传或联系提供者'
 
 export const downloadFile = (url?: string, filename = 'attachment'): void => {
-  if (!url) return
+  const safeUrl = resolveFileActionUrl(url, window.location.href)
+  if (!safeUrl) {
+    ElMessage.warning(invalidFileUrlMessage)
+    return
+  }
 
   const link = document.createElement('a')
-  link.href = url
+  link.href = safeUrl
   link.download = filename
   link.target = '_blank'
   link.rel = 'noopener noreferrer'
   document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+  try {
+    link.click()
+  } finally {
+    document.body.removeChild(link)
+  }
 }
 
 /** 下载内存文件并在浏览器接管后统一释放临时对象 URL。 */
@@ -277,6 +283,7 @@ export const downloadBlob = (blob: Blob, filename: string): void => {
 export const viewAttachment = (file: FileActionTarget): void => {
   const result = openFilePreview(file)
   if (result === 'missing-url') ElMessage.warning('附件没有可用的预览地址')
+  if (result === 'invalid-url') ElMessage.warning(invalidFileUrlMessage)
   if (result === 'blocked') ElMessage.warning('浏览器阻止了新页签，请允许本站打开弹出式窗口')
   if (result === 'storage-unavailable')
     ElMessage.warning('无法保存预览信息，请检查浏览器的本站存储权限后重试')

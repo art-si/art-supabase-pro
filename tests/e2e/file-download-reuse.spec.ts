@@ -63,6 +63,57 @@ test('裁剪图片通过公共下载保留文件名和图片内容', async ({ pa
   expect(errors).toEqual([])
 })
 
+test('裁剪图片本地数据首次读取失败可重试且只提示一次', async ({ page }, info) => {
+  await page.setViewportSize({ width: 570, height: 900 })
+  await prepareIsolatedSession(page)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/tests/e2e/fixtures/cutter-download-reuse.html?theme=dark&box=shadow')
+  await page.getByRole('button', { name: '设置验收图片', exact: true }).click()
+  await expect(page.getByAltText('裁剪结果预览')).toBeVisible()
+  const button = page.getByRole('button', { name: '下载图片', exact: true })
+  await button.scrollIntoViewIfNeeded()
+  await page.evaluate(() => {
+    const nativeFetch = window.fetch.bind(window)
+    let attempts = 0
+    window.fetch = (input, init) => {
+      if (String(input).startsWith('data:image/')) {
+        attempts++
+        sessionStorage.setItem('cutter-download-attempts', String(attempts))
+        if (attempts === 1) return Promise.reject(new TypeError('fixture data read failed'))
+      }
+      return nativeFetch(input, init)
+    }
+    const revoke = URL.revokeObjectURL.bind(URL)
+    URL.revokeObjectURL = (value) => {
+      document.body.dataset.revokedUrl = value
+      revoke(value)
+    }
+  })
+  await button.click()
+  await expect(page.locator('.el-message--error')).toHaveCount(1)
+  await expect(page.locator('.el-message--error')).toContainText('图片下载失败，请重新裁剪后重试')
+  await expect(button).toBeEnabled()
+  await page.screenshot({ path: info.outputPath('cutter-data-error-dark-570.png') })
+
+  const pending = page.waitForEvent('download')
+  await button.click()
+  const download = await pending
+  expect(download.suggestedFilename()).toBe('image.png')
+  const saved = info.outputPath('cutter-retry.png')
+  await download.saveAs(saved)
+  expect((await readFile(saved)).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+  expect(await download.failure()).toBeNull()
+  await expect(page.locator('body')).toHaveAttribute('data-revoked-url', /^blob:/)
+  expect(await page.evaluate(() => sessionStorage.getItem('cutter-download-attempts'))).toBe('2')
+  await expect(button).toBeEnabled()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true
+  )
+  await page.screenshot({ path: info.outputPath('cutter-data-recovered-dark-570.png') })
+  expect(errors).toEqual([])
+})
+
 test('配件模板通过主仓公共下载保留 DOCX 文件', async ({ page }) => {
   await prepareIsolatedSession(page)
   await page.goto('/tests/e2e/fixtures/accessory-recognition-history.html')

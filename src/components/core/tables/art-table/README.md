@@ -14,7 +14,7 @@
 
 在主内容列配置 `link`，即可把单元格渲染为主题色链接式按钮。`onClick` 应复用同行“查看”按钮的处理函数，确保打开同一详情。`permission` 与原查看操作保持一致；没有权限、禁用或值为空时，单元格显示普通内容。复合 `formatter` 可使用此属性，但内容不得再包含按钮或链接；带嵌套操作的单元格仍由业务组件明确放置链接。
 
-附件名称列使用 `link: attachmentTableLink`（从 `@/components/core/media/art-file-viewer/table-link` 导入），统一点击预览和无地址时的禁用状态。不要同时使用 `renderAttachmentLink` 一类会生成内层链接的 formatter。
+附件名称列使用 `link: attachmentTableLink`（从 `@/components/core/media/art-file-viewer/table-link` 导入），统一点击预览及无地址、协议不受支持时的禁用状态。有效地址限 HTTP(S)、相对地址与同源 Blob。不要同时使用 `renderAttachmentLink` 一类会生成内层链接的 formatter。
 
 ```ts
 {

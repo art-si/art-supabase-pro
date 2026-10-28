@@ -259,6 +259,9 @@
       <slot v-if="$slots.content" name="content" />
       <ArtEmptyState
         v-else-if="isManaged && managedTable.error.value && !resolvedLoading"
+        class="art-table-query__error-state"
+        size="compact"
+        :visual-size="80"
         title="数据加载失败"
         description="暂时无法获取列表，请检查网络后重试。"
       >
@@ -336,6 +339,7 @@
   import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { useUserStore } from '@/store/modules/user'
   import { toDictionaryOption } from '@/utils/form/option'
+  import { isPlainObjectRecord } from '@/utils/type-guards'
   import { getFriendlySupabaseErrorMessage, wasErrorUserNotified } from '@/utils/supabase'
   import {
     filterTenantDimensionDescriptors,
@@ -1420,10 +1424,13 @@
       )
 
       if (Array.isArray(response)) return response as TableQueryRecord[]
+      if (isPlainObjectRecord(response) && response.error) throw response.error
 
       const adapter =
         action.exportResponseAdapter || props.responseAdapter || defaultResponseAdapter
-      return extractTableData(adapter(response))
+      const result = adapter(response)
+      if (result.error) throw result.error
+      return extractTableData(result)
     }
 
     if (scopedSelectedRows.length) return scopedSelectedRows

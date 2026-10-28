@@ -13,6 +13,8 @@ import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 const query = new URLSearchParams(location.search)
+const tenantId = '11111111-1111-4111-8111-111111111111'
+const unsafeModel = query.get('mode') === 'invalid'
 document.documentElement.classList.toggle('dark', query.get('theme') === 'dark')
 document.documentElement.dataset.theme = query.get('theme') === 'dark' ? 'dark' : 'light'
 document.documentElement.dataset.boxMode =
@@ -25,9 +27,9 @@ const app = createApp({
         h('section', { 'data-mode': mode }, [
           h('h2', mode),
           h(Upload, {
-            modelValue: [],
+            modelValue: mode === 'normal' && unsafeModel ? ['javascript:alert(1)'] : [],
             style: 'width: 180px',
-            resourceTenantId: 'test-tenant',
+            resourceTenantId: tenantId,
             disabled: mode === 'disabled',
             readonly: mode === 'readonly',
             showTip: false
@@ -65,7 +67,7 @@ app.use(language)
 app.use(createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: {} }] }))
 useUserStore(store).setUserInfo({
   userId: 'upload-source-test',
-  tenantId: 'test-tenant',
+  tenantId,
   platformSuper: true
 })
 app.mount('#upload-source')

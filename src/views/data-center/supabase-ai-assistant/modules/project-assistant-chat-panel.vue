@@ -255,6 +255,8 @@
 </script>
 
 <style scoped lang="scss">
+  @use './panel-title' as panel;
+
   .project-assistant {
     &__chat {
       display: flex;
@@ -269,24 +271,7 @@
     }
 
     &__panel-title {
-      display: flex;
-      flex: 0 0 auto;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 62px;
-      padding: 12px 15px;
-      border-bottom: 1px solid var(--el-border-color-lighter);
-
-      strong,
-      small {
-        display: block;
-      }
-
-      small {
-        margin-top: 3px;
-        font-size: 12px;
-        color: var(--el-text-color-secondary);
-      }
+      @include panel.title;
     }
 
     &__chat-header {
@@ -718,6 +703,10 @@
         justify-content: flex-end;
       }
     }
+  }
+
+  :global(html.dark .project-assistant__chat-header) {
+    background: color-mix(in srgb, var(--theme-color) 5%, var(--default-box-color));
   }
 
   @media (prefers-reduced-motion: reduce) {

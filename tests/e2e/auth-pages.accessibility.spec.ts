@@ -84,14 +84,51 @@ test('login preserves the requested default account and password', async ({ page
   await expect(page.locator('button[type="submit"]')).toContainText('登录')
 })
 
-test('login applies the platform default language before authentication', async ({ page }) => {
-  test.setTimeout(90_000)
-  await page.route('**/rest/v1/rpc/get_login_default_language', (route) =>
-    route.fulfill({ json: 'en' })
-  )
+test('login applies the platform default language before authentication', async ({
+  page
+}, testInfo) => {
+  test.setTimeout(120_000)
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  let websiteReads = 0
+  let languageReads = 0
+  let appearanceReads = 0
+  await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+  await page.route('**/rest/v1/sys_param?*', (route) => {
+    const key = new URL(route.request().url()).searchParams.get('param_key')
+    if (key === 'eq.ui.appearance.config') appearanceReads++
+    if (key === 'eq.website.config') {
+      websiteReads++
+      return route.fulfill({
+        json: {
+          id: 'public-website',
+          param_key: 'website.config',
+          param_value: JSON.stringify({
+            siteName: 'Public Test Site',
+            loginTitle: 'Public login ready',
+            defaultLanguage: 'zh',
+            captchaEnabled: false
+          }),
+          enabled: true
+        }
+      })
+    }
+    return route.fulfill({ json: [] })
+  })
+  await page.route('**/rest/v1/rpc/get_login_default_language', (route) => {
+    languageReads++
+    return route.fulfill({ json: 'en' })
+  })
   await page.goto('#/auth/login', { waitUntil: 'domcontentloaded' })
+  await expect(page.locator('.auth-right-wrap .form')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: 'Public login ready' })).toBeVisible()
   await expect(page.locator('button[type="submit"]')).toContainText('Login', { timeout: 60_000 })
   await expect(page.locator('input[name="password"]')).toHaveValue('123456')
+  await expect.poll(() => websiteReads).toBeGreaterThan(0)
+  await expect.poll(() => languageReads).toBeGreaterThan(0)
+  expect(appearanceReads).toBe(0)
+  expect(pageErrors).toEqual([])
+  await page.screenshot({ path: testInfo.outputPath('logged-out-public-login.png') })
 })
 
 test('saved language preference takes priority over platform defaults', async ({ page }) => {

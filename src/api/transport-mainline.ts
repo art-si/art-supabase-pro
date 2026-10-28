@@ -20,6 +20,7 @@ export interface TransportMainlineRelation {
   originStation: string | null
   destinationStation: string | null
   executionKind: string | null
+  hasReturnLeg: boolean
   dispatchMode: string | null
   dispatchTargetName: string | null
   shippingAddress: string | null
@@ -119,6 +120,7 @@ export function parseTransportMainlineRelations(value: unknown): {
       originStation: readNullableText(row, 'originStation'),
       destinationStation: readNullableText(row, 'destinationStation'),
       executionKind: readNullableText(row, 'executionKind'),
+      hasReturnLeg: row.hasReturnLeg === true,
       dispatchMode: readNullableText(row, 'dispatchMode'),
       dispatchTargetName: readNullableText(row, 'dispatchTargetName'),
       shippingAddress: readNullableText(row, 'shippingAddress'),

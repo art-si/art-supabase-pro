@@ -5,6 +5,11 @@ import { getFilePreviewTarget, openFilePreview } from '../../src/hooks/core/useF
 test('file preview cache accepts valid targets and removes malformed or expired entries', () => {
   const entries = new Map<string, string>()
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { href: 'https://example.invalid/#/dashboard' } }
+  })
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: {
@@ -29,17 +34,42 @@ test('file preview cache accepts valid targets and removes malformed or expired 
       JSON.stringify({
         file: { url: validFile.url, fileType: false },
         expiresAt: Date.now() + 60_000
-      })
+      }),
+      ...[
+        'javascript:alert(1)',
+        'data:text/html,<h1>test</h1>',
+        'file:///tmp/test.pdf',
+        'mailto:files@example.invalid',
+        '#',
+        '#/dashboard',
+        'blob:https://foreign.invalid/local-file',
+        'blob:null/local-file'
+      ].map((url) => JSON.stringify({ file: { url }, expiresAt: Date.now() + 60_000 }))
     ]
     for (const value of invalidEntries) {
       entries.set(storageKey, value)
       assert.equal(getFilePreviewTarget('test'), undefined, value)
       assert.equal(entries.has(storageKey), false, '无效预览缓存应被清理')
     }
+    for (const [input, expected] of [
+      [
+        '/files/test.pdf?signature=a%2Fb#page=2',
+        'https://example.invalid/files/test.pdf?signature=a%2Fb#page=2'
+      ],
+      ['blob:https://example.invalid/local-file', 'blob:https://example.invalid/local-file']
+    ]) {
+      entries.set(
+        storageKey,
+        JSON.stringify({ file: { url: input }, expiresAt: Date.now() + 60_000 })
+      )
+      assert.deepEqual(getFilePreviewTarget('test'), { url: expected })
+    }
     assert.equal(getFilePreviewTarget(), undefined)
   } finally {
     if (previous) Object.defineProperty(globalThis, 'localStorage', previous)
     else Reflect.deleteProperty(globalThis, 'localStorage')
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
   }
 })
 
@@ -86,6 +116,17 @@ test('opening previews isolates storage failures, blocked popups and successful 
     const file = { url: 'https://example.invalid/test.pdf', name: '测试.pdf' }
     assert.equal(openFilePreview({}), 'missing-url')
     assert.equal(openFilePreview({ url: '   ' }), 'missing-url')
+    for (const url of [
+      'javascript:alert(1)',
+      'data:text/html,<h1>test</h1>',
+      'file:///tmp/test.pdf',
+      '#',
+      'blob:https://foreign.invalid/file'
+    ]) {
+      assert.equal(openFilePreview({ url }), 'invalid-url')
+      assert.equal(openCount, 0, '无效地址不应开窗')
+      assert.equal(entries.size, 0, '无效地址不应写入预览缓存')
+    }
     for (const mode of ['read', 'write'] as const) {
       failure = mode
       assert.equal(openFilePreview(file), 'storage-unavailable')
@@ -110,6 +151,28 @@ test('opening previews isolates storage failures, blocked popups and successful 
     const cached: unknown = JSON.parse(entries.get(key) ?? '')
     assert.ok(typeof cached === 'object' && cached !== null && 'expiresAt' in cached)
     assert.ok(typeof cached.expiresAt === 'number' && cached.expiresAt > before)
+    entries.set('other-feature', 'preserve')
+    entries.set(
+      'art-file-preview:unsafe',
+      JSON.stringify({
+        file: { url: 'javascript:alert(1)' },
+        expiresAt: Date.now() + 60_000
+      })
+    )
+    for (const [url, expected] of [
+      ['./files/a.pdf?signature=a%2Fb', 'https://example.invalid/files/a.pdf?signature=a%2Fb'],
+      ['blob:https://example.invalid/local-file', 'blob:https://example.invalid/local-file']
+    ]) {
+      assert.equal(openFilePreview({ url, name: '本地附件' }), 'opened')
+      const latestKey = [...entries.keys()].at(-1)
+      assert.ok(latestKey?.startsWith('art-file-preview:'))
+      assert.deepEqual(getFilePreviewTarget(latestKey.slice('art-file-preview:'.length)), {
+        url: expected,
+        name: '本地附件'
+      })
+    }
+    assert.equal(entries.has('art-file-preview:unsafe'), false, '打开预览时也清理旧不安全缓存')
+    assert.equal(entries.get('other-feature'), 'preserve')
   } finally {
     for (const [key, descriptor] of [
       ['localStorage', previousStorage],

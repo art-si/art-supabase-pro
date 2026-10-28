@@ -137,7 +137,7 @@ function checkLargest(label: string, source: BundleAsset[], limit: number): void
   const oversizedAssets = source.filter((asset) => asset.size > limit)
   oversizedAssets.forEach((asset) => {
     violations.push(
-      `${label} ${asset.path} 为 ${formatBytes(asset.size)}，上限 ${formatBytes(limit)}`
+      `${label} ${asset.path} 为 ${formatBytes(asset.size)}，上限 ${formatBytes(limit)}，超出 ${Math.ceil(asset.size - limit)} 字节`
     )
   })
 }
@@ -149,7 +149,10 @@ function checkTotal(
   transferred = false
 ): void {
   const total = sumSize(source, transferred)
-  if (total > limit) violations.push(`${label}为 ${formatBytes(total)}，上限 ${formatBytes(limit)}`)
+  if (total > limit)
+    violations.push(
+      `${label}为 ${formatBytes(total)}，上限 ${formatBytes(limit)}，超出 ${Math.ceil(total - limit)} 字节`
+    )
 }
 
 function sumSize(source: BundleAsset[], transferred = false): number {

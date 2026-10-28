@@ -1,7 +1,66 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { reactive } from 'vue'
-import { removeAttachmentRow } from '../../src/utils/file/attachment'
+import {
+  getAttachmentNameFromUrl,
+  getAttachmentDisplayName,
+  getFileExtension,
+  removeAttachmentRow
+} from '../../src/utils/file/attachment'
+
+test('URL names use decoded path segments without signed query or fragment data', () => {
+  const signed =
+    'https://example.supabase.co/storage/v1/object/sign/private/tenant/%E8%90%A5%E4%B8%9A%E6%89%A7%E7%85%A7.png?token=secret-value#preview'
+  assert.equal(getAttachmentNameFromUrl(signed), '营业执照.png')
+  assert.equal(getAttachmentDisplayName(signed), '营业执照.png')
+  assert.equal(getAttachmentNameFromUrl('/folder/demo.pdf?token=secret-value'), 'demo.pdf')
+  assert.equal(getAttachmentNameFromUrl('https://example.com/report.pdf#fragment'), 'report.pdf')
+  assert.equal(getAttachmentNameFromUrl('https://example.com/a%3Fb%23c.pdf?token=x'), 'a?b#c.pdf')
+})
+
+test('invalid URLs and missing names preserve the caller fallback without throwing', () => {
+  for (const url of [
+    '',
+    'https://example.com/folder/',
+    'https://example.com/%ZZ?token=secret-value',
+    'https://example.com/%E4.pdf',
+    'data:image/png;base64,secret-value',
+    'javascript:alert(1)',
+    'file:///private/report.pdf',
+    'https://[invalid/report.pdf'
+  ]) {
+    assert.equal(getAttachmentNameFromUrl(url, '文档 2'), '文档 2')
+    assert.equal(getAttachmentNameFromUrl(url, ''), '')
+    assert.equal(getAttachmentDisplayName(url, '图片'), '图片')
+  }
+  for (const value of [undefined, null, 0, [], {}])
+    assert.equal(Reflect.apply(getAttachmentNameFromUrl, undefined, [value, '文档 2']), '文档 2')
+})
+
+test('stored names remain complete while upload labels retain their 120-character boundary', () => {
+  const boundaryName = `${'a'.repeat(116)}.pdf`
+  const longName = `报告${'文'.repeat(125)}.pdf`
+  assert.equal(getAttachmentDisplayName(`https://example.com/${boundaryName}`), boundaryName)
+  assert.equal(getAttachmentDisplayName(`https://example.com/a${boundaryName}`, '附件 3'), '附件 3')
+  assert.equal(
+    getAttachmentNameFromUrl(`https://example.com/${encodeURIComponent(longName)}?token=x`),
+    longName
+  )
+  assert.equal(
+    getAttachmentDisplayName(`https://example.com/${encodeURIComponent(longName)}?token=x`),
+    '附件'
+  )
+})
+
+test('file extensions use resource metadata before the actual filename suffix', () => {
+  assert.equal(getFileExtension('report.PDF'), 'pdf')
+  assert.equal(getFileExtension('report.tar.gz'), 'gz')
+  assert.equal(getFileExtension('.pdf'), 'pdf')
+  assert.equal(getFileExtension('.env'), 'env')
+  assert.equal(getFileExtension('报告', '.PDF'), 'pdf')
+  assert.equal(getFileExtension('report.csv', ' .XLSX '), 'xlsx')
+  for (const name of [undefined, '', 'report', 'report.']) assert.equal(getFileExtension(name), '')
+})
 
 test('removing one duplicate URL keeps the other attachment and its order', () => {
   const first = { name: '旧保险单', url: '/same.pdf', fileType: 'pdf', fileSize: '10' }

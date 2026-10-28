@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { ElMessage } from 'element-plus'
 import {
   TENANT_SCOPE_MODE_STORAGE_KEY,
   writeTenantScopeId
@@ -8,6 +9,7 @@ import {
   buildExcelFilename,
   buildExcelRows,
   downloadBlob,
+  downloadFile,
   exportExcel,
   importExcelFile,
   mapExcelRowsToRecords
@@ -154,8 +156,83 @@ test('Excel filename policy supports stable date, timestamp and no suffix', () =
   assert.equal(buildExcelFilename('报表', false, now), '报表.xlsx')
 })
 
+test('file downloads reject unsafe URLs once and keep valid signed, relative and Blob links', () => {
+  const originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const originalWarning = Object.getOwnPropertyDescriptor(ElMessage, 'warning')
+  const links: Array<{ href: string; download: string; target: string; rel: string }> = []
+  const warnings: string[] = []
+  let clicks = 0
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { href: 'https://example.invalid/workbench' } }
+  })
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: () => {
+        const link = {
+          href: '',
+          download: '',
+          target: '',
+          rel: '',
+          click: () => {
+            clicks += 1
+          }
+        }
+        links.push(link)
+        return link
+      },
+      body: { appendChild: () => undefined, removeChild: () => undefined }
+    }
+  })
+  Object.defineProperty(ElMessage, 'warning', {
+    configurable: true,
+    value: (message: string) => warnings.push(message)
+  })
+  try {
+    for (const url of [
+      'javascript:alert(1)',
+      'data:text/html,<script>alert(1)</script>',
+      'blob:https://foreign.invalid/file',
+      undefined
+    ]) {
+      downloadFile(url)
+    }
+    assert.equal(links.length, 0)
+    assert.equal(clicks, 0)
+    assert.deepEqual(warnings, Array(4).fill('附件地址不可用，请重新上传或联系提供者'))
+
+    downloadFile('https://files.invalid/report.pdf?token=a%2Fb', '报告.pdf')
+    downloadFile('/local/report.pdf', '本地.pdf')
+    downloadFile('blob:https://example.invalid/local-file', '草稿.pdf')
+    assert.deepEqual(
+      links.map((link) => [link.href, link.download, link.target, link.rel]),
+      [
+        [
+          'https://files.invalid/report.pdf?token=a%2Fb',
+          '报告.pdf',
+          '_blank',
+          'noopener noreferrer'
+        ],
+        ['https://example.invalid/local/report.pdf', '本地.pdf', '_blank', 'noopener noreferrer'],
+        ['blob:https://example.invalid/local-file', '草稿.pdf', '_blank', 'noopener noreferrer']
+      ]
+    )
+    assert.equal(clicks, 3)
+    assert.equal(warnings.length, 4)
+  } finally {
+    if (originalDocument) Object.defineProperty(globalThis, 'document', originalDocument)
+    else delete (globalThis as { document?: unknown }).document
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
+    else delete (globalThis as { window?: unknown }).window
+    if (originalWarning) Object.defineProperty(ElMessage, 'warning', originalWarning)
+  }
+})
+
 test('blob downloads release their temporary URL after triggering the browser download', async () => {
   const originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
   const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
   const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
   const events: string[] = []
@@ -177,9 +254,13 @@ test('blob downloads release their temporary URL after triggering the browser do
       }
     }
   })
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { href: 'https://example.invalid/' } }
+  })
   Object.defineProperty(URL, 'createObjectURL', {
     configurable: true,
-    value: () => 'blob:download-test'
+    value: () => 'blob:https://example.invalid/download-test'
   })
   Object.defineProperty(URL, 'revokeObjectURL', {
     configurable: true,
@@ -190,12 +271,19 @@ test('blob downloads release their temporary URL after triggering the browser do
     downloadBlob(new Blob(['report']), 'report.csv')
     await new Promise((resolve) => setTimeout(resolve, 5))
 
-    assert.equal(anchor.href, 'blob:download-test')
+    assert.equal(anchor.href, 'blob:https://example.invalid/download-test')
     assert.equal(anchor.download, 'report.csv')
-    assert.deepEqual(events, ['append', 'click', 'remove', 'revoke:blob:download-test'])
+    assert.deepEqual(events, [
+      'append',
+      'click',
+      'remove',
+      'revoke:blob:https://example.invalid/download-test'
+    ])
   } finally {
     if (originalDocument) Object.defineProperty(globalThis, 'document', originalDocument)
     else delete (globalThis as { document?: unknown }).document
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
+    else delete (globalThis as { window?: unknown }).window
     if (originalCreateObjectUrl)
       Object.defineProperty(URL, 'createObjectURL', originalCreateObjectUrl)
     if (originalRevokeObjectUrl)

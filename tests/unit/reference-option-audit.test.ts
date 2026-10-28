@@ -17,116 +17,128 @@ test('reuse audit rejects copied reference mapping but retains domain context an
     cpSync(join(dirname(dirname(script)), 'src', 'utils'), join(root, 'src', 'utils'), {
       recursive: true
     })
-    const file = join(source, 'options.ts')
-    writeFileSync(
-      file,
-      "rows.map(item => ({label: [item.name, item.code].filter(Boolean).join(' · '), value: item.id}))"
-    )
-    const audit = () =>
-      spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), script], {
+
+    const cases = [
+      {
+        file: 'reference-options.ts',
+        rejected:
+          "rows.map(item => ({label: [item.name, item.code].filter(Boolean).join(' · '), value: item.id}))",
+        accepted:
+          'rows.map(toNameCodeOption); rows.map(item => ({label: `${item.name} · ${item.workDate ?? item.code}`, value: item.id}))'
+      },
+      {
+        file: 'table-date.ts',
+        rejected:
+          "const columns = [{ formatter: row => dayjs(row.updatedAt).format('YYYY-MM-DD') }]",
+        accepted:
+          "const formatDate = createDateTimeFormatter({format: 'YYYY-MM-DD'}); const columns = [{formatter: row => formatDate(row.updatedAt)}]; const nextDate = dayjs().add(1, 'day').format('YYYY-MM-DD')"
+      },
+      {
+        file: 'field-array.ts',
+        rejected: "const readable = ['read', 'edit'].includes(getFieldAccess(access, 'amount'))",
+        accepted:
+          "const readable = isReadableFieldAccess(getFieldAccess(access, 'amount')); const other = status === 'read' || status === 'pending'; const levels = ['read', 'edit', 'masked'].includes(access)"
+      },
+      {
+        file: 'field-level.ts',
+        rejected: "const readable = access === 'edit' || access === 'read'",
+        accepted: "const readable = isReadableFieldAccess(getFieldAccess(access, 'amount'))"
+      },
+      {
+        file: 'currency-format.ts',
+        rejected:
+          "function amount(input: unknown, currency = 'CNY') { if (input === '' || input === null || input === undefined) return '--'; return formatCurrencyValue(input, currency) }; const optionalAmount = (input?: number) => (input === undefined ? '--' : formatCurrencyValue(input)); const boundAmount = (input: unknown) => formatSensitiveCurrencyValue(input, record.value.currencyCode)",
+        accepted:
+          "const display = formatSensitiveCurrencyValue(record.amount, record.currencyCode); function total(input: number) { return formatCurrencyValue(input + fee) }; function restricted(input: unknown) { if (!canRead || input === null || input === undefined || input === '') return '--'; return formatCurrencyValue(input) }"
+      },
+      {
+        file: 'date-format.ts',
+        rejected:
+          "const dateText = (input?: string) => input ? dayjs(input).format('YYYY-MM-DD HH:mm') : '—'",
+        accepted:
+          "const dateText = createDateTimeFormatter({ format: 'YYYY-MM-DD HH:mm', emptyText: '—', invalidText: '—' }); const nextDate = dayjs().add(1, 'day').format('YYYY-MM-DD')"
+      },
+      {
+        file: 'options.ts',
+        rejected:
+          'export function normalizeExampleText(value: string) { return value.trim().toLowerCase() }',
+        accepted:
+          'export function normalizeExampleText(value: string) { return value.trim().toLowerCase() }'
+      },
+      {
+        file: 'second-options.ts',
+        rejected:
+          'export function normalizeExampleText(value: string) { return value.trim().toLowerCase() }',
+        accepted: "import { normalizeExampleText } from './options'; normalizeExampleText('code')"
+      },
+      {
+        file: 'dictionary-lookup.ts',
+        rejected:
+          'getDictMap.value.status?.find(item => item.value === status); (getDictMap.value[code] ?? []).find(option => String(option.value) === String(value)); userStore.getDictMap[code]?.find(item => value === item.value)',
+        accepted:
+          "userStore.getDictItemByValue(code, value); userStore.getDictLabelByValue(code, value, '未维护'); getDictMap.value[code]?.find(item => item.value === input || item.label === input); getDictMap.value[code]?.find(item => String(item.value).startsWith(prefix))"
+      }
+    ] as const
+
+    const audit = () => {
+      const result = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), script], {
         cwd: root,
         encoding: 'utf8',
-        timeout: 60_000
+        timeout: 180_000
       })
+      assert.ifError(
+        result.error &&
+          new Error(`${result.error.message}\n${result.stdout}\n${result.stderr}`, {
+            cause: result.error
+          })
+      )
+      return result
+    }
+
+    for (const entry of cases) writeFileSync(join(source, entry.file), entry.rejected)
     const rejected = audit()
     assert.equal(rejected.status, 1, rejected.stderr)
-    assert.match(rejected.stderr, /repeated-name-code-option-mapping/)
-    writeFileSync(
-      file,
-      'rows.map(toNameCodeOption); rows.map(item => ({label: `${item.name} · ${item.workDate ?? item.code}`, value: item.id}))'
+    assert.match(rejected.stderr, /Shared reuse audit failed with 12 finding\(s\):/)
+
+    const findings = [...rejected.stderr.matchAll(/^- \[([^\]]+)\] ([^:]+): (.+)$/gm)].map(
+      ([, rule, file, detail]) => ({ rule, file, detail })
     )
+    assert.equal(findings.length, 12, rejected.stderr)
+    const duplicate = findings.find(
+      (finding) => finding.rule === 'within-repository-helper-duplication'
+    )
+    assert.ok(duplicate, rejected.stderr)
+    assert.ok(
+      ['src/views/options.ts', 'src/views/second-options.ts'].includes(duplicate.file),
+      rejected.stderr
+    )
+    assert.match(duplicate.detail, /src\/views\/options\.ts/)
+    assert.match(duplicate.detail, /src\/views\/second-options\.ts/)
+    assert.deepEqual(
+      findings
+        .filter((finding) => finding !== duplicate)
+        .map(({ rule, file }) => `${rule}:${file}`)
+        .sort(),
+      [
+        'repeated-name-code-option-mapping:src/views/reference-options.ts',
+        'raw-table-date-formatting:src/views/table-date.ts',
+        'repeated-field-readability-check:src/views/field-array.ts',
+        'repeated-field-readability-check:src/views/field-level.ts',
+        'copied-currency-formatter:src/views/currency-format.ts',
+        'copied-currency-formatter:src/views/currency-format.ts',
+        'copied-currency-formatter:src/views/currency-format.ts',
+        'copied-date-formatter:src/views/date-format.ts',
+        'repeated-dictionary-value-lookup:src/views/dictionary-lookup.ts',
+        'repeated-dictionary-value-lookup:src/views/dictionary-lookup.ts',
+        'repeated-dictionary-value-lookup:src/views/dictionary-lookup.ts'
+      ].sort(),
+      rejected.stderr
+    )
+
+    for (const entry of cases) writeFileSync(join(source, entry.file), entry.accepted)
     const accepted = audit()
     assert.equal(accepted.status, 0, accepted.stderr)
     assert.match(accepted.stdout, /Shared reuse audit passed/)
-    writeFileSync(
-      file,
-      "const columns = [{ formatter: row => dayjs(row.updatedAt).format('YYYY-MM-DD') }]"
-    )
-    const dateRejected = audit()
-    assert.equal(dateRejected.status, 1, dateRejected.stderr)
-    assert.match(dateRejected.stderr, /raw-table-date-formatting/)
-    writeFileSync(
-      file,
-      "const formatDate = createDateTimeFormatter({format: 'YYYY-MM-DD'}); const columns = [{formatter: row => formatDate(row.updatedAt)}]; const nextDate = dayjs().add(1, 'day').format('YYYY-MM-DD')"
-    )
-    const dateAccepted = audit()
-    assert.equal(dateAccepted.status, 0, dateAccepted.stderr)
-    writeFileSync(
-      file,
-      "const readable = ['read', 'edit'].includes(getFieldAccess(access, 'amount'))"
-    )
-    const arrayAccessRejected = audit()
-    assert.equal(arrayAccessRejected.status, 1, arrayAccessRejected.stderr)
-    assert.match(arrayAccessRejected.stderr, /repeated-field-readability-check/)
-    writeFileSync(file, "const readable = access === 'edit' || access === 'read'")
-    const levelAccessRejected = audit()
-    assert.equal(levelAccessRejected.status, 1, levelAccessRejected.stderr)
-    assert.match(levelAccessRejected.stderr, /repeated-field-readability-check/)
-    writeFileSync(
-      file,
-      "const readable = isReadableFieldAccess(getFieldAccess(access, 'amount')); const other = status === 'read' || status === 'pending'; const levels = ['read', 'edit', 'masked'].includes(access)"
-    )
-    const sharedAccessAccepted = audit()
-    assert.equal(sharedAccessAccepted.status, 0, sharedAccessAccepted.stderr)
-    writeFileSync(
-      file,
-      "function amount(input: unknown, currency = 'CNY') { if (input === '' || input === null || input === undefined) return '--'; return formatCurrencyValue(input, currency) }; const optionalAmount = (input?: number) => (input === undefined ? '--' : formatCurrencyValue(input)); const boundAmount = (input: unknown) => formatSensitiveCurrencyValue(input, record.value.currencyCode)"
-    )
-    const copiedCurrencyRejected = audit()
-    assert.equal(copiedCurrencyRejected.status, 1, copiedCurrencyRejected.stderr)
-    assert.equal(
-      (copiedCurrencyRejected.stderr.match(/copied-currency-formatter/g) ?? []).length,
-      3
-    )
-    writeFileSync(
-      file,
-      "const display = formatSensitiveCurrencyValue(record.amount, record.currencyCode); function total(input: number) { return formatCurrencyValue(input + fee) }; function restricted(input: unknown) { if (!canRead || input === null || input === undefined || input === '') return '--'; return formatCurrencyValue(input) }"
-    )
-    const domainCurrencyAccepted = audit()
-    assert.equal(domainCurrencyAccepted.status, 0, domainCurrencyAccepted.stderr)
-    writeFileSync(
-      file,
-      "const dateText = (input?: string) => input ? dayjs(input).format('YYYY-MM-DD HH:mm') : '—'"
-    )
-    const copiedDateRejected = audit()
-    assert.equal(copiedDateRejected.status, 1, copiedDateRejected.stderr)
-    assert.match(copiedDateRejected.stderr, /copied-date-formatter/)
-    writeFileSync(
-      file,
-      "const dateText = createDateTimeFormatter({ format: 'YYYY-MM-DD HH:mm', emptyText: '—', invalidText: '—' }); const nextDate = dayjs().add(1, 'day').format('YYYY-MM-DD')"
-    )
-    const sharedDateAccepted = audit()
-    assert.equal(sharedDateAccepted.status, 0, sharedDateAccepted.stderr)
-    const copiedHelper =
-      'export function normalizeExampleText(value: string) { return value.trim().toLowerCase() }'
-    const secondFile = join(source, 'second-options.ts')
-    writeFileSync(file, copiedHelper)
-    writeFileSync(secondFile, copiedHelper)
-    const sameRepositoryRejected = audit()
-    assert.equal(sameRepositoryRejected.status, 1, sameRepositoryRejected.stderr)
-    assert.match(sameRepositoryRejected.stderr, /within-repository-helper-duplication/)
-    writeFileSync(
-      secondFile,
-      "import { normalizeExampleText } from './options'; normalizeExampleText('code')"
-    )
-    const sameRepositoryAccepted = audit()
-    assert.equal(sameRepositoryAccepted.status, 0, sameRepositoryAccepted.stderr)
-    writeFileSync(
-      file,
-      'getDictMap.value.status?.find(item => item.value === status); (getDictMap.value[code] ?? []).find(option => String(option.value) === String(value)); userStore.getDictMap[code]?.find(item => value === item.value)'
-    )
-    const dictionaryLookupRejected = audit()
-    assert.equal(dictionaryLookupRejected.status, 1, dictionaryLookupRejected.stderr)
-    assert.equal(
-      (dictionaryLookupRejected.stderr.match(/repeated-dictionary-value-lookup/g) ?? []).length,
-      3
-    )
-    writeFileSync(
-      file,
-      "userStore.getDictItemByValue(code, value); userStore.getDictLabelByValue(code, value, '未维护'); getDictMap.value[code]?.find(item => item.value === input || item.label === input); getDictMap.value[code]?.find(item => String(item.value).startsWith(prefix))"
-    )
-    const sharedDictionaryAccepted = audit()
-    assert.equal(sharedDictionaryAccepted.status, 0, sharedDictionaryAccepted.stderr)
   } finally {
     assert.equal(dirname(resolve(root)), temporaryRoot)
     assert.ok(root.startsWith(join(temporaryRoot, 'art-reference-options-')))

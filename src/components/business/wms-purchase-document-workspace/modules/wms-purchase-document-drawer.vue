@@ -707,6 +707,7 @@
 
 <script setup lang="ts">
   import { getWmsMaterialUnitFactor } from '@/utils/wms/material-quantity'
+  import { calculateWmsDocumentLineFinancial } from '@/utils/wms/document-line-financial'
   import { createWmsMaterialFromSelectRow } from '@/utils/wms/material-select'
   import { getMaterialCategoryIds } from '@/utils/business/material-category'
   import { readWmsDocumentImportRows } from '@/utils/wms/document-import'
@@ -1618,26 +1619,12 @@
       ? round((Math.abs(Number(line.quantity || 0)) * inventoryFactor) / auxFactor, 4).toString()
       : '—'
   }
-  function lineFinancial(line: WmsPurchaseLine): {
-    discount: number
-    amount: number
-    tax: number
-    total: number
-  } {
-    if (mode.value === 'view' && isOpeningReturn.value)
-      return {
-        discount: Math.abs(Number(line.discountAmount || 0)),
-        amount: Math.abs(Number(line.amount || 0)),
-        tax: Math.abs(Number(line.taxAmount || 0)),
-        total: Math.abs(Number(line.totalAmount || 0))
-      }
-    if (line.gift) return { discount: 0, amount: 0, tax: 0, total: 0 }
-    const quantity = displayQuantity(line.quantity)
-    const rate = line.discountMethod === 'none' ? 0 : Number(line.unitDiscountRate || 0)
-    const discount = round(quantity * Number(line.taxInclusiveUnitPrice || 0) * rate, 2)
-    const amount = round(quantity * Number(line.unitPrice || 0) - discount, 2)
-    const tax = round((quantity * Number(line.unitPrice || 0) * Number(line.taxRate || 0)) / 100, 2)
-    return { discount, amount, tax, total: round(amount + tax, 2) }
+  function lineFinancial(line: WmsPurchaseLine) {
+    return calculateWmsDocumentLineFinancial(
+      line,
+      displayQuantity(line.quantity),
+      mode.value === 'view' && isOpeningReturn.value
+    )
   }
   function updatePrice(line: WmsPurchaseLine, basis: 'untaxed' | 'taxed'): void {
     line.priceBasis = basis

@@ -132,8 +132,22 @@
   --art-surface-bg: var(--default-box-color);
   --art-surface-border: var(--art-card-border);
   --art-surface-shadow: 0 1px 3px rgb(0 0 0 / 4%);
-  --art-card-shadow-xs: 0 1px 2px rgb(20 28 52 / 4%);
-  --art-card-shadow-sm: 0 1px 3px rgb(20 28 52 / 5%), 0 4px 12px rgb(20 28 52 / 3%);
+  --art-card-shadow-xs:
+    0 1px 4px rgb(20 28 52 / 11%), 0 4px 12px color-mix(in srgb, var(--theme-color) 8%, transparent);
+  --art-card-shadow-sm:
+    0 2px 6px rgb(20 28 52 / 12%), 0 8px 20px color-mix(in srgb, var(--theme-color) 9%, transparent);
+
+  /* 表单的静态承托比图标 hover 的主题投影更轻、更贴近表面。 */
+  --art-control-elevation:
+    0 1px 2px rgb(20 28 52 / 12%), 0 2px 6px color-mix(in srgb, var(--theme-color) 8%, transparent);
+  --art-control-hover-elevation:
+    0 1px 3px rgb(20 28 52 / 13%), 0 3px 8px color-mix(in srgb, var(--theme-color) 11%, transparent);
+  --art-floating-elevation:
+    0 2px 6px rgb(20 28 52 / 14%),
+    0 8px 20px color-mix(in srgb, var(--theme-color) 10%, transparent);
+  --art-modal-elevation:
+    0 6px 18px rgb(20 28 52 / 18%),
+    0 18px 40px color-mix(in srgb, var(--theme-color) 12%, transparent);
 }
 
 /* ==================== Dark Mode Variables ==================== */
@@ -173,8 +187,16 @@
 
   /* Dark application shell */
   --art-layout-shadow: 0 10px 30px rgb(0 0 0 / 20%);
-  --art-card-shadow-xs: 0 1px 3px rgb(0 0 0 / 22%);
-  --art-card-shadow-sm: 0 2px 5px rgb(0 0 0 / 22%), 0 8px 20px rgb(0 0 0 / 12%);
+  --art-card-shadow-xs: 0 2px 6px rgb(0 0 0 / 42%), 0 8px 20px rgb(0 0 0 / 26%);
+  --art-card-shadow-sm:
+    0 3px 8px rgb(0 0 0 / 46%), 0 14px 32px rgb(0 0 0 / 32%),
+    0 0 16px color-mix(in srgb, var(--theme-color) 5%, transparent);
+  --art-control-elevation: 0 1px 2px rgb(0 0 0 / 40%), 0 2px 6px rgb(0 0 0 / 28%);
+  --art-control-hover-elevation: 0 1px 3px rgb(0 0 0 / 46%), 0 3px 8px rgb(0 0 0 / 34%);
+  --art-floating-elevation:
+    0 3px 10px rgb(0 0 0 / 48%), 0 12px 28px color-mix(in srgb, var(--theme-color) 12%, transparent);
+  --art-modal-elevation:
+    0 8px 24px rgb(0 0 0 / 52%), 0 24px 56px color-mix(in srgb, var(--theme-color) 14%, transparent);
 }
 
 @media (width <= 800px) {

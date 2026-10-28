@@ -30,6 +30,7 @@
   import { fetchLoginDefaultLanguage } from '@/api/system-manage/system-param'
   import { loadAppearanceConfig } from '@/hooks/core/useAppearanceConfig'
   import { LanguageEnum } from './enums/app-enum'
+  import { useRoute } from 'vue-router'
 
   const userStore = useUserStore()
   const preferredLanguage = getPreferredLanguage()
@@ -50,6 +51,7 @@
     }
   )
   const settingStore = useSettingStore()
+  const route = useRoute()
   const { language } = storeToRefs(userStore)
   const { boxBorderMode } = storeToRefs(settingStore)
   const { loadWebsiteConfig } = useWebsiteConfig()
@@ -63,6 +65,15 @@
       )
     },
     { immediate: true }
+  )
+
+  // 放在 html 上，让传送到 body 的浮层继承工作区外观；认证页使用独立视觉。
+  watch(
+    () => userStore.isLogin && !route.path.startsWith('/auth/'),
+    (isWorkspace) => {
+      document.documentElement.dataset.uiScope = isWorkspace ? 'workspace' : 'public'
+    },
+    { immediate: true, flush: 'sync' }
   )
 
   const locales = {
@@ -80,7 +91,7 @@
   })
 
   onMounted(() => {
-    void loadAppearanceConfig()
+    if (userStore.isLogin) void loadAppearanceConfig()
     void Promise.all([loadWebsiteConfig(), fetchLoginDefaultLanguage()]).then(
       ([config, policy]) => {
         if (!userStore.isLogin && !preferredLanguage && language.value === initialLanguage) {

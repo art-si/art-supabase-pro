@@ -3,6 +3,7 @@ import type { RunQueryOptions } from '@/hooks/core/useSupabase'
 import { buildSupabasePageRange } from '@/utils/supabase/pagination'
 import { buildSupabaseRpcRange } from '@/utils/supabase'
 import { normalizeNullableText } from '@/utils/form/normalize'
+import { isPlainObjectRecord } from '@/utils/type-guards'
 import type {
   EmployeeSelectorContractParams,
   EmployeeSelectorContractResult,
@@ -300,6 +301,36 @@ export interface FuelCardDriverOption {
   isPrimary: boolean
 }
 
+export interface FuelCardOwnerSuggestion {
+  employeeId: string
+  employeeName: string
+  tenantId: string
+}
+
+/** Exact roster employee linked to an approved vehicle's primary driver. */
+export async function fetchFuelCardOwnerSuggestion(
+  vehicleId: string
+): Promise<FuelCardOwnerSuggestion | null> {
+  const { data } = await responseHandle<unknown>(
+    () => supabase.rpc('vms_fuel_card_owner_suggestion_secure', { p_vehicle_id: vehicleId }),
+    { breakReturn: true, showErrorMessage: false, errorMessage: '主司机花名册带入失败，请手动选择' }
+  )
+  if (data === null) return null
+  if (
+    !isPlainObjectRecord(data) ||
+    typeof data.employeeId !== 'string' ||
+    typeof data.employeeName !== 'string' ||
+    typeof data.tenantId !== 'string'
+  ) {
+    throw new Error('主司机花名册数据异常，请手动选择卡归属人')
+  }
+  return {
+    employeeId: data.employeeId,
+    employeeName: data.employeeName,
+    tenantId: data.tenantId
+  }
+}
+
 export async function fetchFuelCardDriverOptions(params: {
   cardId: string
   from?: number
@@ -443,4 +474,17 @@ export async function recordFuelCardTransaction(
   )
   if (!result.data) throw new Error('油卡流水登记结果异常，请重试')
   return result.data
+}
+
+/** Append evidence to an existing ledger row without changing its financial posting. */
+export async function appendFuelCardEntryVouchers(id: string, paths: string[]): Promise<void> {
+  await responseHandle(
+    () =>
+      supabase.rpc('vms_append_card_entry_vouchers_secure', {
+        p_card_kind: 'fuel',
+        p_entry_id: id,
+        p_paths: paths
+      }),
+    { breakReturn: true, showErrorMessage: false, errorMessage: '现场凭证补传失败，请重试' }
+  )
 }

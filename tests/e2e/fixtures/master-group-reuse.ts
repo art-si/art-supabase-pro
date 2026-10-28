@@ -6,6 +6,8 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { useMenuStore } from '@/store/modules/menu'
 import { setupGlobDirectives } from '@/directives'
 import MasterGroupPanel from '@/components/business/master-group-panel/index.vue'
@@ -130,6 +132,10 @@ const app = createApp({
     )
 })
 app.use(store)
+initializeTheme()
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 app.use(language)
 app.use(router)
 setupGlobDirectives(app)

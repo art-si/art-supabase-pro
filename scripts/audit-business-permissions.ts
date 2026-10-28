@@ -128,6 +128,10 @@ const platformSuperAllowlist = new Map<string, string>([
     'cross-tenant favorite-route context'
   ],
   [
+    'modules/art-supabase-tms/src/views/basic-data/company-certification/index.vue',
+    'cross-tenant certification selector and platform-only document review; the secure review RPC independently checks platform authority and tenant scope'
+  ],
+  [
     'modules/art-supabase-tms/src/views/order-open/modules/ai-order-drawer.vue',
     'controlled AI master-data write'
   ],
@@ -310,6 +314,10 @@ const platformSuperAllowlist = new Map<string, string>([
   [
     'modules/art-supabase-smis/src/views/dual-control-system/risk-control/hazard-factor-category/modules/hazard-factor-category-dialog.vue',
     'cross-tenant hazard-factor-category assignment'
+  ],
+  [
+    'modules/art-supabase-smis/src/views/dual-control-system/risk-control/safety-inspection/modules/safety-inspection-dialog.vue',
+    'cross-tenant write-target selection only; ordinary safety-inspection actions retain Add/Edit permissions'
   ]
 ])
 

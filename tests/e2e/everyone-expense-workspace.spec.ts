@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test'
+import { installDictionaryOptions } from './support/dictionary-options'
+import { assertTableFocusContract } from './support/table-focus'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(90000)
@@ -213,4 +215,296 @@ for (const config of [
       })
     })
   }
+}
+
+test('借款明细取消中的旧请求不能改变已接受表格的合并行', async ({ page }, info) => {
+  test.setTimeout(120_000)
+  const renderErrors: string[] = []
+  page.on('pageerror', (error) => renderErrors.push(error.message))
+  page.on('console', (message) => {
+    if (
+      ['error', 'warning'].includes(message.type()) &&
+      /VueError|Unhandled error during execution of render function/.test(message.text())
+    ) {
+      renderErrors.push(message.text())
+    }
+  })
+  const tenantId = '11111111-1111-4111-8111-111111111111'
+  const loan = (id: string, loanNo: string) => ({
+    id,
+    tenant_id: tenantId,
+    loan_no: loanNo,
+    application_date: '2026-10-23',
+    status: 'draft',
+    total_amount: 200,
+    amount: 200,
+    attachment_urls: []
+  })
+  const line = (id: string, parent: ReturnType<typeof loan>, lineNo: number) => ({
+    id,
+    tenant_id: tenantId,
+    line_no: lineNo,
+    loan: parent,
+    expense_item: { item_name: '验收费用' },
+    amount: 100
+  })
+  const accepted = loan('loan-b', 'QA-B')
+  const acceptedLines = [line('b-1', accepted, 1), line('b-2', accepted, 2)]
+  const lateLines = [
+    line('a-1', loan('loan-a-1', 'QA-A-1'), 1),
+    line('a-2', loan('loan-a-2', 'QA-A-2'), 1)
+  ]
+  let holdFirstLineRequest = true
+  let releaseFirst: (() => void) | undefined
+  let signalFirstStarted: (() => void) | undefined
+  const firstStarted = new Promise<void>((resolve) => {
+    signalFirstStarted = resolve
+  })
+  const firstRelease = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
+  let holdNextLineRequest = false
+  let releaseLate: (() => void) | undefined
+  let signalLateStarted: (() => void) | undefined
+  const lateStarted = new Promise<void>((resolve) => {
+    signalLateStarted = resolve
+  })
+  const lateRelease = new Promise<void>((resolve) => {
+    releaseLate = resolve
+  })
+  await page.route('**/rest/v1/**', async (route) => {
+    const resource = new URL(route.request().url()).pathname.split('/').at(-1)
+    if (resource === 'fms_travel_loan_item') {
+      if (holdFirstLineRequest) {
+        holdFirstLineRequest = false
+        signalFirstStarted?.()
+        await firstRelease
+      }
+      const isLate = holdNextLineRequest
+      if (isLate) {
+        holdNextLineRequest = false
+        signalLateStarted?.()
+        await lateRelease
+      }
+      return route.fulfill({
+        json: isLate ? lateLines : acceptedLines,
+        headers: { 'content-range': '0-1/2', 'access-control-expose-headers': 'content-range' }
+      })
+    }
+    if (resource === 'fms_travel_loan') {
+      return route.fulfill({
+        json: [accepted],
+        headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
+      })
+    }
+    return route.fulfill({ json: [] })
+  })
+  await installDictionaryOptions(page, {
+    commonDocumentDisplayMode: [
+      { value: 'document', label: '按单据' },
+      { value: 'line', label: '按明细' }
+    ]
+  })
+  await page.goto(
+    '/tests/e2e/fixtures/receivable-workspace.html?kind=expense_loan&permissions=FinanceLoanApplication:View'
+  )
+  await expect(page.getByRole('heading', { name: '借款单', exact: true })).toBeVisible()
+  const appearanceGuide = page.getByText('知道了', { exact: true })
+  if (await appearanceGuide.isVisible()) {
+    await appearanceGuide.click()
+    await expect(appearanceGuide).toBeHidden()
+  }
+  const table = page.locator('.art-table-query .el-table')
+  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(1)
+  await page.getByText('按明细', { exact: true }).click()
+  await firstStarted
+  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(1)
+  await page.screenshot({ path: info.outputPath('loan-document-to-line-pending.png') })
+  expect(renderErrors).toEqual([])
+  releaseFirst?.()
+  const numberCell = table
+    .locator('tbody tr.el-table__row')
+    .first()
+    .locator('td')
+    .filter({ hasText: 'QA-B' })
+  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(2)
+  await expect(numberCell).toHaveAttribute('rowspan', '2')
+
+  holdNextLineRequest = true
+  const olderRequest = page.locator('.art-table-query').evaluate(async (element) => {
+    const api = (
+      element as HTMLElement & {
+        __vueParentComponent?: { exposed?: { getData?: () => Promise<unknown> } }
+      }
+    ).__vueParentComponent?.exposed
+    if (!api?.getData) throw new Error('ArtTableQuery.getData is unavailable')
+    await api.getData()
+  })
+  await lateStarted
+  await page.locator('.art-table-query').evaluate((element) => {
+    const api = (
+      element as HTMLElement & {
+        __vueParentComponent?: { exposed?: { cancelRequest?: () => void } }
+      }
+    ).__vueParentComponent?.exposed
+    if (!api?.cancelRequest) throw new Error('ArtTableQuery.cancelRequest is unavailable')
+    api.cancelRequest()
+  })
+  releaseLate?.()
+  await olderRequest
+  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(2)
+  await expect(table.getByText('QA-A-1', { exact: true })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath('loan-cancelled-late-response.png') })
+  await expect(numberCell).toHaveAttribute('rowspan', '2')
+  await expect(table.getByText('QA-B', { exact: true })).toHaveCount(1)
+  expect(renderErrors).toEqual([])
+})
+
+for (const scenario of [
+  {
+    kind: 'travel',
+    title: '出差申请单',
+    permission: 'FinanceTravelApplication:View',
+    list: 'fms_travel_application',
+    lines: 'fms_travel_itinerary',
+    parent: 'application',
+    number: 'application_no'
+  },
+  {
+    kind: 'loan',
+    title: '借款单',
+    permission: 'FinanceLoanApplication:View',
+    list: 'fms_travel_loan',
+    lines: 'fms_travel_loan_item',
+    parent: 'loan',
+    number: 'loan_no'
+  },
+  {
+    kind: 'repayment',
+    title: '还款单',
+    permission: 'FinanceRepayment:View',
+    list: 'fms_travel_repayment',
+    lines: 'fms_travel_repayment_item',
+    parent: 'repayment',
+    number: 'repayment_no'
+  },
+  {
+    kind: 'reimbursement',
+    title: '费用报销单',
+    permission: 'FinanceExpenseReimbursement:View',
+    list: 'fms_list_expense_reimbursements_secure',
+    lines: 'fms_list_expense_reimbursement_lines_secure',
+    parent: 'reimbursement',
+    number: 'reimbursement_no'
+  }
+] as const) {
+  test(`${scenario.title}按明细合并使用已接受行并可退出专注模式`, async ({ page }, info) => {
+    test.setTimeout(180_000)
+    const renderErrors: string[] = []
+    page.on('pageerror', (error) => renderErrors.push(error.message))
+    page.on('console', (message) => {
+      if (
+        ['error', 'warning'].includes(message.type()) &&
+        /VueError|Unhandled error during execution of render function/.test(message.text())
+      )
+        renderErrors.push(message.text())
+    })
+    const document = {
+      id: 'group-document',
+      tenant_id: '11111111-1111-4111-8111-111111111111',
+      [scenario.number]: 'QA-GROUP',
+      application_date: '2026-10-23',
+      repayment_date: '2026-10-23',
+      reimbursement_date: '2026-10-23',
+      status: 'draft',
+      source_type: 'travel',
+      is_demo: true,
+      attachment_urls: [],
+      total_amount: 200,
+      amount: 200
+    }
+    const lines = [1, 2].map((lineNo) => ({
+      id: `group-line-${lineNo}`,
+      tenant_id: document.tenant_id,
+      line_no: lineNo,
+      [scenario.parent]: document,
+      reimbursement_id: document.id,
+      repayment_id: document.id,
+      expense_item: { item_name: '验收费用' },
+      expense_item_name: '验收费用',
+      source_type: 'travel',
+      amount: 100,
+      gross_amount: 100,
+      departure_region_path: [],
+      destination_region_path: [],
+      transport_modes: [],
+      traveler_employee_ids: []
+    }))
+    let holdFirstLine = scenario.kind === 'travel' || scenario.kind === 'loan'
+    let signalLineStarted: (() => void) | undefined
+    let releaseLine: (() => void) | undefined
+    const lineStarted = new Promise<void>((resolve) => {
+      signalLineStarted = resolve
+    })
+    const lineRelease = new Promise<void>((resolve) => {
+      releaseLine = resolve
+    })
+    await page.route('**/rest/v1/**', async (route) => {
+      const resource = new URL(route.request().url()).pathname.split('/').at(-1)
+      if (resource === scenario.lines) {
+        if (holdFirstLine) {
+          holdFirstLine = false
+          signalLineStarted?.()
+          await lineRelease
+        }
+        return route.fulfill({
+          json: scenario.kind === 'reimbursement' ? { records: lines, total: 2 } : lines,
+          headers: { 'content-range': '0-1/2', 'access-control-expose-headers': 'content-range' }
+        })
+      }
+      if (resource === scenario.list) {
+        return route.fulfill({
+          json: scenario.kind === 'reimbursement' ? { records: [document], total: 1 } : [document],
+          headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
+        })
+      }
+      return route.fulfill({ json: [] })
+    })
+    await installDictionaryOptions(page, {
+      commonDocumentDisplayMode: [
+        { value: 'document', label: '按单据' },
+        { value: 'line', label: '按明细' }
+      ]
+    })
+    await page.goto(
+      `/tests/e2e/fixtures/receivable-workspace.html?kind=expense_${scenario.kind}&permissions=${scenario.permission}`,
+      { waitUntil: 'domcontentloaded' }
+    )
+    await expect(page.getByRole('heading', { name: scenario.title, exact: true })).toBeVisible()
+    const appearanceGuide = page.getByText('知道了', { exact: true })
+    if (await appearanceGuide.isVisible()) {
+      await appearanceGuide.click()
+      await expect(appearanceGuide).toBeHidden()
+    }
+    const table = page.locator('.art-table-query .el-table')
+    await expect(table.locator('tbody tr.el-table__row')).toHaveCount(1)
+    await page.getByText('按明细', { exact: true }).click()
+    if (scenario.kind === 'travel' || scenario.kind === 'loan') {
+      await lineStarted
+      await expect(table.locator('tbody tr.el-table__row')).toHaveCount(1)
+      expect(renderErrors).toEqual([])
+      await page.screenshot({ path: info.outputPath(`${scenario.kind}-line-pending.png`) })
+      releaseLine?.()
+    }
+    await expect(table.locator('tbody tr.el-table__row')).toHaveCount(2)
+    const numberCell = table
+      .locator('tbody tr.el-table__row')
+      .first()
+      .locator('td')
+      .filter({ hasText: 'QA-GROUP' })
+    await expect(numberCell).toHaveAttribute('rowspan', '2')
+    await page.screenshot({ path: info.outputPath(`${scenario.kind}-grouped-lines.png`) })
+    await assertTableFocusContract(page, info)
+    expect(renderErrors).toEqual([])
+  })
 }

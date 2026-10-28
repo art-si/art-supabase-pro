@@ -8,7 +8,7 @@
       :key="item.theme"
       :aria-label="`${$t(`setting.theme.list[${index}]`)}主题`"
       :aria-pressed="item.theme === systemThemeMode"
-      @click="switchThemeStyles(item.theme)"
+      @click="changeTheme(item.theme)"
     >
       <div class="box" :class="{ 'is-active': item.theme === systemThemeMode }">
         <img :src="item.img" width="120" height="72" alt="" />
@@ -23,9 +23,15 @@
   import { useSettingStore } from '@/store/modules/setting'
   import { useSettingsConfig } from '../composables/useSettingsConfig'
   import { useTheme } from '@/hooks/core/useTheme'
+  import type { SystemThemeEnum } from '@/enums/app-enum'
 
   const settingStore = useSettingStore()
   const { systemThemeMode } = storeToRefs(settingStore)
   const { configOptions } = useSettingsConfig()
   const { switchThemeStyles } = useTheme()
+
+  const changeTheme = (theme: SystemThemeEnum): void => {
+    settingStore.rememberLocalAppearance()
+    switchThemeStyles(theme)
+  }
 </script>

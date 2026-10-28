@@ -45,12 +45,8 @@
     justify-content: space-between;
     min-width: 0;
     padding: var(--art-space-3) var(--art-section-padding);
-    border-color: color-mix(
-      in srgb,
-      var(--el-color-primary) 12%,
-      var(--art-card-border)
-    ) !important;
-    box-shadow: 0 8px 28px rgb(0 0 0 / 10%) !important;
+    border-color: var(--art-surface-border) !important;
+    box-shadow: var(--art-surface-shadow) !important;
     backdrop-filter: blur(12px);
 
     &.is-embedded {

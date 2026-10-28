@@ -14,6 +14,14 @@ import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 const mode = new URLSearchParams(location.search).get('mode')
+const fixtureParams = new URLSearchParams(location.search)
+if (mode === 'tms-url-safety') {
+  const dark = fixtureParams.get('theme') === 'dark'
+  document.documentElement.classList.toggle('dark', dark)
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+  document.documentElement.dataset.boxMode =
+    fixtureParams.get('box') === 'shadow-mode' ? 'shadow-mode' : 'border-mode'
+}
 const capability = ref<InstanceType<typeof CapabilityCenterDrawer>>()
 const waybill: Api.Tms.Waybill.WaybillDetailRecord = {
   id: 'test-waybill',
@@ -42,10 +50,52 @@ const waybill: Api.Tms.Waybill.WaybillDetailRecord = {
     }
   ]
 }
+const urlSafetyWaybill: Api.Tms.Waybill.WaybillDetailRecord = {
+  ...waybill,
+  pickupPhotos: [
+    'data:image/png;base64,aGVsbG8=',
+    'file:///private/receipt.png',
+    'https://[invalid/receipt.png'
+  ],
+  receiptAttachments: ['/docs/%E7%9B%B8%E5%AF%B9%E9%99%84%E4%BB%B6.pdf?token=relative'],
+  proofs: [
+    {
+      ...waybill.proofs[0],
+      id: 'signed-proof',
+      fileName: '',
+      fileUrl:
+        'https://example.invalid/docs/%E8%A3%85%E8%BD%A6%E8%B5%84%E6%96%99.pdf?token=secret-signature#fragment'
+    },
+    {
+      ...waybill.proofs[0],
+      id: 'named-proof',
+      fileName: '人工文件名.pdf',
+      fileUrl: 'https://example.invalid/docs/ignored-name.pdf?token=keep'
+    },
+    {
+      ...waybill.proofs[0],
+      id: 'signed-image-proof',
+      fileName: '',
+      fileUrl: 'https://example.invalid/docs/signed.png?token=image',
+      mimeType: 'image/png'
+    },
+    {
+      ...waybill.proofs[0],
+      id: 'unsafe-proof',
+      fileName: '',
+      fileUrl: 'javascript:window.__waybillJsExecuted=true',
+      mimeType: 'image/png'
+    }
+  ]
+}
 const app = createApp({
   render: () =>
-    mode === 'tms'
-      ? h('main', { class: 'p-4' }, h(WaybillDocumentPanel, { waybill }))
+    mode === 'tms' || mode === 'tms-url-safety'
+      ? h(
+          'main',
+          { class: 'p-4' },
+          h(WaybillDocumentPanel, { waybill: mode === 'tms' ? waybill : urlSafetyWaybill })
+        )
       : mode === 'capability'
         ? h('main', { class: 'p-4' }, [
             h(

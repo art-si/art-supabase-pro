@@ -1066,6 +1066,8 @@
 </script>
 
 <style scoped lang="scss">
+  @use './workflow-definition-icons' as workflowIcons;
+
   .workflow-designer-page {
     :deep(> .art-async-state) {
       display: grid;
@@ -1256,14 +1258,7 @@
         border-radius: var(--el-border-radius-base);
 
         > span {
-          display: grid;
-          flex: none;
-          place-items: center;
-          width: 34px;
-          height: 34px;
-          color: var(--theme-color);
-          background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
-          border-radius: var(--el-border-radius-base);
+          @include workflowIcons.descriptor;
         }
 
         > div {
@@ -1362,14 +1357,7 @@
         border-radius: var(--el-border-radius-base);
 
         > span {
-          display: grid;
-          place-items: center;
-          width: 38px;
-          height: 38px;
-          font-size: 18px;
-          color: var(--theme-color);
-          background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
-          border-radius: var(--el-border-radius-base);
+          @include workflowIcons.node;
         }
 
         > div {
@@ -1433,14 +1421,7 @@
       min-width: 0;
 
       > span {
-        display: grid;
-        flex: none;
-        place-items: center;
-        width: 34px;
-        height: 34px;
-        color: var(--theme-color);
-        background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
-        border-radius: var(--el-border-radius-base);
+        @include workflowIcons.descriptor;
       }
 
       > div {

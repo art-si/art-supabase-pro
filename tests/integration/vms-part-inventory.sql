@@ -1,5 +1,18 @@
 -- 车辆配件库存、领用归还：真实样例与租户/按钮权限回归；所有临时改动回滚。
 BEGIN;
+
+-- Rollback-only object metadata exercises the secure image reference path.
+-- No real image bytes or persistent attachment are created by this test.
+INSERT INTO storage.objects (bucket_id, name, owner, owner_id, metadata)
+VALUES
+  ('vms-part-private',
+   '7529f951-938e-4e2c-ac0d-316c136ae1f9/ab881b32-87d4-4dce-9014-ce488b8069df/4f0c28aa-dcef-4eee-a422-3ab6563b7cd9.png',
+   'ab881b32-87d4-4dce-9014-ce488b8069df'::uuid,
+   'ab881b32-87d4-4dce-9014-ce488b8069df', '{"mimetype":"image/png"}'::jsonb),
+  ('vms-part-private',
+   '2824c2b5-2774-4781-b995-f55e8bcee920/ab881b32-87d4-4dce-9014-ce488b8069df/4f0c28aa-dcef-4eee-a422-3ab6563b7cd9.png',
+   'ab881b32-87d4-4dce-9014-ce488b8069df'::uuid,
+   'ab881b32-87d4-4dce-9014-ce488b8069df', '{"mimetype":"image/png"}'::jsonb);
 SET LOCAL ROLE authenticated;
 
 DO $test$
@@ -14,6 +27,8 @@ DECLARE
   qa_line uuid;
   trial_issue uuid;
   trial_line uuid;
+  image_path text := '7529f951-938e-4e2c-ac0d-316c136ae1f9/ab881b32-87d4-4dce-9014-ce488b8069df/4f0c28aa-dcef-4eee-a422-3ab6563b7cd9.png';
+  foreign_image_path text := '2824c2b5-2774-4781-b995-f55e8bcee920/ab881b32-87d4-4dce-9014-ce488b8069df/4f0c28aa-dcef-4eee-a422-3ab6563b7cd9.png';
   blocked boolean;
   before_qty numeric;
 BEGIN
@@ -91,6 +106,34 @@ BEGIN
   EXCEPTION WHEN invalid_parameter_value THEN blocked := true;
   END;
   IF NOT blocked THEN RAISE EXCEPTION 'Over-return was accepted'; END IF;
+
+  before_qty := (public.vms_list_part_stock_secure(qa_part)->'records'->0->>'stockQty')::numeric;
+  trial_issue := public.vms_create_part_issue_secure(jsonb_build_object(
+    'vehicle_id','d7670b37-2283-433e-95d2-7315829b0edc',
+    'idempotency_key',gen_random_uuid(),
+    'lines',jsonb_build_array(jsonb_build_object(
+      'part_id',qa_part,'issued_qty',1,'image_path',image_path))));
+  IF public.vms_get_part_issue_secure(trial_issue)->'lines'->0->>'imagePath'<>image_path THEN
+    RAISE EXCEPTION 'Private image path was not serialized into issue detail';
+  END IF;
+  FOREACH image_path IN ARRAY ARRAY[
+    foreign_image_path,
+    '7529f951-938e-4e2c-ac0d-316c136ae1f9/ab881b32-87d4-4dce-9014-ce488b8069df/11111111-2222-4333-8444-555555555555.png'
+  ] LOOP
+    blocked := false;
+    BEGIN
+      PERFORM public.vms_create_part_issue_secure(jsonb_build_object(
+        'vehicle_id','d7670b37-2283-433e-95d2-7315829b0edc',
+        'idempotency_key',gen_random_uuid(),
+        'lines',jsonb_build_array(jsonb_build_object(
+          'part_id',qa_part,'issued_qty',1,'image_path',image_path))));
+    EXCEPTION WHEN invalid_parameter_value THEN blocked := true;
+    END;
+    IF NOT blocked THEN RAISE EXCEPTION 'Invalid or foreign image path was accepted'; END IF;
+  END LOOP;
+  IF (public.vms_list_part_stock_secure(qa_part)->'records'->0->>'stockQty')::numeric<>before_qty-1 THEN
+    RAISE EXCEPTION 'Rejected image path changed stock';
+  END IF;
 
   before_qty := (public.vms_list_part_stock_secure(qa_part)->'records'->0->>'stockQty')::numeric;
   trial_issue := public.vms_create_part_issue_secure(jsonb_build_object(

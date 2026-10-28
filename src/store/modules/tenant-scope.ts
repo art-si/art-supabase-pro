@@ -22,6 +22,7 @@ export const useTenantScopeStore = defineStore(
     const loading = ref(false)
     const loadError = ref<string | null>(null)
     const revision = ref(0)
+    let loadSequence = 0
 
     const userStore = useUserStore()
     const isPlatformScope = computed(() => userStore.isPlatformSuper)
@@ -59,6 +60,8 @@ export const useTenantScopeStore = defineStore(
     const loadTenantOptions = async (force = false): Promise<void> => {
       resetForCurrentUser()
       if (!isPlatformScope.value) {
+        loadSequence += 1
+        loading.value = false
         tenantOptions.value = []
         selectedTenantId.value = userStore.getUserInfo.tenantId ?? null
         writeTenantScopeId(null)
@@ -70,10 +73,22 @@ export const useTenantScopeStore = defineStore(
       writeTenantScopeId(selectedTenantId.value)
       if (tenantOptions.value.length && !force) return
 
+      const sequence = ++loadSequence
+      const ownerId = userStore.getUserInfo.userId
+      const actorTenantId = userStore.getUserInfo.tenantId
+      const isCurrent = () =>
+        sequence === loadSequence &&
+        isPlatformScope.value &&
+        ownerId === userStore.getUserInfo.userId &&
+        actorTenantId === userStore.getUserInfo.tenantId
       loading.value = true
       loadError.value = null
       try {
-        const { data, error } = await fetchTenantList({ status: '1', from: 0, to: 999 })
+        const { data, error } = await fetchTenantList(
+          { status: '1', from: 0, to: 999 },
+          { showErrorMessage: false }
+        )
+        if (!isCurrent()) return
         if (error) throw error
 
         const fetchedTenants = (data ?? []).filter(
@@ -103,9 +118,10 @@ export const useTenantScopeStore = defineStore(
           revision.value += 1
         }
       } catch (error) {
-        loadError.value = getFriendlySupabaseErrorMessage(error, '租户列表加载失败，请重试')
+        if (isCurrent())
+          loadError.value = getFriendlySupabaseErrorMessage(error, '租户列表加载失败，请重试')
       } finally {
-        loading.value = false
+        if (sequence === loadSequence) loading.value = false
       }
     }
 

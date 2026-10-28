@@ -51,6 +51,40 @@
   letter-spacing: 0.08em;
 }
 
+@mixin risk-score-badge {
+  display: grid;
+  flex: 0 0 36px;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  font-weight: 700;
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+  border-radius: 50%;
+}
+
+@mixin metric-icon-badge {
+  display: grid !important;
+  flex: 0 0 38px;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  color: var(--el-color-primary) !important;
+  background: var(--el-color-primary-light-9);
+  border-radius: var(--el-border-radius-base);
+}
+
+@mixin numbered-step-marker {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font-weight: 700;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-radius: 50%;
+}
+
 @mixin capability-item($tone: var(--theme-color)) {
   --ai-capability-color: #{$tone};
 

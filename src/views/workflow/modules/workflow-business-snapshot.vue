@@ -74,17 +74,22 @@
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import OcrOriginalText from '@/components/business/ocr-original-text/index.vue'
-  import { resolveLegacyBusinessPath } from '@/router/business-paths'
-  import { getWorkflowBusinessContract } from './workflow-business-contracts'
+  import {
+    getWorkflowBusinessContract,
+    getWorkflowBusinessSourcePath
+  } from './workflow-business-contracts'
 
   defineOptions({ name: 'WorkflowBusinessSnapshot' })
 
   const props = defineProps<{ snapshot: Api.Workflow.WorkflowBusinessSnapshot }>()
 
-  const sourceRoutePath = computed(() => {
-    const path = props.snapshot.routePath
-    return path ? resolveLegacyBusinessPath(path) || path : undefined
-  })
+  const sourceRoutePath = computed(() =>
+    getWorkflowBusinessSourcePath(
+      props.snapshot.businessType,
+      props.snapshot.businessId,
+      props.snapshot.routePath
+    )
+  )
   const businessContract = computed(() => getWorkflowBusinessContract(props.snapshot.businessType))
   const snapshotSubtitle = computed(() => {
     const parts = [businessContract.value.label]

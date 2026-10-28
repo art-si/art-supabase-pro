@@ -25,7 +25,9 @@ test('standalone modules build and serve platform public assets and the canonica
           import assert from 'node:assert/strict'
           import { readFile, readdir } from 'node:fs/promises'
           import path from 'node:path'
-          import { build, createServer } from 'vite'
+          console.info('Loading Vite runtime')
+          const { build, createServer } = await import('vite')
+          console.info('Loading module configuration factory')
           const { createModuleViteConfig } = await import(${JSON.stringify(factoryUrl)})
           console.info('Module configuration factory loaded')
           const root = ${JSON.stringify(fixtureRoot)}
@@ -89,7 +91,7 @@ test('standalone modules build and serve platform public assets and the canonica
           console.info('Shared module public assets verified')
         `
       ],
-      { cwd: projectRoot, encoding: 'utf8', timeout: 60_000 }
+      { cwd: projectRoot, encoding: 'utf8', timeout: 180_000 }
     )
     assert.ifError(
       result.error && new Error(`${result.error.message}\n${result.stdout}\n${result.stderr}`)

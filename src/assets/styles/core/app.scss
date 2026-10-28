@@ -1,4 +1,6 @@
 // 全局样式
+@use './mixin' as *;
+
 // 顶部进度条颜色
 #nprogress .bar {
   z-index: 2400;
@@ -44,9 +46,8 @@
   filter: invert(80%);
 }
 
-// 主题交互表面随系统主题色与盒子模式切换
-:root,
-[data-box-mode='border-mode'] {
+// 公共页保持原有基础视觉；仅工作区按用途切换表单、表面、浮层与交互阴影。
+:root {
   --art-themed-action-hover-shadow: inset 0 0 0 1px
     color-mix(in srgb, var(--art-action-color, var(--theme-color)) 20%, transparent);
   --art-themed-action-active-shadow: inset 0 0 0 1px
@@ -62,11 +63,33 @@
   --art-layout-surface-shadow: none;
   --art-modal-surface-border: var(--art-card-border);
   --art-modal-surface-shadow: none;
+  --art-control-border: var(--el-border-color);
+  --art-control-focus-border: var(--el-color-primary);
+  --art-control-shadow: inset 0 0 0 1px var(--el-border-color);
+  --art-control-hover-shadow: inset 0 0 0 1px var(--el-border-color-hover);
+  --art-control-focus-shadow: inset 0 0 0 1px var(--el-color-primary);
+  --art-control-disabled-shadow: inset 0 0 0 1px var(--el-disabled-border-color);
+  --art-control-error-shadow: inset 0 0 0 1px var(--el-color-danger);
+  --art-button-shadow: none;
+  --art-button-hover-shadow: none;
+  --art-button-active-shadow: none;
+  --art-list-hover-shadow: none;
+  --art-list-active-shadow: none;
+  --art-floating-border: var(--art-card-border);
+  --art-themed-action-solid-shadow: 0 6px 14px
+    color-mix(in srgb, var(--theme-color) 24%, transparent);
 }
 
-[data-box-mode='shadow-mode'] {
-  --art-themed-action-hover-shadow: 0 5px 14px
-    color-mix(in srgb, var(--art-action-color, var(--theme-color)) 18%, transparent);
+html[data-ui-scope='workspace'][data-box-mode='border-mode'] {
+  --art-surface-border: var(--art-card-border);
+  --art-surface-shadow: none;
+  --art-floating-shadow: none;
+  --art-themed-action-solid-shadow: none;
+}
+
+html[data-ui-scope='workspace'][data-box-mode='shadow-mode'] {
+  --art-themed-action-hover-shadow: 0 3px 10px
+    color-mix(in srgb, var(--art-action-color, var(--theme-color)) 24%, transparent);
   --art-themed-action-active-shadow: 0 2px 8px
     color-mix(in srgb, var(--art-action-color, var(--theme-color)) 22%, transparent);
   --art-themed-action-active-border: transparent;
@@ -75,7 +98,32 @@
     0 6px 16px color-mix(in srgb, var(--art-action-color, var(--theme-color)) 18%, transparent);
   --art-layout-surface-shadow: var(--art-layout-shadow);
   --art-modal-surface-border: transparent;
-  --art-modal-surface-shadow: var(--art-modal-shadow);
+  --art-modal-surface-shadow: var(--art-modal-elevation);
+  --art-surface-border: transparent;
+  --art-surface-shadow: var(--art-card-shadow-sm);
+  --art-floating-border: transparent;
+  --art-floating-shadow: var(--art-floating-elevation);
+  --art-control-border: transparent;
+  --art-control-focus-border: transparent;
+  // 输入面与白色卡片同色时，内侧细线补足顶部和两侧；外层仍由主题投影表达阴影模式。
+  --art-control-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--theme-color) 14%, var(--el-border-color)),
+    var(--art-control-elevation);
+  --art-control-hover-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--theme-color) 30%, var(--el-border-color)),
+    var(--art-control-hover-elevation);
+  --art-control-focus-shadow:
+    inset 0 0 0 1.5px var(--theme-color),
+    0 0 0 2px color-mix(in srgb, var(--theme-color) 10%, transparent),
+    var(--art-control-hover-elevation);
+  --art-control-disabled-shadow: none;
+  --art-control-error-shadow:
+    inset 0 0 0 1.5px var(--el-color-danger), var(--art-control-elevation);
+  --art-button-shadow: var(--art-control-elevation);
+  --art-button-hover-shadow: var(--art-themed-action-hover-shadow);
+  --art-button-active-shadow: var(--art-themed-action-active-shadow);
+  --art-list-hover-shadow: 0 2px 6px color-mix(in srgb, var(--theme-color) 16%, transparent);
+  --art-list-active-shadow: 0 1px 4px color-mix(in srgb, var(--theme-color) 20%, transparent);
 }
 
 // 语言切换选中样式
@@ -128,11 +176,52 @@
 .art-card,
 .art-card-sm,
 .art-card-xs {
-  border: 1px solid var(--art-card-border);
+  @include art-card-base(var(--art-card-border));
+}
+
+// 主数据分组导航共用的“全部分组”入口。
+.art-master-group-all-button {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 18px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--el-text-color-regular);
+  text-align: left;
+  cursor: pointer;
+  background: var(--art-gray-100);
+  border: 1px solid transparent;
+  border-radius: var(--art-surface-radius);
+  transition:
+    background-color var(--art-motion-duration-fast),
+    border-color var(--art-motion-duration-fast),
+    box-shadow var(--art-motion-duration-fast);
+
+  &:hover,
+  &.is-current {
+    background: color-mix(in srgb, var(--theme-color) 9%, var(--default-box-color));
+    border-color: color-mix(in srgb, var(--theme-color) 22%, transparent);
+  }
+
+  &.is-current {
+    box-shadow: inset 3px 0 0 var(--theme-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--theme-color);
+    outline-offset: 2px;
+  }
+
+  > span:first-child {
+    @include business-icon-box;
+  }
 }
 
 // 盒子边框
-[data-box-mode='border-mode'] {
+html[data-ui-scope='workspace'][data-box-mode='border-mode'] {
   .page-content,
   .art-table-card {
     border: 1px solid var(--art-card-border) !important;
@@ -146,10 +235,10 @@
 }
 
 // 盒子阴影
-[data-box-mode='shadow-mode'] {
+html[data-ui-scope='workspace'][data-box-mode='shadow-mode'] {
   .page-content,
   .art-table-card {
-    border: 1px solid var(--art-gray-200) !important;
+    border: 1px solid transparent !important;
     box-shadow: var(--art-card-shadow-xs) !important;
   }
 
@@ -159,11 +248,17 @@
 
   .art-card,
   .art-card-sm {
-    @include art-card-base(var(--art-gray-200), var(--art-card-shadow-sm));
+    @include art-card-base(transparent, var(--art-surface-shadow));
   }
 
   .art-card-xs {
-    @include art-card-base(var(--art-gray-200), var(--art-card-shadow-xs));
+    @include art-card-base(transparent, var(--art-card-shadow-xs));
+  }
+
+  // 弹窗的外框已抬高，内部卡片只保留一层较低的承托。
+  .el-dialog,
+  .el-drawer {
+    --art-surface-shadow: var(--art-card-shadow-xs);
   }
 }
 

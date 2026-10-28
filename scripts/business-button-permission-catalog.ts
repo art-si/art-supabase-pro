@@ -47,7 +47,18 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('Recharge', '充值'),
       button('Consume', '消费'),
       button('Reverse', '冲正'),
+      button('AttachVoucher', '补传现场凭证'),
       button('Export', '导出')
+    ]
+  },
+  {
+    menuName: 'ElectricCardLedger',
+    buttons: [
+      button('View', '查看'),
+      button('Recharge', '充值'),
+      button('Consume', '消费'),
+      button('Reverse', '冲正'),
+      button('AttachVoucher', '补传现场凭证')
     ]
   },
   {
@@ -55,7 +66,8 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     buttons: [
       button('View', '查看公司认证信息', 'TmsCompanyCertification:View'),
       button('Submit', '提交认证申请', 'TmsCompanyCertification:Submit'),
-      button('ViewSensitive', '查看敏感认证附件', 'TmsCompanyCertification:ViewSensitive')
+      button('ViewSensitive', '查看敏感认证附件', 'TmsCompanyCertification:ViewSensitive'),
+      button('Review', '审核认证申请', 'TmsCompanyCertification:Review')
     ]
   },
   {
@@ -482,7 +494,10 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       ...crud({ view: true, import: true, export: true }),
       button('Invite', '邀请司机'),
       button('Ocr', '司机证件识别'),
-      button('UploadDocument', '司机证件上传')
+      button('UploadDocument', '司机证件上传'),
+      button('Audit', '审核司机证件'),
+      button('ConfirmCommission', '确认提成方案'),
+      button('NotifyCommission', '通知提成方案')
     ]
   },
   {

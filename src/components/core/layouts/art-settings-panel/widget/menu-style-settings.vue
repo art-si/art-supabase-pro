@@ -43,6 +43,7 @@
     if (isDualMenu.value || isTopMenu.value || isDark.value) {
       return
     }
+    settingStore.rememberLocalAppearance()
     settingStore.switchMenuStyles(theme)
   }
 </script>

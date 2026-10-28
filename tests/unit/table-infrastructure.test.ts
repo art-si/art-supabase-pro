@@ -208,6 +208,73 @@ test('response adapter handles null and preserves explicit empty lists and total
   })
 })
 
+test('failed list envelopes preserve the original error even when records are present', () => {
+  for (const failure of [
+    new Error('列表暂时无法读取'),
+    { code: '42501', message: 'permission denied' },
+    'temporary failure'
+  ]) {
+    for (const data of [[], [{ id: 'stale' }]]) {
+      assert.throws(
+        () => defaultResponseAdapter({ data, total: data.length, error: failure }),
+        (error: unknown) => error === failure
+      )
+    }
+  }
+})
+
+test('only the selected list envelope owns errors; business record fields remain data', () => {
+  const row = { id: 'audit-row', error: '业务校验结果' }
+  for (const error of [null, undefined, false, '', 0]) {
+    assert.deepEqual(defaultResponseAdapter({ data: [row], total: 1, error }), {
+      records: [row],
+      total: 1
+    })
+  }
+  assert.deepEqual(defaultResponseAdapter([row]), { records: [row], total: 1 })
+  const failure = new Error('内层分页读取失败')
+  assert.throws(
+    () => defaultResponseAdapter({ data: { records: [row], total: 1, error: failure } }),
+    (error: unknown) => error === failure
+  )
+  assert.deepEqual(defaultResponseAdapter({ records: [], data: { error: failure }, total: 0 }), {
+    records: [],
+    total: 0
+  })
+  const outerFailure = new Error('外层请求失败')
+  assert.throws(
+    () => defaultResponseAdapter({ error: outerFailure, data: { rows: [], error: failure } }),
+    (error: unknown) => error === outerFailure
+  )
+})
+
+test('table export rejects nested and custom-adapted failures before returning rows', async () => {
+  const failure = { code: 'PGRST000', message: 'connection unavailable' }
+  for (const response of [
+    { data: { rows: [], total: 0, error: failure } },
+    { data: [{ id: 'must-not-export' }], total: 1, error: failure }
+  ]) {
+    await assert.rejects(
+      loadTableExportRows(async () => response, {}, 1000),
+      (error: unknown) => error === failure
+    )
+  }
+  await assert.rejects(
+    loadTableExportRows(
+      async () => ({ rows: [] }),
+      {},
+      1000,
+      undefined,
+      () => ({
+        records: [{ id: 'must-not-export' }],
+        total: 1,
+        error: failure
+      })
+    ),
+    (error: unknown) => error === failure
+  )
+})
+
 test('nested envelopes use the same field mapping and reject invalid pagination', () => {
   for (const field of ['list', 'data', 'records', 'items', 'result', 'rows']) {
     assert.deepEqual(

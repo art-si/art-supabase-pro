@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>司机证件离线识别合成图片验证</title>
+  </head>
+  <body>
+    <main>
+      <h1>司机证件离线识别合成图片验证</h1>
+      <p>仅使用浏览器生成的模拟文字图片；不包含真实证件，不上传。</p>
+      <button id="run" type="button">运行正反面识别</button>
+      <output id="result" aria-live="polite">等待运行</output>
+      <div id="images"></div>
+    </main>
+    <script type="module" src="./tms-driver-local-ocr.ts"></script>
+  </body>
+</html>
