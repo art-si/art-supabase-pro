@@ -5,7 +5,9 @@ import { ESLint } from 'eslint'
 
 test('standalone HR lint resolves workspace auto imports and still rejects unknown globals', async () => {
   const eslint = new ESLint({
-    cwd: fileURLToPath(new URL('../../modules/art-supabase-hr', import.meta.url))
+    cwd: fileURLToPath(new URL('../../modules/art-supabase-hr', import.meta.url)),
+    // Formatting has its own gate; this contract checks auto-import and unknown globals.
+    overrideConfig: { rules: { 'prettier/prettier': 'off' } }
   })
   const [result] = await eslint.lintText(
     '<script setup lang="ts">\nconst value = ref(1)\nvoid value\nmissingRuntimeSymbol()\n</script>\n',

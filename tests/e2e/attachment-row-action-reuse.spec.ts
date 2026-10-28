@@ -29,6 +29,30 @@ test('公共附件操作遵守移除权限并复用预览入口', async ({ page 
   await expect(actions.getByRole('button')).toHaveCount(2)
 })
 
+test('公共附件行操作对危险地址禁用预览和下载但保留移除', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+  await page.goto('/tests/e2e/fixtures/date-format-reuse.html?unsafeAttachmentActions=true')
+  const actions = page.locator('.business-table-row-actions').first()
+  await expect(actions).toBeVisible()
+  for (const label of ['查看附件', '下载附件']) {
+    const button = actions.getByRole('button', { name: label, exact: true })
+    await expect(button).toBeDisabled()
+    await expect(button).toHaveAttribute('title', /附件地址不可用/)
+    await button.focus()
+    await page.keyboard.press('Enter')
+  }
+  await page.getByRole('button', { name: '切换附件编辑权限' }).click()
+  await expect(actions.getByRole('button', { name: '移除附件', exact: true })).toBeEnabled()
+  expect(
+    await page.evaluate(() =>
+      Boolean((window as Window & { __unsafeExecuted?: boolean }).__unsafeExecuted)
+    )
+  ).toBe(false)
+  await expect(page.locator('.el-message')).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath('invalid-row-actions.png') })
+})
+
 for (const [name, rpc] of [
   ['accident', 'vms_get_vehicle_accident_secure'],
   ['maintenance', 'vms_get_vehicle_maintenance_secure'],

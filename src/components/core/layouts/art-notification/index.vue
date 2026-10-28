@@ -372,7 +372,8 @@
     width: 380px;
     height: min(540px, calc(100vh - 82px));
     overflow: hidden;
-    box-shadow: 0 16px 40px rgb(15 23 42 / 16%) !important;
+    border-color: var(--art-floating-border) !important;
+    box-shadow: var(--art-floating-shadow) !important;
     opacity: 0;
     transform: translateY(-8px) scale(0.98);
     transform-origin: top right;

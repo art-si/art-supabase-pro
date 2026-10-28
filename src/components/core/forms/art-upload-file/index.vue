@@ -94,8 +94,16 @@
             :class="{ 'art-upload-file__spinner': file.status === 'uploading' }"
             aria-hidden="true"
           />
-          <ArtAttachmentLink v-if="file.url" :file="getFileTarget(file)" />
-          <span v-else class="art-upload-file__pending-name">{{ file.name }}</span>
+          <div class="min-w-0 flex-1">
+            <ArtAttachmentLink v-if="file.url" :file="getFileTarget(file)" />
+            <span v-else class="art-upload-file__pending-name block">{{ file.name }}</span>
+            <p
+              v-if="file.url && !getFileTarget(file).url"
+              class="m-0 text-xs leading-relaxed break-words whitespace-normal text-[var(--el-text-color-regular)]"
+            >
+              附件地址不可用，请重新上传或联系提供者
+            </p>
+          </div>
         </div>
 
         <div class="art-upload-file__actions">
@@ -103,14 +111,16 @@
             class="art-upload-file__action"
             icon="ri:download-2-line"
             label="下载附件"
-            :disabled="!file.url"
+            :disabled="!getFileTarget(file).url"
+            :title="getFileTarget(file).url ? '下载附件' : '附件地址不可用，请重新上传或联系提供者'"
             @click.stop="handleDownload(file)"
           />
           <ArtIconButton
             class="art-upload-file__action"
             icon="ri:eye-line"
             label="查看附件"
-            :disabled="!file.url"
+            :disabled="!getFileTarget(file).url"
+            :title="getFileTarget(file).url ? '查看附件' : '附件地址不可用，请重新上传或联系提供者'"
             @click.stop="handlePreview(file)"
           />
           <ArtIconButton
@@ -152,12 +162,17 @@
   import type { Resource } from '@/components/core/forms/art-resource-picker/type'
   import {
     normalizeUploadModelUrls,
-    shouldSyncUploadFileList,
-    getSafeUploadDisplayName
+    shouldSyncUploadFileList
   } from '@/components/core/forms/upload-model-utils'
+  import { getAttachmentDisplayName } from '@/utils/file/attachment'
   import ArtAttachmentLink from '@/components/core/media/art-file-viewer/attachment-link.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
-  import { downloadAttachment, getFileExtension, viewAttachment } from '@/utils/file'
+  import {
+    downloadAttachment,
+    getFileExtension,
+    resolveFileActionUrl,
+    viewAttachment
+  } from '@/utils/file'
   import { isAcceptedFileType } from '@/utils/file/accept'
   import { formatSize } from '@/utils/file/format-size'
   import { createNamedClipboardFile, getClipboardFiles } from '@/utils/file/clipboard'
@@ -219,8 +234,9 @@
   const fileList = ref<UploadUserFile[]>([])
   const lastSyncedModelUrls = ref<string[]>([])
   const uploadRef = ref<UploadInstance>()
-  const activeUploads = ref(0)
-  const uploading = computed(() => activeUploads.value > 0)
+  const uploadTenants = reactive(new Map<number, string>())
+  onScopeDispose(() => uploadTenants.clear())
+  const uploading = computed(() => uploadTenants.size > 0)
   const resourcePickerVisible = ref(false)
   const tenantScopeStore = useTenantScopeStore()
   const missingTenantTarget = computed(
@@ -249,13 +265,19 @@
   })
 
   watch(
-    () => [props.modelValue, props.fileName] as const,
-    ([value, fileName]) => {
-      if (shouldSyncUploadFileList(value, lastSyncedModelUrls.value)) {
+    () => [props.modelValue, props.fileName, props.resourceTenantId] as const,
+    ([value, fileName, tenantId], previous) => {
+      const targetChanged = previous?.[2] !== undefined && tenantId !== previous[2]
+      if (targetChanged) {
+        resourcePickerVisible.value = false
+      }
+      if (targetChanged || shouldSyncUploadFileList(value, lastSyncedModelUrls.value)) {
+        uploadTenants.clear()
+        uploadRef.value?.abort()
         const urls = normalizeUploadModelUrls(value)
         lastSyncedModelUrls.value = urls
         fileList.value = urls.map((url) => ({
-          name: getSafeUploadDisplayName(url),
+          name: getAttachmentDisplayName(url),
           url
         }))
       }
@@ -288,13 +310,9 @@
   }
 
   const handleUpload = async (options: UploadRequestOptions): Promise<unknown> => {
-    activeUploads.value += 1
-    try {
-      return await (props.uploadRequest?.(options.file) ??
-        uploadAttachment(options.file, { targetTenantId: props.resourceTenantId || undefined }))
-    } finally {
-      activeUploads.value -= 1
-    }
+    uploadTenants.set(options.file.uid, props.resourceTenantId)
+    return await (props.uploadRequest?.(options.file) ??
+      uploadAttachment(options.file, { targetTenantId: props.resourceTenantId || undefined }))
   }
 
   const handlePasteFiles = async (event: ClipboardEvent): Promise<void> => {
@@ -329,6 +347,11 @@
   }
 
   const handleSuccess = (response: unknown, uploadFile: UploadFile): void => {
+    const tenantId = uploadTenants.get(uploadFile.uid)
+    uploadTenants.delete(uploadFile.uid)
+    if (tenantId === undefined || tenantId !== props.resourceTenantId) return
+    const target = fileList.value.find((file) => file.uid === uploadFile.uid)
+    if (!target) return
     const resource = Array.isArray(response)
       ? (response[0] as Api.DataCenter.Resources.ResourceListItem | undefined)
       : undefined
@@ -338,11 +361,13 @@
       return
     }
 
-    const target = fileList.value.find((file) => file.uid === uploadFile.uid)
-    if (target) {
-      target.url = resource.url
-      target.name = resource.originName || uploadFile.name
+    if (tenantId && resource.tenantId && resource.tenantId !== tenantId) {
+      uploadFile.status = 'fail'
+      handleError(new Error('附件所属租户不一致，请重新上传'))
+      return
     }
+    target.url = resource.url
+    target.name = resource.originName || uploadFile.name
     updateModelValue()
     emit('resource-change', [resource])
     emit('upload-success', resource, uploadFile)
@@ -400,7 +425,7 @@
 
   const getFileTarget = (file: UploadUserFile) => ({
     name: file.name,
-    url: file.url,
+    url: resolveFileActionUrl(file.url, window.location.href) ?? undefined,
     fileType: getFileExtension(file.name)
   })
 
@@ -422,6 +447,7 @@
         (Boolean(file.url) && item.url === file.url)
     )
     if (fileIndex < 0) return
+    if (file.uid !== undefined) uploadTenants.delete(file.uid)
     fileList.value.splice(fileIndex, 1)
     updateModelValue()
   }
@@ -430,7 +456,12 @@
     ElMessage.warning(`当前最多只能上传 ${props.limit} 个文件`)
   }
 
-  const handleError = (error?: unknown): void => {
+  const handleError = (error?: unknown, uploadFile?: UploadFile): void => {
+    if (uploadFile) {
+      const tenantId = uploadTenants.get(uploadFile.uid)
+      uploadTenants.delete(uploadFile.uid)
+      if (tenantId === undefined || tenantId !== props.resourceTenantId) return
+    }
     clearEventOnlyUploadsIfSettled()
     ElMessage.error(getFriendlySupabaseErrorMessage(error, '附件上传失败，请重试'))
   }

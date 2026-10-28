@@ -90,9 +90,11 @@ const normalizeTableResponse = <T>(response: unknown, inferTotal: boolean): ApiR
   }
 
   const outer = response
+  if (outer.error) throw outer.error
   const direct = extractRecords<T>(outer)
   const nested = isPlainObjectRecord(outer.data) ? outer.data : undefined
   const source = direct === undefined && nested ? nested : outer
+  if (source !== outer && source.error) throw source.error
   const records = direct ?? extractRecords<T>(source) ?? []
   const sources = source === outer ? [outer] : [source, outer]
   if (!inferTotal) {

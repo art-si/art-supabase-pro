@@ -133,6 +133,32 @@
   justify-content: flex-end;
 }
 
+:deep(.art-table-query__command-bar) {
+  flex-shrink: 0;
+}
+
+.art-table-query :deep(.art-table-query__error-state) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  min-height: 0;
+  padding-block: var(--art-space-3);
+  overflow: auto;
+}
+
+.art-table-query :deep(.art-table-query__error-state .art-empty-state__visual) {
+  flex-shrink: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.art-table-query :deep(.art-table-query__error-state .art-empty-state__copy),
+.art-table-query :deep(.art-table-query__error-state .art-empty-state__action) {
+  flex-shrink: 0;
+}
+
 :deep(.art-table-query__command-bar.has-tools) {
   min-height: 44px;
 }

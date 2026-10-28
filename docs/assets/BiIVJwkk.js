@@ -1,1 +1,0 @@
-function e(e,t){let n=e.indexOf(t);return n<0&&(n=e.findIndex(e=>e.url===t.url&&e.name===t.name&&e.fileType===t.fileType&&e.fileSize===t.fileSize)),n<0&&t.url&&(n=e.findIndex(e=>e.url===t.url)),e.filter((e,t)=>t!==n)}export{e as t};

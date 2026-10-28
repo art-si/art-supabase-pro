@@ -2,7 +2,10 @@
   <article class="recent-orders art-card-xs">
     <header
       ><div><p>最新业务</p><h2>最近订单</h2></div
-      ><button type="button" @click="emit('view-orders')"
+      ><button
+        type="button"
+        class="art-icon-label art-icon-label--compact"
+        @click="emit('view-orders')"
         >全部订单 <ElIcon><ArrowRight /></ElIcon></button
     ></header>
     <div class="recent-orders__head"
@@ -75,6 +78,8 @@
 </script>
 
 <style scoped lang="scss">
+  @use './dashboard-card-link' as cardLink;
+
   .recent-orders {
     position: relative;
     min-width: 0;
@@ -103,28 +108,7 @@
       justify-content: space-between;
 
       button {
-        display: inline-flex;
-        gap: 2px;
-        align-items: center;
-        padding: 7px 10px;
-        font-size: 11px;
-        color: var(--el-color-primary);
-        touch-action: manipulation;
-        cursor: pointer;
-        background: color-mix(in srgb, var(--el-color-primary) 8%, transparent);
-        border: 0;
-        border-radius: 999px;
-        transition:
-          color 0.18s ease,
-          background-color 0.18s ease;
-
-        &:hover,
-        &:focus-visible {
-          color: var(--el-color-primary-dark-2);
-          outline: 2px solid color-mix(in srgb, var(--theme-color) 38%, transparent);
-          outline-offset: 2px;
-          background: color-mix(in srgb, var(--el-color-primary) 13%, transparent);
-        }
+        @include cardLink.button;
       }
     }
 

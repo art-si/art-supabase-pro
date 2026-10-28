@@ -184,7 +184,7 @@
                     {{ $t('topBar.guide.menu') }} </span
                   >{{ $t('topBar.guide.description') }}
                 </p>
-                <ElButton size="small" type="primary" link @click="settingStore.hideSettingGuide()">
+                <ElButton size="small" type="primary" link @click="dismissSettingGuide">
                   知道了
                 </ElButton>
               </div>
@@ -316,7 +316,13 @@
    * 切换菜单显示/隐藏状态
    */
   const visibleMenu = (): void => {
+    settingStore.rememberLocalAppearance()
     settingStore.setMenuOpen(!menuOpen.value)
+  }
+
+  const dismissSettingGuide = (): void => {
+    settingStore.rememberLocalAppearance()
+    settingStore.hideSettingGuide()
   }
 
   const { homePath, refresh } = useCommon()

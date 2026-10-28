@@ -61,6 +61,7 @@ useUserStore(store).setDictMap({
   tmsReimbursementApprovalStatus: fixtureDict([['approved', '已审核']])
 })
 const limited = new URLSearchParams(location.search).has('limited')
+const raceControls = new URLSearchParams(location.search).has('race')
 const fixturePage = new URLSearchParams(location.search).get('page')
 useMenuStore(store).setButtonList(
   (limited
@@ -142,7 +143,33 @@ const app = createApp({
         class: 'art-page-view min-h-screen p-4',
         style: { background: 'var(--el-bg-color-page)' }
       },
-      [h(RouterView)]
+      [
+        ...(raceControls
+          ? [
+              h(
+                'button',
+                {
+                  onClick: () =>
+                    void router.push(
+                      '/tms/driver-query/detail/11111111-1111-4111-8111-111111111402'
+                    )
+                },
+                '测试切换司机乙'
+              ),
+              h(
+                'button',
+                {
+                  onClick: () =>
+                    void router.push(
+                      '/tms/driver-query/detail/11111111-1111-4111-8111-111111111401'
+                    )
+                },
+                '测试切换司机甲'
+              )
+            ]
+          : []),
+        h(RouterView)
+      ]
     )
 })
 app.use(store)

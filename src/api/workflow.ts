@@ -131,6 +131,15 @@ export async function fetchWorkflowUserOptions(
       Api.Workflow.WorkflowUserOption,
       { from?: number; to?: number }
     >(({ from = 0, to = 499 }) => {
+      if (params.tenantId) {
+        return responseHandle<Api.Workflow.WorkflowUserOption[]>(
+          () =>
+            supabase
+              .rpc('list_workflow_user_options_secure', { p_tenant_id: params.tenantId })
+              .range(from, to),
+          { showErrorMessage: options.showErrorMessage ?? true }
+        )
+      }
       let query = supabase
         .from('sys_user')
         .select('id,user_name,nick_name,user_email,avatar', { count: 'exact' })

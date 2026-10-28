@@ -13,8 +13,8 @@
         transparent 29%
       ),
       color-mix(in srgb, var(--default-bg-color) 92%, transparent) !important;
-    border-left: 1px solid color-mix(in srgb, var(--theme-color) 12%, var(--art-card-border));
-    box-shadow: -22px 0 70px rgb(28 33 62 / 15%) !important;
+    border-left: 1px solid var(--art-modal-surface-border);
+    box-shadow: var(--art-modal-surface-shadow) !important;
 
     @include backdropBlur();
 
@@ -314,8 +314,6 @@
   .el-drawer {
     background:
       radial-gradient(circle at 100% 0, rgb(99 91 255 / 13%), transparent 29%), rgb(17 18 27 / 94%) !important;
-    border-left-color: rgb(255 255 255 / 9%);
-    box-shadow: -22px 0 70px rgb(0 0 0 / 38%) !important;
   }
 }
 

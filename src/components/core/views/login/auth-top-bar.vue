@@ -120,6 +120,7 @@
 
   const changeThemeColor = (color: string) => {
     if (systemThemeColor.value === color) return
+    settingStore.rememberLocalAppearance()
     settingStore.setElementTheme(color)
     settingStore.reload()
   }

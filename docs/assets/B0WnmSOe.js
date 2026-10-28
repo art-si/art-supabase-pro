@@ -1,0 +1,1 @@
+import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./DK7bAJzp.js";var i=e({name:`MesDefectReasons`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{"initial-tab":`reasons`}))}});export{i as default};

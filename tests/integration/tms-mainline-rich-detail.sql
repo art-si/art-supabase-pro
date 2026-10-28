@@ -143,6 +143,108 @@ BEGIN
 END;
 $test$;
 
+DO $return_leg$
+DECLARE
+  qa_tenant uuid := '7529f951-938e-4e2c-ac0d-316c136ae1f9';
+  other_tenant uuid := '2824c2b5-2774-4781-b995-f55e8bcee920';
+  qa_orders uuid[] := ARRAY[
+    '981ddaae-11fe-415c-886a-28e2f4ec0057'::uuid,
+    '277fc509-2431-46a2-97e9-0ff7e5e64157'::uuid
+  ];
+  platform_result jsonb;
+  ordinary_result jsonb;
+  non_return_order uuid;
+  non_return_waybill uuid;
+  row_count integer;
+BEGIN
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"sub":"0a872664-874c-447d-a256-d0dbdca6ed45","role":"authenticated"}',
+    true
+  );
+  PERFORM set_config('request.headers', '{}', true);
+  platform_result := public.tms_list_transport_mainline_relations_secure(
+    qa_orders, NULL, NULL, 0, 99
+  );
+  SELECT count(*) INTO row_count
+  FROM jsonb_array_elements(platform_result->'records') row_data
+  WHERE row_data->>'waybillId' IN (
+    'a57530d2-b6d7-43e7-89f6-048a32a5891f',
+    '0364abd7-1f25-44e1-adcd-de363bd69a54'
+  )
+    AND row_data->>'tenantId' = qa_tenant::text
+    AND row_data->>'executionKind' = 'single'
+    AND row_data->>'hasReturnLeg' = 'true';
+  IF row_count <> 2 THEN
+    RAISE EXCEPTION 'Two QA return legs were not displayed on their parent mainline rows';
+  END IF;
+
+  SELECT w.order_id, w.id INTO non_return_order, non_return_waybill
+  FROM public.tms_waybill w
+  WHERE w.tenant_id = qa_tenant AND w.order_id IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM public.tms_waybill_leg l
+      WHERE l.tenant_id = w.tenant_id
+        AND l.waybill_id = w.id AND l.leg_kind = 'return'
+    )
+  ORDER BY w.id LIMIT 1;
+  IF non_return_waybill IS NULL THEN RAISE EXCEPTION 'Non-return QA waybill unavailable'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM jsonb_array_elements(
+      public.tms_list_transport_mainline_relations_secure(
+        ARRAY[non_return_order], NULL, NULL, 0, 99
+      )->'records'
+    ) row_data
+    WHERE row_data->>'waybillId' = non_return_waybill::text
+      AND row_data->>'hasReturnLeg' = 'false'
+  ) THEN
+    RAISE EXCEPTION 'Non-return waybill was labelled as return cargo';
+  END IF;
+
+  PERFORM set_config(
+    'request.headers', jsonb_build_object('x-art-tenant-scope', qa_tenant)::text, true
+  );
+  IF public.tms_list_transport_mainline_relations_secure(
+    qa_orders, NULL, NULL, 0, 99
+  ) IS DISTINCT FROM platform_result THEN
+    RAISE EXCEPTION 'Platform selected tenant changed return labels';
+  END IF;
+  PERFORM set_config(
+    'request.headers', jsonb_build_object('x-art-tenant-scope', other_tenant)::text, true
+  );
+  IF (public.tms_list_transport_mainline_relations_secure(
+    qa_orders, NULL, NULL, 0, 99
+  )->>'total')::integer <> 0 THEN
+    RAISE EXCEPTION 'Platform selected tenant leaked return labels';
+  END IF;
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"sub":"ab881b32-87d4-4dce-9014-ce488b8069df","role":"authenticated"}',
+    true
+  );
+  PERFORM set_config('request.headers', '{}', true);
+  ordinary_result := public.tms_list_transport_mainline_relations_secure(
+    qa_orders, NULL, NULL, 0, 99
+  );
+  SELECT count(*) INTO row_count
+  FROM jsonb_array_elements(ordinary_result->'records') row_data
+  WHERE row_data->>'waybillId' IN (
+    'a57530d2-b6d7-43e7-89f6-048a32a5891f',
+    '0364abd7-1f25-44e1-adcd-de363bd69a54'
+  ) AND row_data->>'hasReturnLeg' = 'true';
+  IF row_count <> 2 THEN RAISE EXCEPTION 'Ordinary own return labels missing'; END IF;
+  PERFORM set_config(
+    'request.headers', jsonb_build_object('x-art-tenant-scope', other_tenant)::text, true
+  );
+  IF public.tms_list_transport_mainline_relations_secure(
+    qa_orders, NULL, NULL, 0, 99
+  ) IS DISTINCT FROM ordinary_result THEN
+    RAISE EXCEPTION 'Forged ordinary tenant header changed return labels';
+  END IF;
+END;
+$return_leg$;
+
 DO $restricted$
 DECLARE
   platform_auth uuid;
@@ -205,6 +307,7 @@ BEGIN
      OR probe_record->>'detailsAvailable' IS DISTINCT FROM 'false'
      OR probe_record ? 'shippingAddress'
      OR probe_record ? 'orderCreatedAt'
+     OR probe_record ? 'hasReturnLeg'
      OR probe_record ? 'orderTotalFee' THEN
     RAISE EXCEPTION 'Vehicle-only role saw rich order fields';
   END IF;

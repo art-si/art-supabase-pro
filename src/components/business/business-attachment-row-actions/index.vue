@@ -1,10 +1,18 @@
 <template>
   <BusinessTableRowActions>
-    <ArtIconButton icon="ri:eye-line" label="查看附件" @click="viewAttachment(file)" />
+    <ArtIconButton
+      icon="ri:eye-line"
+      label="查看附件"
+      :disabled="!actionUrl"
+      :title="actionUrl ? '查看附件' : '附件地址不可用，请重新上传或联系提供者'"
+      @click="viewAttachment(file)"
+    />
     <ArtIconButton
       v-if="download"
       icon="ri:download-2-line"
       label="下载附件"
+      :disabled="!actionUrl"
+      :title="actionUrl ? '下载附件' : '附件地址不可用，请重新上传或联系提供者'"
       @click="downloadAttachment(file)"
     />
     <ArtIconButton
@@ -21,10 +29,10 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import type { FilePreviewTarget } from '@/hooks/core/useFilePreview'
-  import { downloadAttachment, viewAttachment } from '@/utils/file'
+  import { downloadAttachment, resolveFileActionUrl, viewAttachment } from '@/utils/file'
 
   defineOptions({ name: 'BusinessAttachmentRowActions' })
-  withDefaults(
+  const props = withDefaults(
     defineProps<{
       file: FilePreviewTarget
       download?: boolean
@@ -33,5 +41,6 @@
     }>(),
     { download: true, removable: false, removeLabel: '移除附件' }
   )
+  const actionUrl = computed(() => resolveFileActionUrl(props.file.url, window.location.href))
   const emit = defineEmits<{ remove: [] }>()
 </script>

@@ -13,7 +13,7 @@ test('local OCR extracts only visible synthetic identity fields despite Chinese 
   assert.equal(result.document.gender, '男')
   assert.equal(result.document.ethnicity, '汉')
   assert.equal(result.document.birthDate, '1990-01-01')
-  assert.equal(result.document.idCardValidTo, null)
+  assert.equal(result.document.idCardValidTo, undefined)
   assert.match(result.summary, /本地离线识别/)
 })
 
@@ -38,4 +38,21 @@ test('license and qualification fields stay within their own document type', () 
   assert.equal(qualification.document.qualificationNo, 'ABC123')
   assert.equal(qualification.document.qualificationValidTo, '2029-05-08')
   assert.equal(qualification.document.licenseArchiveNo, undefined)
+})
+
+test('identity OCR only fills fields visible on the selected card side', () => {
+  const text =
+    '姓名:测试司机甲\n身份证号:110101199001010011\n签发机关:北京市公安局\n有效期限:2020-01-01 至 2030-01-01'
+  const front = parseLocalDriverDocumentOcr(text, 'idCardFrontUrl', 0.9)
+  const back = parseLocalDriverDocumentOcr(text, 'idCardBackUrl', 0.9)
+
+  assert.equal(front.document.driverName, '测试司机甲')
+  assert.equal(front.document.idCardNo, '110101199001010011')
+  assert.equal(front.document.idCardIssuer, undefined)
+  assert.equal(front.document.idCardValidTo, undefined)
+  assert.equal(back.document.driverName, undefined)
+  assert.equal(back.document.idCardNo, undefined)
+  assert.equal(back.document.idCardIssuer, '北京市公安局')
+  assert.equal(back.document.idCardValidFrom, '2020-01-01')
+  assert.equal(back.document.idCardValidTo, '2030-01-01')
 })

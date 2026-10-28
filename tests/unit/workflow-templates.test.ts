@@ -4,7 +4,10 @@ import {
   createWorkflowTemplateDraft,
   workflowTemplates
 } from '../../src/views/workflow/definition/modules/workflow-templates'
-import { getWorkflowBusinessContract } from '../../src/views/workflow/modules/workflow-business-contracts'
+import {
+  getWorkflowBusinessContract,
+  getWorkflowBusinessSourcePath
+} from '../../src/views/workflow/modules/workflow-business-contracts'
 
 test('workflow templates only expose fields from registered business contracts', () => {
   for (const template of workflowTemplates) {
@@ -24,6 +27,34 @@ test('travel approval registers authoritative itinerary fields and locates its s
   const route = new URL(contract.routePath('application/1?'), 'https://example.test')
   assert.equal(route.pathname, '/fms/everyone-expense/travel-application')
   assert.equal(route.searchParams.get('applicationId'), 'application/1?')
+})
+
+test('approval snapshot source links use the current business route over a saved legacy route', () => {
+  const vehicleId = 'vehicle-001'
+  assert.equal(
+    getWorkflowBusinessSourcePath(
+      'vehicle_archive',
+      vehicleId,
+      `/vms/archive-manage/vehicle-archive-detail/${vehicleId}`
+    ),
+    `/vms/vehicle-archive-detail/${vehicleId}`
+  )
+  assert.equal(
+    getWorkflowBusinessSourcePath(
+      'tms_invoice',
+      'invoice-001',
+      '/tms-transportation/finance-center/invoice-management'
+    ),
+    '/fms/settlement/invoice-management'
+  )
+  assert.equal(
+    getWorkflowBusinessSourcePath(
+      'unregistered_type',
+      'unknown-001',
+      '/vehicle-manage-system/vehicle-query'
+    ),
+    '/vms/vehicle-query'
+  )
 })
 
 test('workflow template drafts are isolated and fail closed by default', () => {

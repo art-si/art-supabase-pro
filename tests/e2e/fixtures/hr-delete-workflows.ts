@@ -10,6 +10,7 @@ import EmployeeRosterPage from '../../../modules/art-supabase-hr/src/views/perso
 import CompliancePage from '../../../modules/art-supabase-hr/src/views/personnel/compliance/index.vue'
 import HrWorkspacePage from '../../../modules/art-supabase-hr/src/views/shared/hr-workspace-page.vue'
 import PerformancePage from '../../../modules/art-supabase-hr/src/views/talent/performance/index.vue'
+import LifecyclePage from '../../../modules/art-supabase-hr/src/views/personnel/lifecycle/index.vue'
 import RecruitmentPage from '../../../modules/art-supabase-hr/src/views/recruitment/workbench/index.vue'
 import GlobalReferenceFeedback from '@/components/business/master-data-delete-guard/global-reference-feedback.vue'
 import { mittBus } from '@/utils/sys'
@@ -26,6 +27,7 @@ const router = createRouter({
     { path: '/hr/personnel/compliance', name: 'HrCompliance', component: {} },
     { path: '/hr/talent/development', name: 'HrDevelopment', component: {} },
     { path: '/hr/talent/performance', name: 'HrPerformance', component: {} },
+    { path: '/hr/personnel/lifecycle', name: 'HrLifecycle', component: {} },
     { path: '/hr/recruitment/workbench', name: 'HrRecruitment', component: {} },
     { path: '/hr/personnel/position', name: 'HrPosition', component: {} }
   ]
@@ -73,9 +75,11 @@ const app = createApp({
                   ? CompliancePage
                   : router.currentRoute.value.path === '/hr/talent/performance'
                     ? PerformancePage
-                    : router.currentRoute.value.path === '/hr/recruitment/workbench'
-                      ? RecruitmentPage
-                      : PositionPage
+                    : router.currentRoute.value.path === '/hr/personnel/lifecycle'
+                      ? LifecyclePage
+                      : router.currentRoute.value.path === '/hr/recruitment/workbench'
+                        ? RecruitmentPage
+                        : PositionPage
             ),
         referenceContext.value
           ? h(GlobalReferenceFeedback, { context: referenceContext.value })
@@ -121,35 +125,37 @@ if (locationMode)
 await router.push(
   new URLSearchParams(location.search).get('page') === 'performance'
     ? '/hr/talent/performance'
-    : new URLSearchParams(location.search).get('page') === 'workspace'
-      ? '/hr/talent/development'
-      : new URLSearchParams(location.search).get('page') === 'compliance'
-        ? {
-            path: '/hr/personnel/compliance',
-            query: {
-              fromMasterDelete: '1',
-              dependencyCode:
-                new URLSearchParams(location.search).get('entity') === 'qualification'
-                  ? 'hr_employee_qualification'
-                  : 'hr_employee_contract',
-              recordId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
-              recordNo:
-                new URLSearchParams(location.search).get('entity') === 'qualification'
-                  ? 'QUAL-001'
-                  : 'CONTRACT-001'
-            }
-          }
-        : new URLSearchParams(location.search).get('page') === 'employee'
+    : new URLSearchParams(location.search).get('page') === 'lifecycle'
+      ? '/hr/personnel/lifecycle'
+      : new URLSearchParams(location.search).get('page') === 'workspace'
+        ? '/hr/talent/development'
+        : new URLSearchParams(location.search).get('page') === 'compliance'
           ? {
-              path: '/hr/personnel/employee-roster',
-              query: locationMode
-                ? {
-                    fromMasterDelete: '1',
-                    recordId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
-                  }
-                : {}
+              path: '/hr/personnel/compliance',
+              query: {
+                fromMasterDelete: '1',
+                dependencyCode:
+                  new URLSearchParams(location.search).get('entity') === 'qualification'
+                    ? 'hr_employee_qualification'
+                    : 'hr_employee_contract',
+                recordId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+                recordNo:
+                  new URLSearchParams(location.search).get('entity') === 'qualification'
+                    ? 'QUAL-001'
+                    : 'CONTRACT-001'
+              }
             }
-          : '/hr/personnel/position'
+          : new URLSearchParams(location.search).get('page') === 'employee'
+            ? {
+                path: '/hr/personnel/employee-roster',
+                query: locationMode
+                  ? {
+                      fromMasterDelete: '1',
+                      recordId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
+                    }
+                  : {}
+              }
+            : '/hr/personnel/position'
 )
 await router.isReady()
 app.mount('#hr-delete-workflows')

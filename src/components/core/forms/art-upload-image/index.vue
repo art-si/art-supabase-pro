@@ -29,6 +29,7 @@
     </div>
   </div>
   <el-upload
+    ref="uploadRef"
     v-else
     v-model:file-list="fileList"
     class="art-upload"
@@ -146,6 +147,7 @@
     ElImageViewer,
     UploadUserFile,
     UploadRequestOptions,
+    type UploadInstance,
     type UploadFile
   } from 'element-plus'
   import ArtResourcePicker from '@/components/core/forms/art-resource-picker/index.vue'
@@ -153,9 +155,9 @@
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import {
     normalizeUploadModelUrls,
-    shouldSyncUploadFileList,
-    getSafeUploadDisplayName
+    shouldSyncUploadFileList
   } from '@/components/core/forms/upload-model-utils'
+  import { getAttachmentDisplayName } from '@/utils/file/attachment'
   import ResourceListItem = Api.DataCenter.Resources.ResourceListItem
   import { uploadAttachment } from '@/api/attachments'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
@@ -258,16 +260,26 @@
 
   const fileList = ref<UploadUserFile[]>([])
   const lastSyncedModelUrls = ref<string[]>([])
+  const uploadRef = ref<UploadInstance>()
+  const uploadTenants = new Map<number, string>()
+  onScopeDispose(() => uploadTenants.clear())
 
   watch(
-    () => modelValue,
-    (val: string | string[] | null) => {
-      if (!shouldSyncUploadFileList(val, lastSyncedModelUrls.value)) return
+    () => [modelValue, resourceTenantId] as const,
+    ([val, tenantId], previous) => {
+      const targetChanged = previous?.[1] !== undefined && tenantId !== previous[1]
+      if (targetChanged) {
+        isOpenResource.value = false
+        previewVisible.value = false
+      }
+      if (!targetChanged && !shouldSyncUploadFileList(val, lastSyncedModelUrls.value)) return
 
+      uploadTenants.clear()
+      uploadRef.value?.abort()
       const nextUrls = normalizeUploadModelUrls(val)
       lastSyncedModelUrls.value = nextUrls
       fileList.value = nextUrls.map((url) => ({
-        name: title || getSafeUploadDisplayName(url, '图片'),
+        name: title || getAttachmentDisplayName(url, '图片'),
         url
       }))
     },
@@ -288,6 +300,11 @@
   }
 
   function handleSuccess(res: unknown, uploadFile: UploadFile) {
+    const tenantId = uploadTenants.get(uploadFile.uid)
+    uploadTenants.delete(uploadFile.uid)
+    if (tenantId === undefined || tenantId !== resourceTenantId) return
+    const index = fileList.value.findIndex((item) => item.uid === uploadFile.uid)
+    if (index === -1) return
     const resource = Array.isArray(res)
       ? (res[0] as Api.DataCenter.Resources.ResourceListItem | undefined)
       : undefined
@@ -297,8 +314,11 @@
       return
     }
 
-    const index = fileList.value.findIndex((item) => item.uid === uploadFile.uid)
-    if (index === -1) return
+    if (tenantId && resource.tenantId && resource.tenantId !== tenantId) {
+      uploadFile.status = 'fail'
+      handleError(new Error('图片所属租户不一致，请重新上传'))
+      return
+    }
 
     fileList.value[index].name = resource.originName ?? uploadFile.name
     fileList.value[index].url = resource.url
@@ -325,7 +345,12 @@
     ElMessage.warning(`当前最多只能上传 ${effectiveLimit.value} 张图片`)
   }
 
-  function handleError(error?: unknown) {
+  function handleError(error?: unknown, uploadFile?: UploadFile) {
+    if (uploadFile) {
+      const tenantId = uploadTenants.get(uploadFile.uid)
+      uploadTenants.delete(uploadFile.uid)
+      if (tenantId === undefined || tenantId !== resourceTenantId) return
+    }
     ElMessage.error(getErrorMessage(error))
   }
 
@@ -338,6 +363,8 @@
 
   const handleRemove = (index: number) => {
     if (readonly || uploadDisabled.value) return
+    const uid = fileList.value[index]?.uid
+    if (uid !== undefined) uploadTenants.delete(uid)
     fileList.value.splice(index, 1)
     updateModelValue()
   }
@@ -378,6 +405,7 @@
   }
 
   const handleUpload = async (options: UploadRequestOptions): Promise<unknown> => {
+    uploadTenants.set(options.file.uid, resourceTenantId)
     return await (uploadRequest?.(options.file) ??
       uploadAttachment(options.file, { targetTenantId: resourceTenantId || undefined }))
   }

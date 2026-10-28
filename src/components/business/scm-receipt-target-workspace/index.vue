@@ -251,7 +251,6 @@
     detailLine?: ScmReceiptTargetListLine
     detailGroupStart?: boolean
   }
-  const visibleRows = ref<ReceiptTargetListRow[]>([])
   const lineProperties = new Set([
     'detailLineNo',
     'detailMaterialCode',
@@ -271,7 +270,12 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as ReceiptTargetListRow[] | undefined) ?? [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   const detailRef = ref<ArtDrawerExpose<ScmReceiptTargetDocument>>()
@@ -501,7 +505,6 @@
       return result
     }
     if (displayMode.value === 'document') {
-      visibleRows.value = []
       return fetchDocuments(pageQuery)
     }
     const documents = await loadAllDocumentPages(fetchDocuments, pageQuery)
@@ -521,7 +524,6 @@
       (line) => line.id
     )
     const result = { ...paginateDetailRows(rows, pageQuery.from, pageQuery.to), error: null }
-    visibleRows.value = result.data
     return result
   }
   let detailGeneration = 0

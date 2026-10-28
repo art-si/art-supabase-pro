@@ -324,7 +324,6 @@
   void userStore.ensureDictLoaded('wmsInitialStockCondition')
   const tableRef = ref<ArtTableQueryExpose>()
   const displayMode = ref<'document' | 'line'>('document')
-  const visibleRows = ref<WmsPurchaseListRow[]>([])
   const lineProperties = new Set([
     'projectName',
     'materialCode',
@@ -361,7 +360,12 @@
     column: { property?: string }
   }) {
     return displayMode.value === 'line'
-      ? documentGroupSpan(visibleRows.value, rowIndex, column.property, lineProperties)
+      ? documentGroupSpan(
+          (tableRef.value?.dataState.rows.value as WmsPurchaseListRow[] | undefined) ?? [],
+          rowIndex,
+          column.property,
+          lineProperties
+        )
       : ([1, 1] as [number, number])
   }
   const drawerRef = ref<InstanceType<typeof WmsPurchaseDocumentDrawer>>()
@@ -634,11 +638,8 @@
         const data = await loadAllLinePages(fetchPage, query)
         return { data, total: data.length }
       }
-      const result = await fetchPage(query)
-      if (requestSequence === locationRequestSequence) visibleRows.value = result.data
-      return result
+      return fetchPage(query)
     }
-    if (!exportAll) visibleRows.value = []
     let documentTotal: number | undefined
     let expectedDocumentCount: number | undefined
     let matchingDocumentIds: Set<string> | null = null

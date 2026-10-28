@@ -1,0 +1,1 @@
+import{c as e,u as t}from"./PMWgq9j0.js";var n={onClick:e,disabled:e=>!t(e.url,window.location.href),title:e=>t(e.url,window.location.href)?`预览${e.name?.trim()||`附件`}`:`附件地址不可用，请重新上传或联系提供者`};export{n as t};

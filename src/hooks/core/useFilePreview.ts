@@ -1,3 +1,5 @@
+import { resolveFileActionUrl } from '@/utils/file/url'
+
 export interface FilePreviewTarget {
   url?: string
   name?: string
@@ -9,7 +11,8 @@ interface StoredFilePreview {
   expiresAt: number
 }
 
-type FilePreviewOpenResult = 'opened' | 'missing-url' | 'blocked' | 'storage-unavailable'
+type FilePreviewOpenResult =
+  'opened' | 'missing-url' | 'invalid-url' | 'blocked' | 'storage-unavailable'
 
 const STORAGE_PREFIX = 'art-file-preview:'
 const PREVIEW_TTL = 30 * 60 * 1000
@@ -41,7 +44,9 @@ const parseStoredFilePreview = (value: string | null): StoredFilePreview | undef
   if (!value) return undefined
   try {
     const parsed: unknown = JSON.parse(value)
-    return isStoredFilePreview(parsed) ? parsed : undefined
+    if (!isStoredFilePreview(parsed)) return undefined
+    const url = resolveFileActionUrl(parsed.file.url, window.location.href)
+    return url ? { ...parsed, file: { ...parsed.file, url } } : undefined
   } catch {
     return undefined
   }
@@ -70,7 +75,9 @@ const createPreviewKey = (): string => {
 }
 
 export const openFilePreview = (file: FilePreviewTarget): FilePreviewOpenResult => {
-  if (!file.url?.trim()) return 'missing-url'
+  if (file.url == null || (typeof file.url === 'string' && !file.url.trim())) return 'missing-url'
+  const url = resolveFileActionUrl(file.url, window.location.href)
+  if (!url) return 'invalid-url'
 
   const key = createPreviewKey()
   const storageKey = `${STORAGE_PREFIX}${key}`
@@ -80,7 +87,7 @@ export const openFilePreview = (file: FilePreviewTarget): FilePreviewOpenResult 
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        file: { ...file },
+        file: { ...file, url },
         expiresAt: Date.now() + PREVIEW_TTL
       } satisfies StoredFilePreview)
     )

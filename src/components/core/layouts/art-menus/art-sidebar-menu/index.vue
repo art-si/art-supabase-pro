@@ -303,6 +303,7 @@
    * 切换菜单显示/隐藏
    */
   const toggleMenuVisibility = (): void => {
+    settingStore.rememberLocalAppearance()
     settingStore.setMenuOpen(!menuOpen.value)
 
     // 移动端模态框控制逻辑
@@ -331,6 +332,7 @@
    * 切换双列菜单模式
    */
   const toggleDualMenuMode = (): void => {
+    settingStore.rememberLocalAppearance()
     settingStore.setDualMenuShowText(!dualMenuShowText.value)
   }
 

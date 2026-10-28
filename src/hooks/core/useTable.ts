@@ -35,6 +35,7 @@ import {
 } from '../../utils/table/table-utils'
 import { tableConfig } from '../../utils/table/table-config'
 import type { ApiRequestOptions } from '@/types/api/request'
+import { isPlainObjectRecord } from '@/utils/type-guards'
 
 // 类型推导工具类型
 // useTable 需要保留任意业务 API 的参数/响应推导能力，动态边界集中在这一处。
@@ -372,8 +373,10 @@ function useTableImpl<TApiFn extends AnyTableApiFn, TRecord>(
         throw new Error('请求已取消')
       }
 
+      if (isPlainObjectRecord(response) && response.error) throw response.error
       // 使用响应适配器转换为标准格式
       const standardResponse = responseAdapter(response)
+      if (standardResponse.error) throw standardResponse.error
 
       // 处理响应数据
       let tableData = extractTableData(standardResponse)

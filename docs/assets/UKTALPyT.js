@@ -1,1 +1,0 @@
-import{Yt as e,hn as t,zt as n}from"./D1G0yLle.js";import{t as r}from"./oHUKZC1o.js";var i=e({__name:`index`,setup(e){return(e,i)=>(t(),n(r,{kind:`patrol`,mode:`report`}))}});export{i as default};

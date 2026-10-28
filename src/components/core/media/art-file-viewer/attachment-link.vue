@@ -2,8 +2,13 @@
   <ElLink
     class="art-attachment-link"
     type="primary"
-    :href="file.url || '#'"
-    :title="file.url ? `预览 ${displayName}` : `${displayName}（无可用地址）`"
+    :href="actionUrl || undefined"
+    :disabled="!actionUrl"
+    :tabindex="actionUrl ? 0 : -1"
+    :aria-disabled="!actionUrl || undefined"
+    :title="
+      actionUrl ? `预览 ${displayName}` : `${displayName}（附件地址不可用，请重新上传或联系提供者）`
+    "
     underline="never"
     @click.prevent.stop="handlePreview"
   >
@@ -14,7 +19,7 @@
 <script setup lang="ts">
   import { ElLink } from 'element-plus'
   import type { FilePreviewTarget } from '@/hooks/core/useFilePreview'
-  import { viewAttachment } from '@/utils/file'
+  import { resolveFileActionUrl, viewAttachment } from '@/utils/file'
 
   defineOptions({ name: 'ArtAttachmentLink' })
 
@@ -23,9 +28,11 @@
   }>()
 
   const displayName = computed(() => props.file.name?.trim() || '未命名附件')
+  const actionUrl = computed(() => resolveFileActionUrl(props.file.url, window.location.href))
 
   const handlePreview = (): void => {
-    viewAttachment(props.file)
+    if (!actionUrl.value) return
+    viewAttachment({ ...props.file, url: actionUrl.value })
   }
 </script>
 

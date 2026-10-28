@@ -77,7 +77,11 @@ INSERT INTO storage.objects(bucket_id,name,owner_id,owner,metadata) VALUES
 SELECT set_config('storage.operation','object.sign',true);
 DO $read$
 BEGIN
-  IF (SELECT count(*) FROM storage.objects WHERE bucket_id IN ('vms-vehicle-private','vms-trailer-private'))<>4
+  IF (SELECT count(*) FROM storage.objects
+      WHERE (bucket_id,name) IN (
+        ('vms-vehicle-private','7529f951-938e-4e2c-ac0d-316c136ae1f9/ab881b32-87d4-4dce-9014-ce488b8069df/34f44960-d3ea-4e88-893e-f0eb9ec8910a.png'),
+        ('vms-trailer-private','7529f951-938e-4e2c-ac0d-316c136ae1f9/ab881b32-87d4-4dce-9014-ce488b8069df/34f44960-d3ea-4e88-893e-f0eb9ec8910b.png')
+      ))<>2
   THEN RAISE EXCEPTION 'Authenticated private image upload/sign denied'; END IF;
 END;
 $read$;

@@ -28,7 +28,7 @@
         $slots.header ||
         options.headerIcon ||
         hasSubtitle ||
-        (formCount && options.showFormFocusButton) ||
+        options.showFormFocusButton ||
         options.showFullscreenButton ||
         showCloseButton
       "
@@ -77,11 +77,7 @@
           </div>
         </div>
         <div
-          v-if="
-            options.showFullscreenButton ||
-            (formCount && options.showFormFocusButton) ||
-            showCloseButton
-          "
+          v-if="options.showFullscreenButton || options.showFormFocusButton || showCloseButton"
           class="art-drawer__header-actions"
         >
           <ArtIconButton
@@ -92,9 +88,9 @@
             @click.stop="toggleFullscreen"
           />
           <ArtIconButton
-            v-if="formCount && options.showFormFocusButton"
+            v-if="options.showFormFocusButton"
             :icon="isFocusMode ? 'ri:focus-2-line' : 'ri:focus-3-line'"
-            :label="isFocusMode ? '退出专注填单' : '进入专注填单'"
+            :label="focusButtonLabel"
             :aria-pressed="isFocusMode"
             @click="toggleFocusMode"
           />
@@ -254,13 +250,19 @@
   const scrollbarRef = shallowRef<ScrollbarInstance>()
   const contentRef = ref<HTMLElement>()
   const formCount = ref(0)
+  const hadFormInSession = ref(false)
   const isFocusMode = ref(false)
   const wasFullscreenBeforeFocus = ref(false)
+  const focusButtonLabel = computed(() => {
+    const mode = formCount.value || hadFormInSession.value ? '专注填单' : '专注模式'
+    return `${isFocusMode.value ? '退出' : '进入'}${mode}`
+  })
 
   provide(artFormFocusKey, {
     focusMode: readonly(isFocusMode),
     registerForm: () => {
       formCount.value += 1
+      hadFormInSession.value = true
       return () => {
         formCount.value = Math.max(0, formCount.value - 1)
       }
@@ -523,6 +525,7 @@
       emit('focus-change', false)
     }
     wasFullscreenBeforeFocus.value = false
+    hadFormInSession.value = false
     overlay.handleClosed()
     emit('closed')
   }

@@ -1,1 +1,0 @@
-function e(e,t){try{let n=new URL(e,t);return n.protocol===`http:`||n.protocol===`https:`?n.href:null}catch{return null}}export{e as t};

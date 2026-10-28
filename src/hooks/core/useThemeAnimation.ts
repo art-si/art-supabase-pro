@@ -17,6 +17,7 @@ export function useThemeAnimation(): (event: MouseEvent) => void {
     refresh()
   }
   return (event) => {
+    settings.rememberLocalAppearance()
     if (
       window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
       event.detail === 0 ||

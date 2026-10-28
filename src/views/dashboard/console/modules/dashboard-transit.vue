@@ -2,7 +2,7 @@
   <article class="dashboard-transit art-card-xs">
     <header>
       <div><p>调度中心</p><h2>实时运输</h2></div>
-      <button type="button" @click="emit('monitor')"
+      <button type="button" class="art-icon-label art-icon-label--compact" @click="emit('monitor')"
         >在途监控 <ElIcon><ArrowRight /></ElIcon
       ></button>
     </header>
@@ -51,6 +51,8 @@
 </script>
 
 <style scoped lang="scss">
+  @use './dashboard-card-link' as cardLink;
+
   .dashboard-transit {
     position: relative;
     min-width: 0;
@@ -79,28 +81,7 @@
       justify-content: space-between;
 
       button {
-        display: inline-flex;
-        gap: 2px;
-        align-items: center;
-        padding: 7px 10px;
-        font-size: 11px;
-        color: var(--el-color-primary);
-        touch-action: manipulation;
-        cursor: pointer;
-        background: color-mix(in srgb, var(--el-color-primary) 8%, transparent);
-        border: 0;
-        border-radius: 999px;
-        transition:
-          color 0.18s ease,
-          background-color 0.18s ease;
-
-        &:hover,
-        &:focus-visible {
-          color: var(--el-color-primary-dark-2);
-          outline: 2px solid color-mix(in srgb, var(--theme-color) 38%, transparent);
-          outline-offset: 2px;
-          background: color-mix(in srgb, var(--el-color-primary) 13%, transparent);
-        }
+        @include cardLink.button;
       }
     }
 

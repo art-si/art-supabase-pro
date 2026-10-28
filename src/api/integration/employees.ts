@@ -2,6 +2,8 @@ import { buildSupabaseRpcRange } from '@/utils/supabase'
 import { normalizeNullableText } from '@/utils/form/normalize'
 import { useSupabase } from '@/hooks/core/useSupabase'
 import type { RunQueryOptions } from '@/hooks/core/useSupabase'
+import type { ApiRequestOptions } from '@/types/api/request'
+import { withRequestOptions } from '@/api/providers/supabase/query'
 
 /** 跨应用可依赖的员工只读数据契约。 */
 export interface EmployeeIntegrationItem {
@@ -99,17 +101,20 @@ export function createEmployeeReferenceSelector(
  */
 export async function fetchEmployeeSelectorList(
   params: EmployeeSelectorContractParams = {},
-  options: Pick<RunQueryOptions, 'showErrorMessage'> = {}
+  options: ApiRequestOptions & Pick<RunQueryOptions, 'showErrorMessage'> = {}
 ): Promise<EmployeeSelectorContractResult> {
   const { tenantId, keyword, from = 0, to = 9 } = params
   const range = buildSupabaseRpcRange(from, to)
   const result = await responseHandle<EmployeeSelectorContractPayload>(
     () =>
-      supabase.rpc('hr_list_employee_selector_secure', {
-        ...range,
-        p_tenant_id: tenantId || null,
-        p_keyword: normalizeNullableText(keyword)
-      }),
+      withRequestOptions(
+        supabase.rpc('hr_list_employee_selector_secure', {
+          ...range,
+          p_tenant_id: tenantId || null,
+          p_keyword: normalizeNullableText(keyword)
+        }),
+        options
+      ),
     { showErrorMessage: options.showErrorMessage ?? true }
   )
 

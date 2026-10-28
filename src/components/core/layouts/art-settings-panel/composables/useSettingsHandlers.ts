@@ -35,6 +35,7 @@ export function useSettingsHandlers() {
   // 通用切换处理器
   const createToggleHandler = (storeMethod: () => void, callback?: () => void) => {
     return () => {
+      settingStore.rememberLocalAppearance()
       storeMethod()
       callback?.()
     }
@@ -47,6 +48,7 @@ export function useSettingsHandlers() {
   ) => {
     return (value: T) => {
       if (value !== undefined && value !== null) {
+        settingStore.rememberLocalAppearance()
         storeMethod(value)
         callback?.(value)
       }
@@ -135,6 +137,7 @@ export function useSettingsHandlers() {
         return
       }
 
+      settingStore.rememberLocalAppearance()
       settingStore.setBorderMode()
     }
   }
@@ -143,6 +146,7 @@ export function useSettingsHandlers() {
   const colorHandlers = {
     // 选择主题色
     selectColor: (theme: string) => {
+      settingStore.rememberLocalAppearance()
       settingStore.setElementTheme(theme)
       settingStore.reload()
     }
@@ -152,6 +156,7 @@ export function useSettingsHandlers() {
   const containerHandlers = {
     // 设置容器宽度
     setWidth: (type: ContainerWidthEnum) => {
+      settingStore.rememberLocalAppearance()
       settingStore.setContainerWidth(type)
       settingStore.reload()
     }

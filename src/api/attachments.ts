@@ -1,5 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { calcFileHash, formatSize } from '@/utils/file'
+import { getFileExtension } from '@/utils/file/attachment'
 import { useUserStore } from '@/store/modules/user'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { resolveTenantWriteTargetId } from '@/utils/tenant-scope-context'
@@ -111,8 +112,8 @@ export async function uploadAttachment(
     if (existed) return existed
 
     // 3️⃣ 路径
-    const suffix = file.name.split('.').pop() || ''
-    const objectName = `${hash}.${suffix}`
+    const suffix = getFileExtension(file.name)
+    const objectName = suffix ? `${hash}.${suffix}` : hash
     // Storage 对象按租户隔离，避免不同租户上传相同内容哈希时争用同一路径。
     const storagePath = `${targetTenantId}/${dayjs().format('YYYY/MM/DD')}`
     const fullPath = `${storagePath}/${objectName}`

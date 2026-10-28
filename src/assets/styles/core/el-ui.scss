@@ -1000,3 +1000,230 @@ html.dark .el-card {
   color: var(--el-color-white);
   background-color: #32343a;
 }
+
+// 工作区组件外观：public/auth 不参与模式覆盖，Teleport 浮层从 html 继承。
+html[data-ui-scope='workspace'] {
+  // 表单是低层静态表面；hover、focus 与校验状态分别有自己的阴影。
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-textarea__inner {
+    border-color: var(--art-control-border) !important;
+    box-shadow: var(--art-control-shadow) !important;
+
+    &:hover {
+      box-shadow: var(--art-control-hover-shadow) !important;
+    }
+  }
+
+  .el-input__wrapper.is-focus,
+  .el-select__wrapper.is-focused,
+  .el-textarea__inner:focus,
+  .el-range-editor.is-active {
+    border-color: var(--art-control-focus-border) !important;
+    box-shadow: var(--art-control-focus-shadow) !important;
+  }
+
+  .el-form-item.is-error {
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-textarea__inner {
+      border-color: var(--el-color-danger) !important;
+      box-shadow: var(--art-control-error-shadow) !important;
+    }
+  }
+
+  .el-input.is-disabled .el-input__wrapper,
+  .el-select__wrapper.is-disabled,
+  .el-textarea.is-disabled .el-textarea__inner,
+  .el-range-editor.is-disabled {
+    border-color: var(--art-control-border) !important;
+    box-shadow: var(--art-control-disabled-shadow) !important;
+  }
+
+  // 编辑表格的单元格会裁切外投影，控件在单元格内用内侧轮廓保持边界清晰。
+  &[data-box-mode='shadow-mode'] .el-table__body td.el-table__cell {
+    --art-control-shadow: inset 0 0 0 1px
+      color-mix(in srgb, var(--theme-color) 18%, var(--el-border-color));
+    --art-control-hover-shadow: inset 0 0 0 1px
+      color-mix(in srgb, var(--theme-color) 36%, var(--el-border-color));
+    --art-control-focus-shadow: inset 0 0 0 1.5px var(--theme-color);
+    --art-control-disabled-shadow: inset 0 0 0 1px var(--el-disabled-border-color);
+    --art-control-error-shadow: inset 0 0 0 1.5px var(--el-color-danger);
+  }
+
+  // ArtTable 的行内校验不依赖 ElFormItem，错误态变量需盖过普通及焦点控件。
+  .art-table__cell-content.is-validation-error {
+    --art-control-shadow: inset 0 0 0 1.5px var(--el-color-danger);
+    --art-control-hover-shadow: var(--art-control-shadow);
+    --art-control-focus-shadow: var(--art-control-shadow);
+  }
+
+  // 按钮保留类型与尺寸；文字链接及组合控件接缝不增加独立表面。
+  .el-button:not(.is-link, .is-text, .el-button--text) {
+    box-shadow: var(--art-button-shadow);
+
+    &:hover:not(:disabled) {
+      box-shadow: var(--art-button-hover-shadow);
+    }
+
+    &:active:not(:disabled) {
+      box-shadow: var(--art-button-active-shadow);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--art-themed-action-focus-shadow);
+    }
+
+    &:disabled {
+      box-shadow: none;
+    }
+  }
+
+  .el-button-group > .el-button {
+    --art-button-shadow: none;
+    --art-button-hover-shadow: none;
+    --art-button-active-shadow: none;
+  }
+
+  &[data-box-mode='shadow-mode']
+    .el-button:not(.is-link, .is-text, .el-button--text, .el-button-group > .el-button) {
+    border-color: transparent;
+  }
+
+  &[data-box-mode='shadow-mode'] {
+    .el-dropdown-menu__item:hover:not(.is-disabled),
+    .el-select-dropdown__item.is-hovering:not(.is-disabled),
+    .el-select-dropdown__item:hover:not(.is-disabled),
+    .el-tree-select__popper .el-tree-node__content:hover,
+    .el-cascader__dropdown .el-cascader-node:hover:not(.is-disabled),
+    .menu-right .menu-item:hover:not(:disabled),
+    .submenu-list .menu-item:hover:not(:disabled) {
+      background-color: color-mix(
+        in srgb,
+        var(--theme-color) 7%,
+        var(--default-box-color)
+      ) !important;
+    }
+  }
+
+  .el-input-group__prepend,
+  .el-input-group__append {
+    border-color: var(--art-control-border);
+  }
+
+  .el-pagination {
+    .btn-prev,
+    .btn-next,
+    .el-pager li {
+      box-shadow: var(--art-control-shadow);
+
+      &:hover:not(:disabled, .is-disabled, .is-active) {
+        box-shadow: var(--art-themed-action-hover-shadow);
+      }
+
+      &:focus-visible {
+        box-shadow: var(--art-themed-action-focus-shadow);
+      }
+    }
+  }
+
+  .el-card,
+  .art-section-card,
+  .art-entity-summary {
+    border-color: var(--art-surface-border) !important;
+    box-shadow: var(--art-surface-shadow) !important;
+  }
+
+  // 浮层只在最外框投影，内层列表不叠出第二圈阴影。
+  .el-popper,
+  .el-picker-panel,
+  .el-time-panel,
+  .el-time-range-picker,
+  .el-cascader-panel,
+  .el-message,
+  .el-notification,
+  .menu-right,
+  .submenu-list {
+    border-color: var(--art-floating-border) !important;
+    box-shadow: var(--art-floating-shadow) !important;
+  }
+
+  .el-popper {
+    > .el-picker-panel,
+    > .el-time-panel,
+    > .el-time-range-picker,
+    > .el-cascader-panel,
+    > .el-select-dropdown,
+    .el-picker-panel .el-time-panel,
+    .el-picker-panel .el-time-range-picker {
+      border-color: transparent !important;
+      box-shadow: none !important;
+    }
+  }
+
+  .el-dialog,
+  .el-drawer,
+  .el-message-box {
+    border-color: var(--art-modal-surface-border) !important;
+    box-shadow: var(--art-modal-surface-shadow) !important;
+  }
+
+  .el-dialog.is-fullscreen {
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  // 列表选项与图标动作共用交互层级，不使用表单的静态投影。
+  .el-menu-item,
+  .el-sub-menu__title,
+  .el-dropdown-menu__item,
+  .el-select-dropdown__item,
+  .el-tree-node__content,
+  .el-cascader-node,
+  .menu-item,
+  .art-tiptap-toolbar-button,
+  .el-dialog__close,
+  .el-drawer__close-btn,
+  .el-message-box__close {
+    &:hover:not(.is-disabled, :disabled) {
+      box-shadow: var(--art-list-hover-shadow) !important;
+    }
+
+    &:active:not(.is-disabled, :disabled) {
+      box-shadow: var(--art-list-active-shadow) !important;
+    }
+
+    &:focus-visible {
+      box-shadow: var(--art-themed-action-focus-shadow) !important;
+    }
+  }
+
+  .el-tree-node:focus-visible > .el-tree-node__content {
+    box-shadow: var(--art-themed-action-focus-shadow) !important;
+  }
+
+  .application-switcher,
+  .tenant-scope-switcher,
+  .art-header-bar__search,
+  .business-workspace-focus-toggle {
+    border-color: var(--art-control-border);
+    box-shadow: var(--art-control-shadow);
+
+    &:hover {
+      box-shadow: var(--art-themed-action-hover-shadow);
+    }
+
+    &:focus-visible {
+      box-shadow: var(--art-themed-action-focus-shadow);
+    }
+  }
+
+  .art-icon-button--solid {
+    box-shadow: var(--art-themed-action-solid-shadow);
+
+    &:focus-visible {
+      box-shadow: var(--art-themed-action-focus-shadow);
+    }
+  }
+}

@@ -117,6 +117,37 @@ begin
     or jsonb_array_length(v_report->'records')<>2 then
     raise exception 'Return gross profit report did not aggregate approved facts: %',v_report->'summary';
   end if;
+
+  -- Approved amounts must obey the same read scope as the planned return leg.
+  perform set_config('request.headers',
+    '{"x-art-tenant-scope":"6675a0d6-3ff6-4ab7-bb09-232d85ae96ad"}',true);
+  begin
+    perform public.tms_get_return_trip_summary_secure(
+      'a9fc0006-1023-4620-9220-000000000007');
+    raise exception 'Platform-selected tenant read another tenant actuals';
+  exception when insufficient_privilege then null;
+  end;
+  perform set_config('request.jwt.claims',
+    '{"sub":"ab881b32-87d4-4dce-9014-ce488b8069df","role":"authenticated"}',true);
+  perform set_config('request.headers','{}',true);
+  v_summary:=public.tms_get_return_trip_summary_secure(
+    'a9fc0006-1023-4620-9220-000000000007');
+  if (v_summary->>'returnActualGrossProfit')::numeric<>2100 then
+    raise exception 'Ordinary own-tenant approved actuals unavailable';
+  end if;
+  perform set_config('request.headers',
+    '{"x-art-tenant-scope":"6675a0d6-3ff6-4ab7-bb09-232d85ae96ad"}',true);
+  v_summary:=public.tms_get_return_trip_summary_secure(
+    'a9fc0006-1023-4620-9220-000000000007');
+  if (v_summary->>'returnActualGrossProfit')::numeric<>2100 then
+    raise exception 'Forged tenant header changed ordinary approved actuals';
+  end if;
+  begin
+    perform public.tms_get_return_trip_summary_secure(
+      'f9600000-0000-4000-8000-000000000001');
+    raise exception 'Ordinary user read cross-tenant actuals';
+  exception when insufficient_privilege then null;
+  end;
 end $check$;
 select w.waybill_no,public.tms_get_return_trip_summary_secure(w.id)->>'returnActualRevenue' actual_revenue,public.tms_get_return_trip_summary_secure(w.id)->>'returnActualCost' actual_cost,public.tms_get_return_trip_summary_secure(w.id)->>'returnActualGrossProfit' actual_profit,public.tms_get_return_trip_summary_secure(w.id)->>'returnAllocatedToll' shared_allocated,public.tms_get_return_trip_summary_secure(w.id)->>'actualAccountingStatus' status from public.tms_waybill w where w.id in ('a9fc0006-1023-4620-9220-000000000007','a9fc0006-1023-4620-9220-000000000008') order by w.waybill_no;
 rollback;

@@ -631,7 +631,7 @@
       background: var(--default-box-color);
       border: 1px solid var(--el-border-color-lighter);
       border-radius: 50%;
-      box-shadow: 0 10px 28px rgb(31 35 48 / 10%);
+      box-shadow: var(--art-surface-shadow);
 
       :deep(.el-avatar) {
         font-size: 24px;
@@ -804,7 +804,7 @@
         background: var(--default-box-color);
         border: 1px solid var(--el-color-primary-light-7);
         border-radius: var(--custom-radius);
-        box-shadow: 0 8px 24px color-mix(in srgb, var(--el-color-primary) 13%, transparent);
+        box-shadow: var(--art-surface-shadow);
       }
 
       > div {

@@ -509,3 +509,31 @@ test('窄容器关联栏下移，专注填单隐藏辅助栏且保留输入', as
   await expect(summary).toHaveValue('窄屏专注填写保留内容')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
+
+test('桌面专注填单仅收缩关联布局而不改变弹窗网格', async ({ page }, info) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mock(page)
+  await page.goto('/tests/e2e/fixtures/voucher-related.html')
+  await page.getByRole('button', { name: '编辑凭证1', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: '编辑凭证 · 转-202610-001', exact: true })
+  const grid = editor.locator('.voucher-related-layout__grid')
+  const aside = editor.getByRole('complementary', { name: '凭证关联信息', exact: true })
+  const columns = () =>
+    grid.evaluate(
+      (element) =>
+        getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length
+    )
+  await expect(aside).toBeVisible()
+  expect(await columns()).toBe(2)
+  await editor.getByRole('button', { name: '进入专注填单', exact: true }).click()
+  await expect(aside).toBeHidden()
+  expect(await columns()).toBe(1)
+  await captureBusinessEvidence(editor, { path: info.outputPath('voucher-desktop-focus.png') })
+  await editor.getByRole('button', { name: '退出专注填单', exact: true }).click()
+  await expect(aside).toBeVisible()
+  expect(await columns()).toBe(2)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect(pageErrors).toEqual([])
+})

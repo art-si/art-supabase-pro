@@ -1,50 +1,14 @@
-// 应用布局使用的 Sass 混合宏。
+// 应用共用的 Sass 混合宏。
 
-// 主数据分组导航的“全部分组”入口：同一选中、悬停和键盘焦点契约。
-@mixin master-group-all-button {
+// 业务导航与范围提示共用的 36px 图标框。
+@mixin business-icon-box {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 18px;
-  gap: 10px;
-  align-items: center;
-  width: 100%;
-  min-height: 58px;
-  padding: 8px 10px;
-  font: inherit;
-  color: var(--el-text-color-regular);
-  text-align: left;
-  cursor: pointer;
-  background: var(--art-gray-100);
-  border: 1px solid transparent;
-  border-radius: var(--art-surface-radius);
-  transition:
-    background-color var(--art-motion-duration-fast),
-    border-color var(--art-motion-duration-fast),
-    box-shadow var(--art-motion-duration-fast);
-
-  &:hover,
-  &.is-current {
-    background: color-mix(in srgb, var(--theme-color) 9%, var(--default-box-color));
-    border-color: color-mix(in srgb, var(--theme-color) 22%, transparent);
-  }
-
-  &.is-current {
-    box-shadow: inset 3px 0 0 var(--theme-color);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--theme-color);
-    outline-offset: 2px;
-  }
-
-  > span:first-child {
-    display: grid;
-    place-items: center;
-    width: 36px;
-    height: 36px;
-    color: var(--theme-color);
-    background: var(--default-box-color);
-    border-radius: var(--el-border-radius-base);
-  }
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  color: var(--theme-color);
+  background: var(--default-box-color);
+  border-radius: var(--el-border-radius-base);
 }
 
 // 编辑表格的插槽内容应按列宽排布，避免内联包装层压缩下拉框。

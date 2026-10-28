@@ -621,6 +621,7 @@
   import type { ArtTiptapEditorFeature, ArtTiptapEditorProps, ArtTiptapMediaKind } from './types'
   import { ArtAudio, ArtFileAttachment, ArtVideo } from './media-extensions'
   import { isAcceptedFileType } from '@/utils/file/accept'
+  import { getAttachmentNameFromUrl } from '@/utils/file/attachment'
   import { normalizeEditorUrl } from './utils'
 
   defineOptions({ name: 'ArtTiptapEditor' })
@@ -1070,7 +1071,12 @@
   ) => {
     const url = normalizeMediaUrl(value.url, label)
     if (!url) return
-    runCommand(() => insertMediaNode(kind, { url, name: value.name }))
+    runCommand(() =>
+      insertMediaNode(kind, {
+        url,
+        name: kind === 'file' ? value.name || getAttachmentNameFromUrl(url) : value.name
+      })
+    )
   }
 
   const insertImageUrl = (value: { url: string; name?: string }) =>
@@ -1080,14 +1086,7 @@
   const insertAudioUrl = (value: { url: string; name?: string }) =>
     insertMediaUrl('audio', value, '音频')
   const insertFileUrl = (value: { url: string; name?: string }) =>
-    insertMediaUrl(
-      'file',
-      {
-        ...value,
-        name: value.name || decodeURIComponent(value.url.split('/').pop()?.split('?')[0] || '附件')
-      },
-      '附件'
-    )
+    insertMediaUrl('file', value, '附件')
 
   const getMediaKind = (
     value: Pick<File, 'name' | 'type'> | { name?: string; type?: string }

@@ -1138,6 +1138,8 @@
 </script>
 
 <style scoped lang="scss">
+  @use './workflow-definition-icons' as workflowIcons;
+
   .workflow-canvas-editor {
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr);
@@ -1366,14 +1368,7 @@
     }
 
     &__node-icon {
-      display: grid;
-      place-items: center;
-      width: 38px;
-      height: 38px;
-      font-size: 18px;
-      color: var(--theme-color);
-      background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
-      border-radius: var(--el-border-radius-base);
+      @include workflowIcons.node;
     }
 
     &__node-copy {
@@ -1549,14 +1544,7 @@
         border-bottom: 1px solid var(--art-gray-200);
 
         > span {
-          display: grid;
-          flex: none;
-          place-items: center;
-          width: 34px;
-          height: 34px;
-          color: var(--theme-color);
-          background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
-          border-radius: var(--el-border-radius-base);
+          @include workflowIcons.descriptor;
         }
 
         > div {

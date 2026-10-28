@@ -74,9 +74,29 @@ for (const scenario of [
         total_amount: 1
       }))
     }))
+    await page.route('**/rest/v1/rpc/scm_purchase_line_progress_secure', (route) => {
+      const { p_document_ids: documentIds } = route.request().postDataJSON() as {
+        p_document_ids: string[]
+      }
+      return route.fulfill({
+        json: documentIds.flatMap((documentId) =>
+          [0, 1].map((line) => ({
+            document_id: documentId,
+            line_id: `line-${documentId.replace('document-', '')}-${line}`,
+            delivered_quantity: 0,
+            received_quantity: 0,
+            returned_quantity: 0
+          }))
+        )
+      })
+    })
     const offsets: number[] = []
     await page.route(`**/rest/v1/${scenario.table}?*`, (route) => {
       const params = new URL(route.request().url()).searchParams
+      if (!params.has('kind')) {
+        const id = params.get('id')?.replace(/^eq\./, '')
+        return route.fulfill({ json: documents.find((row) => row.id === id) ?? null })
+      }
       expect(params.get('kind')).toBe(`eq.${scenario.kind}`)
       expect(params.get('order')).toBe('updated_at.desc,id.asc')
       const offset = Number(params.get('offset') || 0)
@@ -100,6 +120,7 @@ for (const scenario of [
       timeout: 120_000
     })
     const documentMode = page.locator('.el-radio-button').filter({ hasText: '按单据' })
+    await expect(documentMode).toBeAttached()
     if (!(await documentMode.isVisible())) {
       await page.getByRole('button', { name: '展开搜索条件', exact: true }).click()
     }
@@ -158,7 +179,7 @@ for (const scenario of [
       await page.goto(
         `#/scm/${scenario.path}?fromMasterDelete=1&dependencyCode=scm_purchase_document&recordId=document-0&resourceId=supplier-1`
       )
-      await expect(page.getByText('已精确过滤', { exact: true })).toBeVisible()
+      await expect(page.getByText('已找到关联记录', { exact: true })).toBeVisible()
       await expect(documentRows).toHaveCount(1)
       await expect(documentRows).toContainText('EXPORT-0000')
       await expect(documentRows).not.toContainText('EXPORT-0001')

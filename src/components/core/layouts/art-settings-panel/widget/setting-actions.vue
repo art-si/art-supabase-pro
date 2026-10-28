@@ -1,6 +1,7 @@
 <!-- 设置操作按钮 -->
 <template>
   <div class="setting-actions">
+    <p class="setting-actions__hint">调整立即生效，并自动保存在当前浏览器。</p>
     <ElButton
       v-if="canSaveAppearance"
       type="primary"
@@ -42,7 +43,7 @@
   const canSaveAppearance = computed(() => hasAuth('System:SystemParam:Edit'))
   const savingAppearance = ref(false)
   const handleSaveAppearance = async () => {
-    if (savingAppearance.value) return
+    if (!canSaveAppearance.value || savingAppearance.value) return
     savingAppearance.value = true
     try {
       await saveAppearanceConfig()
@@ -191,6 +192,7 @@
    */
   const handleResetConfig = async () => {
     try {
+      settingStore.rememberLocalAppearance()
       const config = SETTING_DEFAULT_CONFIG
 
       // 菜单相关
@@ -254,6 +256,7 @@
       settingStore.setFestivalDate(config.festivalDate)
       settingStore.setHolidayFireworksLoaded(config.holidayFireworksLoaded)
 
+      settingStore.$persist()
       location.reload()
     } catch (error) {
       console.error('重置配置失败:', error)
@@ -270,6 +273,14 @@
     padding-top: 15px;
     margin-top: 22px;
     border-top: 1px solid var(--art-card-border);
+
+    &__hint {
+      grid-column: 1 / -1;
+      margin: 0 0 3px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--art-gray-600);
+    }
 
     .el-button {
       width: 100%;

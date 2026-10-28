@@ -57,6 +57,9 @@ const Preview = defineComponent({
     const removable = ref(false)
     const removed = ref(0)
     const attachmentActions = new URLSearchParams(location.search).has('attachmentActions')
+    const unsafeAttachmentActions = new URLSearchParams(location.search).has(
+      'unsafeAttachmentActions'
+    )
     const explicitClick = new URLSearchParams(location.search).has('click')
     if (new URLSearchParams(location.search).has('compactActions')) {
       return () =>
@@ -77,10 +80,15 @@ const Preview = defineComponent({
     if (new URLSearchParams(location.search).has('detailLayout')) return () => h(RouterView)
     return () =>
       h('main', [
-        ...(attachmentActions
+        ...(attachmentActions || unsafeAttachmentActions
           ? [
               h(BusinessAttachmentRowActions, {
-                file: { url: 'https://example.com/test.pdf', name: '测试附件.pdf' },
+                file: {
+                  url: unsafeAttachmentActions
+                    ? 'javascript:window.__unsafeExecuted=true'
+                    : 'https://example.com/test.pdf',
+                  name: '测试附件.pdf'
+                },
                 removable: removable.value,
                 onRemove: () => removed.value++
               }),

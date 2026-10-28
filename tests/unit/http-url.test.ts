@@ -15,6 +15,9 @@ test('HTTP URL resolution accepts absolute and relative browser links', () => {
 
 test('HTTP URL resolution rejects executable, local and malformed schemes', () => {
   for (const value of [
+    '',
+    '   ',
+    '\n\t',
     'javascript:alert(1)',
     'data:text/html,test',
     'file:///tmp/a',
@@ -22,4 +25,6 @@ test('HTTP URL resolution rejects executable, local and malformed schemes', () =
   ]) {
     assert.equal(resolveHttpUrl(value, 'https://app.example.com'), null)
   }
+  for (const value of [undefined, null, 0, [], {}])
+    assert.equal(Reflect.apply(resolveHttpUrl, undefined, [value, 'https://app.example.com']), null)
 })

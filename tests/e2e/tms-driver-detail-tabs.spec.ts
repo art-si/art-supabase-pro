@@ -164,3 +164,183 @@ test('司机详情按页签组织承运宽表与费用，窄屏只在表内滚�
     fullPage: true
   })
 })
+
+test('司机资质和安全记录忽略迟到旧页，培训失败可重试', async ({ page }, testInfo) => {
+  test.setTimeout(300_000)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  let releaseQualificationPage = () => {}
+  const qualificationPageGate = new Promise<void>((resolve) => {
+    releaseQualificationPage = resolve
+  })
+  let releaseSafetyPage = () => {}
+  const safetyPageGate = new Promise<void>((resolve) => {
+    releaseSafetyPage = resolve
+  })
+  const qualificationOffsets: number[] = []
+  const safetyOffsets: number[] = []
+  let trainingRequests = 0
+
+  await page.route('**/rest/v1/sys_dictionary?**', (route) => route.fulfill({ json: [] }))
+  await page.route('**/rest/v1/rpc/**', async (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').pop()
+    const params = route.request().postDataJSON() ?? {}
+    if (name === 'tms_get_driver_secure') {
+      const id = String(params.p_id)
+      await route.fulfill({
+        json: {
+          id,
+          driverName: id === driverId ? '测试司机甲' : '测试司机乙',
+          tenantId: relation.tenantId,
+          driverType: 'primary',
+          enabled: true,
+          employeeId:
+            id === driverId
+              ? '11111111-1111-4111-8111-111111111601'
+              : '11111111-1111-4111-8111-111111111602',
+          fieldAccess: {},
+          assignedVehicles: []
+        }
+      })
+      return
+    }
+    if (name === 'tms_list_driver_mainline_qualifications_secure') {
+      const from = Number(params.p_from)
+      const isOriginalDriver = params.p_driver_id === driverId
+      if (isOriginalDriver) qualificationOffsets.push(from)
+      if (isOriginalDriver && from === 20) await qualificationPageGate
+      await route.fulfill({
+        json: {
+          records: [
+            {
+              id: `qualification-${from}`,
+              qualificationName:
+                from === 20
+                  ? '迟到的资质第二页'
+                  : isOriginalDriver &&
+                      qualificationOffsets.filter((offset) => offset === 0).length > 1
+                    ? '返回后的资质第一页'
+                    : '初始资质第一页',
+              status: 'valid'
+            }
+          ],
+          total: 41,
+          available: true,
+          linkedEmployee: true
+        }
+      })
+      return
+    }
+    if (name === 'tms_list_driver_mainline_safety_secure') {
+      const from = Number(params.p_from)
+      const isOriginalViolation = params.p_kind === 'violation' && params.p_driver_id === driverId
+      if (isOriginalViolation) safetyOffsets.push(from)
+      if (isOriginalViolation && from === 20) await safetyPageGate
+      await route.fulfill({
+        json: {
+          records:
+            params.p_kind === 'violation'
+              ? [
+                  {
+                    id: `violation-${from}`,
+                    vehicleId: 'vehicle-1',
+                    plateNo: '测A12345',
+                    violationTime: '2026-10-26T08:00:00+08:00',
+                    violationBehavior:
+                      from === 20
+                        ? '迟到的违章第二页'
+                        : isOriginalViolation &&
+                            safetyOffsets.filter((offset) => offset === 0).length > 2
+                          ? '返回后的违章第一页'
+                          : '初始违章第一页',
+                    processed: true
+                  }
+                ]
+              : [],
+          total: params.p_kind === 'violation' ? 41 : 0,
+          available: true
+        }
+      })
+      return
+    }
+    if (name === 'hr_get_employee_profile_secure') {
+      trainingRequests++
+      if (trainingRequests === 1) {
+        await route.fulfill({ status: 500, json: { message: '暂时不可用' } })
+      } else {
+        await route.fulfill({
+          json: {
+            fieldAccess: { careerRecords: 'read' },
+            trainings: [{ id: 'training-1', trainingName: '复训已恢复' }]
+          }
+        })
+      }
+      return
+    }
+    await route.fulfill({ json: { records: [], total: 0, available: true } })
+  })
+
+  await page.goto('/tests/e2e/fixtures/tms-mainline-visual.html?page=driver-detail&race')
+  await expect(page.getByRole('heading', { name: '测试司机甲' })).toBeVisible({
+    timeout: 240_000
+  })
+  await page.getByRole('tab', { name: '档案与资质' }).click()
+  const qualificationCard = page.locator('section.art-section-card').filter({
+    has: page.getByText('驾驶资质', { exact: true })
+  })
+  await expect(qualificationCard.getByText('初始资质第一页')).toBeVisible()
+  const trainingCard = page.locator('section.art-section-card').filter({
+    has: page.getByText('培训记录', { exact: true })
+  })
+  await expect(trainingCard.getByText('培训记录加载失败，请重试。', { exact: true })).toBeVisible()
+  await trainingCard.getByRole('button', { name: '重新加载' }).click()
+  await expect(trainingCard.getByText('复训已恢复')).toBeVisible()
+  expect(trainingRequests).toBe(2)
+
+  const clickNext = async (title: string) => {
+    const card = page.locator('section.art-section-card').filter({
+      has: page.getByText(title, { exact: true })
+    })
+    await card.locator('.el-pagination .btn-next').click()
+  }
+
+  const switchAwayAndBack = async () => {
+    await page.getByRole('button', { name: '测试切换司机乙' }).click()
+    await expect(page.getByRole('heading', { name: '测试司机乙' })).toBeVisible()
+    await page.getByRole('button', { name: '测试切换司机甲' }).click()
+    await expect(page.getByRole('heading', { name: '测试司机甲' })).toBeVisible()
+  }
+
+  await clickNext('驾驶资质')
+  await expect.poll(() => qualificationOffsets).toEqual([0, 20])
+  await switchAwayAndBack()
+  await expect.poll(() => qualificationOffsets).toEqual([0, 20, 0])
+  await page.getByRole('tab', { name: '档案与资质' }).click()
+  await expect(qualificationCard.getByText('返回后的资质第一页')).toBeVisible()
+  releaseQualificationPage()
+  await expect(qualificationCard.getByText('返回后的资质第一页')).toBeVisible()
+  await expect(qualificationCard.getByText('迟到的资质第二页')).toHaveCount(0)
+
+  await page.getByRole('tab', { name: '风控记录' }).click()
+  const safetyCard = page.locator('section.art-section-card').filter({
+    has: page.getByText('违章扣分', { exact: true })
+  })
+  await expect(safetyCard.getByText('初始违章第一页')).toBeVisible()
+  await clickNext('违章扣分')
+  await expect.poll(() => safetyOffsets).toEqual([0, 0, 20])
+  await switchAwayAndBack()
+  await expect.poll(() => safetyOffsets).toEqual([0, 0, 20, 0])
+  await page.getByRole('tab', { name: '风控记录' }).click()
+  await expect(safetyCard.getByText('返回后的违章第一页')).toBeVisible()
+  releaseSafetyPage()
+  await expect(safetyCard.getByText('返回后的违章第一页')).toBeVisible()
+  await expect(safetyCard.getByText('迟到的违章第二页')).toHaveCount(0)
+  await page.screenshot({
+    path: testInfo.outputPath('driver-detail-latest-page.png'),
+    fullPage: true
+  })
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+  ).toBeLessThanOrEqual(1)
+  expect(errors).toEqual([])
+})

@@ -110,6 +110,10 @@
       max-width: 100%;
       vertical-align: middle;
 
+      &.el-tag--primary.el-tag--light {
+        --el-tag-text-color: var(--art-primary-text);
+      }
+
       :deep(.el-tag__content) {
         overflow: hidden;
         text-overflow: ellipsis;
