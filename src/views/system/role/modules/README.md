@@ -1,5 +1,17 @@
 # Role dialogs
 
+## Assign users from a role
+
+`role-user-dialog.vue` opens from the role row's **分配用户** action. Both the action and the database RPCs require `System:Role:AssignUser`, registered under the exact `Role` page menu. The initial rollout granted this button once to existing holders of that page; future roles receive it through ordinary permission assignment.
+
+`system_role_users(uuid)` returns only minimal account identity and membership for the role's tenant. Enabled accounts and existing inactive members are selectable; protected platform accounts and deleted users are excluded. The public functions use `SECURITY INVOKER`; their private implementations validate authentication, the exact button permission, and the canonical tenant scope. Anonymous execution is revoked. Platform-all inherits the role's tenant; platform-selected stays in its selected tenant; ordinary users remain in their authenticated tenant even with a forged scope header. The platform-super role cannot be managed here.
+
+`system_set_role_users(uuid,uuid[],uuid[])` compares the opening membership snapshot under row locks, rejecting stale changes. It changes only the current role code in each user's existing `user_roles` array, preserving other roles and account fields. Inactive roles permit removals only; inactive accounts cannot be newly added. User audit triggers record successful updates. The entire save is transactional.
+
+Loading failures block submission. Late results cannot replace a later role draft; saving freezes editing and ordinary close/reopen actions. Failed saves preserve the draft and offer retry or explicit reload. Empty selection is intentional and supported after a successful read.
+
+Verification: `tests/integration/system-role-users.sql` exercises the authorization matrix, other-role preservation, protected roles, disabled roles, and stale snapshots inside `BEGIN`/`ROLLBACK`. `tests/e2e/role-user-assignment.spec.ts` uses the real role page, dialog and providers with intercepted reads/writes and synthetic identities. No test membership changes persist. Database functions and button registration were applied directly to project `ckbftoopuyophiebamwy`; no migration files are maintained.
+
 `role-permission-dialog.vue` owns the permission draft and uses `ArtDialog` for its lifecycle and submit loading. The parent opens it with a role record; it must not construct or save a separate permission draft.
 
 ## Safety and state contract

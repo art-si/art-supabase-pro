@@ -60,7 +60,7 @@ export function recordDeleteGuardOptions(
         ...row,
         createdAt: row.createdAt ?? '',
         dependencyCode: row.sourceTable,
-        recordStatus: getRecordReferenceMeta(row.sourceTable).statusDictCode
+        recordStatus: dependencyMeta[row.sourceTable]?.statusDictCode
           ? row.recordStatus
           : formatReferenceStatus(row.recordStatus) || '状态待核对',
         cleanupAllowed: false
@@ -118,7 +118,10 @@ export function useRecordDeleteGuard(
     successMessage?: string
     resolveResources?: () => Promise<MasterDataDeleteResource[]>
     /** Preserve domain-specific reference checks while sharing submission safeguards. */
-    inspectReferences?: (resources: MasterDataDeleteResource[]) => Promise<boolean>
+    inspectReferences?: (
+      resources: MasterDataDeleteResource[],
+      constraint?: string
+    ) => Promise<boolean>
   }): Promise<void> => {
     if (deleteBusy.value) return
     const permissions = Array.isArray(options.permission)
@@ -143,7 +146,7 @@ export function useRecordDeleteGuard(
     const resolveResources = options.resolveResources
     const inspect = (constraint?: string) =>
       options.inspectReferences
-        ? options.inspectReferences(resources)
+        ? options.inspectReferences(resources, constraint)
         : inspectResolvedReferences(
             resources,
             tableName,

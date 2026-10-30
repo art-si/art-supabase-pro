@@ -142,6 +142,44 @@ const workspace = defineComponent({
       ])
   }
 })
+const focusSearchWorkspace = defineComponent({
+  setup() {
+    const search = ref<Record<string, unknown>>({})
+    const focus = ref(false)
+    const searchItemCount = new URLSearchParams(location.search).get('short') === 'true' ? 2 : 12
+    const searchItems = Array.from({ length: searchItemCount }, (_, index) => ({
+      label: `查询字段 ${index + 1}`,
+      key: `field${index + 1}`,
+      type: 'input' as const,
+      props: { placeholder: `查询字段 ${index + 1}` }
+    }))
+    const records = Array.from({ length: 10 }, (_, index) => ({
+      id: index + 1,
+      name: `工作区记录 ${index + 1}`
+    }))
+    return () =>
+      h('main', { class: 'business-workspace-page art-full-height' }, [
+        h(BusinessWorkspaceHeader, {
+          title: '长筛选工作区',
+          description: '验证筛选项可滚动且表格分页保留可见',
+          icon: 'ri:filter-3-line'
+        }),
+        h(ArtTableQuery, {
+          modelValue: search.value,
+          'onUpdate:modelValue': (value: Record<string, unknown>) => (search.value = value),
+          searchItems,
+          searchBarProps: { span: 6, isExpand: true, showExpand: false },
+          data: records,
+          tableColumns: [{ prop: 'name', label: '名称' }],
+          pagination: { current: 1, size: 10, total: 40 },
+          focusable: true,
+          showTableToolbar: true,
+          focusMode: focus.value,
+          'onUpdate:focusMode': (value: boolean) => (focus.value = value)
+        })
+      ])
+  }
+})
 const treeWorkspace = defineComponent({
   setup() {
     const visible = ref(true)
@@ -231,6 +269,7 @@ const formWorkspace = defineComponent({
   }
 })
 const pages: Record<string, Component> = {
+  'focus-search': focusSearchWorkspace,
   'movement-type': MovementType,
   'parts-category': PartsCategory,
   shipping: ShippingNotice,

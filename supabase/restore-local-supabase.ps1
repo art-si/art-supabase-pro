@@ -1,8 +1,9 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })][string]$BackupPath,
   [Parameter(Mandatory = $true)][string]$LocalRoot,
   [switch]$VerifyBackupOnly,
+  [string]$VerificationReportPath,
   [switch]$Resume
 )
 
@@ -10,16 +11,20 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'transfer-common.ps1')
 
 $BackupPath = (Resolve-Path -LiteralPath $BackupPath).Path
+Enter-BackupReadLease -Root $BackupPath
+if ($VerifyBackupOnly) {
+  . (Join-Path $PSScriptRoot 'backup-verification.ps1')
+  $report = Invoke-BackupVerification -BackupPath $BackupPath -VerificationReportPath $VerificationReportPath
+  if ($report.status -ne 'passed') { throw '备份校验未通过，请查看校验报告。' }
+  Write-Host "Backup verified: $BackupPath" -ForegroundColor Green
+  return
+}
 $manifestPath = Join-Path $BackupPath 'manifest.json'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
   throw 'The backup is incomplete: manifest.json is missing.'
 }
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 Assert-BackupManifest -Root $BackupPath -Manifest $manifest
-if ($VerifyBackupOnly) {
-  Write-Host "Backup verified: $BackupPath" -ForegroundColor Green
-  return
-}
 
 $LocalRoot = [IO.Path]::GetFullPath($LocalRoot)
 $backupPrefix = $BackupPath.TrimEnd([char[]]'\/') + [IO.Path]::DirectorySeparatorChar
@@ -76,6 +81,7 @@ if (-not $Resume) {
   $configText = $configText -replace '(?m)^additional_redirect_urls\s*=\s*\[[^\r\n]*\]', 'additional_redirect_urls = ["http://127.0.0.1:3006", "http://localhost:3006"]'
   $deployedFunctions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath (Join-Path $BackupPath 'metadata/functions.json') -Raw) -Description 'the function deployment settings')
   $configText = Set-BackupFunctionJwtConfig -Config $configText -Functions $deployedFunctions
+  $configText = Set-BackupFunctionSourceConfig -Config $configText -Root $BackupPath
   $serviceMetadataPath = Join-Path $BackupPath 'metadata/service-versions.json'
   if (Test-Path -LiteralPath $serviceMetadataPath) {
     $services = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $serviceMetadataPath -Raw) -Description 'the source service versions')

@@ -3,6 +3,7 @@
     ref="drawerRef"
     :show-footer="false"
     :show-fullscreen-button="false"
+    :show-form-focus-button="false"
     :drawer-props="drawerProps"
     @opened="scrollToBottom"
   >
@@ -46,6 +47,18 @@
               :label="isExpanded ? '退出放大' : '放大对话'"
               class="art-ai-assistant__header-button"
               @click="toggleExpanded"
+            />
+          </ArtTooltip>
+          <ArtTooltip
+            :content="unref(api.focusMode) ? '退出专注模式' : '专注模式'"
+            placement="bottom"
+          >
+            <ArtIconButton
+              :icon="unref(api.focusMode) ? 'ri:focus-2-line' : 'ri:focus-3-line'"
+              :label="unref(api.focusMode) ? '退出专注模式' : '专注模式'"
+              :aria-pressed="unref(api.focusMode)"
+              class="art-ai-assistant__header-button"
+              @click="api.toggleFocusMode()"
             />
           </ArtTooltip>
           <ArtTooltip v-if="isProjectMode" content="打开 Supabase AI 工作台" placement="bottom">
@@ -280,6 +293,7 @@
           </ElScrollbar>
           <div class="art-ai-assistant__composer-box">
             <ElInput
+              class="art-composer-input"
               v-model="state.input"
               type="textarea"
               :autosize="{ minRows: 2, maxRows: 6 }"
@@ -329,6 +343,7 @@
 </template>
 
 <script setup lang="ts">
+  import { unref } from 'vue'
   import { cloneDeep } from 'lodash-es'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { copyTextToClipboard } from '@/utils/file/clipboard'
@@ -470,6 +485,13 @@
     appendToBody: true,
     closeOnClickModal: false,
     showClose: false,
+    beforeClose: (done: () => void) => {
+      if (unref(drawerRef.value?.focusMode)) {
+        drawerRef.value?.setFocusMode(false)
+        return
+      }
+      done()
+    },
     class: 'art-ai-assistant-drawer'
   }
   const drawerSize = computed(() => {

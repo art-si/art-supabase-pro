@@ -10,6 +10,8 @@ export * from './common'
 
 /** 组件相关类型定义 */
 export * from './component'
+export * from './table-edit'
+export * from './table-virtual'
 
 /** 状态管理相关类型定义 */
 export * from './store'

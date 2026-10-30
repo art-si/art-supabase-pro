@@ -1,13 +1,51 @@
+import type { SqlDialect } from '@/types/sql-connections'
+
 export interface SqlColumnRef {
   name: string
   dataType: string
   isNullable: boolean
+  description?: string | null
+  isPrimaryKey?: boolean
+  defaultValue?: string | null
+  enumValues?: string[]
+}
+
+export interface SqlIndexRef {
+  name: string
+  columns: string[]
+  isUnique: boolean
+  isPrimary: boolean
+  definition?: string | null
 }
 
 export interface SqlTableRef {
   tableSchema: string
   tableName: string
+  description?: string | null
+  kind?: 'table' | 'view' | 'materialized_view'
+  indexes?: SqlIndexRef[]
   columns: SqlColumnRef[]
+}
+
+export interface SqlTableTemplate {
+  kind: 'select' | 'count' | 'primary-key'
+  label: string
+  sql: string
+}
+
+export interface SqlPlanStep {
+  id: string
+  depth: number
+  nodeType: string
+  relationName?: string
+  schema?: string
+  alias?: string
+  indexName?: string
+  filter?: string
+  startupCost?: number
+  totalCost?: number
+  planRows?: number
+  planWidth?: number
 }
 
 export interface SqlForeignKeyRef {
@@ -30,6 +68,9 @@ export interface SqlMetadataRef {
     dataType: string
     isNullable: string
     ordinalPosition: number
+    description?: string | null
+    isPrimaryKey?: boolean
+    defaultValue?: string | null
   }>
   functions: Array<{
     routineSchema: string
@@ -65,7 +106,121 @@ export interface SqlCompletionContext {
   isJoin?: boolean
 }
 
+export interface SqlExecutionTarget {
+  sql: string
+  startOffset: number
+  source: 'selection' | 'statement'
+}
+
+export interface SqlStatementRef {
+  sql: string
+  startOffset: number
+  endOffset: number
+  lineNumber: number
+  command: string
+}
+
 const SYSTEM_SCHEMAS = new Set(['pg_catalog', 'information_schema', 'pg_toast'])
+
+export function isSqlSystemSchema(schema: string): boolean {
+  return (
+    SYSTEM_SCHEMAS.has(schema) || schema === 'pg_temp' || /^pg_(?:toast_)?temp_\d+$/.test(schema)
+  )
+}
+
+/** Keep connection-local objects out of browsing, completion and AI context alike. */
+export function filterSqlWorkbenchMetadata(
+  metadata: SqlMetadataRef
+): SqlMetadataRef & { foreignKeys: SqlForeignKeyRef[] } {
+  return {
+    ...metadata,
+    schemas: metadata.schemas.filter((schema) => !isSqlSystemSchema(schema)),
+    tables: metadata.tables.filter((table) => !isSqlSystemSchema(table.tableSchema)),
+    columns: metadata.columns.filter((column) => !isSqlSystemSchema(column.tableSchema)),
+    functions: metadata.functions.filter((fn) => !isSqlSystemSchema(fn.routineSchema)),
+    foreignKeys: (metadata.foreignKeys || []).filter(
+      (key) => !isSqlSystemSchema(key.sourceSchema) && !isSqlSystemSchema(key.targetSchema)
+    )
+  }
+}
+
+/** Quote identifiers individually; schema/table names must never be interpolated as SQL syntax. */
+export function quoteSqlIdentifier(identifier: string, dialect: SqlDialect = 'postgres'): string {
+  const quote = dialect === 'mysql' ? '`' : '"'
+  return `${quote}${identifier.replaceAll(quote, quote + quote)}${quote}`
+}
+
+/** Ready-to-edit read templates for the selected relation. No query is run by this helper. */
+export function buildSqlTableTemplates(
+  table: SqlTableRef,
+  dialect: SqlDialect = 'postgres'
+): SqlTableTemplate[] {
+  const quote = (value: string) => quoteSqlIdentifier(value, dialect)
+  const relation = `${quote(table.tableSchema)}.${quote(table.tableName)}`
+  const selectedColumns = table.columns.length
+    ? table.columns.map((column) => `  ${quote(column.name)}`).join(',\n')
+    : '  *'
+  const templates: SqlTableTemplate[] = [
+    {
+      kind: 'select',
+      label: '查询前 100 行',
+      sql: `SELECT\n${selectedColumns}\nFROM ${relation}\nLIMIT 100;`
+    },
+    {
+      kind: 'count',
+      label: '统计行数',
+      sql: `SELECT COUNT(*) AS total_count\nFROM ${relation};`
+    }
+  ]
+  const primaryKeys = table.columns.filter((column) => column.isPrimaryKey)
+  if (primaryKeys.length) {
+    templates.push({
+      kind: 'primary-key',
+      label: '按主键查询',
+      sql: `SELECT\n${selectedColumns}\nFROM ${relation}\nWHERE ${primaryKeys.map((column) => `${quote(column.name)} = NULL /* 输入主键值 */`).join('\n  AND ')}\nLIMIT 100;`
+    })
+  }
+  return templates
+}
+
+/** Flatten PostgreSQL EXPLAIN (FORMAT JSON) for a compact, readable plan tree. */
+export function flattenSqlPlan(plan: unknown): SqlPlanStep[] {
+  if (!Array.isArray(plan)) return []
+  const steps: SqlPlanStep[] = []
+  const readObject = (value: unknown): Record<string, unknown> | null =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null
+  const readText = (value: unknown): string | undefined =>
+    typeof value === 'string' ? value : undefined
+  const readNumber = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+  function visit(value: unknown, id: string, depth: number): void {
+    const node = readObject(value)
+    if (!node) return
+    steps.push({
+      id,
+      depth,
+      nodeType: readText(node['Node Type']) ?? '未知节点',
+      relationName: readText(node['Relation Name']),
+      schema: readText(node.Schema),
+      alias: readText(node.Alias),
+      indexName: readText(node['Index Name']),
+      filter: readText(node.Filter) ?? readText(node['Index Cond']),
+      startupCost: readNumber(node['Startup Cost']),
+      totalCost: readNumber(node['Total Cost']),
+      planRows: readNumber(node['Plan Rows']),
+      planWidth: readNumber(node['Plan Width'])
+    })
+    if (Array.isArray(node.Plans)) {
+      node.Plans.forEach((child, index) => visit(child, `${id}.${index}`, depth + 1))
+    }
+  }
+
+  plan.forEach((item, index) => visit(readObject(item)?.Plan, `${index}`, 0))
+  return steps
+}
 const SQL_CLAUSE_WORDS = new Set([
   'as',
   'on',
@@ -94,23 +249,62 @@ const SQL_CLAUSE_WORDS = new Set([
 ])
 
 // Mask comments and literals while preserving offsets. Semicolons inside them do not split statements.
-function maskSql(sql: string) {
+function maskSql(sql: string, dialect: SqlDialect = 'postgres') {
   let masked = ''
-  let state: 'code' | 'single' | 'double' | 'line' | 'block' = 'code'
+  let state: 'code' | 'single' | 'double' | 'backtick' | 'line' | 'block' | 'dollar' = 'code'
+  let dollarTag = ''
+  let blockDepth = 0
+  let escapedString = false
 
   for (let index = 0; index < sql.length; index += 1) {
     const char = sql[index]
     const next = sql[index + 1]
 
     if (state === 'code') {
-      if (char === "'") state = 'single'
-      else if (char === '"') state = 'double'
+      const tag = char === '$' ? sql.slice(index).match(/^\$(?:[a-zA-Z_][\w]*)?\$/)?.[0] : undefined
+      if (tag) {
+        dollarTag = tag
+        state = 'dollar'
+        masked += ' '.repeat(tag.length)
+        index += tag.length - 1
+        continue
+      }
+      if (char === "'") {
+        state = 'single'
+        escapedString =
+          dialect === 'mysql' || /(?:^|[^\w])e$/i.test(sql.slice(Math.max(0, index - 2), index))
+      } else if (char === '"') {
+        state = 'double'
+        escapedString = dialect === 'mysql'
+      } else if (char === '`' && dialect === 'mysql') state = 'backtick'
+      else if (char === '#' && dialect === 'mysql') state = 'line'
       else if (char === '-' && next === '-') state = 'line'
-      else if (char === '/' && next === '*') state = 'block'
-      else {
+      else if (char === '/' && next === '*') {
+        state = 'block'
+        blockDepth = 1
+        masked += '  '
+        index += 1
+        continue
+      } else {
         masked += char
         continue
       }
+    } else if (state === 'dollar') {
+      if (sql.startsWith(dollarTag, index)) {
+        masked += ' '.repeat(dollarTag.length)
+        index += dollarTag.length - 1
+        state = 'code'
+        continue
+      }
+    } else if (
+      (state === 'single' || (state === 'double' && dialect === 'mysql')) &&
+      escapedString &&
+      char === '\\' &&
+      next
+    ) {
+      masked += next === '\n' ? ' \n' : '  '
+      index += 1
+      continue
     } else if (state === 'single' && char === "'" && next === "'") {
       masked += '  '
       index += 1
@@ -121,11 +315,22 @@ function maskSql(sql: string) {
       index += 1
       continue
     } else if (state === 'double' && char === '"') state = 'code'
+    else if (state === 'backtick' && char === '`' && next === '`') {
+      masked += '  '
+      index++
+      continue
+    } else if (state === 'backtick' && char === '`') state = 'code'
     else if (state === 'line' && char === '\n') state = 'code'
-    else if (state === 'block' && char === '*' && next === '/') {
+    else if (state === 'block' && char === '/' && next === '*') {
+      blockDepth += 1
       masked += '  '
       index += 1
-      state = 'code'
+      continue
+    } else if (state === 'block' && char === '*' && next === '/') {
+      masked += '  '
+      index += 1
+      blockDepth -= 1
+      if (blockDepth === 0) state = 'code'
       continue
     }
 
@@ -135,12 +340,74 @@ function maskSql(sql: string) {
   return { masked, state }
 }
 
-export function getSqlCompletionContext(sql: string, cursorOffset: number): SqlCompletionContext {
+/** The editor runs one statement; delimiters inside PostgreSQL literals/comments stay intact. */
+export function getSqlStatements(sql: string, dialect: SqlDialect = 'postgres'): SqlStatementRef[] {
+  const masked = maskSql(sql, dialect).masked
+  const statements: SqlStatementRef[] = []
+  let start = 0
+  let lineNumber = 1
+  let previousStart = 0
+  for (let end = 0; end <= masked.length; end += 1) {
+    if (end !== masked.length && masked[end] !== ';') continue
+    const firstCode = masked.slice(start, end).search(/\S/)
+    if (firstCode !== -1) {
+      const startOffset = start + firstCode
+      lineNumber += sql.slice(previousStart, startOffset).split('\n').length - 1
+      previousStart = startOffset
+      const endOffset = end < masked.length ? end + 1 : end
+      statements.push({
+        sql: sql.slice(startOffset, endOffset).trimEnd(),
+        startOffset,
+        endOffset,
+        lineNumber,
+        command: masked.slice(startOffset, end).match(/^\w+/)?.[0].toUpperCase() || 'SQL'
+      })
+    }
+    start = end + 1
+  }
+  return statements
+}
+
+export function getSqlExecutionTarget(
+  sql: string,
+  cursorOffset: number,
+  selection?: { start: number; end: number },
+  dialect: SqlDialect = 'postgres'
+): SqlExecutionTarget {
+  let start = selection?.start ?? 0
+  let end = selection?.end ?? sql.length
+  if (!selection) {
+    const masked = maskSql(sql, dialect).masked
+    let offset = Math.max(0, Math.min(cursorOffset, sql.length))
+    // At a statement's trailing semicolon (or trailing whitespace), keep that statement active.
+    if (!masked.slice(offset).trim()) offset = masked.trimEnd().length
+    if (masked[offset - 1] === ';') offset -= 1
+    start = masked.lastIndexOf(';', offset - 1) + 1
+    const delimiter = masked.indexOf(';', offset)
+    end = delimiter === -1 ? sql.length : delimiter + 1
+  }
+  const text = sql.slice(start, end)
+  const firstCode = maskSql(text, dialect).masked.search(/\S/)
+  const source = selection ? 'selection' : 'statement'
+  if (firstCode === -1) return { sql: '', startOffset: start, source }
+  start += firstCode
+  return {
+    sql: sql.slice(start, end).trimEnd(),
+    startOffset: start,
+    source
+  }
+}
+
+export function getSqlCompletionContext(
+  sql: string,
+  cursorOffset: number,
+  dialect: SqlDialect = 'postgres'
+): SqlCompletionContext {
   const offset = Math.max(0, Math.min(cursorOffset, sql.length))
-  const before = maskSql(sql.slice(0, offset))
+  const before = maskSql(sql.slice(0, offset), dialect)
   if (before.state !== 'code') return { statement: '', kind: 'none' }
 
-  const masked = maskSql(sql).masked
+  const masked = maskSql(sql, dialect).masked
   const start = before.masked.lastIndexOf(';') + 1
   const nextDelimiter = masked.indexOf(';', offset)
   const end = nextDelimiter === -1 ? sql.length : nextDelimiter
@@ -345,7 +612,7 @@ export function buildJoinSuggestions(sql: string, metadata: SqlMetadataRef): Sql
   const seen = new Set<string>()
 
   metadata.tables
-    .filter((table) => !SYSTEM_SCHEMAS.has(table.tableSchema))
+    .filter((table) => !isSqlSystemSchema(table.tableSchema))
     .forEach((candidate) => {
       if (
         candidate.tableName === baseTable.tableName &&

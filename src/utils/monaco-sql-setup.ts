@@ -4,6 +4,11 @@ import {
   language as pgsqlLanguage
 } from 'monaco-sql-languages/esm/languages/pgsql/pgsql.js'
 import {
+  conf as mysqlConfiguration,
+  language as mysqlLanguage
+} from 'monaco-sql-languages/esm/languages/mysql/mysql.js'
+import { quoteSqlIdentifier } from './sql-workbench'
+import {
   buildJoinSuggestions,
   buildSqlTemplateSuggestions,
   extractSqlAliases,
@@ -23,6 +28,28 @@ if (!monaco.languages.getLanguages().some(({ id }) => id === PGSQL_LANGUAGE_ID))
 }
 monaco.languages.setLanguageConfiguration(PGSQL_LANGUAGE_ID, pgsqlConfiguration)
 monaco.languages.setMonarchTokensProvider(PGSQL_LANGUAGE_ID, pgsqlLanguage)
+if (!monaco.languages.getLanguages().some(({ id }) => id === 'dm'))
+  monaco.languages.register({ id: 'dm', aliases: ['达梦 DM8'], extensions: ['.dmsql'] })
+monaco.languages.setLanguageConfiguration('dm', pgsqlConfiguration)
+const dmKeywords = [
+  ...pgsqlLanguage.keywords.filter(
+    (keyword: string) =>
+      !['ILIKE', 'JSONB', 'SERIAL', 'BIGSERIAL', 'UNLOGGED'].includes(keyword.toUpperCase())
+  ),
+  'ROWNUM',
+  'DUAL',
+  'SYSDATE',
+  'SYSTIMESTAMP',
+  'NVL',
+  'DECODE',
+  'CONNECT',
+  'PRIOR'
+]
+monaco.languages.setMonarchTokensProvider('dm', { ...pgsqlLanguage, keywords: dmKeywords })
+if (!monaco.languages.getLanguages().some(({ id }) => id === 'mysql'))
+  monaco.languages.register({ id: 'mysql', aliases: ['MySQL'], extensions: ['.mysql'] })
+monaco.languages.setLanguageConfiguration('mysql', mysqlConfiguration)
+monaco.languages.setMonarchTokensProvider('mysql', mysqlLanguage)
 
 const pgsqlKeywords = Array.isArray(pgsqlLanguage.keywords)
   ? pgsqlLanguage.keywords.filter(
@@ -66,6 +93,70 @@ function createRange(model: monaco.editor.ITextModel, position: monaco.Position)
     endColumn: word.endColumn
   }
 }
+
+monaco.languages.registerCompletionItemProvider('mysql', {
+  triggerCharacters: [' ', '.', '`'],
+  provideCompletionItems(model, position) {
+    const sql = model.getValue()
+    const offset = model.getOffsetAt(position)
+    if (getSqlCompletionContext(sql, offset, 'mysql').kind === 'none') return { suggestions: [] }
+    const range = createRange(model, position)
+    const prefix = sql.slice(0, offset - model.getWordUntilPosition(position).word.length)
+    const qualifier = prefix.match(/(?:`([^`]+)`|([\w$]+))\.$/)
+    const name = qualifier?.[1] || qualifier?.[2]
+    const aliases = extractSqlAliases(sql.replace(/`/g, '"'))
+    const table = name ? resolveTableRef(name, dbMetadata, aliases) : undefined
+    const suggestions: monaco.languages.CompletionItem[] = []
+    const identifier = (value: string) =>
+      /^[a-z_][\w$]*$/i.test(value) ? value : quoteSqlIdentifier(value, 'mysql')
+    if (!name || table) {
+      const columns = table
+        ? table.columns.map((column) => ({ table, column }))
+        : getColumnsForSqlContext(sql.replace(/`/g, '"'), dbMetadata)
+      for (const { table: source, column } of columns)
+        suggestions.push({
+          label: column.name,
+          kind: monaco.languages.CompletionItemKind.Field,
+          insertText: identifier(column.name),
+          detail: `${source.tableSchema}.${source.tableName} · ${column.dataType}`,
+          documentation: column.description || undefined,
+          range,
+          sortText: `10_${column.name}`
+        })
+    }
+    if (!table)
+      for (const relation of dbMetadata.tables.filter(
+        (table) => !name || table.tableSchema === name
+      ))
+        suggestions.push({
+          label: relation.tableName,
+          kind: monaco.languages.CompletionItemKind.Class,
+          insertText: identifier(relation.tableName),
+          detail: `${relation.tableSchema} · ${relation.description || 'TABLE'}`,
+          range,
+          sortText: `20_${relation.tableName}`
+        })
+    if (!name) {
+      for (const schema of dbMetadata.schemas)
+        suggestions.push({
+          label: schema,
+          kind: monaco.languages.CompletionItemKind.Module,
+          insertText: `${identifier(schema)}.`,
+          range
+        })
+      for (const keyword of mysqlLanguage.keywords || [])
+        if (typeof keyword === 'string')
+          suggestions.push({
+            label: keyword,
+            kind: monaco.languages.CompletionItemKind.Keyword,
+            insertText: keyword.toUpperCase(),
+            range,
+            sortText: `40_${keyword}`
+          })
+    }
+    return { suggestions }
+  }
+})
 
 function buildTableCompletionItems(range: monaco.IRange, schemaFilter?: string) {
   return dbMetadata.tables
@@ -222,116 +313,124 @@ function buildTemplateCompletionItems(range: monaco.IRange) {
   }))
 }
 
-monaco.languages.registerCompletionItemProvider(PGSQL_LANGUAGE_ID, {
-  triggerCharacters: [' ', '.', '('],
-  provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position) {
-    const range = createRange(model, position)
-    const fullSql = model.getValue()
-    const completion = getSqlCompletionContext(fullSql, model.getOffsetAt(position))
-    const items: monaco.languages.CompletionItem[] = []
-
-    if (completion.kind === 'none') return { suggestions: [] }
-
-    if (completion.kind === 'qualified' && completion.qualifier) {
-      const table = resolveTableRef(
-        completion.qualifier,
-        dbMetadata,
-        extractSqlAliases(completion.statement)
+for (const languageId of [PGSQL_LANGUAGE_ID, 'dm']) {
+  monaco.languages.registerCompletionItemProvider(languageId, {
+    triggerCharacters: [' ', '.', '('],
+    provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position) {
+      const range = createRange(model, position)
+      const fullSql = model.getValue()
+      const completion = getSqlCompletionContext(
+        fullSql,
+        model.getOffsetAt(position),
+        languageId === 'dm' ? 'dm' : 'postgres'
       )
-      return {
-        suggestions: table
-          ? buildColumnCompletionItems(range, completion.statement, completion.qualifier)
-          : buildTableCompletionItems(range, completion.qualifier)
-      }
-    }
+      const items: monaco.languages.CompletionItem[] = []
 
-    if (completion.kind === 'start') {
-      items.push(...buildTemplateCompletionItems(range))
-    }
+      if (completion.kind === 'none') return { suggestions: [] }
 
-    if (completion.kind === 'table') {
-      if (completion.isJoin && !completion.qualifier) {
-        items.push(...buildJoinCompletionItems(range, completion.statement))
+      if (completion.kind === 'qualified' && completion.qualifier) {
+        const table = resolveTableRef(
+          completion.qualifier,
+          dbMetadata,
+          extractSqlAliases(completion.statement)
+        )
+        return {
+          suggestions: table
+            ? buildColumnCompletionItems(range, completion.statement, completion.qualifier)
+            : buildTableCompletionItems(range, completion.qualifier)
+        }
       }
-      items.push(...buildTableCompletionItems(range, completion.qualifier))
-      if (!completion.qualifier) items.push(...buildSchemaCompletionItems(range))
+
+      if (completion.kind === 'start') {
+        items.push(...buildTemplateCompletionItems(range))
+      }
+
+      if (completion.kind === 'table') {
+        if (completion.isJoin && !completion.qualifier) {
+          items.push(...buildJoinCompletionItems(range, completion.statement))
+        }
+        items.push(...buildTableCompletionItems(range, completion.qualifier))
+        if (!completion.qualifier) items.push(...buildSchemaCompletionItems(range))
+        return { suggestions: items }
+      }
+
+      if (completion.kind === 'column') {
+        items.push(...buildColumnCompletionItems(range, completion.statement))
+        items.push(...buildFunctionCompletionItems(range))
+      }
+
+      items.push(
+        ...buildKeywordCompletionItems(range, languageId === 'dm' ? dmKeywords : pgsqlKeywords)
+      )
+
       return { suggestions: items }
     }
+  })
 
-    if (completion.kind === 'column') {
-      items.push(...buildColumnCompletionItems(range, completion.statement))
-      items.push(...buildFunctionCompletionItems(range))
-    }
+  monaco.languages.registerHoverProvider(languageId, {
+    provideHover(model, position) {
+      const word = model.getWordAtPosition(position)
+      if (!word) return null
 
-    items.push(...buildKeywordCompletionItems(range, pgsqlKeywords))
+      const completion = getSqlCompletionContext(model.getValue(), model.getOffsetAt(position))
+      if (completion.kind === 'none') return null
+      const statement = completion.statement
+      const aliases = extractSqlAliases(statement)
+      const linePrefix = model.getLineContent(position.lineNumber).slice(0, word.startColumn - 1)
+      const qualifier = linePrefix.match(/\b([a-zA-Z_][\w]*)\.$/)?.[1]
+      const table = qualifier ? resolveTableRef(qualifier, dbMetadata, aliases) : undefined
+      const column = table?.columns.find(
+        (item) => item.name.toLowerCase() === word.word.toLowerCase()
+      )
+      const visibleColumns = qualifier
+        ? []
+        : getColumnsForSqlContext(statement, dbMetadata).filter(
+            (item) => item.column.name.toLowerCase() === word.word.toLowerCase()
+          )
+      const columnMatch =
+        table && column
+          ? { table, column }
+          : visibleColumns.length === 1
+            ? visibleColumns[0]
+            : undefined
 
-    return { suggestions: items }
-  }
-})
+      const range = new monaco.Range(
+        position.lineNumber,
+        word.startColumn,
+        position.lineNumber,
+        word.endColumn
+      )
 
-monaco.languages.registerHoverProvider(PGSQL_LANGUAGE_ID, {
-  provideHover(model, position) {
-    const word = model.getWordAtPosition(position)
-    if (!word) return null
+      if (columnMatch) {
+        return {
+          range,
+          contents: [
+            {
+              value: `**${columnMatch.table.tableSchema}.${columnMatch.table.tableName}.${columnMatch.column.name}**`
+            },
+            {
+              value: `类型：\`${columnMatch.column.dataType}\`  ·  ${columnMatch.column.isNullable ? '可为空' : '不可为空'}`
+            }
+          ]
+        }
+      }
 
-    const completion = getSqlCompletionContext(model.getValue(), model.getOffsetAt(position))
-    if (completion.kind === 'none') return null
-    const statement = completion.statement
-    const aliases = extractSqlAliases(statement)
-    const linePrefix = model.getLineContent(position.lineNumber).slice(0, word.startColumn - 1)
-    const qualifier = linePrefix.match(/\b([a-zA-Z_][\w]*)\.$/)?.[1]
-    const table = qualifier ? resolveTableRef(qualifier, dbMetadata, aliases) : undefined
-    const column = table?.columns.find(
-      (item) => item.name.toLowerCase() === word.word.toLowerCase()
-    )
-    const visibleColumns = qualifier
-      ? []
-      : getColumnsForSqlContext(statement, dbMetadata).filter(
-          (item) => item.column.name.toLowerCase() === word.word.toLowerCase()
-        )
-    const columnMatch =
-      table && column
-        ? { table, column }
-        : visibleColumns.length === 1
-          ? visibleColumns[0]
-          : undefined
-
-    const range = new monaco.Range(
-      position.lineNumber,
-      word.startColumn,
-      position.lineNumber,
-      word.endColumn
-    )
-
-    if (columnMatch) {
+      if (qualifier) return null
+      const matchedTable = resolveTableRef(word.word, dbMetadata, aliases)
+      if (!matchedTable) return null
       return {
         range,
         contents: [
+          { value: `**${matchedTable.tableSchema}.${matchedTable.tableName}**` },
           {
-            value: `**${columnMatch.table.tableSchema}.${columnMatch.table.tableName}.${columnMatch.column.name}**`
-          },
-          {
-            value: `类型：\`${columnMatch.column.dataType}\`  ·  ${columnMatch.column.isNullable ? '可为空' : '不可为空'}`
+            value:
+              matchedTable.columns
+                .slice(0, 12)
+                .map((item) => `\`${item.name}\` ${item.dataType}`)
+                .join('  \n') || '暂无字段元数据'
           }
         ]
       }
     }
-
-    if (qualifier) return null
-    const matchedTable = resolveTableRef(word.word, dbMetadata, aliases)
-    if (!matchedTable) return null
-    return {
-      range,
-      contents: [
-        { value: `**${matchedTable.tableSchema}.${matchedTable.tableName}**` },
-        {
-          value:
-            matchedTable.columns
-              .slice(0, 12)
-              .map((item) => `\`${item.name}\` ${item.dataType}`)
-              .join('  \n') || '暂无字段元数据'
-        }
-      ]
-    }
-  }
-})
+  })
+}

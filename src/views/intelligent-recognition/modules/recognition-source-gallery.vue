@@ -17,7 +17,7 @@
           >
             <template #placeholder>
               <span class="recognition-source-gallery__state" aria-label="原始票据加载中">
-                <ArtSvgIcon icon="ri:loader-4-line" />
+                <ArtSvgIcon icon="ri:refresh-line" />
               </span>
             </template>
             <template #error>

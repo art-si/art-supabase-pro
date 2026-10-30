@@ -55,7 +55,12 @@ export type TableColumnValidationMessage<T = ComponentRecord> =
 
 /** 编辑表格列的自定义校验规则；返回 true/void 表示通过，false 或字符串表示失败。 */
 export interface TableColumnValidationRule<T = ComponentRecord> {
-  validator: (
+  required?: boolean
+  type?: 'string' | 'number' | 'boolean' | 'array'
+  min?: number
+  max?: number
+  pattern?: RegExp
+  validator?: (
     context: TableColumnValidationContext<T>
   ) => boolean | string | void | Promise<boolean | string | void>
   message?: TableColumnValidationMessage<T>
@@ -63,6 +68,8 @@ export interface TableColumnValidationRule<T = ComponentRecord> {
 
 // 表格列配置接口
 export interface ColumnOption<T = ComponentRecord> {
+  /** Built-in opt-in editor; table-level editConfig controls activation. */
+  editRender?: import('../table-edit').TableEditRender<T>
   /** Optional current-page filter supplied by the table's column profile. */
   filterType?: import('../table-column-config').TableColumnFilterType
   // 列类型

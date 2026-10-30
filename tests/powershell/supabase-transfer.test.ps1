@@ -43,12 +43,12 @@ enabled = true
   New-Item -ItemType Directory -Path (Join-Path $backup 'database'), (Join-Path $backup 'metadata') -Force | Out-Null
   $contents = @{
     'config.toml' = 'project_id = "transfer-test"'
-    'database/roles.sql' = '-- roles'
-    'database/schema.sql' = '-- schema'
-    'database/data.sql' = "COPY auth.users (id, encrypted_password) FROM stdin;`n\.`n"
-    'database/migration-history-schema.sql' = '-- migration schema'
-    'database/migration-history-data.sql' = '-- SOURCE_MIGRATION_SECRET'
-    'database/managed-schema-snapshot.sql' = '-- SOURCE_MANAGED_SECRET'
+    'database/roles.sql' = "-- roles`nRESET ALL;"
+    'database/schema.sql' = "-- schema`n-- PostgreSQL database dump complete"
+    'database/data.sql' = "COPY auth.users (id, encrypted_password) FROM stdin;`n\.`n-- PostgreSQL database dump complete"
+    'database/migration-history-schema.sql' = "-- migration schema`n-- PostgreSQL database dump complete"
+    'database/migration-history-data.sql' = "-- SOURCE_MIGRATION_SECRET`n-- PostgreSQL database dump complete"
+    'database/managed-schema-snapshot.sql' = "-- SOURCE_MANAGED_SECRET`n-- PostgreSQL database dump complete"
     'database/managed-project-objects.sql' = '-- reviewed project-owned Auth/Storage policies and triggers'
     'database/recovery-snapshot-data.sql' = '-- SOURCE_OWNER_RECOVERY_SECRET'
     'metadata/functions.json' = '[]'
@@ -144,6 +144,7 @@ SOURCE_HTTP_TOKEN
 COPY public.fixture (value) FROM stdin;
 BUSINESS_DATA
 \.
+-- PostgreSQL database dump complete
 "@, [Text.UTF8Encoding]::new($false))
   $sensitiveManifestPath = Join-Path $sensitiveBackup 'manifest.json'
   $sensitiveManifest = Get-Content -LiteralPath $sensitiveManifestPath -Raw | ConvertFrom-Json

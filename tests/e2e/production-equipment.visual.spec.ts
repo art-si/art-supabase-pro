@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import ExcelJS from 'exceljs'
 import { mockApplicationMenus } from './support/menu-rpc'
 
-const tenantId = '00000000-0000-4000-8000-000000000001'
+const tenantId = process.env.E2E_FIXTURE_TENANT_ID || '00000000-0000-4000-8000-000000000001'
 const departmentId = '00000000-0000-4000-8000-000000000101'
 
 async function installFixtures(page: Page, saves: Array<Record<string, unknown>>) {
@@ -29,7 +29,7 @@ async function installFixtures(page: Page, saves: Array<Record<string, unknown>>
     parentId: root.id,
     name: 'MdmProductionEquipment',
     path: 'engineering/production-equipment',
-    component: '/mdm/equipment/production',
+    component: '/mdm/engineering/production-equipment',
     type: 'menu',
     sort: 1,
     meta: meta('生产设备', 'ri:tools-line')
@@ -193,12 +193,21 @@ test('production equipment master keeps the enterprise workspace and dialog visu
   const drawer = page.locator('.equipment-detail')
   await expect(drawer.getByRole('img', { name: '总装一线拧紧机设备图片' })).toBeVisible()
   await expect(drawer.getByRole('heading', { name: '总装一线拧紧机', exact: true })).toBeVisible()
-  await expect(drawer.getByText('设备编号 EQ-ASSY-001', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('规格型号 PF6000', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('安装位置 一号厂房 A 区', { exact: true })).toBeVisible()
-  await expect(drawer.getByText('使用部门 总装一线', { exact: true })).toBeVisible()
+  await expect(drawer.locator('.equipment-detail__identity p')).toHaveText(/设备编号\s*EQ-ASSY-001/)
+  await expect(
+    drawer.locator('.equipment-detail__identity dl > div').filter({ hasText: '规格型号' })
+  ).toHaveText(/规格型号\s*PF6000/)
+  await expect(
+    drawer.locator('.equipment-detail__identity dl > div').filter({ hasText: '安装位置' })
+  ).toHaveText(/安装位置\s*一号厂房 A 区/)
+  await expect(
+    drawer.locator('.equipment-detail__identity dl > div').filter({ hasText: '使用部门' })
+  ).toHaveText(/使用部门\s*总装一线/)
   await expect(drawer.getByText('EQ-ASSY-001 · 总装工作中心', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '关闭此对话框', exact: true }).click()
+  await page
+    .getByRole('dialog', { name: '生产设备档案' })
+    .getByRole('button', { name: '关闭抽屉' })
+    .click()
 
   await page.getByRole('button', { name: '新增设备', exact: true }).click()
   const dialog = page.getByRole('dialog')
@@ -215,13 +224,13 @@ test('production equipment master keeps the enterprise workspace and dialog visu
     path: testInfo.outputPath('production-equipment-dialog.png'),
     animations: 'disabled'
   })
-  await page.getByRole('button', { name: '关闭此对话框', exact: true }).click()
+  await dialog.getByRole('button', { name: '关闭弹窗' }).click()
 
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('生产设备')
   sheet.addRow(['设备编号', '设备名称', '设备分类', '部门/产线', '设备品牌', '设备型号'])
   sheet.addRow(['EQ-IMPORT-001', '导入切割机', 'ASSEMBLY', 'LINE-01', '测试品牌', 'M2'])
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][accept*=".xlsx"]').setInputFiles({
     name: '生产设备导入.xlsx',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from(await workbook.xlsx.writeBuffer())

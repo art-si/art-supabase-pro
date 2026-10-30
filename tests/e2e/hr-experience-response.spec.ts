@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectHrIdentityIconStyle } from './support/hr-identity-icon-style'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 const survey = {
@@ -96,3 +97,55 @@ test('体验调查加载后已结束时不再开放作答', async ({ page }) => 
   await expect(dialog.getByRole('button', { name: '匿名提交', exact: true })).toBeDisabled()
   await expect(dialog.getByText('1. 您是否愿意推荐团队？', { exact: true })).toHaveCount(0)
 })
+
+for (const variant of [
+  { name: 'light', width: 1440 },
+  { name: 'dark', width: 570 }
+]) {
+  test(`体验调查图标 ${variant.width}px ${variant.name} 保持原尺寸与主题色`, async ({
+    page
+  }, testInfo) => {
+    await prepareIsolatedSession(page)
+    await page.setViewportSize({ width: variant.width, height: 900 })
+    await page.route('**/rest/v1/**', (route) =>
+      route.fulfill({
+        json: route.request().url().includes('hr_get_employee_experience_detail_secure')
+          ? survey
+          : []
+      })
+    )
+    await page.goto(
+      `/tests/e2e/fixtures/hr-talent-dialogs.html?feature=experience&theme=${variant.name}`
+    )
+    const dialog = page.getByRole('dialog', { name: '填写匿名员工体验调查', exact: true })
+    await expect(dialog.getByText('1. 您是否愿意推荐团队？', { exact: true })).toBeVisible()
+    const options = dialog.locator('.experience-response-dialog__form label.el-radio-button')
+    await expect(options).toHaveCount(11)
+    const zeroOption = options.filter({ hasText: /^0$/ })
+    await expect(zeroOption).toBeVisible()
+    await expect(zeroOption.locator('input[type="radio"]')).toBeEnabled()
+    await expect(dialog.getByRole('button', { name: '匿名提交', exact: true })).toBeEnabled()
+    await expect(dialog.locator('.experience-response-dialog__form .el-skeleton')).toHaveCount(0)
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          dark: document.documentElement.classList.contains('dark'),
+          colorScheme: getComputedStyle(document.documentElement).colorScheme
+        }))
+      )
+      .toEqual({ dark: variant.name === 'dark', colorScheme: variant.name })
+    await expectHrIdentityIconStyle(
+      dialog.locator('.experience-response-dialog__hero > div:first-child > span')
+    )
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+    ).toBeLessThanOrEqual(1)
+    await page.screenshot({
+      path: testInfo.outputPath(`experience-${variant.name}-${variant.width}.png`),
+      animations: 'disabled'
+    })
+    await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await expect(page).toHaveURL(/hr-talent-dialogs\.html\?feature=experience/)
+  })
+}

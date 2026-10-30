@@ -49,7 +49,7 @@
             :aria-busy="uploading"
           >
             <span class="art-tiptap-editor__media-upload-icon" aria-hidden="true">
-              <ArtSvgIcon :icon="uploading ? 'ri:loader-4-line' : 'ri:upload-cloud-2-line'" />
+              <ArtSvgIcon :icon="uploading ? 'ri:refresh-line' : 'ri:upload-cloud-2-line'" />
             </span>
             <span>
               <strong>{{ uploading ? '正在上传…' : uploadLabel }}</strong>

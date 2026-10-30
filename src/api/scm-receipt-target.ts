@@ -1,6 +1,10 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { fetchAllRangePages } from '@/utils/supabase/pagination'
+import { withRequestOptions } from '@/api/providers/supabase/query'
+import type { ApiFeedbackOptions, ApiRequestOptions } from '@/types/api/request'
 import { uniq } from 'lodash-es'
+
+type PlacementReadOptions = ApiRequestOptions & Pick<ApiFeedbackOptions, 'showErrorMessage'>
 
 export type ScmReceiptTargetKind = 'inbound' | 'asset_payable'
 export type ScmReceiptTargetStatus = 'draft' | 'confirmed' | 'approved'
@@ -184,69 +188,106 @@ export async function setScmReceiptLineSerials(lineId: string, serialNos: string
   )
 }
 
-export async function fetchScmReceiptPlacementWarehouse(tenantId: string, warehouseId: string) {
+export async function fetchScmReceiptPlacementWarehouse(
+  tenantId: string,
+  warehouseId: string,
+  options?: PlacementReadOptions
+) {
   const { data } = await responseHandle<ScmReceiptPlacementWarehouse>(
     () =>
-      supabase
-        .from('mdm_warehouse')
-        .select('id,warehouse_code,warehouse_name,enable_locations')
-        .eq('tenant_id', tenantId)
-        .eq('id', warehouseId)
-        .single(),
-    { breakReturn: true, showErrorMessage: true, errorMessage: '收料仓库加载失败，请重试' }
+      withRequestOptions(
+        supabase
+          .from('mdm_warehouse')
+          .select('id,warehouse_code,warehouse_name,enable_locations')
+          .eq('tenant_id', tenantId)
+          .eq('id', warehouseId),
+        options
+      ).single(),
+    {
+      breakReturn: true,
+      showErrorMessage: options?.showErrorMessage ?? true,
+      errorMessage: '收料仓库加载失败，请重试'
+    }
   )
   return data
 }
 
-export async function fetchScmReceiptPlacementBins(tenantId: string, warehouseId: string) {
+export async function fetchScmReceiptPlacementBins(
+  tenantId: string,
+  warehouseId: string,
+  options?: PlacementReadOptions
+) {
   const { data, error } = await fetchAllRangePages<ScmReceiptPlacementBin>(({ from, to }) =>
     responseHandle<ScmReceiptPlacementBin[]>(
       () =>
-        supabase
-          .from('mdm_warehouse_bin')
-          .select('id,warehouse_id,bin_code,bin_name,supports_serial')
-          .eq('tenant_id', tenantId)
-          .eq('warehouse_id', warehouseId)
-          .eq('status', 'available')
-          .order('bin_code')
-          .order('id')
-          .range(from, to),
-      { breakReturn: true, showErrorMessage: true, errorMessage: '可用库位加载失败，请重试' }
+        withRequestOptions(
+          supabase
+            .from('mdm_warehouse_bin')
+            .select('id,warehouse_id,bin_code,bin_name,supports_serial')
+            .eq('tenant_id', tenantId)
+            .eq('warehouse_id', warehouseId)
+            .eq('status', 'available')
+            .order('bin_code')
+            .order('id')
+            .range(from, to),
+          options
+        ),
+      {
+        breakReturn: true,
+        showErrorMessage: options?.showErrorMessage ?? true,
+        errorMessage: '可用库位加载失败，请重试'
+      }
     )
   )
   if (error) throw error
   return data ?? []
 }
 
-export async function fetchScmReceiptPlacementBin(tenantId: string, binId: string) {
+export async function fetchScmReceiptPlacementBin(
+  tenantId: string,
+  binId: string,
+  options?: PlacementReadOptions
+) {
   const { data } = await responseHandle<ScmReceiptPlacementBin>(
     () =>
-      supabase
-        .from('mdm_warehouse_bin')
-        .select('id,warehouse_id,bin_code,bin_name,supports_serial')
-        .eq('tenant_id', tenantId)
-        .eq('id', binId)
-        .eq('status', 'available')
-        .single(),
-    { breakReturn: true, showErrorMessage: true, errorMessage: '库位加载失败，请重试' }
+      withRequestOptions(
+        supabase
+          .from('mdm_warehouse_bin')
+          .select('id,warehouse_id,bin_code,bin_name,supports_serial')
+          .eq('tenant_id', tenantId)
+          .eq('id', binId)
+          .eq('status', 'available'),
+        options
+      ).single(),
+    {
+      breakReturn: true,
+      showErrorMessage: options?.showErrorMessage ?? true,
+      errorMessage: '库位加载失败，请重试'
+    }
   )
   return data
 }
 
-export async function recommendScmReceiptPlacementBin(input: {
-  warehouseId: string
-  materialId: string
-  quantity: number
-}) {
+export async function recommendScmReceiptPlacementBin(
+  input: { warehouseId: string; materialId: string; quantity: number },
+  options?: PlacementReadOptions
+) {
   const { data } = await responseHandle<string | null>(
     () =>
-      supabase.rpc('wms_recommend_bin_secure', {
-        p_warehouse_id: input.warehouseId,
-        p_material_id: input.materialId,
-        p_quantity: input.quantity,
-        p_area_sqm: null
-      }),
-    { breakReturn: true, showErrorMessage: true, errorMessage: '自动选位失败，请稍后重试' }
+      withRequestOptions(
+        supabase.rpc('wms_recommend_bin_secure', {
+          p_warehouse_id: input.warehouseId,
+          p_material_id: input.materialId,
+          p_quantity: input.quantity,
+          p_area_sqm: null
+        }),
+        options
+      ),
+    {
+      breakReturn: true,
+      showErrorMessage: options?.showErrorMessage ?? true,
+      errorMessage: '自动选位失败，请稍后重试'
+    }
   )
   return data ?? null
 }

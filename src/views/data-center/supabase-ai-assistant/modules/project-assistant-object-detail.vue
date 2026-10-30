@@ -127,7 +127,7 @@
               <pre
                 class="project-assistant__code"
                 aria-label="SQL 对象定义"
-              ><code v-sql-highlight="detail?.ddl || ''" class="language-sql"></code></pre>
+              ><code v-code-highlight="{ code: detail?.ddl || '', language: 'sql' }" class="language-sql"></code></pre>
             </ElScrollbar>
           </ArtAsyncState>
         </ElTabPane>
@@ -209,7 +209,7 @@
     projectObjectFieldColumns as fieldColumns,
     type ProjectAssistantObjectAiAction
   } from './project-assistant-presenter'
-  import { sqlHighlightDirective as vSqlHighlight } from './sql-highlight'
+  import { codeHighlightDirective as vCodeHighlight } from '@/directives/business/code-highlight'
 
   interface Props {
     selectedObject: ProjectDatabaseObject | null

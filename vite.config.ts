@@ -13,6 +13,7 @@ import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import tailwindcss from '@tailwindcss/vite'
 import { createBuildLogPolicy } from './scripts/build-log-policy.mjs'
 import { createViteWatchPolicy } from './scripts/vite-watch-policy.mjs'
+import { createSqlGatewayPlugin } from './scripts/sql-gateway-vite-plugin.ts'
 import { withSharedScssGlobals } from './scripts/scss-globals.mjs'
 import {
   getElementPlusStyleDeps,
@@ -276,8 +277,8 @@ export default async ({ mode }: { mode: string }) => {
               },
               {
                 name: 'data-tools',
-                test: (id) =>
-                  matchPackages(id, ['xlsx', 'sql-formatter', 'node-sql-parser', 'crypto-js']),
+                // Keep lock-screen crypto separate so mounting the shell does not fetch SQL tooling.
+                test: (id) => matchPackages(id, ['xlsx', 'sql-formatter', 'node-sql-parser']),
                 priority: 20
               }
             ]
@@ -299,6 +300,12 @@ export default async ({ mode }: { mode: string }) => {
       }
     },
     plugins: [
+      ...(!isProduction &&
+      !isE2E &&
+      !enableCloudBaseSdk &&
+      path.resolve(root).toLowerCase() === configDirectory.toLowerCase()
+        ? [createSqlGatewayPlugin(root, loadEnv(mode, root, ''))]
+        : []),
       {
         name: 'isolate-dev-server-cache',
         apply: 'serve',
@@ -421,6 +428,10 @@ export default async ({ mode }: { mode: string }) => {
         '@guolao/vue-monaco-editor',
         'sql-formatter',
         'monaco-editor/editor/editor.api',
+        'monaco-editor/features/tokenization/register',
+        'monaco-editor/features/hover/register',
+        'monaco-editor/editor/contrib/suggest/browser/suggestController',
+        'monaco-editor/editor/contrib/find/browser/findController',
         'monaco-editor/language/json/monaco.contribution',
         'monaco-sql-languages/esm/languages/pgsql/pgsql.js'
       ]

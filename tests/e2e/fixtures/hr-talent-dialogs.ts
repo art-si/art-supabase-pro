@@ -4,6 +4,8 @@ import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
 import { setupGlobDirectives } from '@/directives'
+import { useTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import LearningDialog from '../../../modules/art-supabase-hr/src/views/talent/development/modules/learning-dialog.vue'
 import PerformanceDialog from '../../../modules/art-supabase-hr/src/views/talent/performance/modules/performance-dialog.vue'
 import SuccessionDialog from '../../../modules/art-supabase-hr/src/views/talent/succession/modules/succession-dialog.vue'
@@ -21,9 +23,11 @@ import '@styles/index.scss'
 
 const params = new URLSearchParams(location.search)
 const feature = params.get('feature') ?? 'learning'
+const darkTheme = params.get('theme') === 'dark'
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const app = createApp({
   setup() {
+    const { switchThemeStyles } = useTheme()
     const learning = shallowRef<InstanceType<typeof LearningDialog>>()
     const performance = shallowRef<InstanceType<typeof PerformanceDialog>>()
     const succession = shallowRef<InstanceType<typeof SuccessionDialog>>()
@@ -37,6 +41,7 @@ const app = createApp({
     const assignment = shallowRef<InstanceType<typeof Assignment>>()
     const delivery = shallowRef<InstanceType<typeof Delivery>>()
     onMounted(() => {
+      if (darkTheme) switchThemeStyles(SystemThemeEnum.DARK)
       if (feature === 'assignment' || feature === 'delivery') {
         const request: Api.Hr.ServiceRequest = {
           id: 'request-test',

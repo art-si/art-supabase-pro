@@ -25,6 +25,7 @@
   import { uniq } from 'lodash-es'
   import { useThrottleFn } from '@vueuse/core'
   import { exportExcel, type ExcelColumn } from '@/utils/file'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
 
   defineOptions({ name: 'ArtExcelExport' })
 
@@ -127,6 +128,7 @@
   }
 
   const isExporting = ref(false)
+  const captureExportScope = useTenantOperationGuard()
 
   /** 是否有数据可导出 */
   const hasData = computed(() => Array.isArray(props.data) && props.data.length > 0)
@@ -162,6 +164,7 @@
     async () => {
       if (isExporting.value) return
 
+      const scopeCurrent = captureExportScope()
       isExporting.value = true
 
       try {
@@ -170,32 +173,43 @@
 
         // 触发导出前事件
         emit('before-export', props.data)
+        if (!scopeCurrent()) return
+
+        const { data, filename } = props
+        const rowCount = data.length
 
         // 执行导出
         await exportExcel({
-          data: props.data,
-          columns: buildColumns(props.data),
-          filename: props.filename,
+          data,
+          columns: buildColumns(data),
+          filename,
           sheetName: props.sheetName,
           autoIndex: props.autoIndex,
           indexColumnTitle: props.indexColumnTitle,
           maxRows: props.maxRows,
           filenameSuffix: 'datetime',
           workbookProperties: props.workbookOptions,
-          onProgress: (progress) => emit('export-progress', progress)
+          onProgress: (progress) => {
+            if (scopeCurrent()) emit('export-progress', progress)
+          },
+          assertCanDownload: () => {
+            if (!scopeCurrent()) throw new Error('导出范围已变化，请重新导出')
+          }
         })
+        if (!scopeCurrent()) return
 
         // 触发成功事件
-        emit('export-success', props.filename, props.data.length)
+        emit('export-success', filename, rowCount)
 
         // 显示成功消息
-        if (props.showSuccessMessage) {
+        if (scopeCurrent() && props.showSuccessMessage) {
           ElMessage.success({
-            message: `成功导出 ${props.data.length} 条数据`,
+            message: `成功导出 ${rowCount} 条数据`,
             duration: 3000
           })
         }
       } catch (error) {
+        if (!scopeCurrent()) return
         const exportError =
           error instanceof ExportError
             ? error
@@ -215,7 +229,7 @@
         }
       } finally {
         isExporting.value = false
-        emit('export-progress', 0)
+        if (scopeCurrent()) emit('export-progress', 0)
       }
     },
     1000,

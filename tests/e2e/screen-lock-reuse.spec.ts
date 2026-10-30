@@ -71,7 +71,7 @@ for (const theme of ['light', 'dark']) {
   }
 }
 
-test('设置锁屏密码后恢复焦点，卸载清理快捷键和滚动锁', async ({ page }) => {
+test('新锁屏密码可解锁并恢复焦点，卸载清理快捷键和滚动锁', async ({ page }) => {
   await prepareIsolatedSession(page)
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -85,6 +85,16 @@ test('设置锁屏密码后恢复焦点，卸载清理快捷键和滚动锁', as
   await page.goto('/tests/e2e/fixtures/screen-lock-reuse.html')
   await page.getByRole('button', { name: '打开锁屏设置', exact: true }).click()
   const input = page.locator('#lock-screen-password')
+  await expect(input).toBeFocused()
+  await input.fill('screen-test-password')
+  await page.getByRole('button', { name: '锁定工作台', exact: true }).click()
+  await expect(page.locator('#unlock-screen-password')).toBeFocused()
+  await expect(page.getByLabel('锁屏状态')).toHaveText('true')
+  await page.locator('#unlock-screen-password').fill('screen-test-password')
+  await page.getByRole('button', { name: '解锁工作台', exact: true }).click()
+  await expect(page.getByLabel('锁屏状态')).toHaveText('false')
+  await expect(page.getByLabel('已清理锁屏密码')).toHaveText('true')
+  await page.getByRole('button', { name: '打开锁屏设置', exact: true }).click()
   await expect(input).toBeFocused()
   await input.fill('screen-test-password')
   await page.getByRole('button', { name: '锁定工作台', exact: true }).click()

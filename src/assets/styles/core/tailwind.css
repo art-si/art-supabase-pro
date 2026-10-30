@@ -255,10 +255,6 @@
   border-radius: var(--art-surface-radius);
 }
 
-@utility rounded-custom-xs {
-  border-radius: var(--art-surface-radius);
-}
-
 @utility rounded-custom-sm {
   border-radius: var(--art-surface-radius);
 }
@@ -298,46 +294,12 @@
     @apply border border-[var(--default-border)];
   }
 
-  .border-b-d {
-    @apply border-b border-[var(--default-border)];
-  }
-
-  .border-t-d {
-    @apply border-t border-[var(--default-border)];
-  }
-
   .border-l-d {
     @apply border-l border-[var(--default-border)];
-  }
-
-  .border-r-d {
-    @apply border-r border-[var(--default-border)];
   }
 
   /* Cursor Utilities */
   .c-p {
     @apply cursor-pointer;
-  }
-}
-
-/* ==================== Custom Component Classes ==================== */
-@layer components {
-  /* Art Card Header Component */
-  .art-card-header {
-    @apply flex justify-between pr-6 pb-1;
-
-    .title {
-      h4 {
-        @apply text-lg font-medium text-g-900;
-      }
-
-      p {
-        @apply mt-1 text-sm text-g-600;
-
-        span {
-          @apply ml-2 font-medium;
-        }
-      }
-    }
   }
 }

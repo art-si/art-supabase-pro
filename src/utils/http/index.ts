@@ -43,189 +43,192 @@ export interface ExtendedAxiosRequestConfig extends AxiosRequestConfig {
   responseContract?: ResponseContract
 }
 
-const { VITE_API_URL, VITE_WITH_CREDENTIALS } = import.meta.env
+// 初始化仅作用于返回的实例，未使用此请求层时可整体裁剪。
+function createHttpClient() {
+  const { VITE_API_URL, VITE_WITH_CREDENTIALS } = import.meta.env
 
-/** Axios实例 */
-const axiosInstance = axios.create({
-  timeout: REQUEST_TIMEOUT,
-  baseURL: VITE_API_URL,
-  withCredentials: VITE_WITH_CREDENTIALS === 'true',
-  validateStatus: (status) => status >= 200 && status < 300,
-  transformResponse: [
-    (data, headers) => {
-      const contentType = String(headers['content-type'] ?? '')
-      if (contentType.includes('application/json')) {
-        try {
-          return JSON.parse(data)
-        } catch {
-          return data
+  /** Axios实例 */
+  const axiosInstance = axios.create({
+    timeout: REQUEST_TIMEOUT,
+    baseURL: VITE_API_URL,
+    withCredentials: VITE_WITH_CREDENTIALS === 'true',
+    validateStatus: (status) => status >= 200 && status < 300,
+    transformResponse: [
+      (data, headers) => {
+        const contentType = String(headers['content-type'] ?? '')
+        if (contentType.includes('application/json')) {
+          try {
+            return JSON.parse(data)
+          } catch {
+            return data
+          }
         }
+        return data
       }
-      return data
+    ]
+  })
+
+  /** 请求拦截器 */
+  axiosInstance.interceptors.request.use(
+    (request: InternalAxiosRequestConfig) => {
+      const { accessToken } = useUserStore()
+      const config = request as InternalAxiosRequestConfig & ExtendedAxiosRequestConfig
+      if (accessToken && !config.skipAuth) request.headers.set('Authorization', accessToken)
+
+      if (request.data && !(request.data instanceof FormData) && !request.headers['Content-Type']) {
+        request.headers.set('Content-Type', 'application/json')
+        request.data = JSON.stringify(request.data)
+      }
+
+      return request
+    },
+    (error) => {
+      showError(createHttpError($t('httpMsg.requestConfigError'), ApiStatus.error))
+      return Promise.reject(error)
     }
-  ]
-})
+  )
 
-/** 请求拦截器 */
-axiosInstance.interceptors.request.use(
-  (request: InternalAxiosRequestConfig) => {
-    const { accessToken } = useUserStore()
-    const config = request as InternalAxiosRequestConfig & ExtendedAxiosRequestConfig
-    if (accessToken && !config.skipAuth) request.headers.set('Authorization', accessToken)
-
-    if (request.data && !(request.data instanceof FormData) && !request.headers['Content-Type']) {
-      request.headers.set('Content-Type', 'application/json')
-      request.data = JSON.stringify(request.data)
+  /** 响应拦截器 */
+  async function retryAfterUnauthorized(
+    config: ExtendedAxiosRequestConfig
+  ): Promise<AxiosResponse<BaseResponse> | null> {
+    if (!isSupabaseApi || config.skipAuth) return null
+    if (!config.sessionRecoveryRetried && (await refreshSupabaseSessionOnce())) {
+      const retryConfig: ExtendedAxiosRequestConfig = { ...config, sessionRecoveryRetried: true }
+      return axiosInstance.request<BaseResponse>(retryConfig)
     }
-
-    return request
-  },
-  (error) => {
-    showError(createHttpError($t('httpMsg.requestConfigError'), ApiStatus.error))
-    return Promise.reject(error)
+    if (await isSupabaseSessionConfirmedExpired()) {
+      await notifySupabaseSessionExpired()
+    }
+    return null
   }
-)
 
-/** 响应拦截器 */
-async function retryAfterUnauthorized(
-  config: ExtendedAxiosRequestConfig
-): Promise<AxiosResponse<BaseResponse> | null> {
-  if (!isSupabaseApi || config.skipAuth) return null
-  if (!config.sessionRecoveryRetried && (await refreshSupabaseSessionOnce())) {
-    const retryConfig: ExtendedAxiosRequestConfig = { ...config, sessionRecoveryRetried: true }
-    return axiosInstance.request<BaseResponse>(retryConfig)
-  }
-  if (await isSupabaseSessionConfirmedExpired()) {
-    await notifySupabaseSessionExpired()
-  }
-  return null
-}
+  axiosInstance.interceptors.response.use(
+    async (response: AxiosResponse<BaseResponse>) => {
+      const config = response.config as ExtendedAxiosRequestConfig
+      if (config.skipResponseWrapper || response.status === 204) return response
 
-axiosInstance.interceptors.response.use(
-  async (response: AxiosResponse<BaseResponse>) => {
-    const config = response.config as ExtendedAxiosRequestConfig
-    if (config.skipResponseWrapper || response.status === 204) return response
-
-    try {
-      const decoded = decodeResponseEnvelope(response.data, config.responseContract)
-      response.data = { code: ApiStatus.success, msg: decoded.message, data: decoded.data }
-      return response
-    } catch (error) {
-      if (!(error instanceof ApiResponseError)) throw error
-      if (error.code === ApiStatus.unauthorized) {
-        const retried = await retryAfterUnauthorized(config)
+      try {
+        const decoded = decodeResponseEnvelope(response.data, config.responseContract)
+        response.data = { code: ApiStatus.success, msg: decoded.message, data: decoded.data }
+        return response
+      } catch (error) {
+        if (!(error instanceof ApiResponseError)) throw error
+        if (error.code === ApiStatus.unauthorized) {
+          const retried = await retryAfterUnauthorized(config)
+          if (retried) return retried
+        }
+        throw new HttpError(
+          error.message,
+          typeof error.code === 'number' ? error.code : ApiStatus.error,
+          { data: error.data }
+        )
+      }
+    },
+    async (error) => {
+      if (error.response?.status === ApiStatus.unauthorized && error.config) {
+        const retried = await retryAfterUnauthorized(error.config as ExtendedAxiosRequestConfig)
         if (retried) return retried
       }
-      throw new HttpError(
-        error.message,
-        typeof error.code === 'number' ? error.code : ApiStatus.error,
-        { data: error.data }
-      )
+      return Promise.reject(handleError(error))
     }
-  },
-  async (error) => {
-    if (error.response?.status === ApiStatus.unauthorized && error.config) {
-      const retried = await retryAfterUnauthorized(error.config as ExtendedAxiosRequestConfig)
-      if (retried) return retried
-    }
-    return Promise.reject(handleError(error))
-  }
-)
+  )
 
-/** 统一创建HttpError */
-function createHttpError(message: string, code: number) {
-  return new HttpError(message, code)
-}
-
-/** 是否需要重试 */
-function shouldRetry(statusCode: number) {
-  return [
-    ApiStatus.requestTimeout,
-    ApiStatus.internalServerError,
-    ApiStatus.badGateway,
-    ApiStatus.serviceUnavailable,
-    ApiStatus.gatewayTimeout
-  ].includes(statusCode)
-}
-
-/** 请求重试逻辑 */
-async function retryRequest<T>(
-  config: ExtendedAxiosRequestConfig,
-  retries: number = MAX_RETRIES
-): Promise<T> {
-  try {
-    return await request<T>(config)
-  } catch (error) {
-    if (retries > 0 && error instanceof HttpError && shouldRetry(error.code)) {
-      await delay(RETRY_DELAY)
-      return retryRequest<T>(config, retries - 1)
-    }
-    throw error
-  }
-}
-
-/** 延迟函数 */
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/** 请求函数 */
-async function request<T = unknown>(config: ExtendedAxiosRequestConfig): Promise<T> {
-  // POST | PUT 参数自动填充
-  if (
-    ['POST', 'PUT'].includes(config.method?.toUpperCase() || '') &&
-    config.params &&
-    !config.data
-  ) {
-    config.data = config.params
-    config.params = undefined
+  /** 统一创建HttpError */
+  function createHttpError(message: string, code: number) {
+    return new HttpError(message, code)
   }
 
-  try {
-    const res = await axiosInstance.request<BaseResponse<T> | T>(config)
+  /** 是否需要重试 */
+  function shouldRetry(statusCode: number) {
+    return [
+      ApiStatus.requestTimeout,
+      ApiStatus.internalServerError,
+      ApiStatus.badGateway,
+      ApiStatus.serviceUnavailable,
+      ApiStatus.gatewayTimeout
+    ].includes(statusCode)
+  }
 
-    if (res.status === 204) return undefined as T
-
-    if (config.skipResponseWrapper) {
-      return res.data as T
+  /** 请求重试逻辑 */
+  async function retryRequest<T>(
+    config: ExtendedAxiosRequestConfig,
+    retries: number = MAX_RETRIES
+  ): Promise<T> {
+    try {
+      return await request<T>(config)
+    } catch (error) {
+      if (retries > 0 && error instanceof HttpError && shouldRetry(error.code)) {
+        await delay(RETRY_DELAY)
+        return retryRequest<T>(config, retries - 1)
+      }
+      throw error
     }
+  }
 
-    // 显示成功消息
-    const responseData = res.data as BaseResponse<T>
-    if (config.showSuccessMessage && responseData.msg) {
-      showSuccess(responseData.msg)
-    }
+  /** 延迟函数 */
+  function delay(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+  }
 
-    return responseData.data as T
-  } catch (error) {
+  /** 请求函数 */
+  async function request<T = unknown>(config: ExtendedAxiosRequestConfig): Promise<T> {
+    // POST | PUT 参数自动填充
     if (
-      error instanceof HttpError &&
-      (useUserStore().isLogin || !isSupabaseSessionFailure(error.data))
+      ['POST', 'PUT'].includes(config.method?.toUpperCase() || '') &&
+      config.params &&
+      !config.data
     ) {
-      const showMsg = config.showErrorMessage !== false
-      showError(error, showMsg)
+      config.data = config.params
+      config.params = undefined
     }
-    return Promise.reject(error)
+
+    try {
+      const res = await axiosInstance.request<BaseResponse<T> | T>(config)
+
+      if (res.status === 204) return undefined as T
+
+      if (config.skipResponseWrapper) {
+        return res.data as T
+      }
+
+      // 显示成功消息
+      const responseData = res.data as BaseResponse<T>
+      if (config.showSuccessMessage && responseData.msg) {
+        showSuccess(responseData.msg)
+      }
+
+      return responseData.data as T
+    } catch (error) {
+      if (
+        error instanceof HttpError &&
+        (useUserStore().isLogin || !isSupabaseSessionFailure(error.data))
+      ) {
+        const showMsg = config.showErrorMessage !== false
+        showError(error, showMsg)
+      }
+      return Promise.reject(error)
+    }
+  }
+
+  /** API方法集合 */
+  return {
+    get<T>(config: ExtendedAxiosRequestConfig) {
+      return retryRequest<T>({ ...config, method: 'GET' })
+    },
+    post<T>(config: ExtendedAxiosRequestConfig) {
+      return retryRequest<T>({ ...config, method: 'POST' })
+    },
+    put<T>(config: ExtendedAxiosRequestConfig) {
+      return retryRequest<T>({ ...config, method: 'PUT' })
+    },
+    del<T>(config: ExtendedAxiosRequestConfig) {
+      return retryRequest<T>({ ...config, method: 'DELETE' })
+    },
+    request<T>(config: ExtendedAxiosRequestConfig) {
+      return retryRequest<T>(config)
+    }
   }
 }
 
-/** API方法集合 */
-const api = {
-  get<T>(config: ExtendedAxiosRequestConfig) {
-    return retryRequest<T>({ ...config, method: 'GET' })
-  },
-  post<T>(config: ExtendedAxiosRequestConfig) {
-    return retryRequest<T>({ ...config, method: 'POST' })
-  },
-  put<T>(config: ExtendedAxiosRequestConfig) {
-    return retryRequest<T>({ ...config, method: 'PUT' })
-  },
-  del<T>(config: ExtendedAxiosRequestConfig) {
-    return retryRequest<T>({ ...config, method: 'DELETE' })
-  },
-  request<T>(config: ExtendedAxiosRequestConfig) {
-    return retryRequest<T>(config)
-  }
-}
-
-export default api
+export default /* @__PURE__ */ createHttpClient()

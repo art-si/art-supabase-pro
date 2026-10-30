@@ -75,6 +75,7 @@
 
     <RoleEditDialog ref="roleEditDialogRef" @success="refreshData" />
     <RolePermissionDialog ref="rolePermissionDialogRef" @success="refreshData" />
+    <RoleUserDialog ref="roleUserDialogRef" @success="refreshData" />
     <MasterDataDeleteGuard ref="deleteGuardRef" @cleared="refreshData" />
     <ArtDrawer ref="organizationDrawerRef">
       <OrganizationScopeFilter
@@ -112,6 +113,7 @@
   } from '@/components/business/business-workspace-header/index.vue'
   import RoleEditDialog from './modules/role-edit-dialog.vue'
   import RolePermissionDialog from './modules/role-permission-dialog.vue'
+  import RoleUserDialog from './modules/role-user-dialog.vue'
   import { formatWithDayjs } from '@/utils/time'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { ColumnOption } from '@/types'
@@ -284,6 +286,7 @@
 
   const roleEditDialogRef = ref<RoleEditDialogExpose>()
   const rolePermissionDialogRef = ref<RolePermissionDialogExpose>()
+  const roleUserDialogRef = ref<InstanceType<typeof RoleUserDialog>>()
   const isBuiltinRegisterRole = (row: RoleListItem): boolean =>
     row.builtinType === ROLE_BUILTIN_TYPES.DEFAULT_REGISTER
 
@@ -296,6 +299,12 @@
     }
 
     const actions: ButtonMoreItem[] = [
+      {
+        key: 'users',
+        label: '分配用户',
+        icon: 'ri:user-add-line',
+        auth: 'System:Role:AssignUser'
+      },
       {
         key: 'edit',
         label: '编辑角色',
@@ -501,6 +510,9 @@
 
   const buttonMoreClick = (item: ButtonMoreItem, row: RoleListItem) => {
     switch (item.key) {
+      case 'users':
+        void roleUserDialogRef.value?.handleOpen(row)
+        break
       case 'permission':
         showPermissionDialog(row)
         break

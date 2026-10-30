@@ -43,7 +43,7 @@
             "
           >
             <ArtSvgIcon
-              :icon="uploading ? 'ri:loader-4-line' : 'ri:attachment-2'"
+              :icon="uploading ? 'ri:refresh-line' : 'ri:attachment-2'"
               :class="{ 'art-upload-file__spinner': uploading }"
               aria-hidden="true"
             />
@@ -90,7 +90,7 @@
       >
         <div class="art-upload-file__identity">
           <ArtSvgIcon
-            :icon="file.status === 'uploading' ? 'ri:loader-4-line' : 'ri:file-line'"
+            :icon="file.status === 'uploading' ? 'ri:refresh-line' : 'ri:file-line'"
             :class="{ 'art-upload-file__spinner': file.status === 'uploading' }"
             aria-hidden="true"
           />

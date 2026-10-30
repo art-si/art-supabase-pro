@@ -360,7 +360,7 @@ test('借款明细取消中的旧请求不能改变已接受表格的合并行',
   expect(renderErrors).toEqual([])
 })
 
-for (const scenario of [
+const expenseScenarios = [
   {
     kind: 'travel',
     title: '出差申请单',
@@ -397,7 +397,9 @@ for (const scenario of [
     parent: 'reimbursement',
     number: 'reimbursement_no'
   }
-] as const) {
+] as const
+
+for (const scenario of expenseScenarios) {
   test(`${scenario.title}按明细合并使用已接受行并可退出专注模式`, async ({ page }, info) => {
     test.setTimeout(180_000)
     const renderErrors: string[] = []
@@ -508,3 +510,209 @@ for (const scenario of [
     expect(renderErrors).toEqual([])
   })
 }
+
+for (const scenario of expenseScenarios) {
+  for (const mode of ['document', 'line'] as const) {
+    test(`${scenario.title}${mode === 'line' ? '明细' : '单据'}请求切换会中止旧请求并接受新行`, async ({
+      page
+    }, info) => {
+      test.setTimeout(240_000)
+      const pageErrors: string[] = []
+      page.on('pageerror', (error) => pageErrors.push(error.message))
+      const tenantId = '11111111-1111-4111-8111-111111111111'
+      const parent = (suffix: string) => ({
+        id: `document-${suffix}`,
+        tenant_id: tenantId,
+        [scenario.number]: `QA-${suffix}`,
+        application_date: '2026-10-23',
+        repayment_date: '2026-10-23',
+        reimbursement_date: '2026-10-23',
+        status: 'draft',
+        source_type: 'travel',
+        amount: 200,
+        total_amount: 200,
+        attachment_urls: []
+      })
+      const rows = (suffix: string, shape: 'document' | 'line' = mode) => {
+        const document = parent(suffix)
+        return shape === 'document'
+          ? [document]
+          : [1, 2].map((lineNo) => ({
+              id: `line-${suffix}-${lineNo}`,
+              tenant_id: tenantId,
+              line_no: lineNo,
+              [scenario.parent]: document,
+              reimbursement_id: document.id,
+              repayment_id: document.id,
+              expense_item: { item_name: '验收费用' },
+              expense_item_name: '验收费用',
+              amount: 100,
+              gross_amount: 100,
+              departure_region_path: [],
+              destination_region_path: [],
+              transport_modes: [],
+              traveler_employee_ids: []
+            }))
+      }
+      const target = mode === 'line' ? scenario.lines : scenario.list
+      let armRace = false
+      let raceReads = 0
+      let releaseA: (() => void) | undefined
+      let signalAStarted: (() => void) | undefined
+      const aStarted = new Promise<void>((resolve) => (signalAStarted = resolve))
+      const aRelease = new Promise<void>((resolve) => (releaseA = resolve))
+      await page.route('**/rest/v1/**', async (route) => {
+        const resource = new URL(route.request().url()).pathname.split('/').at(-1)
+        if (resource !== scenario.list && resource !== scenario.lines)
+          return route.fulfill({ json: [] })
+        if (resource === target && armRace) {
+          raceReads++
+          if (raceReads === 1) {
+            signalAStarted?.()
+            await aRelease
+            try {
+              await route.fulfill({
+                json:
+                  scenario.kind === 'reimbursement' ? { records: rows('A'), total: 2 } : rows('A'),
+                headers: {
+                  'content-range': '0-1/2',
+                  'access-control-expose-headers': 'content-range'
+                }
+              })
+            } catch (error) {
+              if (!route.request().failure()) throw error
+            }
+            return
+          }
+        }
+        const data = rows(
+          resource === target && armRace ? 'B' : 'SEED',
+          resource === scenario.list ? 'document' : 'line'
+        )
+        return route.fulfill({
+          json: scenario.kind === 'reimbursement' ? { records: data, total: 2 } : data,
+          headers: {
+            'content-range': '0-1/2',
+            'access-control-expose-headers': 'content-range'
+          }
+        })
+      })
+      await installDictionaryOptions(page, {
+        commonDocumentDisplayMode: [
+          { value: 'document', label: '按单据' },
+          { value: 'line', label: '按明细' }
+        ]
+      })
+      await page.goto(
+        `/tests/e2e/fixtures/receivable-workspace.html?kind=expense_${scenario.kind}&permissions=${scenario.permission}`,
+        { waitUntil: 'domcontentloaded' }
+      )
+      const table = page.locator('.art-table-query .el-table')
+      await expect(page.getByText('QA-SEED', { exact: true })).toBeVisible()
+      const appearanceGuide = page.getByText('知道了', { exact: true })
+      if (await appearanceGuide.isVisible()) await appearanceGuide.click()
+      if (mode === 'line') {
+        await page.getByText('按明细', { exact: true }).click()
+        await expect(table.locator('tbody tr.el-table__row')).toHaveCount(2)
+      }
+      armRace = true
+      const failedA = page.waitForEvent('requestfailed', {
+        predicate: (request) => new URL(request.url()).pathname.endsWith(`/${target}`),
+        timeout: 15_000
+      })
+      const refresh = () =>
+        page.locator('.art-table-query').evaluate(async (element) => {
+          const api = (
+            element as HTMLElement & {
+              __vueParentComponent?: { exposed?: { getData?: () => Promise<unknown> } }
+            }
+          ).__vueParentComponent?.exposed
+          if (!api?.getData) throw new Error('ArtTableQuery.getData is unavailable')
+          await api.getData()
+        })
+      const olderRequest = refresh()
+      await aStarted
+      await refresh()
+      await expect.poll(() => raceReads).toBe(2)
+      const aborted = await failedA
+      expect(aborted.failure()?.errorText).toMatch(/ERR_ABORTED|NS_BINDING_ABORTED|cancel/i)
+      await expect(page.getByText('QA-B', { exact: true })).toBeVisible()
+      await expect(table.locator('tbody tr.el-table__row')).toHaveCount(mode === 'line' ? 2 : 1)
+      await expect(page.locator('.el-pagination__total')).toHaveText(/共\s*2\s*条/)
+      if (mode === 'line') {
+        const numberCell = table
+          .locator('tbody tr.el-table__row')
+          .first()
+          .locator('td')
+          .filter({ hasText: 'QA-B' })
+        await expect(numberCell).toHaveAttribute('rowspan', '2')
+      }
+      if (scenario.kind === 'reimbursement' && mode === 'line') {
+        await page.screenshot({ path: info.outputPath('reimbursement-abort-accepted-lines.png') })
+      }
+      releaseA?.()
+      await olderRequest
+      await expect(page.getByText('QA-A', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('QA-B', { exact: true })).toBeVisible()
+      await expect(page.locator('.el-message--error')).toHaveCount(0)
+      expect(pageErrors).toEqual([])
+    })
+  }
+}
+
+test('借款单无信号的全量导出读取不受表格刷新取消影响', async ({ page }) => {
+  test.setTimeout(300_000)
+  const failedUrls: string[] = []
+  page.on('requestfailed', (request) => failedUrls.push(request.url()))
+  const record = (suffix: string) => ({
+    id: `loan-${suffix}`,
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    loan_no: `QA-${suffix}`,
+    application_date: '2026-10-23',
+    status: 'draft',
+    amount: 100,
+    total_amount: 100,
+    attachment_urls: []
+  })
+  let releaseExport: (() => void) | undefined
+  let signalExportStarted: (() => void) | undefined
+  const exportStarted = new Promise<void>((resolve) => (signalExportStarted = resolve))
+  const exportRelease = new Promise<void>((resolve) => (releaseExport = resolve))
+  let tableReads = 0
+  await page.route('**/rest/v1/**', async (route) => {
+    const url = new URL(route.request().url())
+    if (!url.pathname.endsWith('/fms_travel_loan')) return route.fulfill({ json: [] })
+    if (url.searchParams.get('limit') === '500') {
+      signalExportStarted?.()
+      await exportRelease
+      return route.fulfill({
+        json: [record('EXPORT-1'), record('EXPORT-2')],
+        headers: { 'content-range': '0-1/2', 'access-control-expose-headers': 'content-range' }
+      })
+    }
+    tableReads++
+    return route.fulfill({
+      json: [record(tableReads === 1 ? 'SEED' : 'REFRESH')],
+      headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
+    })
+  })
+  await page.goto(
+    '/tests/e2e/fixtures/receivable-workspace.html?kind=expense_loan&permissions=FinanceLoanApplication:View&loanExportProbe',
+    { waitUntil: 'domcontentloaded' }
+  )
+  await expect(page.getByText('QA-SEED', { exact: true })).toBeVisible()
+  const exportResult = page.evaluate(async () => {
+    const probe = (
+      window as Window & { __loanExportProbe?: () => Promise<Array<{ loanNo: string }>> }
+    ).__loanExportProbe
+    if (!probe) throw new Error('Loan export probe is unavailable')
+    return probe()
+  })
+  await exportStarted
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await expect(page.getByText('QA-REFRESH', { exact: true })).toBeVisible()
+  releaseExport?.()
+  expect((await exportResult).map((row) => row.loanNo)).toEqual(['QA-EXPORT-1', 'QA-EXPORT-2'])
+  await expect(page.getByText('QA-REFRESH', { exact: true })).toBeVisible()
+  expect(failedUrls.filter((url) => new URL(url).searchParams.get('limit') === '500')).toEqual([])
+})

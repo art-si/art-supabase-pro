@@ -1,6 +1,7 @@
 import { uniq } from 'lodash-es'
 import { normalizeNullableText, normalizeStringList } from '@/utils/form/normalize'
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { isObjectRecord } from '@/utils/record'
 
 const { supabase, responseHandle } = useSupabase()
 
@@ -73,12 +74,8 @@ export const UI_DESIGN_REFERENCE_IMAGE_MIME_TYPES = [
   'image/webp'
 ] as const
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
 function normalizeStyleSnapshot(value: unknown): UiDesignReferenceStyleSnapshot {
-  if (!isRecord(value)) return {}
+  if (!isObjectRecord(value)) return {}
 
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => {
@@ -89,7 +86,7 @@ function normalizeStyleSnapshot(value: unknown): UiDesignReferenceStyleSnapshot 
 }
 
 function normalizeReference(value: unknown): UiDesignReferenceRecord | null {
-  if (!isRecord(value)) return null
+  if (!isObjectRecord(value)) return null
   if (
     typeof value.id !== 'string' ||
     typeof value.routeName !== 'string' ||
@@ -122,7 +119,7 @@ function normalizeReferenceImage(
   value: unknown,
   signedUrl = ''
 ): UiDesignReferenceImageRecord | null {
-  if (!isRecord(value)) return null
+  if (!isObjectRecord(value)) return null
   if (
     typeof value.id !== 'string' ||
     typeof value.referenceId !== 'string' ||

@@ -154,7 +154,8 @@
   import { getCurrentScope } from 'vue'
   import { ElInput, type FormRules } from 'element-plus'
   import { useI18n } from 'vue-i18n'
-  import CryptoJS from 'crypto-js'
+  import AES from 'crypto-js/aes'
+  import Utf8 from 'crypto-js/enc-utf8'
   import { useWebsiteConfig } from '@/hooks/core/useWebsiteConfig'
   import { useUserStore } from '@/store/modules/user'
   import { mittBus } from '@/utils/sys'
@@ -214,9 +215,7 @@
   // 工具函数
   const verifyPassword = (inputPassword: string, storedPassword: string): boolean => {
     try {
-      const decryptedPassword = CryptoJS.AES.decrypt(storedPassword, ENCRYPT_KEY).toString(
-        CryptoJS.enc.Utf8
-      )
+      const decryptedPassword = AES.decrypt(storedPassword, ENCRYPT_KEY).toString(Utf8)
       return inputPassword === decryptedPassword
     } catch (error) {
       console.error('密码解密失败:', error)
@@ -248,7 +247,7 @@
 
     await formRef.value.validate((valid) => {
       if (valid && componentScope?.active) {
-        const encryptedPassword = CryptoJS.AES.encrypt(formData.password, ENCRYPT_KEY).toString()
+        const encryptedPassword = AES.encrypt(formData.password, ENCRYPT_KEY).toString()
         userStore.setLockStatus(true)
         userStore.setLockPassword(encryptedPassword)
         visible.value = false

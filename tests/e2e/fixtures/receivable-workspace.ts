@@ -30,9 +30,29 @@ import ReimbursementPage from '@fms/views/everyone-expense/expense-reimbursement
 import ReimbursementDetail from '@fms/views/everyone-expense/expense-reimbursement/detail/index.vue'
 import ExpensePayeeDialog from '@fms/views/everyone-expense/shared/expense-payee-dialog.vue'
 import type { TravelLoanPayeeInput } from '@fms/api'
+import { fetchTravelLoanList } from '@fms/api'
+import { loadTableExportRows } from '@/utils/table/table-utils'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 const params = new URLSearchParams(location.search)
+if (params.has('loanExportProbe')) {
+  Object.assign(window, {
+    __loanExportProbe: () =>
+      loadTableExportRows(
+        (page: Record<string, unknown>) => {
+          const current = Number(page.current)
+          const size = Number(page.size)
+          return fetchTravelLoanList({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            from: (current - 1) * size,
+            to: current * size - 1
+          })
+        },
+        {},
+        10
+      )
+  })
+}
 const fixturePermissions = (params.get('permissions') || '').split(',').filter(Boolean)
 function setFixturePermissions(codes: string[]): void {
   useMenuStore(store).setButtonList(

@@ -7,105 +7,112 @@
         v-show="visible"
         :style="menuStyle"
         class="menu-right context-menu art-card-xs min-w-[var(--menu-width)] w-[var(--menu-width)]"
+        @keydown.stop="handleKeydown"
       >
-        <ul class="menu-list m-0 list-none" :style="menuListStyle" role="menu">
-          <template v-for="item in menuItems" :key="item.key">
-            <!-- 普通菜单项 -->
-            <li
-              v-if="!item.children"
-              role="none"
-              class="menu-entry relative"
-              :class="{ 'is-disabled': item.disabled, 'has-line': item.showLine }"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                class="menu-item art-icon-label relative w-full c-p select-none text-sm transition-colors duration-150"
-                :style="menuItemStyle"
-                :disabled="item.disabled"
-                @click="handleMenuClick(item)"
+        <component
+          :is="scrollable ? ElScrollbar : 'div'"
+          :max-height="`calc(100dvh - ${boundaryDistance * 2}px)`"
+        >
+          <ul class="menu-list m-0 list-none" :style="menuListStyle" role="menu">
+            <template v-for="item in menuItems" :key="item.key">
+              <!-- 普通菜单项 -->
+              <li
+                v-if="!item.children"
+                role="none"
+                class="menu-entry relative"
+                :class="{ 'is-disabled': item.disabled, 'has-line': item.showLine }"
               >
-                <ArtSvgIcon
-                  v-if="item.icon"
-                  class="text-g-800"
-                  :icon="item.icon"
-                  aria-hidden="true"
-                />
-                <span
-                  class="menu-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-g-800"
-                  >{{ item.label }}</span
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="menu-item art-icon-label relative w-full c-p select-none text-sm transition-colors duration-150"
+                  :style="menuItemStyle"
+                  :disabled="item.disabled"
+                  @click="handleMenuClick(item)"
                 >
-              </button>
-            </li>
-
-            <!-- 子菜单 -->
-            <li v-else role="none" class="menu-entry submenu relative">
-              <button
-                type="button"
-                role="menuitem"
-                aria-haspopup="menu"
-                class="menu-item submenu-title art-icon-label w-full c-p select-none text-sm transition-colors duration-150"
-                :style="menuItemStyle"
-              >
-                <ArtSvgIcon
-                  v-if="item.icon"
-                  class="text-g-800"
-                  :icon="item.icon"
-                  aria-hidden="true"
-                />
-                <span
-                  class="menu-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-g-800"
-                  >{{ item.label }}</span
-                >
-                <ArtSvgIcon
-                  icon="ri:arrow-right-s-line"
-                  class="submenu-arrow text-g-500 transition-transform duration-150"
-                  aria-hidden="true"
-                />
-              </button>
-              <ul
-                class="submenu-list art-card-xs absolute left-full top-0 z-[2001] hidden w-max min-w-max list-none"
-                :style="submenuListStyle"
-                role="menu"
-              >
-                <li
-                  v-for="child in item.children"
-                  :key="child.key"
-                  role="none"
-                  class="menu-entry relative mx-1.5"
-                  :class="{ 'is-disabled': child.disabled, 'has-line': child.showLine }"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="menu-item art-icon-label relative w-full c-p select-none text-sm transition-colors duration-150"
-                    :style="menuItemStyle"
-                    :disabled="child.disabled"
-                    @click="handleMenuClick(child)"
+                  <ArtSvgIcon
+                    v-if="item.icon"
+                    class="text-g-800"
+                    :icon="item.icon"
+                    aria-hidden="true"
+                  />
+                  <span
+                    class="menu-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-g-800"
+                    >{{ item.label }}</span
                   >
-                    <ArtSvgIcon
-                      v-if="child.icon"
-                      class="text-g-800"
-                      :icon="child.icon"
-                      aria-hidden="true"
-                    />
-                    <span
-                      class="menu-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-g-800"
-                      >{{ child.label }}</span
+                </button>
+              </li>
+
+              <!-- 子菜单 -->
+              <li v-else role="none" class="menu-entry submenu relative">
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  class="menu-item submenu-title art-icon-label w-full c-p select-none text-sm transition-colors duration-150"
+                  :style="menuItemStyle"
+                >
+                  <ArtSvgIcon
+                    v-if="item.icon"
+                    class="text-g-800"
+                    :icon="item.icon"
+                    aria-hidden="true"
+                  />
+                  <span
+                    class="menu-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-g-800"
+                    >{{ item.label }}</span
+                  >
+                  <ArtSvgIcon
+                    icon="ri:arrow-right-s-line"
+                    class="submenu-arrow text-g-500 transition-transform duration-150"
+                    aria-hidden="true"
+                  />
+                </button>
+                <ul
+                  class="submenu-list art-card-xs absolute left-full top-0 z-[2001] hidden w-max min-w-max list-none"
+                  :style="submenuListStyle"
+                  role="menu"
+                >
+                  <li
+                    v-for="child in item.children"
+                    :key="child.key"
+                    role="none"
+                    class="menu-entry relative mx-1.5"
+                    :class="{ 'is-disabled': child.disabled, 'has-line': child.showLine }"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="menu-item art-icon-label relative w-full c-p select-none text-sm transition-colors duration-150"
+                      :style="menuItemStyle"
+                      :disabled="child.disabled"
+                      @click="handleMenuClick(child)"
                     >
-                  </button>
-                </li>
-              </ul>
-            </li>
-          </template>
-        </ul>
+                      <ArtSvgIcon
+                        v-if="child.icon"
+                        class="text-g-800"
+                        :icon="child.icon"
+                        aria-hidden="true"
+                      />
+                      <span
+                        class="menu-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-g-800"
+                        >{{ child.label }}</span
+                      >
+                    </button>
+                  </li>
+                </ul>
+              </li>
+            </template>
+          </ul>
+        </component>
       </div>
     </Transition>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-  import type { CSSProperties } from 'vue'
+  import { computed, nextTick, ref, type CSSProperties } from 'vue'
+  import { ElScrollbar, useZIndex } from 'element-plus'
   import { useEventListener, useTimeoutFn } from '@vueuse/core'
 
   defineOptions({ name: 'ArtMenuRight' })
@@ -144,6 +151,8 @@
     borderRadius?: number
     /** 动画持续时间 */
     animationDuration?: number
+    /** 适用于无级联子菜单的长操作列表。 */
+    scrollable?: boolean
   }
 
   const props = withDefaults(defineProps<Props>(), {
@@ -153,7 +162,8 @@
     boundaryDistance: 10,
     menuPadding: 5,
     itemPaddingX: 6,
-    animationDuration: 100
+    animationDuration: 100,
+    scrollable: false
   })
 
   const emit = defineEmits<{
@@ -163,6 +173,9 @@
   }>()
 
   const visible = ref(false)
+  const { nextZIndex } = useZIndex()
+  const zIndex = ref(2000)
+  let opener: HTMLElement | null = null
   const position = ref({ x: 0, y: 0 })
 
   const menuRef = ref<HTMLDivElement>()
@@ -183,7 +196,7 @@
     position: 'fixed' as const,
     left: `${position.value.x}px`,
     top: `${position.value.y}px`,
-    zIndex: 2000,
+    zIndex: zIndex.value,
     width: `${props.menuWidth}px`
   }))
 
@@ -223,7 +236,9 @@
   const calculatePosition = (e: MouseEvent) => {
     const screenWidth = window.innerWidth
     const screenHeight = window.innerHeight
-    const menuHeight = calculateMenuHeight()
+    const menuHeight = props.scrollable
+      ? Math.min(calculateMenuHeight(), screenHeight - props.boundaryDistance * 2)
+      : calculateMenuHeight()
 
     let x = e.clientX
     let y = e.clientY
@@ -270,12 +285,33 @@
   const handleKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       hide()
+      opener?.focus()
+    } else if (e.key === 'Tab') {
+      hide()
+    } else if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
+      const items = Array.from(
+        menuRef.value?.querySelectorAll<HTMLButtonElement>(
+          'button[role="menuitem"]:not(:disabled)'
+        ) || []
+      ).filter((item) => item.getClientRects().length)
+      if (!items.length) return
+      e.preventDefault()
+      const index = items.findIndex((item) => item === document.activeElement)
+      const next =
+        e.key === 'Home'
+          ? 0
+          : e.key === 'End'
+            ? items.length - 1
+            : (index + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+      items[next].focus()
     }
   }
 
   const show = (e: MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    zIndex.value = nextZIndex()
 
     stopListenersDelay()
     listenersReady.value = false
@@ -285,6 +321,11 @@
     visible.value = true
 
     emit('show')
+    void nextTick(() =>
+      menuRef.value
+        ?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)')
+        ?.focus()
+    )
 
     // 延迟监听，避免打开菜单的点击事件立即关闭菜单。
     startListenersDelay()

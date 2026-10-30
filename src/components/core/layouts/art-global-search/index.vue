@@ -59,7 +59,7 @@
                 </span>
                 <span class="search-item__label">{{ formatMenuTitle(item.meta.title) }}</span>
                 <span v-if="isOpening(item)" class="search-item__progress" aria-hidden="true">
-                  <ArtSvgIcon icon="ri:loader-4-line" class="search-item__spinner" />
+                  <ArtSvgIcon icon="ri:refresh-line" class="search-item__spinner" />
                   打开中
                 </span>
                 <span v-else class="search-item__enter" aria-hidden="true">
@@ -107,7 +107,7 @@
                   @click.stop="deleteHistory(index)"
                 />
                 <span v-if="isOpening(item)" class="search-item__progress" aria-hidden="true">
-                  <ArtSvgIcon icon="ri:loader-4-line" class="search-item__spinner" />
+                  <ArtSvgIcon icon="ri:refresh-line" class="search-item__spinner" />
                   打开中
                 </span>
                 <span v-else class="search-item__enter" aria-hidden="true">

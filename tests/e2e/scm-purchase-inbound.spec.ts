@@ -310,3 +310,192 @@ for (const kind of ['purchase_order', 'receipt_notice'] as const) {
     expect(errors).toEqual([])
   })
 }
+
+test('采购来源慢请求不覆盖新参选', async ({ page }, testInfo) => {
+  const tenantId = '11111111-1111-4111-8111-111111111111'
+  const order = (name: 'a' | 'b') => ({
+    id: `order-${name}`,
+    tenant_id: tenantId,
+    kind: 'purchase_order',
+    document_no: `ORDER-${name.toUpperCase()}`,
+    document_date: '2026-10-10',
+    status: 'approved',
+    supplier_id: `supplier-${name}`,
+    project_id: null,
+    source_id: null,
+    details: {},
+    lines: [
+      {
+        line_id: `line-${name}`,
+        line_no: 10,
+        material_id: `material-${name}`,
+        material_code: `MAT-${name.toUpperCase()}`,
+        material_description: `${name.toUpperCase()} 来源物料`,
+        warehouse_id: 'warehouse',
+        quantity: 5,
+        unit: '件',
+        unit_price: 10,
+        tax_rate: 13
+      }
+    ],
+    payment_plans: [],
+    delivery_plans: [],
+    clauses: [],
+    subtotal: 50,
+    tax_amount: 6.5,
+    total_amount: 56.5
+  })
+  let releaseOld: (() => void) | undefined
+  let signalOld: (() => void) | undefined
+  const oldRequested = new Promise<void>((resolve) => {
+    signalOld = resolve
+  })
+  const oldResponse = new Promise<void>((resolve) => {
+    releaseOld = resolve
+  })
+  let recommendationRequests = 0
+  let releaseOldRecommendation: (() => void) | undefined
+  let signalOldRecommendation: (() => void) | undefined
+  const oldRecommendationRequested = new Promise<void>((resolve) => {
+    signalOldRecommendation = resolve
+  })
+  const oldRecommendationResponse = new Promise<void>((resolve) => {
+    releaseOldRecommendation = resolve
+  })
+  let settleOldRecommendation: (() => void) | undefined
+  const oldRecommendationSettled = new Promise<void>((resolve) => {
+    settleOldRecommendation = resolve
+  })
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/rest/v1/**', async (route) => {
+    const url = new URL(route.request().url())
+    const name = url.pathname.split('/').at(-1)
+    if (name === 'wms_recommend_bin_secure') {
+      recommendationRequests++
+      if (recommendationRequests === 1) {
+        signalOldRecommendation?.()
+        await oldRecommendationResponse
+        try {
+          await route.fulfill({ status: 500, json: { code: 'XX000', message: '旧推荐失败' } })
+        } finally {
+          settleOldRecommendation?.()
+        }
+        return
+      }
+      return route.fulfill({ json: null })
+    }
+    let data: unknown = []
+    if (name === 'scm_purchase_document') {
+      const id = url.searchParams.get('id')
+      const kind = url.searchParams.get('kind')
+      const supplier = url.searchParams.get('supplier_id')
+      if (id === 'eq.order-a' || id === 'eq.order-b') data = order(id.at(-1) as 'a' | 'b')
+      else if (kind === 'eq.purchase_order' && supplier === 'eq.supplier-a') {
+        signalOld?.()
+        await oldResponse
+        data = [order('a')]
+      } else if (kind === 'eq.purchase_order' && supplier === 'eq.supplier-b') data = [order('b')]
+    }
+    if (name === 'scm_purchase_suppliers_secure')
+      data = [
+        { id: 'supplier-a', tenant_id: tenantId, supplier_code: 'A', supplier_name: '供应商 A' },
+        { id: 'supplier-b', tenant_id: tenantId, supplier_code: 'B', supplier_name: '供应商 B' }
+      ]
+    if (name === 'mdm_material')
+      data = ['a', 'b'].map((suffix) => ({
+        id: `material-${suffix}`,
+        tenant_id: tenantId,
+        material_code: `MAT-${suffix.toUpperCase()}`,
+        material_name: `${suffix.toUpperCase()} 来源物料`,
+        basic_unit: '件',
+        base_unit_id: 'unit',
+        purchase_unit_id: 'unit',
+        unit_conversions: []
+      }))
+    if (name === 'mdm_warehouse')
+      data = [
+        {
+          id: 'warehouse',
+          tenant_id: tenantId,
+          warehouse_code: 'WH',
+          warehouse_name: '测试仓库',
+          enable_locations: true,
+          status: 'enabled'
+        }
+      ]
+    await route.fulfill({
+      json: data,
+      headers: {
+        'content-range':
+          Array.isArray(data) && data.length ? `0-${data.length - 1}/${data.length}` : '*/0',
+        'access-control-expose-headers': 'content-range'
+      }
+    })
+  })
+  try {
+    await page.goto('/tests/e2e/fixtures/scm-purchase-inbound.html?kind=receipt_notice&race=true')
+    await page.getByRole('button', { name: '打开 A 来源' }).click()
+    await oldRequested
+    const chooser = page.getByRole('dialog', { name: '参选采购订单' })
+    await expect(chooser).toBeVisible()
+    await chooser.getByRole('button', { name: '关闭弹窗' }).click()
+    await page
+      .getByRole('dialog', { name: /新增收料通知单/ })
+      .getByRole('button', { name: '关闭弹窗' })
+      .click()
+    await page.getByRole('button', { name: '打开 B 来源' }).click()
+    await expect(chooser.getByText('B 来源物料')).toBeVisible()
+    releaseOld?.()
+    await expect(chooser.getByText('A 来源物料')).toHaveCount(0)
+    await expect(chooser.getByText('B 来源物料')).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('receipt-source-b-only.png') })
+    await chooser
+      .getByRole('row', { name: /ORDER-B/ })
+      .getByRole('checkbox')
+      .locator('..')
+      .click()
+    await chooser.getByRole('button', { name: '确定', exact: true }).click()
+    const receiptDialog = page.getByRole('dialog', { name: /新增收料通知单/ })
+    await expect(receiptDialog.getByText('B 来源物料', { exact: true })).toBeVisible()
+    await expect(receiptDialog.getByText('A 来源物料', { exact: true })).toHaveCount(0)
+    await page.setViewportSize({ width: 570, height: 760 })
+    await page.evaluate(() => {
+      document.documentElement.classList.add('dark')
+      document.documentElement.dataset.boxMode = 'shadow-mode'
+    })
+    await expect(receiptDialog.getByText('B 来源物料', { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true
+    )
+    await page.screenshot({ path: testInfo.outputPath('receipt-source-b-narrow-dark.png') })
+    await receiptDialog.getByText('B 来源物料', { exact: true }).scrollIntoViewIfNeeded()
+    await expect(receiptDialog.getByText('B 来源物料', { exact: true })).toBeInViewport()
+    await page.screenshot({ path: testInfo.outputPath('receipt-source-b-narrow-dark-lines.png') })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await receiptDialog.locator('.el-table__expand-icon').first().click()
+    await receiptDialog.getByRole('button', { name: '自动选位' }).click()
+    await oldRecommendationRequested
+    await receiptDialog.getByRole('button', { name: '关闭弹窗' }).click()
+    await page.getByRole('button', { name: '打开 B 来源' }).click()
+    await expect(chooser.getByText('B 来源物料')).toBeVisible()
+    await chooser
+      .getByRole('row', { name: /ORDER-B/ })
+      .getByRole('checkbox')
+      .locator('..')
+      .click()
+    await chooser.getByRole('button', { name: '确定', exact: true }).click()
+    await expect(receiptDialog.getByText('B 来源物料', { exact: true })).toBeVisible()
+    await receiptDialog.locator('.el-table__expand-icon').first().click()
+    await receiptDialog.getByRole('button', { name: '自动选位' }).click()
+    await expect.poll(() => recommendationRequests).toBe(2)
+    releaseOldRecommendation?.()
+    await oldRecommendationSettled
+    await page.waitForTimeout(200)
+    await expect(page.getByText('自动选位失败，请稍后重试')).toHaveCount(0)
+    expect(errors).toEqual([])
+  } finally {
+    releaseOld?.()
+    releaseOldRecommendation?.()
+  }
+})

@@ -95,6 +95,7 @@ function ConvertTo-ShareableDataDump {
 }
 
 $BackupPath = (Resolve-Path -LiteralPath $BackupPath).Path
+Enter-BackupReadLease -Root $BackupPath
 $manifestPath = Join-Path $BackupPath 'manifest.json'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
   throw 'The backup is incomplete: manifest.json is missing.'
@@ -138,7 +139,7 @@ try {
   # Owner backups may also contain encryption keys, raw operational metadata,
   # staging copies, and diagnostic manifests. Ship only restore inputs.
   $recipientMetadata = @(
-    'metadata/functions.json', 'metadata/storage-buckets.json',
+    'metadata/functions.json', 'metadata/function-layout.json', 'metadata/storage-buckets.json',
     'metadata/storage-object-counts.json', 'metadata/storage-object-inventory.json',
     'metadata/realtime-publication-tables.json', 'metadata/database-inventory.json',
     'metadata/service-versions.json')
@@ -154,6 +155,7 @@ try {
   $runtimeFiles = @(
     @{ Source = (Join-Path $PSScriptRoot 'start-local-backup.ps1'); Path = 'start.ps1' },
     @{ Source = (Join-Path $PSScriptRoot 'restore-local-supabase.ps1'); Path = 'tools/restore-local-supabase.ps1' },
+    @{ Source = (Join-Path $PSScriptRoot 'backup-verification.ps1'); Path = 'tools/backup-verification.ps1' },
     @{ Source = (Join-Path $PSScriptRoot 'transfer-common.ps1'); Path = 'tools/transfer-common.ps1' },
     @{ Source = (Join-Path (Split-Path -Parent $PSScriptRoot) 'LICENSE'); Path = 'LICENSE' },
     @{ Source = (Join-Path $PSScriptRoot 'download-supabase-backup.ps1'); Path = 'tools/download-supabase-backup.ps1' })

@@ -123,13 +123,15 @@ h1 {
 .el-table {
   font-variant-numeric: tabular-nums;
 
-  th.el-table__cell {
+  th.el-table__cell,
+  .el-table-v2__header-cell {
     font-weight: 600;
     color: var(--art-gray-700);
     letter-spacing: 0.01em;
   }
 
-  td.el-table__cell {
+  td.el-table__cell,
+  .el-table-v2__row-cell {
     color: var(--art-gray-700);
   }
 }

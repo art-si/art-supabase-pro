@@ -1,28 +1,37 @@
-import { createApp, h } from 'vue'
+import { createApp, h, onMounted } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import language from '@/locales'
 import { store } from '@/store'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useUserStore } from '@/store/modules/user'
 import { setupGlobDirectives } from '@/directives'
+import { useTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import CalendarWorkspace from '@pmis/views/components/calendar-workspace.vue'
 import InspectionDashboardWorkspace from '@pmis/views/components/inspection-dashboard-workspace.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 const scenario = new URLSearchParams(location.search).get('mode')
+const darkTheme = new URLSearchParams(location.search).get('theme') === 'dark'
 const mode = scenario === 'sheet' ? 'sheet' : 'detail'
 const tenantA = '11111111-1111-4111-8111-111111111111'
 const tenantB = '22222222-2222-4222-8222-222222222222'
 const scope = useTenantScopeStore(store)
 const app = createApp({
-  render: () =>
-    h('main', { class: 'art-page-view', style: { padding: '16px', minWidth: 0 } }, [
-      h('button', { type: 'button', onClick: () => scope.setTenantScope(tenantB) }, '切换租户 B'),
-      scenario === 'dashboard'
-        ? h(InspectionDashboardWorkspace)
-        : h(CalendarWorkspace, { kind: 'inspection', mode })
-    ])
+  setup() {
+    const { switchThemeStyles } = useTheme()
+    onMounted(() => {
+      if (darkTheme) switchThemeStyles(SystemThemeEnum.DARK)
+    })
+    return () =>
+      h('main', { class: 'art-page-view', style: { padding: '16px', minWidth: 0 } }, [
+        h('button', { type: 'button', onClick: () => scope.setTenantScope(tenantB) }, '切换租户 B'),
+        scenario === 'dashboard'
+          ? h(InspectionDashboardWorkspace)
+          : h(CalendarWorkspace, { kind: 'inspection', mode })
+      ])
+  }
 })
 app.use(store)
 app.use(language)

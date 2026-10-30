@@ -104,7 +104,7 @@
 
   // 获取图标内容
   const iconContent = computed(() => {
-    if (props.loading) return 'ri:loader-4-line'
+    if (props.loading) return 'ri:refresh-line'
     return props.icon || (props.type ? defaultButtons[props.type]?.icon : '') || ''
   })
 

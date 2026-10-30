@@ -4,6 +4,7 @@ import type { QueryResult } from '@/types/api/response'
 import { applyFilters, fetchAllRangePages, FilterSpec } from '@/utils/supabase'
 import { invokeSupabaseFunctionWithSessionRecovery } from '@/utils/supabase/functions'
 import TreeUtils from '@/utils/tree'
+import { filterSqlWorkbenchMetadata } from '@/utils/sql-workbench'
 
 const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
 
@@ -25,8 +26,18 @@ const dictTypeTreeUtils = new TreeUtils({
 
 interface MetadataPayload {
   schemas: string[]
+  tables?: MetadataTableRow[]
   columns: MetadataColumnRow[]
   functions?: MetadataFunctionRow[]
+  foreignKeys?: Api.DataCenter.SqlConsole.ForeignKeyMetadata[]
+}
+
+interface MetadataTableRow {
+  tableSchema: string
+  tableName: string
+  description?: string | null
+  kind?: 'table' | 'view' | 'materialized_view'
+  indexes?: Api.DataCenter.SqlConsole.IndexMetadata[]
 }
 
 interface MetadataColumnRow {
@@ -36,6 +47,42 @@ interface MetadataColumnRow {
   dataType: string
   isNullable: string
   ordinalPosition: number
+  description?: string | null
+  isPrimaryKey?: boolean
+  defaultValue?: string | null
+}
+
+function isOptionalText(value: unknown): value is string | null | undefined {
+  return value === undefined || value === null || typeof value === 'string'
+}
+
+function isMetadataIndex(value: unknown): value is Api.DataCenter.SqlConsole.IndexMetadata {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const row = value as Record<string, unknown>
+  return (
+    typeof row.name === 'string' &&
+    Array.isArray(row.columns) &&
+    row.columns.every((column) => typeof column === 'string') &&
+    typeof row.isUnique === 'boolean' &&
+    typeof row.isPrimary === 'boolean' &&
+    isOptionalText(row.definition)
+  )
+}
+
+function isMetadataTableRow(value: unknown): value is MetadataTableRow {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const row = value as Record<string, unknown>
+  return (
+    typeof row.tableSchema === 'string' &&
+    typeof row.tableName === 'string' &&
+    isOptionalText(row.description) &&
+    (row.kind === undefined ||
+      row.kind === 'table' ||
+      row.kind === 'view' ||
+      row.kind === 'materialized_view') &&
+    (row.indexes === undefined ||
+      (Array.isArray(row.indexes) && row.indexes.every(isMetadataIndex)))
+  )
 }
 
 interface MetadataFunctionRow {
@@ -53,7 +100,10 @@ function isMetadataColumnRow(value: unknown): value is MetadataColumnRow {
     typeof row.columnName === 'string' &&
     typeof row.dataType === 'string' &&
     typeof row.isNullable === 'string' &&
-    typeof row.ordinalPosition === 'number'
+    typeof row.ordinalPosition === 'number' &&
+    isOptionalText(row.description) &&
+    (row.isPrimaryKey === undefined || typeof row.isPrimaryKey === 'boolean') &&
+    isOptionalText(row.defaultValue)
   )
 }
 
@@ -67,16 +117,36 @@ function isMetadataFunctionRow(value: unknown): value is MetadataFunctionRow {
   )
 }
 
+function isMetadataForeignKeyRow(
+  value: unknown
+): value is Api.DataCenter.SqlConsole.ForeignKeyMetadata {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const row = value as Record<string, unknown>
+  return (
+    typeof row.sourceSchema === 'string' &&
+    typeof row.sourceTable === 'string' &&
+    typeof row.sourceColumn === 'string' &&
+    typeof row.targetSchema === 'string' &&
+    typeof row.targetTable === 'string' &&
+    typeof row.targetColumn === 'string' &&
+    typeof row.constraintName === 'string'
+  )
+}
+
 function isMetadataPayload(payload: unknown): payload is MetadataPayload {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
   const value = payload as Record<string, unknown>
   return (
     Array.isArray(value.schemas) &&
     value.schemas.every((schema) => typeof schema === 'string') &&
+    (value.tables === undefined ||
+      (Array.isArray(value.tables) && value.tables.every(isMetadataTableRow))) &&
     Array.isArray(value.columns) &&
     value.columns.every(isMetadataColumnRow) &&
     (value.functions === undefined ||
-      (Array.isArray(value.functions) && value.functions.every(isMetadataFunctionRow)))
+      (Array.isArray(value.functions) && value.functions.every(isMetadataFunctionRow))) &&
+    (value.foreignKeys === undefined ||
+      (Array.isArray(value.foreignKeys) && value.foreignKeys.every(isMetadataForeignKeyRow)))
   )
 }
 
@@ -475,12 +545,10 @@ export async function deleteResource(params: Api.DataCenter.Resources.ResourceLi
  * 这样前端才能做 JOIN 自动推断。
  */
 export async function fetchDatabaseMetadata(): Promise<Api.DataCenter.SqlConsole.DatabaseMetadata> {
-  const [{ data, error }, foreignKeys] = await Promise.all([
-    invokeSupabaseFunctionWithSessionRecovery('execute-sql-with-columns', {
-      body: { action: 'metadata' }
-    }),
-    fetchForeignKeysMetadata()
-  ])
+  const { data, error } = await invokeSupabaseFunctionWithSessionRecovery(
+    'execute-sql-with-columns',
+    { body: { action: 'metadata' } }
+  )
 
   if (error) throw new Error('数据库结构加载失败，请稍后重试', { cause: error })
   if (!data) throw new Error('数据库结构服务未返回数据，请稍后重试')
@@ -488,6 +556,7 @@ export async function fetchDatabaseMetadata(): Promise<Api.DataCenter.SqlConsole
   const payload = normalizeMetadataPayload(data)
   if (!payload) throw new Error('数据库结构响应格式异常，请联系管理员')
   const schemas = payload.schemas
+  const foreignKeys = payload.foreignKeys ?? (await fetchForeignKeysMetadata())
 
   const columns: Api.DataCenter.SqlConsole.ColumnMetadata[] = payload.columns.map((c) => ({
     tableSchema: c.tableSchema,
@@ -495,11 +564,24 @@ export async function fetchDatabaseMetadata(): Promise<Api.DataCenter.SqlConsole
     columnName: c.columnName,
     dataType: c.dataType,
     isNullable: c.isNullable,
-    ordinalPosition: c.ordinalPosition
+    ordinalPosition: c.ordinalPosition,
+    description: c.description,
+    isPrimaryKey: c.isPrimaryKey,
+    defaultValue: c.defaultValue
   }))
 
   // 以后端 columns 为准重建 table 结构，保证表和列始终同步。
   const tablesMap = new Map<string, Api.DataCenter.SqlConsole.TableMetadata>()
+  payload.tables?.forEach((table) => {
+    tablesMap.set(`${table.tableSchema}.${table.tableName}`, {
+      tableSchema: table.tableSchema,
+      tableName: table.tableName,
+      description: table.description,
+      kind: table.kind,
+      indexes: table.indexes,
+      columns: []
+    })
+  })
   columns.forEach((col) => {
     const key = `${col.tableSchema}.${col.tableName}`
     if (!tablesMap.has(key)) {
@@ -512,7 +594,10 @@ export async function fetchDatabaseMetadata(): Promise<Api.DataCenter.SqlConsole
     tablesMap.get(key)!.columns.push({
       name: col.columnName,
       dataType: col.dataType,
-      isNullable: col.isNullable === 'YES'
+      isNullable: col.isNullable === 'YES',
+      description: col.description,
+      isPrimaryKey: col.isPrimaryKey,
+      defaultValue: col.defaultValue
     })
   })
   const tables: Api.DataCenter.SqlConsole.TableMetadata[] = Array.from(tablesMap.values())
@@ -525,13 +610,13 @@ export async function fetchDatabaseMetadata(): Promise<Api.DataCenter.SqlConsole
     })
   )
 
-  return {
+  return filterSqlWorkbenchMetadata({
     schemas,
     columns,
     tables,
     functions,
     foreignKeys
-  }
+  })
 }
 
 // 额外查询外键关系，给 JOIN 自动推断和 AI schema 摘要使用。
@@ -563,11 +648,14 @@ async function fetchForeignKeysMetadata(): Promise<Api.DataCenter.SqlConsole.For
     ORDER BY source_ns.nspname, source_table.relname, relation.conname
   `
 
-  const { data, error } = await executeSql({ query: relationQuery })
+  const { data, error } = await executeSql({ query: relationQuery, maxRows: 1000 })
   const rows = data?.rows
   if (error) throw new Error('数据库关联关系加载失败，请稍后重试', { cause: error })
   if (data?.status !== 'ok' || !Array.isArray(rows)) {
     throw new Error('数据库关联关系服务未返回有效数据，请稍后重试')
+  }
+  if (data.truncated) {
+    throw new Error('数据库关联关系超过 1000 条，当前无法完整加载，请联系管理员')
   }
 
   return rows.map((item) => {
@@ -601,6 +689,22 @@ export async function executeSql(
       {
         body: params
       }
+    )
+
+  return await responseHandle(invokeResp, {
+    convertToCamelShadow: true,
+    returnRawError: true
+  })
+}
+
+/** PostgreSQL JSON plan without ANALYZE, so the inspected SQL is not executed. */
+export async function explainSql(
+  params: Api.DataCenter.SqlConsole.SqlExplainRequest
+): Promise<DataCenterQueryResult<Api.DataCenter.SqlConsole.SqlExplainResponse>> {
+  const invokeResp = () =>
+    invokeSupabaseFunctionWithSessionRecovery<Api.DataCenter.SqlConsole.SqlExplainResponse>(
+      'execute-sql-with-columns',
+      { body: { action: 'explain', ...params } }
     )
 
   return await responseHandle(invokeResp, {

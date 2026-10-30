@@ -26,6 +26,8 @@ Use the standard `title`, `subtitle`, and `actions` contract whenever possible. 
 
 When the whole card body owns the state but needs an established body layout class, pass it through `body-class`. Keep an inner `ArtAsyncState` only for a genuinely independent sub-region, such as a table whose search toolbar must remain available while the table is empty or reloading.
 
+For an error state in a short embedded card, `:body-class="error ? 'is-compact' : ''"` reuses the existing `ArtAsyncState` compact layout. Keep the card's bounded `ElScrollbar`, and verify that the message and complete retry button are visible before focus or automatic scrolling. Do not copy the compact icon and spacing rules into the page.
+
 The card body uses an `ElScrollbar` by default, with its scrollbar beside the card edge and its content spacing inside the scroll region. Its thumb appears on hover or while scrolling; pass `scrollbar-always` to keep the thumb visible. Pass `scroll-max-height` (pixels or a CSS length) when the body needs a height limit. The scroll view fills a fixed-height card while still growing for longer content, so percentage-height content such as a 3D scene can fill the available space. Pass `:show-scrollbar="false"` when the content already owns its own scrolling region, such as a `height="100%"` table or nested `ElScrollbar`. `preserve-content-structure` keeps the caller's direct-child layout contract and bypasses the card scrollbar.
 
 For an established grid or flex card whose direct-child structure is part of its layout contract, use `preserve-content-structure`. The default remains the wrapped async-state body; when loading, error, or empty becomes active, the shared state wrapper takes over automatically.

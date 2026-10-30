@@ -625,6 +625,40 @@ export async function assignUserRoles(params: {
   })
 }
 
+export interface RoleUserRecord {
+  id: string
+  nickName: string | null
+  userName: string | null
+  userEmail: string | null
+  avatar: string | null
+  status: string
+  assigned: boolean
+}
+
+/** 仅返回角色所属租户的可分配账号和已有成员，不加载账号敏感字段。 */
+export async function fetchRoleUsers(roleId: string) {
+  return await responseHandle<{ records: RoleUserRecord[] }>(
+    () => supabase.rpc('system_role_users', { p_role_id: roleId }),
+    { breakReturn: true, showErrorMessage: false }
+  )
+}
+
+export async function saveRoleUsers(params: {
+  roleId: string
+  userIds: string[]
+  expectedUserIds: string[]
+}) {
+  return await responseHandle<number>(
+    () =>
+      supabase.rpc('system_set_role_users', {
+        p_role_id: params.roleId,
+        p_user_ids: params.userIds,
+        p_expected_user_ids: params.expectedUserIds
+      }),
+    { breakReturn: true, showErrorMessage: false }
+  )
+}
+
 // 获取所有用户可分配的角色
 export async function fetchEnabledRoleList(params: { tenantId?: string } = {}) {
   const { tenantId } = params

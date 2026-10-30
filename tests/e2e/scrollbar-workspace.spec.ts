@@ -1,6 +1,94 @@
 import { expect, test } from '@playwright/test'
 
 test.use({ storageState: { cookies: [], origins: [] } })
+
+test('短筛选在普通与专注模式按内容高度排列', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/tests/e2e/fixtures/scrollbar-workspace.html?page=focus-search&short=true')
+  const query = page.locator('.art-table-query')
+  const search = query.locator('.art-table-query__search-scrollbar')
+  const card = query.locator('.art-table-card')
+  const measure = () =>
+    query.evaluate((element) => {
+      const searchBox = element
+        .querySelector('.art-table-query__search-scrollbar')!
+        .getBoundingClientRect()
+      const cardBox = element.querySelector('.art-table-card')!.getBoundingClientRect()
+      return {
+        searchHeight: searchBox.height,
+        queryHeight: element.getBoundingClientRect().height,
+        cardGap: cardBox.top - searchBox.bottom
+      }
+    })
+  await expect(search).toBeVisible()
+  const normal = await measure()
+  expect(normal.searchHeight).toBeGreaterThan(70)
+  expect(normal.searchHeight).toBeLessThan(220)
+  expect(normal.cardGap).toBeGreaterThan(7)
+  expect(normal.cardGap).toBeLessThan(33)
+
+  await page.getByRole('button', { name: '进入专注模式', exact: true }).click()
+  await expect(page.locator('.art-table-focus-page')).toHaveCount(1)
+  const focused = await measure()
+  expect(focused.searchHeight).toBeLessThan(focused.queryHeight * 0.4)
+  expect(focused.searchHeight).toBeGreaterThan(60)
+  expect(focused.searchHeight).toBeLessThan(220)
+  expect(focused.cardGap).toBeGreaterThan(7)
+  expect(focused.cardGap).toBeLessThan(33)
+  const wrap = search.locator('.el-scrollbar__wrap')
+  expect(
+    await wrap.evaluate((element) => element.scrollHeight - element.clientHeight)
+  ).toBeLessThanOrEqual(2)
+  await expect(query.getByPlaceholder('查询字段 2', { exact: true })).toBeInViewport()
+  await expect(query.getByRole('button', { name: '查询', exact: true })).toBeInViewport()
+  await expect(card.locator('.el-pagination')).toBeInViewport({ ratio: 1 })
+})
+
+test('长筛选在矮窗口内独立滚动并保留输入与分页', async ({ page }, testInfo) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  await page.setViewportSize({ width: 570, height: 600 })
+  await page.goto('/tests/e2e/fixtures/scrollbar-workspace.html?page=focus-search')
+  const search = page.locator('.art-search-bar')
+  const firstInput = search.getByPlaceholder('查询字段 1', { exact: true })
+  await firstInput.fill('保留输入')
+  const pagination = page.locator('.art-table-query .el-pagination')
+  await page.getByRole('button', { name: '进入专注模式', exact: true }).click()
+  await expect(search).toBeVisible()
+  await expect(pagination).toBeInViewport({ ratio: 1 })
+
+  const wrap = page.locator('.art-table-query__search-scrollbar .el-scrollbar__wrap')
+  await expect
+    .poll(() => wrap.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(40)
+  const lastInput = search.getByPlaceholder('查询字段 12', { exact: true })
+  await firstInput.focus()
+  for (let index = 1; index < 12; index += 1) await page.keyboard.press('Tab')
+  await expect(lastInput).toBeFocused()
+  await expect.poll(() => wrap.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await page.keyboard.press('Tab')
+  await expect(search.getByRole('button', { name: '重置', exact: true })).toBeFocused()
+  await page.keyboard.press('Tab')
+  const submit = search.getByRole('button', { name: '查询', exact: true })
+  await expect(submit).toBeFocused()
+  await expect(submit).toBeInViewport({ ratio: 1 })
+  await expect(pagination).toBeInViewport({ ratio: 1 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true
+  )
+  await page.screenshot({ path: testInfo.outputPath('long-search-focus.png') })
+
+  await page.getByRole('button', { name: '退出专注模式' }).click()
+  await expect(page.getByText('长筛选工作区')).toBeVisible()
+  await expect(firstInput).toHaveValue('保留输入')
+  await page.getByRole('button', { name: '进入专注模式', exact: true }).click()
+  await expect(firstInput).toHaveValue('保留输入')
+  await page.keyboard.press('Escape')
+  await expect(page.getByText('长筛选工作区')).toBeVisible()
+  await expect(firstInput).toHaveValue('保留输入')
+  expect(pageErrors).toEqual([])
+})
+
 test('全局滚动条、普通模式填充与操作列拖动空间', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))

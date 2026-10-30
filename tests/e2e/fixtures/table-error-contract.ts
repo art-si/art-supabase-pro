@@ -43,7 +43,7 @@ const cacheProbe = {
     let hits = 0
     const table = useTable<Row>({
       core: {
-        apiFn: async (_params: Record<string, unknown>) => {
+        apiFn: async () => {
           requests += 1
           document.body.dataset.cacheRequests = String(requests)
           return requests === 1
@@ -100,51 +100,61 @@ const app = createApp({
   render: () =>
     mode === 'cache'
       ? h(cacheProbe)
-      : h('main', { class: 'p-4' }, [
-          h('h1', { class: 'mb-4 text-xl' }, '表格错误契约验收'),
-          h(ArtTableQuery, {
-            apiFn: async () => {
-              listAttempts += 1
-              setCounters()
-              if (mode === 'row')
-                return { data: [{ id: 3, name: '合法业务记录', error: '业务字段' }], total: 1 }
-              if (mode.startsWith('export-') || listAttempts > 1)
-                return { data: [goodRow], total: 1, error: null }
-              if (mode === 'nested')
-                return { data: { records: [forbiddenRow], total: 1, error: businessError } }
-              if (mode === 'adapted') return { data: [forbiddenRow], total: 1, error: null }
-              return { data: [forbiddenRow], total: 1, error: businessError }
-            },
-            ...(mode === 'mask' || mode === 'adapted'
-              ? {
-                  responseAdapter: () => {
-                    adapterCalls += 1
-                    setCounters()
-                    return {
-                      records: listAttempts === 1 ? [forbiddenRow] : [goodRow],
-                      total: 1,
-                      error: mode === 'adapted' && listAttempts === 1 ? businessError : null
+      : h(
+          'main',
+          {
+            class: 'p-4',
+            style:
+              mode === 'bounded-error'
+                ? { display: 'flex', flexDirection: 'column', height: '220px' }
+                : undefined
+          },
+          [
+            h('h1', { class: 'mb-4 text-xl' }, '表格错误契约验收'),
+            h(ArtTableQuery, {
+              apiFn: async () => {
+                listAttempts += 1
+                setCounters()
+                if (mode === 'row')
+                  return { data: [{ id: 3, name: '合法业务记录', error: '业务字段' }], total: 1 }
+                if (mode.startsWith('export-') || listAttempts > 1)
+                  return { data: [goodRow], total: 1, error: null }
+                if (mode === 'nested')
+                  return { data: { records: [forbiddenRow], total: 1, error: businessError } }
+                if (mode === 'adapted') return { data: [forbiddenRow], total: 1, error: null }
+                return { data: [forbiddenRow], total: 1, error: businessError }
+              },
+              ...(mode === 'mask' || mode === 'adapted'
+                ? {
+                    responseAdapter: () => {
+                      adapterCalls += 1
+                      setCounters()
+                      return {
+                        records: listAttempts === 1 ? [forbiddenRow] : [goodRow],
+                        total: 1,
+                        error: mode === 'adapted' && listAttempts === 1 ? businessError : null
+                      }
                     }
                   }
-                }
-              : {}),
-            columnsFactory: () => [
-              { prop: 'name', label: '名称' },
-              { prop: 'error', label: '业务错误字段' }
-            ],
-            headerActions: mode.startsWith('export-') ? [exportAction] : [],
-            onSuccess: () => {
-              successCalls += 1
-              setCounters()
-            },
-            onError: (error: { details?: unknown }) => {
-              errorCalls += 1
-              document.body.dataset.detailsIdentity = String(error.details === businessError)
-              setCounters()
-            },
-            showSearchBar: false
-          })
-        ])
+                : {}),
+              columnsFactory: () => [
+                { prop: 'name', label: '名称' },
+                { prop: 'error', label: '业务错误字段' }
+              ],
+              headerActions: mode.startsWith('export-') ? [exportAction] : [],
+              onSuccess: () => {
+                successCalls += 1
+                setCounters()
+              },
+              onError: (error: { details?: unknown }) => {
+                errorCalls += 1
+                document.body.dataset.detailsIdentity = String(error.details === businessError)
+                setCounters()
+              },
+              showSearchBar: false
+            })
+          ]
+        )
 })
 
 app.use(store)

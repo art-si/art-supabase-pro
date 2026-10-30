@@ -10,8 +10,12 @@ interface SupabaseQueryResponse {
   }
 }
 
-export interface SupabaseQueryLike extends PromiseLike<SupabaseQueryResponse> {
+interface SupabaseAbortableQuery {
   abortSignal(signal: AbortSignal): this
+}
+
+export interface SupabaseQueryLike
+  extends PromiseLike<SupabaseQueryResponse>, SupabaseAbortableQuery {
   eq(column: string, value: unknown): this
   gt(column: string, value: unknown): this
   gte(column: string, value: unknown): this
@@ -27,7 +31,7 @@ export interface SupabaseQueryLike extends PromiseLike<SupabaseQueryResponse> {
   range(from: number, to: number): this
 }
 
-export const withRequestOptions = <TQuery extends SupabaseQueryLike>(
+export const withRequestOptions = <TQuery extends SupabaseAbortableQuery>(
   query: TQuery,
   options?: ApiRequestOptions
 ): TQuery => (options?.signal ? query.abortSignal(options.signal) : query)

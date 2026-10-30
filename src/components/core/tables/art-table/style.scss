@@ -2,9 +2,44 @@
   position: relative;
   height: 100%;
 
+  &.is-virtual-render {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+
+    .art-table__virtual-viewport {
+      flex: 1 1 0;
+      min-height: 0;
+    }
+
+    .el-table {
+      margin-top: 0;
+    }
+
+    .pagination {
+      flex: 0 0 auto;
+    }
+  }
+
   .el-table {
     height: 100%;
     margin-top: var(--art-space-3);
+  }
+
+  &.is-client-pagination {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+
+    .el-table {
+      flex: 1 1 0;
+      min-height: 0;
+    }
+
+    .pagination {
+      flex: 0 0 auto;
+      padding-bottom: 4px;
+    }
   }
 
   &.is-max-height .el-table {
@@ -32,7 +67,8 @@
     white-space: normal;
   }
 
-  &__cell-content {
+  :deep(.art-table__cell-content) {
+    position: relative;
     display: inline-flex;
     gap: 6px;
     align-items: center;
@@ -40,7 +76,67 @@
     vertical-align: middle;
   }
 
-  &__cell-value {
+  :deep(.art-table__editable-value) {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 28px;
+    padding: 3px 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font: inherit;
+    text-align: inherit;
+    white-space: nowrap;
+    border-radius: var(--el-border-radius-small);
+
+    &:hover {
+      background: var(--el-fill-color-light);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--el-color-primary);
+      outline-offset: -2px;
+    }
+  }
+
+  :deep(.art-table__cell-content:has(.art-table__editable-value, .art-table-cell-editor)) {
+    width: 100%;
+  }
+
+  :deep(.art-table__cell-content.is-edit-dirty) {
+    background: var(--el-color-primary-light-9);
+
+    &::after {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+      content: '';
+      border-top: 6px solid var(--el-color-primary);
+      border-left: 6px solid transparent;
+    }
+  }
+
+  :deep(.art-table-cell-editor) {
+    flex: 1;
+    min-width: 0;
+  }
+
+  :deep(.art-table__cell-content:has(.art-table-cell-editor, .art-table__edit-error)) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  :deep(.art-table__edit-error) {
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--el-color-danger);
+    white-space: normal;
+  }
+
+  :deep(.art-table__cell-value) {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -165,15 +261,28 @@
     background-color: var(--el-fill-color-lighter);
   }
 
-  :deep(.el-table__body tr.is-art-selected-row > td.el-table__cell) {
+  :deep(.art-table-v2 .el-table-v2__row.is-striped > .el-table-v2__row-cell) {
+    background-color: var(--el-fill-color-lighter);
+  }
+
+  :deep(.art-table-v2 .el-table-v2__row.is-current > .el-table-v2__row-cell) {
+    background-color: var(--el-table-current-row-bg-color);
+  }
+
+  :deep(.el-table__body tr.is-art-selected-row > td.el-table__cell),
+  :deep(.art-table-v2 .el-table-v2__row.is-art-selected-row > .el-table-v2__row-cell) {
     background-color: color-mix(in srgb, var(--theme-color) 7%, var(--default-box-color));
   }
 
-  :deep(.el-table__body tr.is-art-selected-row.hover-row > td.el-table__cell) {
+  :deep(.el-table__body tr.is-art-selected-row.hover-row > td.el-table__cell),
+  :deep(.art-table-v2 .el-table-v2__row.is-art-selected-row:hover > .el-table-v2__row-cell),
+  :deep(.art-table-v2 .el-table-v2__row.is-art-selected-row.is-hovered > .el-table-v2__row-cell) {
     background-color: color-mix(in srgb, var(--theme-color) 9%, var(--default-box-color));
   }
 
-  :deep(.el-table__body tr:hover > td.el-table__cell) {
+  :deep(.el-table__body tr:hover > td.el-table__cell),
+  :deep(.art-table-v2 .el-table-v2__row:hover > .el-table-v2__row-cell),
+  :deep(.art-table-v2 .el-table-v2__row.is-hovered > .el-table-v2__row-cell) {
     background: color-mix(in srgb, var(--theme-color) 4%, var(--default-box-color));
   }
 
@@ -219,66 +328,6 @@
 
     &.right {
       justify-content: flex-end;
-    }
-
-    // 自定义分页组件样式
-    &.custom-pagination {
-      :deep(.el-pagination) {
-        .btn-prev,
-        .btn-next {
-          background-color: transparent;
-          border: 1px solid var(--art-gray-300);
-          transition:
-            color var(--art-motion-duration-fast) ease,
-            background-color var(--art-motion-duration-fast) ease,
-            border-color var(--art-motion-duration-fast) ease,
-            box-shadow var(--art-motion-duration-fast) ease;
-
-          &:hover:not(.is-disabled) {
-            color: var(--theme-color);
-            background: color-mix(in srgb, var(--theme-color) 6%, transparent);
-            border-color: var(--art-themed-action-active-border);
-            box-shadow: var(--art-themed-action-hover-shadow);
-          }
-
-          &:focus-visible {
-            outline: none;
-            box-shadow: var(--art-themed-action-focus-shadow);
-          }
-        }
-
-        li {
-          box-sizing: border-box;
-          font-weight: 400 !important;
-          background-color: transparent;
-          border: 1px solid var(--art-gray-300);
-          transition:
-            color var(--art-motion-duration-fast) ease,
-            background-color var(--art-motion-duration-fast) ease,
-            border-color var(--art-motion-duration-fast) ease,
-            box-shadow var(--art-motion-duration-fast) ease;
-
-          &.is-active {
-            font-weight: 600 !important;
-            color: #fff;
-            background-color: var(--theme-color);
-            border-color: var(--art-themed-action-active-border);
-            box-shadow: var(--art-themed-action-active-shadow);
-          }
-
-          &:not(.is-active):hover:not(.is-disabled) {
-            color: var(--theme-color);
-            background: color-mix(in srgb, var(--theme-color) 6%, transparent);
-            border-color: var(--art-themed-action-active-border);
-            box-shadow: var(--art-themed-action-hover-shadow);
-          }
-
-          &:focus-visible {
-            outline: none;
-            box-shadow: var(--art-themed-action-focus-shadow);
-          }
-        }
-      }
     }
   }
 }

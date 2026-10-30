@@ -18,6 +18,9 @@ const DEFAULT_PROMPT = [
 
 interface SqlAiGenerateRequest {
   prompt: string
+  dialect?: 'postgres' | 'mysql' | 'dm'
+  schema?: string
+  connectionKind?: 'builtin' | 'external'
   mode?: 'generate' | 'fix'
   currentSql?: string
   metadata?: {
@@ -212,7 +215,7 @@ function parseAiPayload(content: string): ParsedSqlPayload {
   const sql = extractSql(parsed?.sql ?? content)
   return {
     sql,
-    summary: stringValue(parsed?.summary, 500) || '已根据当前数据库结构生成 PostgreSQL。',
+    summary: stringValue(parsed?.summary, 500) || '已根据当前数据库结构生成 SQL。',
     warnings: (parsed?.warnings ?? [])
       .map((item) => stringValue(item, 300))
       .filter(Boolean)
@@ -514,17 +517,27 @@ Deno.serve(async (req) => {
     if (runError) throw runError
     runId = run.id
 
+    const dialect = body.dialect === 'mysql' ? 'MySQL' : body.dialect === 'dm' ? '达梦 DM8' : 'PostgreSQL'
+    const external = body.connectionKind === 'external'
     const systemPrompt = [
       publishedPrompt.content,
-      isPlatformSuper
+      `本次目标数据库为 ${dialect}。必须使用该数据库的语法、标识符引用和函数；此项覆盖模板中的默认 PostgreSQL 方言。`,
+      ...(body.dialect === 'dm' ? ['达梦 DM8 使用双引号引用标识符并保留元数据大小写；常量查询需要 FROM DUAL。不要使用 PostgreSQL 的 :: 类型转换、ILIKE、pg_catalog 或 MySQL 的反引号。查询仅使用提供的 schema 与对象。'] : []),
+      external
+        ? '当前目标是外接数据库，只生成单条只读 SELECT 查询。不能假设存在平台内部的 public.sys_user、租户表、RLS、auth.uid() 或任何 Supabase 对象；仅使用本次元数据中提供的对象。'
+        : isPlatformSuper
         ? '当前用户是平台超级管理员，可以按需求生成查询或写入 SQL；涉及写入时必须在 warnings 中明确风险。'
         : '当前用户是普通用户，只允许生成单条只读 SQL，且必须以 SELECT、SHOW、VALUES 或 TABLE 开头；禁止 WITH、EXPLAIN、DML、DDL、事务控制和任何写入操作。',
-      `SQL 控制台通过服务端管理连接执行查询。current_user 是数据库角色，auth.uid() 在此执行路径中不代表当前登录用户。若需求涉及当前登录用户，以服务端认证的 auth_user_id '${user.id}' 过滤 public.sys_user.auth_user_id；当前用户所属租户 ID 为 '${appUser.tenant_id}'。`,
-      '本系统的用户角色可能直接保存在 public.sys_user.user_roles（角色编号文本数组）；不要假定 public.sys_user_tenant 一定有记录。查询角色权限时，按 sys_role.role_code 关联 user_roles，再按同一租户关联 public.sys_role_menu 和 public.sys_menu；不要误用备份 schema。',
+      ...(!external ? [
+        `SQL 控制台通过服务端管理连接执行查询。current_user 是数据库角色，auth.uid() 在此执行路径中不代表当前登录用户。若需求涉及当前登录用户，以服务端认证的 auth_user_id '${user.id}' 过滤 public.sys_user.auth_user_id；当前用户所属租户 ID 为 '${appUser.tenant_id}'。`,
+        '本系统的用户角色可能直接保存在 public.sys_user.user_roles（角色编号文本数组）；不要假定 public.sys_user_tenant 一定有记录。查询角色权限时，按 sys_role.role_code 关联 user_roles，再按同一租户关联 public.sys_role_menu 和 public.sys_menu；不要误用备份 schema。'
+      ] : []),
       '固定输出协议：只返回 JSON 对象，sql 为纯 SQL 字符串，summary 为一句中文说明，warnings 为中文字符串数组。'
     ].join('\n')
     const userPrompt = JSON.stringify({
       mode,
+      dialect,
+      schema: typeof body.schema === 'string' && body.schema.length <= 200 ? body.schema : undefined,
       request: prompt,
       currentSql,
       metadata
@@ -540,7 +553,7 @@ Deno.serve(async (req) => {
     resolvedModel = providerResult.model
     const parsed = parseAiPayload(providerResult.content)
     if (!parsed.sql) throw new AiSqlError('invalid_payload', 'AI 服务未返回可用 SQL。')
-    if (!isPlatformSuper && !isReadOnlySql(parsed.sql)) {
+    if ((!isPlatformSuper || external) && !isReadOnlySql(parsed.sql)) {
       throw new AiSqlError(
         'read_only_required',
         '普通用户只能生成 SELECT、SHOW、VALUES 或 TABLE 单条只读 SQL。',

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectHrIdentityIconStyle } from './support/hr-identity-icon-style'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
@@ -172,4 +173,60 @@ for (const scenario of scenarios) {
     await expect(drawer.getByRole('heading', { name: 'second-record', exact: true })).toBeVisible()
     await expect(drawer.getByRole('heading', { name: 'first-record', exact: true })).toHaveCount(0)
   })
+}
+
+for (const scenario of [
+  {
+    feature: 'benefits',
+    rpc: 'hr_get_benefit_detail_secure',
+    title: '福利与参保详情',
+    selector: '.benefit-detail__identity > span'
+  },
+  {
+    feature: 'relations',
+    rpc: 'hr_get_employee_relation_case_detail_secure',
+    title: '员工关系案件详情',
+    selector: '.employee-relation-detail__identity > span'
+  }
+]) {
+  for (const variant of [
+    { name: 'light', width: 1440 },
+    { name: 'dark', width: 570 }
+  ]) {
+    test(`${scenario.feature} 图标 ${variant.width}px ${variant.name} 保持原尺寸与主题色`, async ({
+      page
+    }, testInfo) => {
+      await prepareIsolatedSession(page)
+      await page.setViewportSize({ width: variant.width, height: 900 })
+      await page.route('**/rest/v1/**', (route) =>
+        route.fulfill({
+          json: route.request().url().includes(scenario.rpc) ? record('测试业务详情') : []
+        })
+      )
+      await page.goto(
+        `/tests/e2e/fixtures/hr-detail-states.html?feature=${scenario.feature}&theme=${variant.name}`
+      )
+      const drawer = page.getByRole('dialog', { name: scenario.title, exact: true })
+      await expect(drawer.locator('h3')).toBeVisible()
+      await expect
+        .poll(() =>
+          page.evaluate(() => ({
+            dark: document.documentElement.classList.contains('dark'),
+            colorScheme: getComputedStyle(document.documentElement).colorScheme
+          }))
+        )
+        .toEqual({ dark: variant.name === 'dark', colorScheme: variant.name })
+      await expectHrIdentityIconStyle(drawer.locator(scenario.selector))
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+      ).toBeLessThanOrEqual(1)
+      await page.screenshot({
+        path: testInfo.outputPath(`${scenario.feature}-${variant.name}-${variant.width}.png`),
+        animations: 'disabled'
+      })
+      await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+      await expect(drawer).toBeHidden()
+      await expect(page.getByRole('button', { name: '切换测试记录', exact: true })).toBeVisible()
+    })
+  }
 }

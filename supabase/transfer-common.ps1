@@ -1,26 +1,28 @@
 function Invoke-SupabaseQuiet {
   param([Parameter(Mandatory = $true)][string[]]$Arguments)
 
-  $errorPath = Join-Path ([IO.Path]::GetTempPath()) ("supabase-cli-$([guid]::NewGuid()).stderr.tmp")
+  $outputLines = New-Object System.Collections.Generic.List[string]
+  $errorLines = New-Object System.Collections.Generic.List[string]
   $previousPreference = $ErrorActionPreference
   try {
     $ErrorActionPreference = 'Continue'
-    $stdout = & supabase @Arguments 2> $errorPath
+    # PS5 formats native stderr redirection as an ErrorRecord with a PowerShell
+    # stack. Keep the CLI's own text without manufacturing a failure on exit 0.
+    & supabase @Arguments 2>&1 | ForEach-Object {
+      if ($_ -is [Management.Automation.ErrorRecord]) { $errorLines.Add($_.ToString()) }
+      else { $outputLines.Add([string]$_) }
+    }
     $exitCode = $LASTEXITCODE
   }
   finally {
     $ErrorActionPreference = $previousPreference
   }
 
-  $stderrContent = if (Test-Path $errorPath) { Get-Content -Raw $errorPath } else { $null }
-  $stderr = if ($null -eq $stderrContent) { '' } else { $stderrContent.Trim() }
-  Remove-Item -LiteralPath $errorPath -Force -ErrorAction SilentlyContinue
-
   return [pscustomobject]@{
     Succeeded = ($exitCode -eq 0)
     ExitCode = $exitCode
-    Output = (($stdout | Out-String).Trim())
-    Error = $stderr
+    Output = (($outputLines.ToArray() -join "`n").Trim())
+    Error = (($errorLines.ToArray() -join "`n").Trim())
   }
 }
 
@@ -341,12 +343,227 @@ function Set-BackupFunctionJwtConfig {
   return $Config
 }
 
+function Get-BackupFunctionLayout {
+  param([Parameter(Mandatory = $true)][string]$Root)
+
+  $layoutPath = Join-Path $Root 'metadata/function-layout.json'
+  if (-not (Test-Path -LiteralPath $layoutPath -PathType Leaf)) { return $null }
+  try { $layout = Get-Content -LiteralPath $layoutPath -Raw | ConvertFrom-Json -ErrorAction Stop }
+  catch { throw 'Invalid Edge Function layout metadata.' }
+  if ($layout.format_version -ne 1 -or $layout.layout -ne 'isolated-bundles' -or
+      $layout.functions -isnot [array]) {
+    throw 'Unsupported or incomplete Edge Function layout metadata.'
+  }
+  return $layout
+}
+
+function Assert-BackupFunctionLayout {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)]$Layout,
+    [Parameter(Mandatory = $true)][object[]]$Functions,
+    [System.Collections.Generic.HashSet[string]]$ManifestPaths
+  )
+
+  $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  foreach ($function in $Functions) {
+    if ($function.slug -notmatch '^[a-z0-9][a-z0-9_-]*$' -or -not $expected.Add([string]$function.slug)) {
+      throw 'Invalid or duplicate Edge Function in deployment metadata.'
+    }
+  }
+  $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  foreach ($item in @($Layout.functions)) {
+    $slug = [string]$item.slug
+    if (-not $expected.Contains($slug) -or -not $seen.Add($slug)) {
+      throw 'Edge Function layout contains an unknown or duplicate function.'
+    }
+    $entrypoint = [string]$item.entrypoint
+    $bundlePrefix = "functions/$slug/_bundle/"
+    $entryPrefix = "$bundlePrefix$slug/"
+    if ($entrypoint -notmatch '^[A-Za-z0-9_./-]+$' -or
+        -not $entrypoint.StartsWith($entryPrefix, [StringComparison]::Ordinal) -or
+        $entrypoint -match '(^|/)\.{1,2}(/|$)' -or
+        $entrypoint -notmatch '\.(ts|tsx|js|jsx|mjs)$') {
+      throw "Invalid Edge Function entrypoint in layout: $slug"
+    }
+    $importMap = $item.import_map
+    if ($null -ne $importMap) {
+      if ($importMap -isnot [string] -or $importMap -notmatch '^[A-Za-z0-9_./-]+$' -or
+          -not $importMap.StartsWith($bundlePrefix, [StringComparison]::Ordinal) -or
+          $importMap -match '(^|/)\.{1,2}(/|$)' -or
+          (Split-Path -Leaf $importMap) -notin @('deno.json', 'import_map.json')) {
+        throw "Invalid Edge Function import map in layout: $slug"
+      }
+    }
+    foreach ($relative in @($entrypoint, $importMap)) {
+      if ($null -eq $relative) { continue }
+      if ($ManifestPaths -and -not $ManifestPaths.Contains($relative)) {
+        throw "Edge Function layout file is absent from manifest: $relative"
+      }
+      $path = Join-Path $Root ($relative.Replace('/', [IO.Path]::DirectorySeparatorChar))
+      $bundleRoot = [IO.Path]::GetFullPath((Join-Path $Root $bundlePrefix))
+      $fullPath = [IO.Path]::GetFullPath($path)
+      if (-not $fullPath.StartsWith($bundleRoot, [StringComparison]::OrdinalIgnoreCase) -or
+          -not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+        throw "Edge Function layout file is missing or outside its bundle: $relative"
+      }
+      $current = $fullPath
+      while ($current -and $current.StartsWith([IO.Path]::GetFullPath($Root), [StringComparison]::OrdinalIgnoreCase)) {
+        $part = Get-Item -LiteralPath $current -Force
+        if (($part.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+          throw "Edge Function layout uses a linked file or directory: $relative"
+        }
+        $current = Split-Path -Parent $current
+      }
+    }
+  }
+  if ($seen.Count -ne $expected.Count) { throw 'Edge Function layout does not cover every deployed function.' }
+}
+
+function Set-BackupFunctionSourceConfig {
+  param(
+    [Parameter(Mandatory = $true)][string]$Config,
+    [Parameter(Mandatory = $true)][string]$Root
+  )
+
+  $layout = Get-BackupFunctionLayout -Root $Root
+  if ($null -eq $layout) { return $Config }
+  $functions = @(ConvertFrom-SupabaseJsonArray `
+    -Text (Get-Content -LiteralPath (Join-Path $Root 'metadata/functions.json') -Raw) `
+    -Description 'the backed-up Edge Function list')
+  Assert-BackupFunctionLayout -Root $Root -Layout $layout -Functions $functions
+  foreach ($item in @($layout.functions)) {
+    $slug = [regex]::Escape([string]$item.slug)
+    $matches = [regex]::Matches($Config, "(?ms)^\[functions\.$slug\][^\r\n]*\r?\n.*?(?=^\[|\z)")
+    if ($matches.Count -ne 1) { throw "Expected one config section for Edge Function $($item.slug)." }
+    $section = $matches[0]
+    $replacement = [regex]::Replace($section.Value, '(?m)^\s*(?:entrypoint|import_map)\s*=[^\r\n]*(?:\r?\n)?', '')
+    $replacement = $replacement.TrimEnd() + "`nentrypoint = `"./$($item.entrypoint)`"`n"
+    if ($null -ne $item.import_map) { $replacement += "import_map = `"./$($item.import_map)`"`n" }
+    $replacement += "`n"
+    $Config = $Config.Remove($section.Index, $section.Length).Insert($section.Index, $replacement)
+  }
+  return $Config
+}
+
+function Test-BackupSqlComplete {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Name,
+    [switch]$RecipientSafeAuth
+  )
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Get-Item -LiteralPath $Path).Length -eq 0) { return $false }
+  $tail = @(Get-Content -LiteralPath $Path -Tail 20)
+  if ($Name -eq 'roles.sql') { return [bool]($tail -match '^RESET ALL;$') }
+  if ($Name -eq 'migration-history-schema.sql') {
+    return [bool]($tail -match 'ADD CONSTRAINT .* PRIMARY KEY|^-- PostgreSQL database dump complete')
+  }
+  if ($RecipientSafeAuth -and $Name -eq 'migration-history-data.sql') {
+    return [bool]($tail -match '^-- Migration history data omitted from recipient package\.$')
+  }
+  return [bool]($tail -match '^-- PostgreSQL database dump complete')
+}
+
+function Assert-BackupPayloadCompleteness {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)]$Manifest
+  )
+
+  foreach ($name in @('roles.sql', 'schema.sql', 'data.sql', 'migration-history-schema.sql',
+      'migration-history-data.sql', 'managed-schema-snapshot.sql')) {
+    $path = Join-Path $Root "database/$name"
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+      if ($name -eq 'managed-schema-snapshot.sql' -and $Manifest.recipient_safe_auth -eq $true) { continue }
+      throw "Database SQL file is missing: database/$name"
+    }
+    if (-not (Test-BackupSqlComplete -Path $path -Name $name -RecipientSafeAuth:($Manifest.recipient_safe_auth -eq $true))) {
+      throw "Database SQL file has no complete ending: database/$name"
+    }
+  }
+
+  foreach ($relative in @('metadata/functions.json', 'metadata/storage-buckets.json',
+      'metadata/realtime-publication-tables.json', 'metadata/storage-object-counts.json')) {
+    $path = Join-Path $Root $relative
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+    try {
+      $parsed = @(ConvertFrom-SupabaseJsonArray `
+        -Text (Get-Content -LiteralPath $path -Raw -Encoding UTF8) `
+        -Description $relative)
+    }
+    catch { throw "Invalid JSON array metadata: $relative" }
+  }
+
+  $countsPath = Join-Path $Root 'metadata/storage-object-counts.json'
+  if (Test-Path -LiteralPath $countsPath -PathType Leaf) {
+    $counts = @(ConvertFrom-SupabaseJsonArray `
+      -Text (Get-Content -LiteralPath $countsPath -Raw -Encoding UTF8) `
+      -Description 'Storage object counts')
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($entry in $counts) {
+      $bucket = [string]$entry.bucket_id
+      $count = [long]0
+      if ($bucket -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or -not $seen.Add($bucket) -or
+          -not [long]::TryParse([string]$entry.object_count, [ref]$count) -or $count -lt 0) {
+        throw 'Invalid Storage object count metadata.'
+      }
+      $bucketPath = Join-Path $Root "storage/$bucket"
+      $actual = if (Test-Path -LiteralPath $bucketPath -PathType Container) {
+        @(Get-ChildItem -LiteralPath $bucketPath -File -Recurse -Force).Count
+      }
+      else { 0 }
+      if ($actual -ne $count) { throw "Storage object count differs: storage/$bucket" }
+    }
+    $storageRoot = Join-Path $Root 'storage'
+    if (Test-Path -LiteralPath $storageRoot -PathType Container) {
+      foreach ($directory in @(Get-ChildItem -LiteralPath $storageRoot -Directory -Force)) {
+        if (-not $seen.Contains($directory.Name) -and
+            @(Get-ChildItem -LiteralPath $directory.FullName -File -Recurse -Force).Count -gt 0) {
+          throw "Storage bucket is absent from object counts: storage/$($directory.Name)"
+        }
+      }
+    }
+  }
+}
+
+function Enter-BackupReadLease {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [switch]$AllowPendingUpdate
+  )
+  $resolved = [IO.Path]::GetFullPath($Root).TrimEnd([char[]]'\/').ToUpperInvariant()
+  if (-not $script:BackupMutexLeases) { $script:BackupMutexLeases = @{} }
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try {
+    $hash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($resolved)))).Replace('-', '')
+  }
+  finally { $sha.Dispose() }
+  $name = "Global\ArtBackup_$hash"
+  if (-not $script:BackupMutexLeases.ContainsKey($name)) {
+    $mutex = [Threading.Mutex]::new($false, $name)
+    $acquired = $false
+    try { $acquired = $mutex.WaitOne(10000) }
+    catch [Threading.AbandonedMutexException] { $acquired = $true }
+    if (-not $acquired) {
+      $mutex.Dispose()
+      throw '备份目录正被其他命令使用，请等待任务完成后重试。'
+    }
+    $script:BackupMutexLeases[$name] = $mutex
+  }
+  if (-not $AllowPendingUpdate -and (Test-Path -LiteralPath "$resolved.update-work/transaction.json")) {
+    throw '备份更新尚未完成，请先运行更新恢复；当前备份不可用于校验、打包或恢复。'
+  }
+}
+
 function Assert-BackupManifest {
   param(
     [Parameter(Mandatory = $true)][string]$Root,
     [Parameter(Mandatory = $true)]$Manifest,
-    [string]$TargetProjectRef
+    [string]$TargetProjectRef,
+    [switch]$VerifyPayloadCompleteness
   )
+
+  Enter-BackupReadLease -Root $Root
 
   if ($Manifest.format_version -ne 1 -or $Manifest.project_ref -notmatch '^[a-z0-9]{20}$') {
     throw 'Invalid backup manifest format or source project ref.'
@@ -409,4 +626,20 @@ function Assert-BackupManifest {
       throw "Backup is missing a deployed Edge Function: $($function.slug)"
     }
   }
+  $layout = Get-BackupFunctionLayout -Root $Root
+  if ($null -ne $layout) {
+    if (-not $paths.Contains('metadata/function-layout.json')) {
+      throw 'Edge Function layout metadata is absent from the backup manifest.'
+    }
+    Assert-BackupFunctionLayout -Root $Root -Layout $layout -Functions $functions -ManifestPaths $paths
+    foreach ($path in $paths) {
+      if (-not $path.StartsWith('functions/', [StringComparison]::Ordinal)) { continue }
+      $parts = $path.Split('/')
+      if ($parts.Count -lt 4 -or $parts[2] -ne '_bundle' -or
+          @($layout.functions | Where-Object { $_.slug -eq $parts[1] }).Count -ne 1) {
+        throw "Unregistered Edge Function bundle file: $path"
+      }
+    }
+  }
+  if ($VerifyPayloadCompleteness) { Assert-BackupPayloadCompleteness -Root $Root -Manifest $Manifest }
 }

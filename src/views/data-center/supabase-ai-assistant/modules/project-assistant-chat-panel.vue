@@ -145,6 +145,7 @@
       </ElScrollbar>
       <div class="project-assistant__composer-box">
         <ElInput
+          class="art-composer-input"
           :model-value="chat.input"
           type="textarea"
           resize="none"
@@ -154,7 +155,7 @@
           @update:model-value="emit('update-input', $event)"
           @keydown.enter.exact.prevent="emit('send')"
         />
-        <div>
+        <div class="project-assistant__composer-actions">
           <button
             v-if="canUseControlledWrite"
             type="button"
@@ -653,7 +654,7 @@
         box-shadow: none;
       }
 
-      > div {
+      > .project-assistant__composer-actions {
         display: flex;
         align-items: center;
         justify-content: space-between;

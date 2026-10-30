@@ -9,6 +9,8 @@
     :class="{
       'is-empty': isEmpty,
       'is-max-height': usesMaxHeight,
+      'is-client-pagination': clientPagination,
+      'is-virtual-render': renderMode.virtual,
       'is-row-selection-dragging': isRowSelectionDragging
     }"
     :style="tableContainerStyle"
@@ -17,7 +19,42 @@
     @wheel.capture="handleWheelBoundary"
     @focusin="handleControlFocus"
   >
-    <ElTable ref="elTableRef" v-bind="mergedTableProps">
+    <div v-if="renderMode.virtual" class="art-table__virtual-viewport">
+      <ArtVirtualTable
+        ref="virtualTableRef"
+        :data="renderedRows"
+        :columns="virtualColumns"
+        :config="virtualConfig"
+        :size="size"
+        :editable="editing.enabled.value"
+        :show-header="showHeader"
+        :border="border"
+        :stripe="stripe"
+        :highlight-current-row="Boolean(highlightCurrentRow)"
+        :scrollbar-always-on="Boolean(scrollbarAlwaysOn)"
+        :selected-row-keys="selectedRowKeys"
+        :row-identity="getRowIdentity"
+        :render-cell="renderVirtualCell"
+        :render-header="renderVirtualHeader"
+        :cell-class="virtualCellClass"
+        :row-class-name="resolveRowClassName"
+        :cell-style="cellStyle"
+        :header-style="headerCellStyle"
+        :row-style="rowStyle"
+        :emit-event="dispatchVirtualEvent"
+        :clear-filters="clearColumnFilters"
+      >
+        <template #empty
+          ><slot name="empty"
+            ><ArtEmptyState
+              :title="emptyText"
+              :description="emptyDescription"
+              :visual-size="92"
+              size="compact" /></slot
+        ></template>
+      </ArtVirtualTable>
+    </div>
+    <ElTable v-else ref="elTableRef" v-bind="mergedTableProps">
       <template v-for="col in visibleColumns" :key="col.prop || col.type">
         <!-- 渲染全局序号列 -->
         <ElTableColumn v-if="col.type === 'globalIndex'" v-bind="cleanColumnProps(col)">
@@ -79,12 +116,48 @@
                 v-if="shouldRenderSlotScope(slotScope)"
                 class="art-table__cell-content"
                 :class="{
-                  'is-validation-error': isCellValidationError(child, slotScope.row)
+                  'is-validation-error': isCellValidationError(child, slotScope.row),
+                  'is-edit-dirty': editing.api.isUpdateByRow(slotScope.row, child.prop)
                 }"
+                :data-art-edit-row="editing.key(slotScope.row)"
+                :data-art-edit-field="child.prop"
                 :data-art-validation-key="getCellValidationKey(child, slotScope.row)"
                 :aria-invalid="isCellValidationError(child, slotScope.row) ? 'true' : undefined"
               >
+                <ArtTableCellEditor
+                  v-if="editing.isEditing(child, slotScope.row)"
+                  :value="getCellValue(slotScope.row, child.prop!)"
+                  :config="child.editRender!"
+                  :label="`第 ${getGlobalIndex(slotScope.$index)} 行 ${child.label || child.prop}`"
+                  @commit="editing.api.setCellValue(slotScope.row, child.prop!, $event)"
+                  @cancel="editing.api.clearEdit()"
+                  @navigate="editing.navigate(slotScope.row, child.prop!, $event)"
+                >
+                  <template v-if="child.editRender?.slot" #default="editScope"
+                    ><slot
+                      :name="child.editRender.slot"
+                      v-bind="{ ...slotScope, ...editScope, prop: child.prop }"
+                  /></template>
+                </ArtTableCellEditor>
+                <button
+                  v-else-if="
+                    editing.canEdit(child, slotScope.row) && editConfig?.trigger !== 'manual'
+                  "
+                  type="button"
+                  class="art-table__editable-value"
+                  :aria-label="`编辑第 ${getGlobalIndex(slotScope.$index)} 行 ${child.label || child.prop}`"
+                  :title="
+                    editing.api.isUpdateByRow(slotScope.row, child.prop)
+                      ? '已修改 · 双击或按 F2 编辑'
+                      : '双击或按 F2 编辑'
+                  "
+                  @click="activateEdit('click', child, slotScope.row)"
+                  @dblclick="activateEdit('dblclick', child, slotScope.row)"
+                  @keydown="editCellKeydown($event, child, slotScope.row)"
+                  >{{ editDisplayValue(child, slotScope.row) }}</button
+                >
                 <component
+                  v-else
                   :is="isRowActionsColumn(child) ? BusinessTableRowActions : 'span'"
                   :row="isRowActionsColumn(child) ? slotScope.row : undefined"
                   class="art-table__cell-value"
@@ -113,7 +186,7 @@
                 </component>
                 <span
                   v-if="getCellValidationError(child, slotScope.row)"
-                  class="sr-only"
+                  :class="editing.enabled.value ? 'art-table__edit-error' : 'sr-only'"
                   role="alert"
                 >
                   {{ getCellValidationError(child, slotScope.row)?.message }}
@@ -153,7 +226,12 @@
             <div
               v-if="shouldRenderSlotScope(slotScope)"
               class="art-table__cell-content"
-              :class="{ 'is-validation-error': isCellValidationError(col, slotScope.row) }"
+              :class="{
+                'is-validation-error': isCellValidationError(col, slotScope.row),
+                'is-edit-dirty': editing.api.isUpdateByRow(slotScope.row, col.prop)
+              }"
+              :data-art-edit-row="editing.key(slotScope.row)"
+              :data-art-edit-field="col.prop"
               :data-art-validation-key="getCellValidationKey(col, slotScope.row)"
               :aria-invalid="isCellValidationError(col, slotScope.row) ? 'true' : undefined"
             >
@@ -169,7 +247,38 @@
               >
                 <ArtSvgIcon :icon="col.dragIcon || 'ri:draggable'" />
               </button>
+              <ArtTableCellEditor
+                v-if="editing.isEditing(col, slotScope.row)"
+                :value="getCellValue(slotScope.row, col.prop!)"
+                :config="col.editRender!"
+                :label="`第 ${getGlobalIndex(slotScope.$index)} 行 ${col.label || col.prop}`"
+                @commit="editing.api.setCellValue(slotScope.row, col.prop!, $event)"
+                @cancel="editing.api.clearEdit()"
+                @navigate="editing.navigate(slotScope.row, col.prop!, $event)"
+              >
+                <template v-if="col.editRender?.slot" #default="editScope"
+                  ><slot
+                    :name="col.editRender.slot"
+                    v-bind="{ ...slotScope, ...editScope, prop: col.prop }"
+                /></template>
+              </ArtTableCellEditor>
+              <button
+                v-else-if="editing.canEdit(col, slotScope.row) && editConfig?.trigger !== 'manual'"
+                type="button"
+                class="art-table__editable-value"
+                :aria-label="`编辑第 ${getGlobalIndex(slotScope.$index)} 行 ${col.label || col.prop}`"
+                :title="
+                  editing.api.isUpdateByRow(slotScope.row, col.prop)
+                    ? '已修改 · 双击或按 F2 编辑'
+                    : '双击或按 F2 编辑'
+                "
+                @click="activateEdit('click', col, slotScope.row)"
+                @dblclick="activateEdit('dblclick', col, slotScope.row)"
+                @keydown="editCellKeydown($event, col, slotScope.row)"
+                >{{ editDisplayValue(col, slotScope.row) }}</button
+              >
               <component
+                v-else
                 :is="isRowActionsColumn(col) ? BusinessTableRowActions : 'span'"
                 :row="isRowActionsColumn(col) ? slotScope.row : undefined"
                 class="art-table__cell-value"
@@ -196,7 +305,11 @@
                 />
                 <span v-else>{{ getColumnCellContent(col, slotScope) }}</span>
               </component>
-              <span v-if="getCellValidationError(col, slotScope.row)" class="sr-only" role="alert">
+              <span
+                v-if="getCellValidationError(col, slotScope.row)"
+                :class="editing.enabled.value ? 'art-table__edit-error' : 'sr-only'"
+                role="alert"
+              >
                 {{ getCellValidationError(col, slotScope.row)?.message }}
               </span>
             </div>
@@ -247,17 +360,17 @@
       >
         <span
           >当前页过滤 {{ activeColumnFilterCount }} 项 · 显示 {{ filteredRows.length }} /
-          {{ props.data?.length ?? 0 }} 条</span
+          {{ tableRows.length }} 条</span
         >
         <ElButton link type="primary" @click="clearColumnFilters">清空列过滤</ElButton>
       </div>
       <ElPagination
         v-if="showPagination"
         v-bind="mergedPaginationOptions"
-        :total="currentPagination?.total"
+        :total="clientPagination ? filteredRows.length : currentPagination?.total"
         :disabled="loading"
         :page-size="currentPagination?.size"
-        :current-page="currentPagination?.current"
+        :current-page="clientPagination ? clientPage : currentPagination?.current"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
       />
@@ -280,7 +393,7 @@
     h,
     isVNode
   } from 'vue'
-  import { shallowRef, useSlots } from 'vue'
+  import { shallowRef, useSlots, type VNodeChild, type Component } from 'vue'
   import ArtTableColumnFilter from '@/components/core/tables/art-table-column-filter/index.vue'
   import {
     columnFilterOptions,
@@ -288,12 +401,24 @@
     isColumnFilterActive,
     type ColumnFilterCondition
   } from '@/utils/table/column-filters'
-  import { isEqual, uniqBy } from 'lodash-es'
+  import { get, isEqual, uniqBy } from 'lodash-es'
+  import { useTableEditing } from './use-table-editing'
+  import ArtTableCellEditor from './cell-editor.vue'
+  import ArtVirtualTable from './virtual-table.vue'
+  import { resolveTableRenderMode } from './virtual-support'
+  import type { TableVirtualScrollConfig, TableRenderMode } from '@/types/table-virtual'
+  import type {
+    TableEditApi,
+    TableEditConfig,
+    TableEditRules,
+    TableEditRecordset,
+    TableEditContext
+  } from '@/types/table-edit'
   import { readSlotColumns, renderSlotColumns } from '@/utils/table/slot-columns'
   import { fitColumnHeaderControls } from '@/utils/table/column-profile'
   import { cloneVNode, type ComponentPublicInstance } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import type { TableProps } from 'element-plus'
+  import { ElTooltip, type TableProps } from 'element-plus'
   import { storeToRefs } from 'pinia'
   import { useDraggable, type DraggableEvent } from 'vue-draggable-plus'
   import type { ColumnOption, TableColumnValidationContext } from '@/types'
@@ -349,11 +474,17 @@
     firstError?: ArtTableValidationError
   }
 
-  export interface ArtTableExpose {
-    validate: () => Promise<ArtTableValidationResult>
-    validateField: (props: string | string[]) => Promise<ArtTableValidationResult>
+  export interface ArtTableExpose<
+    T extends object = Record<string, unknown>
+  > extends TableEditApi<T> {
+    validate: (options?: { focus?: boolean }) => Promise<ArtTableValidationResult>
+    validateField: (
+      props: string | string[],
+      options?: { focus?: boolean }
+    ) => Promise<ArtTableValidationResult>
     clearValidate: (props?: string | string[]) => void
     scrollToTop: () => void
+    getRenderMode: () => TableRenderMode
     elTableRef: ArtTableInstance | null
   }
 
@@ -374,7 +505,7 @@
     () => {
       containerWidth.value = pendingContainerWidth
       const groups = containerRef.value?.querySelectorAll<HTMLElement>(
-        '.el-table__body-wrapper td.art-table-operation-column .business-table-row-actions'
+        '.el-table__body-wrapper td.art-table-operation-column .business-table-row-actions, .art-table-v2 .art-table-operation-column .business-table-row-actions'
       )
       let minimumWidth = 64
       groups?.forEach((group) => {
@@ -426,6 +557,7 @@
     { childList: true, subtree: true }
   )
   const elTableRef = ref<ArtTableInstance | null>(null)
+  const virtualTableRef = ref<InstanceType<typeof ArtVirtualTable>>()
   const paginationRef = ref<HTMLElement>()
   const tableHeaderRef = ref<HTMLElement>()
   const sortableTargetRef = ref<HTMLElement>()
@@ -481,6 +613,10 @@
 
   /** ArtTable 组件的 Props 接口 */
   interface ArtTableProps extends Partial<TableProps<ArtTableRow>> {
+    virtualScroll?: boolean | TableVirtualScrollConfig
+    editConfig?: TableEditConfig
+    editRules?: TableEditRules
+    keepSource?: boolean
     /** 表格数据 */
     data?: ArtTableRow[]
     /** 加载状态 */
@@ -491,6 +627,8 @@
     columns?: ArtTableColumn[]
     /** 分页状态 */
     pagination?: PaginationConfig | false
+    /** Slice the loaded working set locally; never requests or replaces source rows. */
+    clientPagination?: boolean
     /** 分页配置 */
     paginationOptions?: PaginationOptions
     /** 空数据表格高度 */
@@ -511,6 +649,8 @@
 
   const props = withDefaults(defineProps<ArtTableProps>(), {
     columns: () => [],
+    keepSource: false,
+    clientPagination: false,
     fit: true,
     showHeader: true,
     stripe: undefined,
@@ -552,8 +692,102 @@
         .factory()
         .filter((column) => column.visible !== false && column.checked !== false),
       isPlatformScope.value
-    )
+    ).map(applyEditRuleHeaders)
   )
+  function applyEditRuleHeaders(column: ArtTableColumn): ArtTableColumn {
+    if (column.children) return { ...column, children: column.children.map(applyEditRuleHeaders) }
+    const rules = column.prop ? props.editRules?.[column.prop] : undefined
+    return rules && (Array.isArray(rules) ? rules : [rules]).some((rule) => rule.required)
+      ? { ...column, required: true }
+      : column
+  }
+  const editing = useTableEditing({
+    data: () => props.data ?? [],
+    columns: () => visibleColumns.value,
+    config: () => props.editConfig,
+    keepSource: () => props.keepSource,
+    loading: () => Boolean(props.loading),
+    container: () => containerRef.value,
+    change: (records) => {
+      validationRefreshSeed++
+      emit('edit-change', records)
+      void revalidateActiveErrors()
+    },
+    activated: (context) => emit('edit-activated', context),
+    closed: (context) => emit('edit-closed', context),
+    revealRow: async (row, field) => {
+      if (props.clientPagination && currentPagination.value) {
+        const index = filteredRows.value.indexOf(row)
+        if (index < 0) return
+        const page = Math.floor(index / currentPagination.value.size) + 1
+        if (page !== currentPagination.value.current) emit('pagination:current-change', page)
+        await nextTick()
+      }
+      if (renderMode.value.virtual) await virtualTableRef.value?.ensureCellVisible(row, field)
+    }
+  })
+  const tableRows = editing.displayedRows
+  const renderMode = computed(() =>
+    resolveTableRenderMode({
+      virtualScroll: props.virtualScroll,
+      columns: visibleColumns.value,
+      rows: tableRows.value,
+      hasNativeColumns: Boolean(slots.default),
+      lazy: props.lazy,
+      treeChildren: props.treeProps?.children,
+      spanMethod: props.spanMethod,
+      showSummary: props.showSummary,
+      maxHeight: props.maxHeight,
+      height: props.height,
+      editConfig: props.editConfig,
+      defaultSort: props.defaultSort,
+      headerCellStyle: props.headerCellStyle,
+      rowStyle: props.rowStyle,
+      fit: props.fit
+    })
+  )
+  const virtualConfig = computed<TableVirtualScrollConfig>(() =>
+    typeof props.virtualScroll === 'object' ? props.virtualScroll : {}
+  )
+  watchPostEffect(() => {
+    if (renderMode.value.virtual && virtualTableRef.value) {
+      // The adapter exposes the native public methods ArtTable supports in virtual mode.
+      elTableRef.value = virtualTableRef.value as ArtTableInstance
+    }
+  })
+  const activateEdit = (
+    trigger: 'click' | 'dblclick',
+    column: ArtTableColumn,
+    row: Record<string, unknown>
+  ) => {
+    if ((props.editConfig?.trigger || 'dblclick') === trigger && column.prop)
+      void editing.api.setEditCell(row, column.prop)
+  }
+  const editCellKeydown = (
+    event: KeyboardEvent,
+    column: ArtTableColumn,
+    row: Record<string, unknown>
+  ) => {
+    if (event.isComposing || !['F2', 'Enter', ' '].includes(event.key) || !column.prop) return
+    event.preventDefault()
+    event.stopPropagation()
+    void editing.api.setEditCell(row, column.prop)
+  }
+  const editDisplayValue = (column: ArtTableColumn, row: ArtTableRow): string => {
+    const value = getCellValue(row, column.prop!)
+    if (value === null) return 'NULL'
+    if (value === '') return '（空字符串）'
+    const formatted: unknown = column.formatter?.(row)
+    if (
+      typeof formatted === 'string' ||
+      typeof formatted === 'number' ||
+      typeof formatted === 'boolean'
+    )
+      return String(formatted)
+    const option = column.editRender?.options?.find((option) => isEqual(option.value, value))
+    if (option) return option.label
+    return typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')
+  }
   const instance = getCurrentInstance()
   const columnFilters = ref<Record<string, ColumnFilterCondition>>({})
   const filterColumnTree = new TreeUtils({ deepClone: false })
@@ -580,7 +814,7 @@
   )
   const filteredRows = computed(() =>
     filterColumnRows(
-      props.data ?? [],
+      tableRows.value,
       filterableColumns.value,
       columnFilters.value,
       props.treeProps?.children ?? 'children'
@@ -605,7 +839,7 @@
       label: column.label ?? column.prop!,
       type: column.filterType!,
       modelValue: columnFilters.value[column.prop!],
-      options: columnFilterOptions(flattenRows(props.data ?? []), column.prop!),
+      options: columnFilterOptions(flattenRows(tableRows.value), column.prop!),
       dictCode: column.dict?.code,
       'onUpdate:modelValue': (value: ColumnFilterCondition) => {
         columnFilters.value = { ...columnFilters.value, [column.prop!]: value }
@@ -655,7 +889,7 @@
   // 表格尺寸
   const size = computed(() => props.size ?? tableSize.value)
   // 数据是否为空
-  const isEmpty = computed(() => props.data?.length === 0)
+  const isEmpty = computed(() => tableRows.value.length === 0)
   watch(isEmpty, async (empty) => {
     if (!empty) return
     await nextTick()
@@ -727,7 +961,7 @@
   const { containerHeight } = useTableHeight({
     showTableHeader: computed(() => props.showTableHeader),
     additionalHeightOffset: computed(() => props.additionalHeightOffset),
-    paginationHeight,
+    paginationHeight: computed(() => (renderMode.value.virtual ? 0 : paginationHeight.value)),
     tableHeaderHeight,
     paginationSpacing: PAGINATION_SPACING
   })
@@ -737,7 +971,13 @@
     () => props.maxHeight != null && !props.height && !isFullScreen.value
   )
   const tableContainerStyle = computed(() =>
-    usesMaxHeight.value ? { height: 'auto' } : containerHeight.value
+    renderMode.value.virtual && props.height
+      ? { height: typeof props.height === 'number' ? `${props.height}px` : props.height }
+      : props.clientPagination
+        ? { height: '100%' }
+        : usesMaxHeight.value
+          ? { height: 'auto' }
+          : containerHeight.value
   )
 
   // 表格高度逻辑
@@ -796,10 +1036,15 @@
     delete tableProps.selectedRowKeys
     delete tableProps.fixedColumnMinWidth
     delete tableProps.loadingOverlay
+    delete tableProps.editConfig
+    delete tableProps.editRules
+    delete tableProps.keepSource
+    delete tableProps.clientPagination
+    delete tableProps.virtualScroll
 
     return {
       ...tableProps,
-      data: filteredRows.value,
+      data: renderedRows.value,
       height: height.value,
       scrollbarAlwaysOn: hasExplicitTableProp('scrollbarAlwaysOn')
         ? props.scrollbarAlwaysOn
@@ -821,6 +1066,33 @@
   const currentPagination = computed(() =>
     props.pagination === false ? undefined : props.pagination
   )
+  const clientPage = computed(() =>
+    currentPagination.value
+      ? Math.max(
+          1,
+          Math.min(
+            currentPagination.value.current,
+            Math.ceil(filteredRows.value.length / currentPagination.value.size) || 1
+          )
+        )
+      : 1
+  )
+  const renderedRows = computed(() =>
+    props.clientPagination && currentPagination.value
+      ? filteredRows.value.slice(
+          (clientPage.value - 1) * currentPagination.value.size,
+          clientPage.value * currentPagination.value.size
+        )
+      : filteredRows.value
+  )
+  watch(clientPage, (page) => {
+    if (
+      props.clientPagination &&
+      currentPagination.value &&
+      page !== currentPagination.value.current
+    )
+      emit('pagination:current-change', page)
+  })
 
   const showPagination = computed(() => !!currentPagination.value && !isEmpty.value)
   watchPostEffect(() => {
@@ -851,6 +1123,7 @@
       (col.useSlot && col.prop) ||
       !!col.dict ||
       !!col.link ||
+      Boolean(editing.enabled.value && col.editRender) ||
       isValidationColumn(col) ||
       col.draggable === true ||
       typeof col.draggable === 'function'
@@ -894,17 +1167,10 @@
     return activeColumnFilterCount.value > 0 || resolveColumnBoolean(col.dragDisabled, row)
   }
 
-  const getCellValue = (row: ArtTableRow, prop: string) => {
-    return prop.split('.').reduce<unknown>((value, key) => {
-      if (value && typeof value === 'object') {
-        return (value as Record<string, unknown>)[key]
-      }
-      return undefined
-    }, row)
-  }
+  const getCellValue = (row: ArtTableRow, prop: string): unknown => get(row, prop)
 
   const isValidationColumn = (column: ArtTableColumn): boolean =>
-    Boolean(column.prop && (column.required || column.rules))
+    Boolean(column.prop && (column.required || column.rules || props.editRules?.[column.prop]))
 
   const getValidationRowKey = (row: ArtTableRow): string => {
     const identity = getRowIdentity(row)
@@ -990,10 +1256,35 @@
       )
     }
 
-    const rules = column.rules ? (Array.isArray(column.rules) ? column.rules : [column.rules]) : []
+    const rules = [column.rules, props.editRules?.[prop]].flatMap((rule) =>
+      rule ? (Array.isArray(rule) ? rule : [rule]) : []
+    )
     for (const rule of rules) {
       try {
-        const result = await rule.validator(context)
+        const empty = isRequiredValueEmpty(value)
+        const count =
+          typeof value === 'number'
+            ? value
+            : typeof value === 'string' || Array.isArray(value)
+              ? value.length
+              : undefined
+        const typeInvalid =
+          !empty &&
+          rule.type &&
+          (rule.type === 'array'
+            ? !Array.isArray(value)
+            : rule.type === 'number'
+              ? typeof value !== 'number' || !Number.isFinite(value)
+              : typeof value !== rule.type)
+        if (rule.pattern) rule.pattern.lastIndex = 0
+        const invalid =
+          (rule.required && empty) ||
+          typeInvalid ||
+          (!empty &&
+            ((rule.min !== undefined && count !== undefined && count < rule.min) ||
+              (rule.max !== undefined && count !== undefined && count > rule.max) ||
+              (rule.pattern && !rule.pattern.test(String(value)))))
+        const result = invalid ? false : await rule.validator?.(context)
         if (result === false || typeof result === 'string') {
           return createError(
             typeof result === 'string'
@@ -1087,6 +1378,9 @@
     error: InternalTableValidationError | undefined
   ): Promise<void> => {
     if (!error) return
+    if (editing.enabled.value) await editing.api.setEditCell(error.row, error.prop)
+    else if (renderMode.value.virtual)
+      await virtualTableRef.value?.ensureCellVisible(error.row, error.prop)
     await nextTick()
     const cells = Array.from(
       containerRef.value?.querySelectorAll<HTMLElement>('[data-art-validation-key]') ?? []
@@ -1110,9 +1404,11 @@
 
   const validateColumns = async (
     columns: ArtTableColumn[],
-    replaceAll: boolean
+    replaceAll: boolean,
+    focus = true
   ): Promise<ArtTableValidationResult> => {
-    const rows = flattenRows(props.data ?? [])
+    const validationId = ++validationRefreshSeed
+    const rows = flattenRows(editing.rows.value)
     const errors: InternalTableValidationError[] = []
     for (const [rowIndex, row] of rows.entries()) {
       for (const column of columns) {
@@ -1121,6 +1417,7 @@
       }
     }
 
+    if (validationId !== validationRefreshSeed) return { valid: false, errors: [] }
     const nextErrors = replaceAll
       ? new Map<string, InternalTableValidationError>()
       : new Map(validationErrors.value)
@@ -1132,18 +1429,22 @@
     }
     errors.forEach((error) => nextErrors.set(error.key, error))
     validationErrors.value = nextErrors
-    await focusValidationError(errors[0])
+    if (focus) await focusValidationError(errors[0])
     return toValidationResult(errors)
   }
 
-  const validate = (): Promise<ArtTableValidationResult> =>
-    validateColumns(getValidationColumns(), true)
+  const validate = (options?: { focus?: boolean }): Promise<ArtTableValidationResult> =>
+    validateColumns(getValidationColumns(), true, options?.focus !== false)
 
-  const validateField = (fields: string | string[]): Promise<ArtTableValidationResult> => {
+  const validateField = (
+    fields: string | string[],
+    options?: { focus?: boolean }
+  ): Promise<ArtTableValidationResult> => {
     const fieldSet = new Set(Array.isArray(fields) ? fields : [fields])
     return validateColumns(
       getValidationColumns().filter((column) => fieldSet.has(String(column.prop))),
-      false
+      false,
+      options?.focus !== false
     )
   }
 
@@ -1165,7 +1466,7 @@
     const currentErrors = [...validationErrors.value.values()]
     if (!currentErrors.length) return
     const refreshId = ++validationRefreshSeed
-    const rows = flattenRows(props.data ?? [])
+    const rows = flattenRows(editing.rows.value)
     const columns = getValidationColumns()
     const nextErrors = new Map(validationErrors.value)
     for (const currentError of currentErrors) {
@@ -1296,6 +1597,155 @@
       handler(...args)
     }
   }
+  const dispatchVirtualEvent = (name: string, ...args: unknown[]) =>
+    callTableEventHandler(attrs[name], ...args)
+  const virtualColumns = computed(() =>
+    visibleColumns.value.map((column) => ({ ...column, ...cleanColumnProps(column) }))
+  )
+  const virtualCellClass = (
+    row: ArtTableRow,
+    column: ArtTableColumn,
+    rowIndex: number,
+    columnIndex: number
+  ) => {
+    const value = props.cellClassName
+    return normalizeClassName(
+      typeof value === 'function'
+        ? value({
+            row,
+            // Virtual columns expose the public identity fields; native private stores do not exist.
+            column: { ...column, property: column.prop || '' } as ArtTableRow,
+            rowIndex,
+            columnIndex
+          })
+        : value
+    )
+  }
+  const renderVirtualHeader = (column: ArtTableColumn, index: number) => {
+    const scope = { column, $index: index, prop: column.prop, label: column.label }
+    const content: VNodeChild =
+      column.useHeaderSlot && column.prop
+        ? slots[column.headerSlotName || `${column.prop}-header`]?.(scope)
+        : typeof column.renderHeader === 'function'
+          ? column.renderHeader(scope)
+          : column.label
+    return h('span', { class: 'art-table__header-label' }, [
+      column.required
+        ? h('span', { class: 'art-table__required-marker', 'aria-hidden': true }, '*')
+        : null,
+      content,
+      column.required ? h('span', { class: 'sr-only' }, '（必填）') : null,
+      hasColumnFilter(column) ? renderColumnFilter(column) : null
+    ])
+  }
+  const renderVirtualCell = (column: ArtTableColumn, row: ArtTableRow, index: number) => {
+    if (column.type === 'globalIndex' || column.type === 'index')
+      return h(
+        'span',
+        String(
+          column.type === 'globalIndex'
+            ? getGlobalIndex(index)
+            : typeof column.index === 'function'
+              ? column.index(index)
+              : index + 1
+        )
+      )
+    const scope = { row, column, $index: index }
+    let content: VNodeChild
+    if (editing.isEditing(column, row))
+      content = h(
+        ArtTableCellEditor,
+        {
+          value: getCellValue(row, column.prop!),
+          config: column.editRender!,
+          label: `第 ${getGlobalIndex(index)} 行 ${column.label || column.prop}`,
+          onCommit: (value: unknown) => editing.api.setCellValue(row, column.prop!, value),
+          onCancel: () => editing.api.clearEdit(),
+          onNavigate: (direction: 'next' | 'previous' | 'down' | 'up') =>
+            editing.navigate(row, column.prop!, direction)
+        },
+        column.editRender?.slot
+          ? {
+              default: (editScope: Record<string, unknown>) =>
+                slots[column.editRender!.slot!]?.({ ...scope, ...editScope, prop: column.prop })
+            }
+          : undefined
+      )
+    else if (editing.canEdit(column, row) && props.editConfig?.trigger !== 'manual')
+      content = h(
+        'button',
+        {
+          type: 'button',
+          class: 'art-table__editable-value',
+          'aria-label': `编辑第 ${getGlobalIndex(index)} 行 ${column.label || column.prop}`,
+          title: editing.api.isUpdateByRow(row, column.prop)
+            ? '已修改 · 双击或按 F2 编辑'
+            : '双击或按 F2 编辑',
+          onClick: () => activateEdit('click', column, row),
+          onDblclick: () => activateEdit('dblclick', column, row),
+          onKeydown: (event: KeyboardEvent) => editCellKeydown(event, column, row)
+        },
+        editDisplayValue(column, row)
+      )
+    else if (column.useSlot && column.prop)
+      content = slots[column.slotName || column.prop]?.({
+        ...scope,
+        prop: column.prop,
+        value: getCellValue(row, column.prop)
+      })
+    else if (column.dict)
+      content = h(ArtDictDisplay, {
+        dictCode: column.dict.code,
+        value: getDictColumnValue(column, row),
+        display: column.dict.display
+      })
+    else if (column.link) content = renderColumnLink(column, row)
+    else {
+      const value = getColumnCellContent(column, scope)
+      content = isVNode(value)
+        ? value
+        : isComponentCellContent(value)
+          ? h(value as Component)
+          : String(value)
+      if (!isComponentCellContent(value) && column.showOverflowTooltip !== false)
+        content = h(
+          ElTooltip,
+          { content: String(value), placement: 'top', showAfter: 500 },
+          { default: () => h('span', { class: 'truncate' }, String(value)) }
+        )
+    }
+    if (isRowActionsColumn(column)) {
+      const actions = content
+      content = h(BusinessTableRowActions, { row }, { default: () => actions })
+    }
+    const error = getCellValidationError(column, row)
+    return h(
+      'div',
+      {
+        class: [
+          'art-table__cell-content',
+          {
+            'is-validation-error': Boolean(error),
+            'is-edit-dirty': editing.api.isUpdateByRow(row, column.prop)
+          }
+        ],
+        'data-art-edit-row': editing.key(row),
+        'data-art-edit-field': column.prop,
+        'data-art-validation-key': getCellValidationKey(column, row),
+        'aria-invalid': error ? 'true' : undefined
+      },
+      [
+        content,
+        error
+          ? h(
+              'span',
+              { class: editing.enabled.value ? 'art-table__edit-error' : 'sr-only', role: 'alert' },
+              error.message
+            )
+          : null
+      ]
+    )
+  }
 
   const applyRowSelectionByDrag = (row: ArtTableRow | undefined): void => {
     if (!row) return
@@ -1369,7 +1819,7 @@
       tableBody.querySelectorAll<HTMLTableRowElement>('tr.el-table__row')
     )
     const rowIndex = rowElements.indexOf(rowElement)
-    return flattenRows(props.data ?? [])[rowIndex]
+    return flattenRows(tableRows.value)[rowIndex]
   }
 
   const handleTableMouseDown = (event: MouseEvent): void => {
@@ -1404,7 +1854,7 @@
 
   const rowMap = computed(() => {
     const map = new Map<string, ArtTableRow>()
-    flattenRows(props.data ?? []).forEach((row) => {
+    flattenRows(tableRows.value).forEach((row) => {
       const key = getRowIdentity(row)
       if (key) map.set(key, row)
     })
@@ -1570,6 +2020,7 @@
     delete columnProps.requiredMessage
     delete columnProps.rules
     delete columnProps.filterType
+    delete columnProps.editRender
     return columnProps
   }
 
@@ -1597,11 +2048,15 @@
   // 全局序号
   const getGlobalIndex = (index: number) => {
     if (!currentPagination.value) return index + 1
-    const { current, size } = currentPagination.value
+    const { size } = currentPagination.value
+    const current = props.clientPagination ? clientPage.value : currentPagination.value.current
     return (current - 1) * size + index + 1
   }
 
   const emit = defineEmits<{
+    (e: 'edit-change', records: TableEditRecordset): void
+    (e: 'edit-activated', context: TableEditContext): void
+    (e: 'edit-closed', context: TableEditContext): void
     (e: 'pagination:size-change', val: number): void
     (e: 'pagination:current-change', val: number): void
     (e: 'row-drag-start', payload: RowDragPayload): void
@@ -1647,10 +2102,12 @@
   )
 
   defineExpose({
+    ...editing.api,
     validate,
     validateField,
     clearValidate,
     scrollToTop,
+    getRenderMode: () => ({ ...renderMode.value }),
     elTableRef
   })
 </script>
