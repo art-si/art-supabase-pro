@@ -93,6 +93,7 @@
   const recommending = ref(false)
   const loadError = ref('')
   let generation = 0
+  let requestController: AbortController | undefined
   watch([loadError, warehouse, recommending], () => {
     dialogRef.value?.setOptions({
       confirmDisabled: Boolean(loadError.value) || !warehouse.value || recommending.value
@@ -123,11 +124,11 @@
     const requestGeneration = generation
     recommending.value = true
     try {
-      const binId = await recommendScmReceiptPlacementBin({
-        warehouseId,
-        materialId,
-        quantity: quantity.value
-      })
+      const options = { signal: requestController?.signal, showErrorMessage: false }
+      const binId = await recommendScmReceiptPlacementBin(
+        { warehouseId, materialId, quantity: quantity.value },
+        options
+      )
       if (requestGeneration !== generation) return
       if (!binId) {
         ElMessage.warning('当前没有符合物料、容量和库区规则的可用库位')
@@ -135,7 +136,7 @@
       }
       let bin = bins.value.find((item) => item.id === binId)
       if (!bin) {
-        bin = (await fetchScmReceiptPlacementBin(current.tenantId, binId)) ?? undefined
+        bin = (await fetchScmReceiptPlacementBin(current.tenantId, binId, options)) ?? undefined
         if (requestGeneration !== generation) return
         if (bin) bins.value.push(bin)
       }
@@ -179,14 +180,18 @@
     const warehouseId = data?.line.lineSnapshot.warehouseId
     if (!data || !warehouseId) return
     const requestGeneration = ++generation
+    requestController?.abort()
+    requestController = new AbortController()
+    const options = { signal: requestController.signal, showErrorMessage: false }
+    recommending.value = false
     loadError.value = ''
     warehouse.value = null
     bins.value = []
     dialogRef.value?.setLoading(true)
     try {
       const [warehouseResult, binRows] = await Promise.all([
-        fetchScmReceiptPlacementWarehouse(data.tenantId, warehouseId),
-        fetchScmReceiptPlacementBins(data.tenantId, warehouseId)
+        fetchScmReceiptPlacementWarehouse(data.tenantId, warehouseId, options),
+        fetchScmReceiptPlacementBins(data.tenantId, warehouseId, options)
       ])
       if (requestGeneration !== generation) return
       if (!warehouseResult) {
@@ -211,7 +216,8 @@
     }
   }
   async function handleOpen(data: Context): Promise<void> {
-    const requestGeneration = ++generation
+    handleClose()
+    const requestGeneration = generation
     await loadUnitDisplayNames([data.tenantId])
     if (requestGeneration !== generation) return
     const warehouseId = data.line.lineSnapshot.warehouseId
@@ -236,7 +242,10 @@
   }
   function handleClose(): void {
     generation++
+    requestController?.abort()
+    requestController = undefined
     recommending.value = false
   }
+  onBeforeUnmount(handleClose)
   defineExpose({ handleOpen })
 </script>

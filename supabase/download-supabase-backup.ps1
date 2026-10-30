@@ -92,6 +92,7 @@ try {
   }
 
   [IO.Compression.ZipFile]::ExtractToDirectory($archive, $Destination)
+  Enter-BackupReadLease -Root $Destination
   $manifestPath = Join-Path $Destination 'manifest.json'
   if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     throw 'The downloaded archive is missing manifest.json.'

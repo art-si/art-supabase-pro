@@ -24,6 +24,10 @@ Shared components are organized by responsibility, not by the page that first ne
 
 `ArtButtonMore` adapts its default trigger to the device: touch devices use click, while devices with hover use hover. Set `trigger` explicitly only when the interaction requires an override; business pages should reuse this behavior rather than implement their own mobile dropdown.
 
+### Icon-and-label loading actions
+
+Put `ArtSvgIcon` or `ElIcon` in an `ElButton`'s default slot beside its label. With `:loading`, shared styles keep and rotate that original icon, hide the extra Element Plus spinner, and preserve the button's disabled behavior and width. Use `art-icon-label` for a nested icon/label wrapper. Avoid `#icon` for loading actions: Element Plus replaces that slot while loading. Plain text buttons keep the standard loading indicator. `ArtIconButton` follows the same spin duration token, and reduced motion disables rotation while retaining the loading/disabled state.
+
 ### Overlay lifecycle
 
 `ArtDialog` and `ArtDrawer` share `useArtOverlay`. Unmounting invalidates pending open, confirm, and close continuations and clears local loading state. It does not invoke business `onClose` or `onReset` callbacks. Retained APIs cannot reopen or reset an unmounted instance. Requests already started by a business callback remain owned by that business layer; their server outcome must be reconciled when the page is next loaded.

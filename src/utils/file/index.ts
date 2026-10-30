@@ -1,4 +1,4 @@
-import type { ColInfo } from '@/vendor/sheetjs/xlsx.mjs'
+import type { ColInfo } from './sheetjs'
 import { resolveFileActionUrl } from './url'
 export { formatSize } from './format-size'
 export { resolveFileActionUrl }
@@ -137,15 +137,16 @@ export const exportExcel = async <TRecord extends object>(
   }
 
   const assertTenantScope = createTenantScopeReadGuard()
+  const rows = buildExcelRows(data, columns, { autoIndex, indexColumnTitle })
+  const columnWidths = calculateExcelColumnWidths(rows, columns)
   onProgress?.(10)
   const [{ default: FileSaver }, XLSX] = await Promise.all([
     import('file-saver'),
-    import('@/vendor/sheetjs/xlsx.mjs')
+    import('./sheetjs')
   ])
-  const rows = buildExcelRows(data, columns, { autoIndex, indexColumnTitle })
   onProgress?.(30)
   const worksheet = XLSX.utils.json_to_sheet(rows)
-  worksheet['!cols'] = calculateExcelColumnWidths(rows, columns)
+  worksheet['!cols'] = columnWidths
   onProgress?.(50)
 
   const workbook = XLSX.utils.book_new()
@@ -164,7 +165,7 @@ export const exportExcel = async <TRecord extends object>(
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
   onProgress?.(70)
 
-  const buffer = XLSX.write(workbook, {
+  const buffer = XLSX.writeXLSX(workbook, {
     bookType: 'xlsx',
     type: 'array',
     compression: true
@@ -182,7 +183,7 @@ export const exportExcel = async <TRecord extends object>(
 }
 
 export async function importExcelFile(file: File): Promise<Array<Record<string, unknown>>> {
-  const XLSX = await import('@/vendor/sheetjs/xlsx.mjs')
+  const XLSX = await import('./sheetjs')
   const isCsv = file.name.toLowerCase().endsWith('.csv')
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

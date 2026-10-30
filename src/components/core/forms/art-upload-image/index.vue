@@ -107,7 +107,7 @@
           </button>
         </div>
         <div v-else class="upload-state upload-state--loading">
-          <ArtSvgIcon icon="ri:loader-4-line" class="upload-state__spinner" aria-hidden="true" />
+          <ArtSvgIcon icon="ri:refresh-line" class="upload-state__spinner" aria-hidden="true" />
           <span>上传中</span>
         </div>
       </div>

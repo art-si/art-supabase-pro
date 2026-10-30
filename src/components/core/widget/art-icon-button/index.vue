@@ -16,7 +16,8 @@
     :title="label"
     @click="handleClick"
   >
-    <slot name="icon"><ArtSvgIcon :icon="icon" /></slot>
+    <ArtSvgIcon v-if="loading" icon="ri:refresh-line" />
+    <slot v-else name="icon"><ArtSvgIcon :icon="icon" /></slot>
     <slot></slot>
   </button>
 </template>
@@ -29,7 +30,7 @@
     icon?: string
     /** 是否禁用 */
     disabled?: boolean
-    /** 是否处于加载状态；加载时保留动作含义并旋转图标 */
+    /** 加载时替换为统一的刷新图标，结束后恢复动作图标。 */
     loading?: boolean
     tone?: 'theme' | 'danger'
     variant?: 'ghost' | 'solid'
@@ -100,7 +101,7 @@
     }
 
     &.art-icon-button--loading :deep(svg) {
-      animation: art-icon-button-spin 0.8s linear infinite;
+      animation: art-icon-button-spin var(--art-motion-duration-spin, 800ms) linear infinite;
     }
 
     &.art-icon-button--solid {

@@ -20,13 +20,28 @@
     height: 100%;
     min-height: 0;
 
-    // 展开的筛选项可独立滚动，避免在矮窗口中挤掉表格与分页。
-    :deep(.art-search-bar) {
-      flex-shrink: 0;
-      max-height: 40%;
-      overflow-y: auto;
+    // 内容较少时按自身高度排版，展开后最多占用工作区的 40%。
+    .art-table-query__search-scrollbar {
+      height: 40%;
+      min-height: 0;
+      max-height: fit-content;
+
+      :deep(> .el-scrollbar__wrap) {
+        scroll-padding-bottom: var(--art-space-2);
+      }
+
+      :deep(> .el-scrollbar__wrap > .el-scrollbar__view) {
+        padding-bottom: var(--art-space-2);
+      }
     }
   }
+}
+
+.art-table-query__search-scrollbar {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  height: auto;
 }
 
 :global(.art-table-focus-hidden) {
@@ -137,25 +152,34 @@
   flex-shrink: 0;
 }
 
-.art-table-query :deep(.art-table-query__error-state) {
-  display: flex;
+.art-table-query__error-state {
   flex: 1 1 auto;
-  flex-direction: column;
-  align-items: center;
-  justify-content: safe center;
+  width: 100%;
   min-height: 0;
-  padding-block: var(--art-space-3);
-  overflow: auto;
+
+  :deep(> .el-scrollbar__wrap:focus-visible) {
+    outline: 2px solid var(--theme-color);
+    outline-offset: -2px;
+  }
+
+  :deep(> .el-scrollbar__wrap > .el-scrollbar__view) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: safe center;
+    min-height: 100%;
+    padding-block: var(--art-space-3);
+  }
 }
 
-.art-table-query :deep(.art-table-query__error-state .art-empty-state__visual) {
+.art-table-query__error-state :deep(.art-empty-state__visual) {
   flex-shrink: 1;
   min-height: 0;
   overflow: hidden;
 }
 
-.art-table-query :deep(.art-table-query__error-state .art-empty-state__copy),
-.art-table-query :deep(.art-table-query__error-state .art-empty-state__action) {
+.art-table-query__error-state :deep(.art-empty-state__copy),
+.art-table-query__error-state :deep(.art-empty-state__action) {
   flex-shrink: 0;
 }
 

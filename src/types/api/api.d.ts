@@ -807,11 +807,25 @@ declare namespace Api {
       interface TableMetadata {
         tableSchema: string
         tableName: string
+        description?: string | null
+        kind?: 'table' | 'view' | 'materialized_view'
+        indexes?: IndexMetadata[]
         columns: Array<{
           name: string
           dataType: string
           isNullable: boolean
+          description?: string | null
+          isPrimaryKey?: boolean
+          defaultValue?: string | null
         }>
+      }
+
+      interface IndexMetadata {
+        name: string
+        columns: string[]
+        isUnique: boolean
+        isPrimary: boolean
+        definition?: string | null
       }
 
       interface ColumnMetadata {
@@ -821,6 +835,9 @@ declare namespace Api {
         dataType: string
         isNullable: string
         ordinalPosition: number
+        description?: string | null
+        isPrimaryKey?: boolean
+        defaultValue?: string | null
       }
 
       interface FunctionMetadata {
@@ -841,11 +858,31 @@ declare namespace Api {
 
       interface SqlExecuteRequest {
         query: string
+        maxRows?: number
+        timeoutMs?: number
+      }
+
+      interface SqlExplainRequest {
+        query: string
+        timeoutMs?: number
+      }
+
+      interface SqlExplainResponse {
+        status: 'ok' | 'error'
+        errorMessage?: string
+        executionScope?: 'database'
+        plan?: Array<Record<string, unknown>>
+        rawPlan?: unknown
+        estimatedCost?: number
+        estimatedRows?: number
+        planningTimeMs?: number
+        durationMs?: number
       }
 
       interface SqlExecuteResponse {
         status: 'ok' | 'error'
         errorMessage?: string
+        executionScope?: 'database'
         rows?: Array<Record<string, unknown>>
         columns?: Array<{
           name: string
@@ -865,6 +902,9 @@ declare namespace Api {
         }>
         commandTag?: string
         rowCount?: number
+        truncated?: boolean
+        maxRows?: number
+        timeoutMs?: number
         durationMs?: number
         notices?: string[]
         warnings?: string[]
@@ -873,6 +913,9 @@ declare namespace Api {
 
       interface SqlAiGenerateRequest {
         prompt: string
+        schema?: string
+        dialect?: 'postgres' | 'mysql' | 'dm'
+        connectionKind?: 'builtin' | 'external'
         mode?: 'generate' | 'fix'
         currentSql?: string
         metadata?: DatabaseMetadata

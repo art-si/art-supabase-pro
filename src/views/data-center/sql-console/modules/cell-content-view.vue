@@ -1,135 +1,72 @@
 <template>
   <ArtDrawer
     ref="drawerRef"
-    size="50%"
-    :show-footer="false"
-    append-to-body
-    class="cell-content-drawer"
-    @opened="editorVisible = true"
-    @closed="editorVisible = false"
+    :size="720"
+    :show-confirm-button="false"
+    :show-form-focus-button="false"
+    cancel-text="关闭"
+    @closed="content = ''"
   >
-    <template #header>
-      <div class="flex items-center">
-        <span class="text-lg font-medium mr-2">查看 </span>
-        <el-tag>{{ columnName }}</el-tag>
-      </div>
-    </template>
-
-    <div class="cell-content-view__editor">
-      <Editor
-        v-if="editorVisible"
-        v-model="formattedContent"
+    <div class="flex min-w-0 flex-col gap-3">
+      <div class="flex items-center justify-between gap-3 text-xs text-g-600"
+        ><span class="truncate font-mono" :title="columnName">{{ columnName }}</span
+        ><span class="shrink-0">{{ content.length.toLocaleString() }} 字符</span></div
+      >
+      <PlanCodePreview
+        :key="revision"
+        title="单元格内容"
         :language="language"
-        :read-only="true"
+        :code="content"
+        expanded
+        max-height="calc(100dvh - 320px)"
       />
     </div>
   </ArtDrawer>
 </template>
-
 <script setup lang="ts">
   import { ref } from 'vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
-  import Editor from './editor.vue'
-
+  import PlanCodePreview from './plan-code-preview.vue'
   export interface CellContentOpenData {
     content: string
     columnName: string
   }
-
   export interface CellContentViewExpose {
     handleOpen: (data: CellContentOpenData) => Promise<void>
+    reset: () => void
   }
-
-  const drawerRef = ref<ArtDrawerExpose<CellContentOpenData>>()
+  const drawerRef = ref<ArtDrawerExpose>()
   const columnName = ref('')
-  const language = ref('text')
-  const formattedContent = ref('')
-  const editorVisible = ref(false)
-
-  const resolveContentLanguage = (content: string, column: string) => {
-    try {
-      JSON.parse(content)
-      return 'json'
-    } catch {
-      // Most scalar cells are plain text.
-    }
-    const trimmed = content.trim()
-    if (/^<\?xml\b/i.test(trimmed)) return 'xml'
-    if (/^<!doctype html\b|^<html\b/i.test(trimmed)) return 'html'
-    if (
-      /\b(sql|query)\b/i.test(column) &&
-      /^(select|with|insert|update|delete|create)\b/i.test(trimmed)
-    ) {
-      return 'pgsql'
-    }
-    return 'plaintext'
-  }
-
-  const formatContent = (content: string) => {
-    try {
-      const json = JSON.parse(content)
-      return JSON.stringify(json, null, 2)
-    } catch {
-      return content
-    }
-  }
-
+  const content = ref('')
+  const language = ref<'sql' | 'json' | 'plaintext'>('plaintext')
+  const revision = ref(0)
   const handleOpen = async (data: CellContentOpenData) => {
+    revision.value++
     columnName.value = data.columnName
-    language.value = resolveContentLanguage(data.content, data.columnName)
-    formattedContent.value = formatContent(data.content)
-
-    await drawerRef.value?.handleOpen(data, {
-      title: '查看',
-      size: '50%',
-      showFooter: false
+    content.value = data.content
+    language.value = 'plaintext'
+    try {
+      content.value = JSON.stringify(JSON.parse(data.content), null, 2)
+      language.value = 'json'
+    } catch {
+      if (
+        /\b(sql|query)\b/i.test(data.columnName) &&
+        /^(select|with|insert|update|delete|create)\b/i.test(data.content.trim())
+      )
+        language.value = 'sql'
+    }
+    await drawerRef.value?.handleOpen(undefined, {
+      title: '单元格详情',
+      subtitle: '只读查看 · 支持查找、换行和复制',
+      headerIcon: 'ri:braces-line'
     })
   }
-
-  defineExpose<CellContentViewExpose>({ handleOpen })
+  defineExpose<CellContentViewExpose>({
+    handleOpen,
+    reset: () => {
+      content.value = ''
+      drawerRef.value?.handleClose()
+    }
+  })
 </script>
-
-<style scoped lang="scss">
-  :global(.cell-content-drawer) {
-    display: flex;
-    flex-direction: column;
-
-    .el-drawer__header {
-      flex: 0 0 auto;
-    }
-
-    .el-drawer__body {
-      --art-drawer-content-padding: 0;
-
-      display: flex;
-      flex: 1;
-      flex-direction: column;
-      height: auto;
-      min-height: 0;
-      padding: 0;
-      overflow: hidden;
-    }
-
-    .el-scrollbar,
-    .el-scrollbar__wrap,
-    .el-scrollbar__view {
-      height: 100%;
-      min-height: 0;
-    }
-
-    .art-drawer__content {
-      display: flex;
-      flex: 1;
-      height: 100%;
-      min-height: 0;
-      overflow: hidden;
-    }
-  }
-
-  .cell-content-view__editor {
-    width: 100%;
-    height: calc(100dvh - 90px);
-    min-height: 360px;
-  }
-</style>

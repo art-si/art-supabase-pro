@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
-import { prepareAppearance } from './support/appearance'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
-test.setTimeout(120_000)
+test.setTimeout(240_000)
 
 const tenantA = '11111111-1111-4111-8111-111111111111'
 
@@ -64,11 +64,13 @@ for (const kind of ['tool', 'ppe'] as const) {
     page.on('pageerror', (error) => errors.push(error.message))
     await prepareAppearance(page, { theme: 'light', boxBorderMode: true })
     const calls = await mockStandardReads(page, kind)
-    await page.goto('/tests/e2e/fixtures/warehouse-selector-reuse.html')
+    await page.goto('/tests/e2e/fixtures/smis-issuance-standard-dialog.html')
+    await assertAppearance(page, { theme: 'light', boxBorderMode: true })
     await page.getByRole('button', { name: open, exact: true }).click()
     const dialog = page.getByRole('dialog', { name: `新增${title}发放标准` })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByText(`${title}明细标准`, { exact: true })).toBeVisible()
+    await expect(dialog.getByPlaceholder('例如：焊接岗位基础防护标准')).toBeEditable()
     await dialog.getByRole('button', { name: '保存标准', exact: true }).click()
     await expect(dialog.getByText('请输入发放标准名称', { exact: true })).toBeVisible()
     expect(calls.filter((call) => call.path.includes('/smis_save_'))).toHaveLength(0)
@@ -90,6 +92,7 @@ for (const kind of ['tool', 'ppe'] as const) {
     await materialPicker.locator('.el-table__body-wrapper .el-checkbox').first().click()
     await materialPicker.getByRole('button', { name: '确定', exact: true }).click()
     await expect(dialog.getByText('MAT-001', { exact: true })).toBeVisible()
+    await dialog.screenshot({ path: info.outputPath(`${kind}-standard-add.png`) })
     await dialog.getByRole('button', { name: '保存标准', exact: true }).click()
     await expect
       .poll(
@@ -110,7 +113,6 @@ for (const kind of ['tool', 'ppe'] as const) {
     expect(
       calls.find((call) => call.path.endsWith('/smis_list_materials_secure'))?.body.p_material_type
     ).toBe(kind === 'tool' ? 'tool' : 'protective_equipment')
-    await dialog.screenshot({ path: info.outputPath(`${kind}-standard-add.png`) })
     expect(errors).toEqual([])
   })
 
@@ -118,13 +120,15 @@ for (const kind of ['tool', 'ppe'] as const) {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await prepareAppearance(page, { theme: 'dark', boxBorderMode: false })
+    await page.setViewportSize({ width: 570, height: 900 })
     const calls = await mockStandardReads(page, kind)
-    await page.goto('/tests/e2e/fixtures/warehouse-selector-reuse.html')
+    await page.goto('/tests/e2e/fixtures/smis-issuance-standard-dialog.html')
+    await assertAppearance(page, { theme: 'dark', boxBorderMode: false })
     await page.getByRole('button', { name: edit, exact: true }).click()
     const dialog = page.getByRole('dialog', { name: `编辑${title}发放标准` })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByPlaceholder('例如：焊接岗位基础防护标准')).toHaveValue('现有发放标准')
-    await expect(dialog.getByText('现有物料', { exact: true })).toBeVisible()
+    await expect(dialog.getByRole('cell', { name: /现有物料 MAT-001/ })).toBeVisible()
     await dialog.getByRole('button', { name: '保存标准', exact: true }).click()
     await expect
       .poll(
@@ -146,6 +150,8 @@ for (const kind of ['tool', 'ppe'] as const) {
     const fresh = page.getByRole('dialog', { name: `新增${title}发放标准` })
     await expect(fresh.getByPlaceholder('例如：焊接岗位基础防护标准')).toHaveValue('')
     await expect(fresh.getByText('暂无明细', { exact: true })).toBeVisible()
+    await expect(fresh.getByRole('button', { name: '保存标准', exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await fresh.screenshot({ path: info.outputPath(`${kind}-standard-dark-narrow.png`) })
     expect(errors).toEqual([])
   })

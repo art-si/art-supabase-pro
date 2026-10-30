@@ -70,7 +70,9 @@
             v-if="flowNodes.length > 4"
             pannable
             zoomable
-            position="bottom-right"
+            position="top-right"
+            :width="140"
+            :height="70"
             :node-border-radius="8"
             node-color="var(--el-color-primary-light-8)"
             node-stroke-color="var(--el-color-primary-light-3)"
@@ -133,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-  import { uniq } from 'lodash-es'
+  import { groupBy, uniq } from 'lodash-es'
   import { Background } from '@vue-flow/background'
   import { Controls } from '@vue-flow/controls'
   import {
@@ -210,11 +212,7 @@
   const orderedNodes = computed(() => [...props.nodes].sort((a, b) => a.order - b.order))
   const flowMapRef = ref<HTMLElement>()
   const selectedNodeKey = ref<string | null>(null)
-  const taskMap = computed(() => {
-    const map = new Map<string, Api.Workflow.WorkflowTaskRecord[]>()
-    props.tasks.forEach((task) => map.set(task.nodeKey, [...(map.get(task.nodeKey) ?? []), task]))
-    return map
-  })
+  const taskMap = computed(() => new Map(Object.entries(groupBy(props.tasks, 'nodeKey'))))
   const skippedKeys = computed(() => new Set(props.skippedNodeKeys))
   const selectedNode = computed(
     () => orderedNodes.value.find((node) => node.key === selectedNodeKey.value) ?? null

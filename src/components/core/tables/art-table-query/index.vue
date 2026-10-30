@@ -8,19 +8,23 @@
       'has-visible-search': hasSearchBar && showSearchBar
     }"
   >
-    <ArtSearchBar
+    <ElScrollbar
       v-if="hasSearchBar"
       v-show="showSearchBar"
-      v-model="searchModel"
-      v-bind="resolvedSearchBarProps"
-      :search-loading="resolvedLoading && !iconOnlyRefresh"
-      @search="handleSearch"
-      @reset="handleReset"
+      class="art-table-query__search-scrollbar"
     >
-      <template v-for="slotName in searchBarSlotNames" :key="slotName" #[slotName]="slotProps">
-        <slot :name="`search-${slotName}`" v-bind="slotProps" />
-      </template>
-    </ArtSearchBar>
+      <ArtSearchBar
+        v-model="searchModel"
+        v-bind="resolvedSearchBarProps"
+        :search-loading="resolvedLoading && !iconOnlyRefresh"
+        @search="handleSearch"
+        @reset="handleReset"
+      >
+        <template v-for="slotName in searchBarSlotNames" :key="slotName" #[slotName]="slotProps">
+          <slot :name="`search-${slotName}`" v-bind="slotProps" />
+        </template>
+      </ArtSearchBar>
+    </ElScrollbar>
 
     <Teleport
       v-if="headerActionDestination && visibleHeaderActions.length"
@@ -257,16 +261,20 @@
       </ArtTableHeader>
 
       <slot v-if="$slots.content" name="content" />
-      <ArtEmptyState
+      <ElScrollbar
         v-else-if="isManaged && managedTable.error.value && !resolvedLoading"
         class="art-table-query__error-state"
-        size="compact"
-        :visual-size="80"
-        title="数据加载失败"
-        description="暂时无法获取列表，请检查网络后重试。"
+        tabindex="0"
       >
-        <ElButton type="primary" @click="handleRefresh">重新加载</ElButton>
-      </ArtEmptyState>
+        <ArtEmptyState
+          size="compact"
+          :visual-size="80"
+          title="数据加载失败"
+          description="暂时无法获取列表，请检查网络后重试。"
+        >
+          <ElButton type="primary" @click="handleRefresh">重新加载</ElButton>
+        </ArtEmptyState>
+      </ElScrollbar>
       <ArtTable
         v-else
         ref="tableRef"
@@ -1913,7 +1921,13 @@
   )
 
   const handleFocusEscape = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape' && focusMode.value) handleFocusModeChange(false)
+    if (event.key !== 'Escape' || !focusMode.value) return
+    // A loading modal can move focus to body when its active control is disabled.
+    // Let any visible modal own Escape without changing the workspace behind it.
+    const hasVisibleModal = Array.from(document.querySelectorAll('[aria-modal="true"]')).some(
+      (modal) => modal.getClientRects().length > 0
+    )
+    if (!hasVisibleModal) handleFocusModeChange(false)
   }
 
   useEventListener(document, 'keydown', handleFocusEscape)

@@ -1,3 +1,20 @@
+import { SUPABASE_OPERATIONS } from '../src/utils/supabase/operations-catalog'
+
+export const operationsButtonPermissionCatalog = [
+  {
+    menuName: 'SupabaseOperations',
+    buttons: [
+      { action: 'Read', title: '连接与查看运维任务', code: 'SupabaseOperations:Read' },
+      { action: 'Cancel', title: '取消运维任务', code: 'SupabaseOperations:Cancel' },
+      ...SUPABASE_OPERATIONS.map((operation) => ({
+        action: operation.permission.split(':')[1],
+        title: operation.title,
+        code: operation.permission
+      }))
+    ]
+  }
+]
+
 export interface BusinessButtonDefinition {
   action: string
   title: string
@@ -672,7 +689,8 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('View', '查看证件', 'CertificateCenter:View'),
       button('Add', '新增证件', 'CertificateCenter:Add'),
       button('Edit', '编辑证件', 'CertificateCenter:Edit'),
-      button('Handle', '处理预警', 'CertificateCenter:Handle')
+      button('Handle', '处理预警', 'CertificateCenter:Handle'),
+      button('Revoke', '作废证件', 'CertificateCenter:Revoke')
     ]
   },
   {
@@ -3618,7 +3636,8 @@ export const systemButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] = [
       button('Add', '新增角色'),
       button('Edit', '编辑角色'),
       button('Delete', '删除角色'),
-      button('AssignPermission', '配置菜单权限')
+      button('AssignPermission', '配置菜单权限'),
+      button('AssignUser', '分配用户', 'System:Role:AssignUser')
     ]
   },
   {

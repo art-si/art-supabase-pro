@@ -17,8 +17,6 @@ interface ImportMeta {
 
 declare module 'nprogress'
 
-declare module 'crypto-js'
-
 declare module 'vue-img-cutter'
 
 declare module 'file-saver'

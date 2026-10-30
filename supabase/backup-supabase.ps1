@@ -1,14 +1,29 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [ValidatePattern('^[a-z0-9]{20}$')][string]$ProjectRef = 'ckbftoopuyophiebamwy',
   [securestring]$DbPassword,
   [string]$BackupRoot,
   [string]$DbUrl,
-  [string]$ResumeBackupPath
+  [string]$ResumeBackupPath,
+  [string]$UpdateBackupPath,
+  [switch]$PlanOnly,
+  [switch]$ApplyUpdate,
+  [string]$PlanId,
+  [switch]$RecoverUpdate
 )
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'transfer-common.ps1')
+. (Join-Path $PSScriptRoot 'backup-progress.ps1')
+. (Join-Path $PSScriptRoot 'backup-functions.ps1')
+
+if ($UpdateBackupPath) {
+  if ($ResumeBackupPath -or $BackupRoot -or $DbUrl) { throw '更新已有备份不能同时指定新建、续跑目录或其他数据库连接。' }
+  & (Join-Path $PSScriptRoot 'update-supabase-backup.ps1') -UpdateBackupPath $UpdateBackupPath -DbPassword $DbPassword `
+    -PlanOnly:$PlanOnly -ApplyUpdate:$ApplyUpdate -PlanId $PlanId -RecoverUpdate:$RecoverUpdate -ProjectRef $ProjectRef
+  return
+}
+if ($PlanOnly -or $ApplyUpdate -or $PlanId -or $RecoverUpdate) { throw '请同时填写 -UpdateBackupPath 原完整备份目录。' }
 
 function Invoke-Supabase {
   param([Parameter(Mandatory = $true)][string[]]$Arguments)
@@ -350,44 +365,43 @@ function Save-StorageBucket {
   }
 }
 
-if (-not (Get-Command supabase -ErrorAction SilentlyContinue)) {
-  throw 'Supabase CLI is required. Install it first: https://supabase.com/docs/guides/local-development/cli/getting-started'
-}
-if (-not $ResumeBackupPath -and -not (Get-Command docker -ErrorAction SilentlyContinue)) {
-  $dockerBin = 'C:\Program Files\Docker\Docker\resources\bin'
-  if (Test-Path (Join-Path $dockerBin 'docker.exe')) { $env:Path = "$dockerBin;$env:Path" }
-}
-if (-not $ResumeBackupPath -and -not (Get-Command docker -ErrorAction SilentlyContinue)) {
-  throw 'Docker Desktop is required for supabase db dump. Install and start Docker Desktop, then rerun this script.'
-}
-if (-not $ResumeBackupPath -and -not (Test-DockerReady)) { throw 'Docker Desktop is installed but not running.' }
-Enable-SystemProxyForSupabaseCli
-Assert-SupabaseCliProjectAccess -ProjectRef $ProjectRef
 $supabaseRoot = $PSScriptRoot
 if (-not $BackupRoot) { $BackupRoot = Join-Path $supabaseRoot 'backups' }
 $BackupRoot = [IO.Path]::GetFullPath($BackupRoot)
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupPath = if ($ResumeBackupPath) { [IO.Path]::GetFullPath($ResumeBackupPath) } else { Join-Path $BackupRoot $timestamp }
+Assert-BackupPathWithoutLinks -Path $backupPath
 if ($ResumeBackupPath) {
-  if (Test-Path -LiteralPath (Join-Path $backupPath 'manifest.json')) { throw 'This backup already has a completion manifest; refusing to overwrite it.' }
-  foreach ($name in @('roles.sql', 'schema.sql', 'data.sql', 'migration-history-schema.sql', 'migration-history-data.sql', 'managed-schema-snapshot.sql')) {
-    $dump = Join-Path $backupPath "database/$name"
-    if (-not (Test-Path -LiteralPath $dump -PathType Leaf) -or (Get-Item -LiteralPath $dump).Length -eq 0) {
-      throw "Cannot resume: missing or incomplete database dump $name."
-    }
-    $endPattern = switch ($name) {
-      'roles.sql' { '^RESET ALL;$' }
-      'migration-history-schema.sql' { 'ADD CONSTRAINT .* PRIMARY KEY' }
-      default { '^-- PostgreSQL database dump complete' }
-    }
-    if (-not ((Get-Content -LiteralPath $dump -Tail 12) -match $endPattern)) { throw "Cannot resume: incomplete database dump $name." }
-  }
-  if (-not (Test-Path -LiteralPath (Join-Path $backupPath 'metadata/functions.json') -PathType Leaf)) { throw 'Cannot resume without saved Edge Function metadata.' }
+  Write-Host '阶段：校验续跑条件'
+  if (Test-Path -LiteralPath (Join-Path $backupPath 'manifest.json')) { throw '此备份已生成完成清单，请选择校验备份完整性；不能继续覆盖。' }
+  $progress = Read-BackupProgress -BackupPath $backupPath -ProjectRef $ProjectRef
   $timestamp = Split-Path -Leaf $backupPath
 }
 elseif (Test-Path -LiteralPath $backupPath) {
   throw "Backup directory already exists: $backupPath. Wait one second and retry; existing backup files will not be overwritten."
 }
+else { $progress = New-BackupProgress -ProjectRef $ProjectRef }
+$dumpDefinitions = @(Get-BackupDumpDefinitions)
+$pendingDumps = @($dumpDefinitions | Where-Object { -not (Test-RecordedBackupDump -BackupPath $backupPath -Definition $_ -Progress $progress) })
+$needsDatabase = $pendingDumps.Count -gt 0
+if ($needsDatabase -and -not $DbPassword -and -not $DbUrl) {
+  if ($env:CI) { throw '数据库导出尚未完成，请填写来源数据库密码后续跑；已完成并校验的文件会保留。' }
+  $DbPassword = Read-Host '来源数据库密码（只用于本次未完成的导出）' -AsSecureString
+}
+if (-not (Get-Command supabase -ErrorAction SilentlyContinue)) {
+  throw 'Supabase CLI is required. Install it first: https://supabase.com/docs/guides/local-development/cli/getting-started'
+}
+if ($needsDatabase -and -not (Get-Command docker -ErrorAction SilentlyContinue)) {
+  $dockerBin = 'C:\Program Files\Docker\Docker\resources\bin'
+  if (Test-Path (Join-Path $dockerBin 'docker.exe')) { $env:Path = "$dockerBin;$env:Path" }
+}
+if ($needsDatabase -and -not (Get-Command docker -ErrorAction SilentlyContinue)) {
+  throw 'Docker Desktop is required for supabase db dump. Install and start Docker Desktop, then rerun this script.'
+}
+if ($needsDatabase -and -not (Test-DockerReady)) { throw 'Docker Desktop 尚未就绪，请启动后再续跑。' }
+if ($needsDatabase) { Assert-NoRunningBackupDump -ProjectRef $ProjectRef }
+Enable-SystemProxyForSupabaseCli
+Assert-SupabaseCliProjectAccess -ProjectRef $ProjectRef
 $plainPassword = if ($DbPassword) { Get-PlainText $DbPassword } else { $null }
 
 Push-Location (Split-Path -Parent $supabaseRoot)
@@ -398,6 +412,7 @@ try {
   $functionsPath = Join-Path $backupPath 'functions'
   $metadataPath = Join-Path $backupPath 'metadata'
   New-Item -ItemType Directory -Force -Path $databasePath, $storagePath, $metadataPath | Out-Null
+  Write-Host "备份目录：$backupPath"
 
   if (-not $ResumeBackupPath) {
     # Reuse an existing matching link. Calling `supabase link` on every backup is
@@ -418,49 +433,33 @@ try {
       }
       Invoke-Supabase $linkArguments
     }
-    $dbTarget = if ($DbUrl) {
-      @('--db-url', $DbUrl)
-    }
-    elseif (-not [string]::IsNullOrWhiteSpace($plainPassword)) {
-      @('--linked', '--password', $plainPassword)
-    }
-    else {
-      @('--linked')
-    }
-    # `db query --linked` uses the Management API and does not accept --password,
-    # while dump commands do. Keep command-specific targets separate.
-    $queryTarget = if ($DbUrl) { @('--db-url', $DbUrl) } else { @('--linked') }
-    $connection = Get-LinkedDatabaseConnection -Password $plainPassword -SourceProjectRef $ProjectRef -DatabaseUrl $DbUrl
-
-    Write-Host 'Exporting database roles, schema, and data...'
-    Invoke-Supabase (@('db', 'dump') + $dbTarget + @('--role-only', '--file', (Join-Path $databasePath 'roles.sql')))
-    Invoke-Supabase (@('db', 'dump') + $dbTarget + @('--keep-comments', '--file', (Join-Path $databasePath 'schema.sql')))
-    # Match Supabase's logical restore guide: vector Storage tables may not exist
-    # on a newly created target project.
-    Invoke-Supabase (@('db', 'dump') + $dbTarget + @('--data-only', '--use-copy', '-x', 'storage.buckets_vectors', '-x', 'storage.vector_indexes', '--file', (Join-Path $databasePath 'data.sql')))
-    Invoke-Supabase (@('db', 'dump') + $dbTarget + @('--schema', 'supabase_migrations', '--file', (Join-Path $databasePath 'migration-history-schema.sql')))
-    Invoke-Supabase (@('db', 'dump') + $dbTarget + @('--schema', 'supabase_migrations', '--data-only', '--use-copy', '--file', (Join-Path $databasePath 'migration-history-data.sql')))
-    # Standard schema dumps omit managed auth/storage schemas. Capture their complete
-    # definitions as a recovery reference without requiring a shadow database. The
-    # managed schemas are platform-owned and must not be replayed wholesale; restore
-    # only reviewed project-specific policies/triggers from this snapshot.
-    Invoke-Supabase (@('db', 'dump') + $dbTarget + @('--schema', 'auth,storage', '--keep-comments', '--file', (Join-Path $databasePath 'managed-schema-snapshot.sql')))
-
-    Write-Host 'Capturing deployed Edge Function source and metadata...'
-    $functionMetadataPath = Join-Path $metadataPath 'functions.json'
-    Invoke-SupabaseJsonWithRetry `
-      -Arguments @('functions', 'list', '--project-ref', $ProjectRef, '--output', 'json') `
-      -OutputPath $functionMetadataPath | Out-Null
   }
   else {
-    Write-Host "Resuming existing backup: $backupPath (database exports and function downloads are preserved)"
-    $linkedRef = (Get-Content -LiteralPath (Join-Path $supabaseRoot '.temp/project-ref') -Raw).Trim()
+    Write-Host "按阶段继续已有备份：$backupPath"
+    $linkedRefFile = Join-Path $supabaseRoot '.temp/project-ref'
+    if (-not (Test-Path -LiteralPath $linkedRefFile)) { throw '找不到来源项目关联，请先关联原 Supabase 项目后再续跑。' }
+    $linkedRef = (Get-Content -LiteralPath $linkedRefFile -Raw).Trim()
     if ($linkedRef -ne $ProjectRef) { throw 'The linked CLI project does not match the source project.' }
-    $poolerUrl = (Get-Content -LiteralPath (Join-Path $supabaseRoot '.temp/pooler-url') -Raw).Trim()
-    $connection = Get-LinkedDatabaseConnection -Password '' -SourceProjectRef $ProjectRef -DatabaseUrl $poolerUrl
-    $queryTarget = @('--linked')
-    $functionMetadataPath = Join-Path $metadataPath 'functions.json'
+    Write-Warning '续跑会沿用已完成导出并重做失败阶段；各阶段并非同一事务快照。请避免更改来源结构，恢复前核对业务一致性。'
   }
+  Save-BackupProgress -BackupPath $backupPath -Progress $progress
+  $dbTarget = if ($DbUrl) { @('--db-url', $DbUrl) }
+    elseif (-not [string]::IsNullOrWhiteSpace($plainPassword)) { @('--linked', '--password', $plainPassword) }
+    else { @('--linked') }
+  # Management API queries do not accept --password.
+  $queryTarget = if ($DbUrl) { @('--db-url', $DbUrl) } else { @('--linked') }
+  $connectionUrl = if (-not $needsDatabase -and -not $DbUrl) {
+    (Get-Content -LiteralPath (Join-Path $supabaseRoot '.temp/pooler-url') -Raw).Trim()
+  } else { $DbUrl }
+  $connection = Get-LinkedDatabaseConnection -Password $plainPassword -SourceProjectRef $ProjectRef -DatabaseUrl $connectionUrl
+  foreach ($definition in $dumpDefinitions) {
+    Invoke-BackupDatabaseDump -BackupPath $backupPath -Definition $definition -TargetArguments $dbTarget -Progress $progress
+  }
+  Write-Host '阶段：读取函数清单'
+  $functionMetadataPath = Join-Path $metadataPath 'functions.json'
+  Invoke-SupabaseJsonWithRetry `
+    -Arguments @('functions', 'list', '--project-ref', $ProjectRef, '--output', 'json') `
+    -OutputPath $functionMetadataPath | Out-Null
   $deployedFunctions = @(ConvertFrom-SupabaseJsonArray `
     -Text (Get-Content -LiteralPath $functionMetadataPath -Raw) `
     -Description 'the deployed Edge Function list')
@@ -468,44 +467,53 @@ try {
   # Download into this backup's own Supabase workdir so remote source never
   # overwrites reviewed or uncommitted files in the main repository.
   if ($deployedFunctions.Count -gt 0) {
-    $downloadProjectRoot = Join-Path $backupPath 'supabase'
-    if (-not $ResumeBackupPath) {
-      New-Item -ItemType Directory -Path $downloadProjectRoot -Force | Out-Null
-      Copy-Item -LiteralPath (Join-Path $supabaseRoot 'config.toml') -Destination (Join-Path $downloadProjectRoot 'config.toml') -Force
-      Push-Location $backupPath
-      try {
-        Invoke-Supabase @('functions', 'download', '--project-ref', $ProjectRef, '--use-api')
+    $functionMetadataHash = Get-BackupFunctionSetHash -Functions $deployedFunctions
+    Write-Host '阶段：校验函数源码进度'
+    $functionProgress = Read-BackupFunctionProgress -BackupPath $backupPath -ProjectRef $ProjectRef -MetadataHash $functionMetadataHash
+    # A legacy merged tree cannot prove which _shared files belonged to each
+    # deployed function. Preserve it, but build isolated checkpoints once.
+    if ($functionProgress -and -not (Get-BackupFunctionLayout -Root $backupPath)) { $functionProgress = $null }
+    if (-not $functionProgress -and (Test-Path -LiteralPath (Join-Path $metadataPath 'functions-progress.json'))) {
+      Write-Host '函数阶段需要补齐校验：仅补失败、变化或缺少独立缓存的函数；已校验 SQL 保留。'
+    }
+    if (-not $functionProgress) {
+      $tree = New-BackupFunctionTree -BackupPath $backupPath -ProjectRef $ProjectRef -Functions $deployedFunctions -ConfigPath (Join-Path $supabaseRoot 'config.toml')
+      Write-Host '阶段：复核函数部署版本'
+      $checkPath = Join-Path (Get-BackupIncompleteDirectory -BackupPath $backupPath) ("functions-check-$([guid]::NewGuid()).json")
+      Invoke-SupabaseJsonWithRetry -Arguments @('functions', 'list', '--project-ref', $ProjectRef, '--output', 'json') -OutputPath $checkPath | Out-Null
+      $confirmedFunctions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $checkPath -Raw) -Description 'the verified Edge Function list')
+      if ((Get-BackupFunctionSetHash -Functions $confirmedFunctions) -ne $functionMetadataHash) {
+        throw '下载期间远端函数部署发生变化。已下载函数均保留；请从原备份目录继续，仅重新下载发生变化的函数。'
       }
-      finally {
-        Pop-Location
+      Copy-Item -LiteralPath $tree.layout_path -Destination (Join-Path $metadataPath 'function-layout.json') -Force -ErrorAction Stop
+      $functionProgress = Save-BackupFunctionProgress -BackupPath $backupPath -ProjectRef $ProjectRef -SourcePath $tree.source_path -MetadataHash $functionMetadataHash
+    }
+    else { Write-Host '复用已下载并逐文件校验的函数源码。' }
+    $freshFunctions = [string]$functionProgress.source_path
+    if ([IO.Path]::GetFullPath($freshFunctions).TrimEnd([char[]]'\/') -ne [IO.Path]::GetFullPath($functionsPath).TrimEnd([char[]]'\/')) {
+      Write-Host '阶段：安装已校验的函数源码'
+      Assert-BackupPathWithoutLinks -Path $functionsPath
+      $outsideSnapshot = Get-BackupIncompleteDirectory -BackupPath $backupPath
+      if (Test-Path -LiteralPath $functionsPath) {
+        Move-BackupFunctionDirectory -BackupPath $backupPath -Source $functionsPath -Destination (Join-Path $outsideSnapshot ("functions-old-$([guid]::NewGuid())"))
       }
-    }
-    $downloadedFunctions = Join-Path $downloadProjectRoot 'functions'
-    if (-not (Test-Path -LiteralPath $downloadedFunctions -PathType Container)) {
-      throw 'The Supabase CLI did not download Edge Functions into the backup workdir.'
-    }
-    $backupPrefix = [IO.Path]::GetFullPath($backupPath).TrimEnd([char[]]'\\/') + [IO.Path]::DirectorySeparatorChar
-    if (-not [IO.Path]::GetFullPath($downloadedFunctions).StartsWith($backupPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-      throw 'The Edge Function download path is outside the backup directory.'
-    }
-    foreach ($function in $deployedFunctions) {
-      if ($function.slug -notmatch '^[a-z0-9][a-z0-9_-]*$' -or
-          -not (Test-Path -LiteralPath (Join-Path $downloadedFunctions $function.slug) -PathType Container)) {
-        throw "Missing or invalid downloaded Edge Function: $($function.slug)"
+      Move-BackupFunctionDirectory -BackupPath $backupPath -Source $freshFunctions -Destination $functionsPath
+      if (-not (Test-BackupFunctionFiles -Root $functionsPath -Files @($functionProgress.files))) {
+        throw '函数安装后的文件校验未通过，已保留源码，请核对原目录后续跑。'
       }
+      $functionProgress = Save-BackupFunctionProgress -BackupPath $backupPath -ProjectRef $ProjectRef -SourcePath $functionsPath -MetadataHash $functionMetadataHash
     }
-    New-Item -ItemType Directory -Path $functionsPath -Force | Out-Null
-    foreach ($sourceFile in (Get-ChildItem -LiteralPath $downloadedFunctions -File -Recurse)) {
-      $relativePath = $sourceFile.FullName.Substring($downloadedFunctions.Length + 1)
-      $targetFile = Join-Path $functionsPath $relativePath
-      New-Item -ItemType Directory -Path (Split-Path -Parent $targetFile) -Force | Out-Null
-      Copy-Item -LiteralPath $sourceFile.FullName -Destination $targetFile -Force
-      if ((Get-FileHash -LiteralPath $sourceFile.FullName).Hash -ne (Get-FileHash -LiteralPath $targetFile).Hash) {
-        throw "Edge Function copy verification failed: $relativePath"
-      }
-    }
-    # Keep the downloaded staging directory: Windows can lock it while CLI child
-    # processes exit. It also preserves the original source if continuation fails.
+    # Keep failed/intermediate downloads outside the snapshot and its manifest.
+  }
+  elseif (Test-Path -LiteralPath $functionsPath) {
+    Assert-BackupPathWithoutLinks -Path $functionsPath
+    $outsideSnapshot = Get-BackupIncompleteDirectory -BackupPath $backupPath
+    Move-BackupFunctionDirectory -BackupPath $backupPath -Source $functionsPath -Destination (Join-Path $outsideSnapshot ("functions-old-$([guid]::NewGuid())"))
+  }
+  if ($deployedFunctions.Count -eq 0) {
+    $layoutPath = Join-Path $metadataPath 'function-layout.json'
+    Assert-BackupPathWithoutLinks -Path $layoutPath
+    if (Test-Path -LiteralPath $layoutPath -PathType Leaf) { Remove-Item -LiteralPath $layoutPath -Force -ErrorAction Stop }
   }
   Invoke-SupabaseJsonWithRetry `
     -Arguments @('secrets', 'list', '--project-ref', $ProjectRef, '--output', 'json') `
@@ -575,22 +583,37 @@ try {
   if (Test-Path $configSource) { Copy-Item $configSource (Join-Path $backupPath 'config.toml') -Force }
   $connection | ConvertTo-Json | Set-Content -Path (Join-Path $metadataPath 'database-connection.json') -Encoding utf8
 
-  $files = Get-ChildItem -Path $backupPath -File -Recurse | ForEach-Object {
+  foreach ($definition in $dumpDefinitions) {
+    if (-not (Test-RecordedBackupDump -BackupPath $backupPath -Definition $definition -Progress $progress)) {
+      throw '最终校验发现数据库导出不完整，未生成完成清单，请保留目录后续跑。'
+    }
+  }
+  $files = Get-ChildItem -LiteralPath $backupPath -File -Recurse -Force | ForEach-Object {
     [pscustomobject]@{
       path = $_.FullName.Substring($backupPath.Length + 1)
       bytes = $_.Length
       sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
     }
   }
+  $manifestStaging = Join-Path (Get-BackupIncompleteDirectory -BackupPath $backupPath) ("manifest-$([guid]::NewGuid()).json.tmp")
   [pscustomobject]@{
     format_version = 1
     created_at = (Get-Date).ToUniversalTime().ToString('o')
     project_ref = $ProjectRef
+    consistency = @{
+      method = 'independent-logical-exports'
+      resumed = [bool]$progress.resumed
+      started_at = $progress.created_at
+      note = 'Database dumps, functions and Storage are captured in separate phases, not one shared transaction snapshot. Verify application consistency before relying on a restored environment.'
+    }
     supabase_cli = (& supabase --version)
     includes = @('database roles', 'database schema', 'database data', 'migration history', 'managed auth/storage schema snapshot', 'RLS policies/grants/functions/triggers', 'Realtime publication tables', 'Storage bucket files', 'Storage bucket metadata', 'Edge Function source and JWT settings')
-    limitations = @('The auth/storage schema snapshot is a recovery reference, not an automatic restore script. Review and extract only project-specific policies and triggers because Supabase owns the managed base schemas.', 'Edge Function secret values cannot be read back from Supabase; only their names are recorded. Re-enter their values on the target project.', 'Dashboard-only settings such as OAuth providers, SMTP, custom domains, and Auth URL configuration must be recreated separately.', 'If the source uses Vault or encrypted columns, transfer the encryption root key through the supported Supabase procedure before restoring data.', 'Custom LOGIN role passwords and Edge Function import maps or deno.json files must be restored separately.')
+    limitations = @('The auth/storage schema snapshot is a recovery reference, not an automatic restore script. Review and extract only project-specific policies and triggers because Supabase owns the managed base schemas.', 'Edge Function secret values cannot be read back from Supabase; only their names are recorded. Re-enter their values on the target project.', 'Dashboard-only settings such as OAuth providers, SMTP, custom domains, and Auth URL configuration must be recreated separately.', 'If the source uses Vault or encrypted columns, transfer the encryption root key through the supported Supabase procedure before restoring data.', 'Custom LOGIN role passwords must be restored separately. Function import maps or deno.json omitted by the deployed bundle require the reviewed original source.')
     files = $files
-  } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $backupPath 'manifest.json') -Encoding utf8
+  } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestStaging -Encoding utf8
+  $completedManifest = Get-Content -LiteralPath $manifestStaging -Raw -Encoding UTF8 | ConvertFrom-Json
+  Assert-BackupManifest -Root $backupPath -Manifest $completedManifest
+  Move-Item -LiteralPath $manifestStaging -Destination (Join-Path $backupPath 'manifest.json')
 
   @"
 # Supabase backup $timestamp

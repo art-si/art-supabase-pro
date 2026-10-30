@@ -46,7 +46,7 @@
                 <strong>{{ item.title || '未命名会话' }}</strong>
                 <ArtSvgIcon
                   v-if="selectingId === item.id"
-                  icon="ri:loader-4-line"
+                  icon="ri:refresh-line"
                   class="shrink-0 animate-spin"
                 />
               </header>

@@ -104,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+  import { groupBy, uniqBy } from 'lodash-es'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
@@ -140,12 +141,13 @@
   const expandedNodeKeys = reactive(new Set<string>())
 
   const taskGroups = computed<TaskGroup[]>(() => {
-    const grouped = new Map<string, Api.Workflow.WorkflowTaskRecord[]>()
-    ;[...props.tasks]
-      .sort((a, b) => a.nodeOrder - b.nodeOrder || a.createTime.localeCompare(b.createTime))
-      .forEach((task) => grouped.set(task.nodeKey, [...(grouped.get(task.nodeKey) ?? []), task]))
-
-    return [...grouped.entries()].map(([nodeKey, tasks]) => createTaskGroup(nodeKey, tasks))
+    const orderedTasks = [...props.tasks].sort(
+      (a, b) => a.nodeOrder - b.nodeOrder || a.createTime.localeCompare(b.createTime)
+    )
+    const grouped = groupBy(orderedTasks, 'nodeKey')
+    return uniqBy(orderedTasks, 'nodeKey').map((task) =>
+      createTaskGroup(task.nodeKey, grouped[task.nodeKey])
+    )
   })
 
   function createTaskGroup(nodeKey: string, tasks: Api.Workflow.WorkflowTaskRecord[]): TaskGroup {

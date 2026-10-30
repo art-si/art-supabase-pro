@@ -68,6 +68,14 @@ for (const sourceDirectory of Object.values(hostedApplicationSourceDirectories))
       return isPlainObjectRecord(dependencies) ? Object.keys(dependencies) : []
     })
   )
+  // Bootstrap and auto-imported hooks must share the module's Vue injection contexts.
+  for (const dependency of ['vue', 'pinia', 'vue-router']) {
+    if (!declared.has(dependency)) {
+      findings.add(
+        `${path.relative(process.cwd(), moduleRoot)}: 独立应用缺少共享单例依赖 ${dependency}，请声明与主仓兼容的版本`
+      )
+    }
+  }
   // Standalone module installs need local copies; the platform owns their contents.
   for (const patchName of dependencyPatches) {
     const dependency = patchName.slice(0, patchName.lastIndexOf('@'))

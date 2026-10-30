@@ -3,6 +3,7 @@ param(
   [Parameter(Mandatory = $true)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })][string]$BackupPath,
   [Parameter(Mandatory = $true)][ValidatePattern('^[a-z0-9]{20}$')][string]$TargetProjectRef,
   [securestring]$TargetDbPassword,
+  [string]$ConfirmTargetProjectRef,
   [switch]$VerifyBackupOnly
 )
 
@@ -10,6 +11,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'transfer-common.ps1')
 
 $BackupPath = (Resolve-Path -LiteralPath $BackupPath).Path
+Enter-BackupReadLease -Root $BackupPath
 
 function Invoke-Supabase {
   param([Parameter(Mandatory = $true)][string[]]$Arguments)
@@ -115,13 +117,19 @@ if (-not [IO.Path]::GetFullPath($stage).StartsWith($tempPrefix, [StringCompariso
 
 try {
   Write-Warning "This writes backup '$($manifest.created_at)' to target project $TargetProjectRef. The target must be a new, empty project."
-  $confirmation = Read-Host "Type the target project ref ($TargetProjectRef) to continue"
+  $confirmation = if ($ConfirmTargetProjectRef) { $ConfirmTargetProjectRef } else { Read-Host "Type the target project ref ($TargetProjectRef) to continue" }
   if ($confirmation -ne $TargetProjectRef) { throw 'Restore cancelled.' }
 
   New-Item -ItemType Directory -Path (Join-Path $stage 'supabase') -Force | Out-Null
   $backupConfig = Join-Path $BackupPath 'config.toml'
   if (-not (Test-Path -LiteralPath $backupConfig -PathType Leaf)) { throw 'Backup config.toml is missing.' }
-  Copy-Item -LiteralPath $backupConfig -Destination (Join-Path $stage 'supabase\config.toml')
+  $functionMetadataPath = Join-Path $BackupPath 'metadata/functions.json'
+  $deployedFunctions = @(ConvertFrom-SupabaseJsonArray `
+    -Text (Get-Content -LiteralPath $functionMetadataPath -Raw) `
+    -Description 'the function deployment settings')
+  $configText = Set-BackupFunctionJwtConfig -Config (Get-Content -LiteralPath $backupConfig -Raw) -Functions $deployedFunctions
+  $configText = Set-BackupFunctionSourceConfig -Config $configText -Root $BackupPath
+  [IO.File]::WriteAllText((Join-Path $stage 'supabase\config.toml'), $configText, [Text.UTF8Encoding]::new($false))
   Push-Location $stage
   try {
     Invoke-Supabase @('link', '--project-ref', $TargetProjectRef, '--password', $plainPassword)
@@ -201,7 +209,6 @@ try {
     }
 
     $functionsPath = Join-Path $BackupPath 'functions'
-    $functionMetadataPath = Join-Path $BackupPath 'metadata\functions.json'
     if ((Test-Path $functionsPath) -and (Test-Path $functionMetadataPath)) {
       Copy-Item -LiteralPath $functionsPath -Destination (Join-Path $stage 'supabase\functions') -Recurse -Force
       $functions = Get-Content -Raw $functionMetadataPath | ConvertFrom-Json

@@ -2,6 +2,85 @@
 
 项目共用数据表格，承接列配置、字典展示、加载/空态、分页及 Element Plus 表格属性。查询、筛选和专注模式由上层 `ArtTableQuery` 组合。
 
+## 内置编辑与变更集
+
+参考 [vxe-table 编辑模块](https://github.com/x-extends/vxe-table/blob/main/packages/table/module/edit/hook.ts) 和 [校验模块](https://github.com/x-extends/vxe-table/blob/main/packages/table/module/validator/hook.ts) 的职责划分，扩展现有 ArtTable。沿用项目的列配置、Element Plus 控件、校验结果和视觉规范；这是项目自己的接口，不承诺与 vxe-table 全量兼容。
+
+只有传入 `editConfig` 才开启编辑。组件创建独立工作副本，原始 `data` 不被修改。默认双击或 F2/Enter 激活，支持 `cell` / `row` 模式；Tab/Shift+Tab 切换字段，Enter/Shift+Enter 切换同行字段的下一/上一行，Esc 丢弃当前尚未提交的输入。输入法组合输入期间不抢占 Enter。文本编辑在 change/离焦或键盘确认时进入变更集。
+
+```vue
+<ArtTable
+  ref="tableRef"
+  :data="rows"
+  :columns="columns"
+  :edit-config="{ trigger: 'dblclick', mode: 'cell', historyLimit: 100 }"
+  :edit-rules="{ name: [{ required: true, min: 2, message: '名称至少两字' }] }"
+  @edit-change="records = $event"
+/>
+```
+
+```ts
+import type { ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
+const tableRef = ref<ArtTableExpose<MyRow>>()
+const columns: ColumnOption<MyRow>[] = [
+  { prop: 'name', label: '名称', editRender: { name: 'input', maxLength: 80 } },
+  { prop: 'quantity', label: '数量', editRender: { name: 'number', min: 0, precision: 2 } }
+]
+```
+
+### 配置
+
+| 配置 | 作用 |
+| --- | --- |
+| `editConfig.enabled` | 临时禁用编辑；默认开启，未传整个配置时保持普通展示表格 |
+| `editConfig.trigger` | `click`、`dblclick`（默认）或 `manual`；manual 通过公开 API 激活 |
+| `editConfig.mode` | `cell`（默认）或 `row` |
+| `editConfig.beforeEditMethod(context)` | 按行和字段决定能否编辑；加载期间一律禁用 |
+| `editConfig.onlyChanged` | 仅展示已修改或临时新增行，不替换原始工作集 |
+| `editConfig.historyLimit` | 命令历史上限，默认 100，最大 500 |
+| `column.editRender` | `input`、`textarea`、`number`、`select`、`switch`、`date`、`datetime`；支持 `enabled`、条件 `disabled`、`nullable`、`options` 和输入约束 |
+| `column.editRender.slot` | 使用 `<名称>-edit` 后缀的自定义编辑插槽（如 `detail-edit`），接收 `{ row, prop, value, update, commit, cancel }`；后缀让 Vue 能区分展示/编辑作用域并推导类型。通过 update/commit 更新，避免直接修改 row |
+| `editRules` | 按 prop 配置 required、type、min、max、pattern 或异步 validator；复用既有列 rules 和 validate/validateField/clearValidate |
+| `keepSource` | 在未开启编辑 UI 时也保留独立工作集；开启 editConfig 时自动保留原值，无须重复设置 |
+
+字典/复杂显示仍使用既有列配置；普通编辑按钮优先使用返回标量的 formatter 或 select 选项标签。组件不会把含按钮的 VNode 再嵌进编辑按钮。标准规则的 `min/max` 对 number 表示数值边界，对字符串/数组表示长度。
+
+### 公开 API
+
+| API | 结果 |
+| --- | --- |
+| `setEditCell(row, prop)` / `setEditRow(row)` | 异步激活并聚焦；本地分页时自动定位目标页，返回是否可编辑 |
+| `getEditRecord()` / `clearEdit()` | 当前编辑上下文 / 结束编辑 |
+| `setCellValue(row, prop, value)` | 经过编辑准入检查更新工作副本 |
+| `getTableData()` | 当前完整工作集的深拷贝，包含所有已加载页 |
+| `getRecordset()` | `{ insertRecords, removeRecords, updateRecords, changes }`，changes 含 row、original、fields、rowIndex |
+| `getInsertRecords()` / `getRemoveRecords()` / `getUpdateRecords()` | 分别读取临时增删改集合 |
+| `isUpdateByRow(row, prop?)` | 判断行或字段是否相对原值改变；NULL 与空字符串不同 |
+| `revertData(row?, prop?)` | 还原字段、行或全部；全部还原会清空历史 |
+| `insertAt(records, target?)` | 本地插入，默认顶部，-1 为末尾，行对象表示该行之前 |
+| `remove(rows)` | 仅从本地工作集移除明确指定的行；不执行数据库删除 |
+| `undo()` / `redo()` / `canUndo()` / `canRedo()` | 有上限的编辑历史 |
+
+`edit-activated` / `edit-closed` 发出编辑上下文，`edit-change` 发出新的变更集。当前支持平面行和分组列；不自动编辑树子节点、服务端未加载的行或原生插槽列。分页、排序后的行对象由组件保持身份；复杂校验与提交仍归业务层负责。
+
+组件没有内置写入接口。真实业务保存必须调用相应业务 API，继续执行租户、权限、状态及审计规则；把本地 removeRecords 转换为实际删除前，必须使用 MasterDataDeleteGuard 并保留服务端引用校验。
+
+## 可选虚拟滚动
+
+默认仍为 `ElTable`。显式传入 `:virtual-scroll="true"` 或 `:virtual-scroll="{ rowHeight: 44, headerHeight: 56, cache: 3 }"`，兼容的平面表格使用独立的 `ElTableV2` 分支。父容器必须有可用高度，也可传入 `height`。`minRows` 可指定启用的行数阈值，`estimatedRowHeight` 用于已验证的动态行高场景。
+
+虚拟分支复用原来的 `el-table` 尺寸类、`el-table__cell` 和内部 `.cell` 样式，统一读取全局紧凑/默认/宽松、表头底色、边框与斑马纹设置。表头和正文灰阶、悬停/选中底色、阴影模式的单元格控件规则共用同一份样式；不单独定义第二套配色。默认单行尺寸与原表格对齐，特殊多行或自定义控件高度仍通过 `rowHeight/headerHeight/estimatedRowHeight` 指定。
+
+复用列配置、formatter、普通/表头/编辑插槽、字典、链接、操作列、列过滤、校验、编辑历史、本地分页和选择事件。公开的选行、排序、滚动、布局方法通过 `elTableRef` 适配；`setEditCell` 会先定位虚拟视区，再激活编辑。原生内部 DOM 和未公开的 ElTable 私有 store 不属于兼容接口。
+
+原生 `ElTableColumn` 默认插槽、分组表头、展开行、树/懒加载、拖拽行、原生列筛选、合计/合并单元格、百分比列宽、原生初始排序、自定义表头/行样式、关闭 fit 及仅 `maxHeight` 的自然增长表格会自动保留 `ElTable`。`getRenderMode()` 返回 `{ requested, virtual, fallbackReason }`，供调用方诊断；不会为了虚拟滚动丢弃这些功能。
+
+`editConfig.editor: 'external'` 是显式外部编辑入口。它只发送带 `cell` 锚点的 `edit-activated`，调用方负责弹层和类型控件，通过 `setCellValue` 保留到本地工作副本。SQL 控制台采用这一模式；默认编辑器仍为原有行内编辑。校验 API 可传 `{ focus: false }` 更新错误而不抢夺弹层焦点，默认仍定位第一处错误。
+
+## 本地分页
+
+`client-pagination` 是显式选择：在当前已加载工作集上按 `pagination.current/size` 切片，复用既有分页事件和全局分页样式。切页不重新加载数据，不清除编辑历史；筛选改变时会校正页码。其余服务器分页页面保持原来的数据与请求流程。启用本地分页的表格使用可用高度布局，底部分页固定可见，行在内部滚动。
+
 `loading` 为 `true` 时，表格在首次加载和已有行的刷新期间都显示共享加载遮罩，并暂时禁用分页。请求结束后由调用方在 `finally` 中关闭加载状态。仅对确实需要保留旧行交互的特殊场景使用 `:loading-overlay="false"`。
 
 默认分页布局和页码数量随窗口宽度更新，窗口缩放保留当前页。调用方通过 `paginationOptions.layout` 或 `paginationOptions.pagerCount` 显式指定时，以调用方配置为准。

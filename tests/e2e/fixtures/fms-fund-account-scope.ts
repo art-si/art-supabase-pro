@@ -20,10 +20,11 @@ useUserStore(store).setUserInfo({
   platformSuper: false
 })
 useMenuStore(store).setButtonList(
-  ['View', 'Add', 'Edit', 'Delete'].map((action) => ({
+  ['Add', 'Edit', 'Delete'].map((action) => ({
     name: `FinanceFundAccount:${action}`,
     path: '',
-    type: 'button'
+    type: 'button',
+    meta: { title: `FinanceFundAccount:${action}` }
   }))
 )
 app.mount('#fund-account-scope-preview')

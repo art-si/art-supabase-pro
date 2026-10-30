@@ -1,0 +1,152 @@
+import type { SupabaseOperationId } from '@/types/supabase-operations'
+
+export interface OperationUsageGuide {
+  when: string
+  steps: string[]
+  result: string
+  cautions: string[]
+}
+
+export const OPERATION_USAGE_GUIDES = {
+  diagnose: {
+    when: '需要排查 CLI 登录失效、Docker 启动异常或本机依赖时使用；它不是其他操作的前置步骤。',
+    steps: [
+      '启动本机执行端并连接。',
+      '点击执行，依次查看 Supabase CLI 版本、Docker 服务和来源项目登录状态。'
+    ],
+    result: '日志显示逐项检查结果；此操作不生成备份，也不修改云项目。',
+    cautions: ['这是可选检查。已有可用环境时，可以直接创建备份。']
+  },
+  syncFunctions: {
+    when: '只想单独保存当前已部署 Edge Function 源码，或排查函数同步卡在哪一个函数时使用。',
+    steps: ['确认 Supabase CLI 已登录来源项目。', '执行后在右侧观察函数名称、下载进度和最终校验。'],
+    result: '在独立快照目录留下函数源码，不覆盖仓库中正在编辑的函数文件。',
+    cautions: ['它只处理函数源码，不包含数据库和 Storage；不能代替完整备份。']
+  },
+  backup: {
+    when: '需要保存来源项目的数据库、函数源码、Storage 文件及元数据时使用。',
+    steps: [
+      '输入来源数据库密码；备份根目录留空时使用仓库 supabase/backups。',
+      '确认 Docker Desktop 已启动，再执行并观察右侧阶段及最近输出。',
+      '等待生成 manifest.json 后使用“校验备份完整性”。'
+    ],
+    result:
+      '新建带时间戳的备份目录，记录导出进度；完成后包含数据库、函数、Storage、元数据和 manifest.json。',
+    cautions: [
+      '仅看到 roles.sql 或 schema.sql 不代表完成；必须等待 manifest.json 并校验。',
+      '网页刷新后会重连读取任务。执行端退出时主流程中断，但已启动的 Docker 导出可能仍在后台运行；先核对状态，勿重复启动。'
+    ]
+  },
+  resumeBackup: {
+    when: '上次备份中断、缺少数据库文件或后续函数与 Storage 尚未完成时使用。',
+    steps: [
+      '填写原备份目录，不要填写上级 backups 目录。',
+      '数据库阶段没有完成时，输入来源数据库密码；如果数据库文件已齐全，密码可留空。',
+      '等待缺失或不完整的 SQL 重新导出；函数清单和文件校验一致时复用已有源码，Storage 继续处理，再校验最终 manifest.json。'
+    ],
+    result: '保留同一次备份中已校验的 SQL 与函数，补完剩余阶段。',
+    cautions: [
+      '写了一半的 data.sql 会从头重新导出，不会从中间字节位置接着写。各 SQL 的导出时点可能不同，不能把续跑产物当作同一时点快照。',
+      '如果旧 Docker 导出仍在运行，先等待或确认其状态，再启动续跑；已有完整文件会保留。',
+      '本功能不用于后续版本的数据更新。跨版本增量包尚未提供，不能靠文件已存在就跳过新增、修改或删除的数据。'
+    ]
+  },
+  verify: {
+    when: '拿到备份目录后、制作分发包或恢复之前使用。',
+    steps: [
+      '填写包含 manifest.json 的备份目录。',
+      '执行后观察文件核对进度，等待右侧显示逐项报告。',
+      '核对文件数量、大小、SQL 结束标志、函数布局和 Storage 数量；失败时展开问题明细。',
+      '可下载 JSON 报告留存；刷新后仍能查看这次任务的报告。'
+    ],
+    result: '生成文件完整性报告，标明通过、未通过和未执行项目；不启动本地或云端恢复。',
+    cautions: [
+      '缺文件、文件变动或没有 manifest.json 时，先处理原备份，不要直接恢复。',
+      '校验通过不代表已成功恢复，也不证明内容与当前远端最新数据一致；需要时在独立环境进行恢复演练。',
+      '旧任务只有执行日志，需要沿用原目录重新校验才能生成明细。'
+    ]
+  },
+  package: {
+    when: '备份校验通过，需要把快照交给另一台机器或接收者时使用。',
+    steps: [
+      '填写已完成的备份目录；ZIP 路径留空时保存到备份目录旁边。',
+      '按需加入 Windows CLI 目录，或开启 Git 分片。',
+      '执行后记录生成的 ZIP 路径和 SHA-256。'
+    ],
+    result: '生成可校验的 ZIP；开启 Git 分片时还生成分片清单与分片文件。',
+    cautions: [
+      '分享包会去除来源 Auth 凭据，业务数据仍可能敏感，分发前需审查。',
+      '脚本拒绝覆盖已有 ZIP，也不允许把 ZIP 放在备份目录内部。'
+    ]
+  },
+  download: {
+    when: '接收了分发包，需要在另一台电脑上验证完整性并解压时使用。',
+    steps: [
+      '在 HTTPS 下载地址、本机 ZIP、分片清单中只选一种来源。',
+      'HTTPS 或本机 ZIP 须填写发布方给的 SHA-256；分片清单自带校验值。',
+      '指定一个新解压目录，执行后再做备份完整性校验。'
+    ],
+    result: '将校验通过的包解压到新目录，并检查内部 manifest.json。',
+    cautions: [
+      '短期下载链接过期后需重新发布；不要把链接或密钥贴进聊天。',
+      '目标目录应是新目录，避免与现有文件混合。'
+    ]
+  },
+  restoreLocal: {
+    when: '需要在本机隔离环境里验证或使用完整备份时使用。',
+    steps: [
+      '先校验备份；填写备份目录与一个全新的本地 Supabase 目录。',
+      '确认 Docker Desktop 运行，执行并等待数据库、Storage 和本地服务检查。'
+    ],
+    result: '在指定目录创建独立本地 Supabase 环境，恢复备份数据。',
+    cautions: [
+      '首次启动可能下载 Docker 镜像，长时间无输出不一定是卡死；请查看阶段和 Docker 状态。',
+      '本地恢复不会修改来源云项目。'
+    ]
+  },
+  resumeLocal: {
+    when: '同一份备份的本地恢复中断，需要沿原恢复目录继续时使用。',
+    steps: [
+      '填写原备份目录和上次使用的本地 Supabase 目录。',
+      '执行后脚本检查原目录的来源标记，继续未完成的本地恢复步骤。'
+    ],
+    result: '复用原本地目录及恢复标记，完成剩余本地恢复。',
+    cautions: ['不要改用另一个备份或新目录；先确认旧本地进程是否仍在工作。']
+  },
+  restoreRemote: {
+    when: '确实要将备份写入一个全新、空白的其他 Supabase 云项目时使用。',
+    steps: [
+      '先完成备份校验。',
+      '输入目标项目 ID、目标数据库密码，并再次输入同一目标项目 ID。',
+      '核对目标为空白项目后再执行，观察数据库、Storage 和函数恢复结果。'
+    ],
+    result: '向独立目标云项目写入数据库、Storage 和 Edge Functions，并报告验证结果。',
+    cautions: [
+      '此操作会修改云项目；不能把来源项目当目标，也不能用已有业务数据的项目。',
+      'Edge Function 密钥值、Dashboard 中的 Auth/SMTP 等设置需要另行配置。'
+    ]
+  },
+  publish: {
+    when: '需要给接收者一个有时效的私有下载链接时使用。',
+    steps: [
+      '先制作分发包，填写 ZIP 路径。',
+      '填写独立分发项目 ID 和 Secret Key；私有桶留空时使用默认桶。',
+      '按需设置有效期（60 至 86400 秒），执行后只分享短期链接与 SHA-256。'
+    ],
+    result: '上传分发 ZIP 到独立分发项目的私有 Storage 桶，生成签名下载链接。',
+    cautions: [
+      '分发项目必须不同于来源项目，桶必须为私有。',
+      'Secret Key 只用于本次执行，绝不可发给接收者；大包上传失败时需改用支持续传的私有分发方式。'
+    ]
+  },
+  setLocalLogin: {
+    when: '本地恢复完成后，需要使用已恢复账号登录本地 Auth 时使用。',
+    steps: [
+      '确认本地 Supabase 服务已运行。',
+      '填写恢复时的本地目录和已恢复 Auth 用户邮箱。',
+      '输入至少 8 位的新本地密码并执行。'
+    ],
+    result: '只更新这个本地 Auth 账号的登录密码。',
+    cautions: ['邮箱必须已存在于恢复后的本地 Auth；来源云项目用户及密码不会被修改。']
+  }
+} satisfies Record<SupabaseOperationId, OperationUsageGuide>

@@ -19,6 +19,10 @@ DECLARE
   image_path text;
   denied_count int := 0;
   cert_state jsonb;
+  certificate_type text;
+  certificate_id uuid;
+  replacement_id uuid;
+  revocation_blocked boolean;
 BEGIN
   SELECT auth_user_id INTO reviewer FROM public.sys_user
   WHERE user_roles @> ARRAY['R_SUPER'] AND auth_user_id IS NOT NULL LIMIT 1;
@@ -170,6 +174,36 @@ BEGIN
       WHERE id = ANY(qa_waybills) AND status = 'accepted') <> 2 THEN
     RAISE EXCEPTION 'Approved QA drivers could not accept both waybills';
   END IF;
+
+  FOREACH certificate_type IN ARRAY ARRAY['identity_card','professional_qualification'] LOOP
+    certificate_id:=(public.vms_save_certificate_secure(NULL,jsonb_build_object(
+      'subject_type','driver','subject_id',qa_ids[1],
+      'certificate_type',certificate_type,'certificate_no','QA-ROLLBACK-'||certificate_type,
+      'valid_from',CURRENT_DATE,'expires_on',CURRENT_DATE+365,
+      'responsible_user_id','93f2f1e8-a3dc-4f5a-999b-6c8c02d0c7e9',
+      'attachments','[]'::jsonb
+    ))->>'id')::uuid;
+    PERFORM public.vms_revoke_certificate_secure(certificate_id,'回滚验收：非自营司机证件作废');
+    revocation_blocked:=false;
+    BEGIN
+      PERFORM app_private.tms_assert_driver_certified(qa_tenant,qa_ids[1],'carrier');
+    EXCEPTION WHEN check_violation THEN
+      IF position('已作废' IN SQLERRM)>0 THEN revocation_blocked:=true; ELSE RAISE; END IF;
+    END;
+    IF NOT revocation_blocked THEN
+      RAISE EXCEPTION 'Approved non-self driver used revoked %',certificate_type;
+    END IF;
+    replacement_id:=(public.vms_save_certificate_secure(NULL,jsonb_build_object(
+      'subject_type','driver','subject_id',qa_ids[1],
+      'certificate_type',certificate_type,
+      'certificate_no','QA-ROLLBACK-REPLACEMENT-'||certificate_type,
+      'valid_from',CURRENT_DATE,'expires_on',CURRENT_DATE+90,
+      'responsible_user_id','93f2f1e8-a3dc-4f5a-999b-6c8c02d0c7e9',
+      'renewal_of_id',certificate_id,'attachments','[]'::jsonb
+    ))->>'id')::uuid;
+    IF replacement_id IS NULL THEN RAISE EXCEPTION 'Certificate replacement was not saved'; END IF;
+    PERFORM app_private.tms_assert_driver_certified(qa_tenant,qa_ids[1],'carrier');
+  END LOOP;
 
   PERFORM public.tms_review_driver_certification_secure(
     qa_ids[1], 'revoked', '测试事务撤销认证');

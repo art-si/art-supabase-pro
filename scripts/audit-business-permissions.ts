@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { extname, join, relative, resolve } from 'node:path'
 import {
   businessButtonPermissionCatalog,
+  operationsButtonPermissionCatalog,
   resolveCatalogPermissionCode,
   systemButtonPermissionCatalog
 } from './business-button-permission-catalog'
@@ -20,6 +21,7 @@ const requiredPermissionMigrations = [
 // Local migration SQL is intentionally absent; new migrations must remain unique.
 const remoteDuplicateMigrationAllowlist = new Set<string>()
 type ManagedModule =
+  | 'operations'
   | 'tms'
   | 'vms'
   | 'fms'
@@ -34,6 +36,7 @@ type ManagedModule =
   | 'workflow'
 
 const managedViewRoots = new Map<ManagedModule, string>([
+  ['operations', join(projectRoot, 'src/views/data-center/supabase-operations')],
   ['tms', join(projectRoot, 'modules/art-supabase-tms/src/views')],
   ['system', join(projectRoot, 'src/views/system')],
   ['workflow', join(projectRoot, 'src/views/workflow')],
@@ -61,12 +64,16 @@ const businessModules = new Set<ManagedModule>([
 ])
 const sourceExtensions = new Set(['.ts', '.tsx', '.vue'])
 const permissionPattern =
-  /['"`]((?:System|Workflow|Tms|Finance|Hr|Mdm|Pmis|Smis|Scm|Wms|Vehicle|Insurance|Parts|PartsCategory|Supplier)[A-Za-z0-9]*(?::[A-Za-z][A-Za-z0-9]*)+)['"`]/g
+  /['"`]((?:SupabaseOperations|System|Workflow|Tms|Finance|Hr|Mdm|Pmis|Smis|Scm|Wms|Vehicle|Insurance|Parts|PartsCategory|Supplier)[A-Za-z0-9]*(?::[A-Za-z][A-Za-z0-9]*)+)['"`]/g
 const platformSuperPattern = /isPlatformSuper|平台超级管理员|仅平台|platform super administrator/i
 
 // These files use platform-super only for cross-tenant context or controlled writes where explicitly required.
 // Adding a file here requires an explicit security rationale; normal business maintenance is forbidden.
 const platformSuperAllowlist = new Map<string, string>([
+  [
+    'src/views/data-center/supabase-operations/index.vue',
+    'project control-plane operations; local executor independently verifies current_is_super and exact action permission'
+  ],
   [
     'modules/art-supabase-scm/src/views/sales-quotation/project-quotation/modules/project-workspace.vue',
     'cross-tenant project read selector; ordinary project access uses business View permission and RPC tenant scope'
@@ -404,6 +411,14 @@ function resolveBusinessCatalogOwner(menuName: string): ManagedModule {
 }
 
 const catalogRows = [
+  ...operationsButtonPermissionCatalog.flatMap((entry) =>
+    entry.buttons.map((definition) => ({
+      owner: 'operations' as const,
+      menuName: entry.menuName,
+      action: definition.action,
+      code: definition.code
+    }))
+  ),
   ...businessButtonPermissionCatalog.flatMap((entry) =>
     entry.buttons.map((definition) => ({
       owner: resolveBusinessCatalogOwner(entry.menuName),

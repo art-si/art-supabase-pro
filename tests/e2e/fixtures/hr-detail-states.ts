@@ -4,6 +4,8 @@ import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
 import { setupGlobDirectives } from '@/directives'
+import { useTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import Benefits from '../../../modules/art-supabase-hr/src/views/operations/benefits/modules/benefit-detail-drawer.vue'
 import Compliance from '../../../modules/art-supabase-hr/src/views/personnel/compliance/modules/compliance-detail-drawer.vue'
 import Relations from '../../../modules/art-supabase-hr/src/views/operations/employee-relations/modules/employee-relation-detail-drawer.vue'
@@ -14,8 +16,10 @@ import '@styles/index.scss'
 
 const feature = new URLSearchParams(location.search).get('feature')
 const entity = new URLSearchParams(location.search).get('entity')
+const darkTheme = new URLSearchParams(location.search).get('theme') === 'dark'
 const app = createApp({
   setup() {
+    const { switchThemeStyles } = useTheme()
     const benefits = shallowRef<InstanceType<typeof Benefits>>()
     const compliance = shallowRef<InstanceType<typeof Compliance>>()
     const relations = shallowRef<InstanceType<typeof Relations>>()
@@ -37,7 +41,10 @@ const app = createApp({
           id
         )
     }
-    onMounted(() => open('first-record'))
+    onMounted(() => {
+      if (darkTheme) switchThemeStyles(SystemThemeEnum.DARK)
+      open('first-record')
+    })
     return () => [
       h(
         'button',

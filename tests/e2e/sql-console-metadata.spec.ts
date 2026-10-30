@@ -60,14 +60,46 @@ test('SQL metadata failure keeps execution usable and retry reloads schema', asy
       await route.fulfill({ status: 200, json: { status: 'ok', rows: [], columns: [] } })
       return
     }
-    await route.fulfill({ status: 200, json: { status: 'ok', rows: [], columns: [] } })
+    await route.fulfill({
+      status: 200,
+      json: {
+        status: 'ok',
+        rows: [],
+        columns: [],
+        command_tag: 'SELECT 0',
+        row_count: 0,
+        duration_ms: 2
+      }
+    })
   })
 
   await page.goto('/tests/e2e/fixtures/sql-console-metadata.html')
   const warning = page.locator('.sql-editor-section__metadata-alert')
   await expect(warning).toBeVisible()
-  await expect(warning).toContainText('SQL 仍可执行')
+  await expect(warning).toContainText('关键字提示可用')
   await expect(page.locator('.monaco-editor')).toBeVisible()
+
+  // Keyword completion must work even when database metadata is unavailable.
+  const editor = page.locator('.monaco-editor')
+  const suggestions = page.locator('.suggest-widget.visible')
+  await editor.click({ position: { x: 150, y: 12 } })
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.type('sel')
+  await expect(suggestions.getByText('SELECT', { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Control+Space')
+  await suggestions.getByText('SELECT', { exact: true }).dblclick()
+  await expect(editor.locator('.view-lines')).toContainText('SELECT')
+  await page.keyboard.type(" 'highlight check', 1;")
+  await page.keyboard.press('Escape')
+  await expect
+    .poll(() =>
+      editor
+        .locator('.view-line span[class*="mtk"]')
+        .evaluateAll((tokens) => new Set(tokens.map((token) => getComputedStyle(token).color)).size)
+    )
+    .toBeGreaterThan(1)
+
   if (testInfo.project.name.includes('dark')) {
     await expect(page.locator('html')).toHaveClass(/dark/)
     await expect(page.locator('.monaco-editor')).toHaveClass(/vs-dark/)
@@ -106,6 +138,18 @@ test('SQL metadata failure keeps execution usable and retry reloads schema', asy
   await warning.getByRole('button', { name: '重试加载' }).click({ timeout: 5_000 })
   await expect(warning).toHaveCount(0)
   expect(metadataRequests).toBe(2)
+
+  // Retrying metadata also restores table and alias-qualified column completion.
+  await editor.click({ position: { x: 150, y: 12 } })
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.type('SELECT * FROM sys_')
+  await expect(suggestions.getByText('sys_user', { exact: true })).toBeVisible()
+  await suggestions.getByText('sys_user', { exact: true }).dblclick()
+  await page.keyboard.type(' u WHERE u.')
+  await expect(suggestions.getByText('id', { exact: true })).toBeVisible()
+  await suggestions.getByText('id', { exact: true }).dblclick()
+  await expect(editor.locator('.view-lines')).toContainText('u.id')
+  await page.keyboard.press('Escape')
   await page.mouse.move(2, 2)
   await page.screenshot({
     path: `.artifacts/sql-console-metadata-${testInfo.project.name}-ready.png`,

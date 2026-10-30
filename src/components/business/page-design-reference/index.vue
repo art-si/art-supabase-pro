@@ -220,7 +220,7 @@
     imageItems.value.map((image) => image.previewUrl).filter(Boolean)
   )
   const buttonIcon = computed(() => {
-    if (state.loading) return 'ri:loader-4-line'
+    if (state.loading) return 'ri:refresh-line'
     if (state.loadError) return 'ri:refresh-line'
     return state.reference ? 'ri:star-fill' : 'ri:star-line'
   })

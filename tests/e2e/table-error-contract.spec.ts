@@ -39,6 +39,43 @@ for (const width of [1440, 570]) {
   })
 }
 
+for (const { theme, boxMode } of [
+  { theme: 'light', boxMode: 'border-mode' },
+  { theme: 'dark', boxMode: 'shadow-mode' }
+]) {
+  test(`受限高度错误区可滚动至重试按钮并用键盘恢复 ${theme} ${boxMode}`, async ({
+    page
+  }, testInfo) => {
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await page.setViewportSize({ width: 570, height: 360 })
+    await page.goto(fixture('bounded-error'))
+    await page.evaluate(
+      ({ theme, boxMode }) => {
+        document.documentElement.classList.toggle('dark', theme === 'dark')
+        document.documentElement.dataset.boxMode = boxMode
+      },
+      { theme, boxMode }
+    )
+    const errorRegion = page.locator('.art-table-query__error-state')
+    await expect(errorRegion.getByRole('status')).toContainText('数据加载失败')
+    const wrap = errorRegion.locator('.el-scrollbar__wrap')
+    await expect
+      .poll(() => wrap.evaluate((element) => element.scrollHeight - element.clientHeight))
+      .toBeGreaterThan(20)
+    const retry = errorRegion.getByRole('button', { name: '重新加载' })
+    await wrap.focus()
+    await page.keyboard.press('Tab')
+    await expect(retry).toBeFocused()
+    await expect.poll(() => wrap.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    await page.screenshot({ path: testInfo.outputPath('bounded-error-before-retry.png') })
+    await page.keyboard.press('Enter')
+    await expect(page.getByText('恢复后的记录')).toBeVisible()
+    await expect(errorRegion).toHaveCount(0)
+    expect(pageErrors).toEqual([])
+  })
+}
+
 for (const mode of ['mask', 'adapted', 'nested']) {
   test(`${mode} 错误不能进入成功状态`, async ({ page }) => {
     await page.goto(fixture(mode))

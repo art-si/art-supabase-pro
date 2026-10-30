@@ -419,7 +419,7 @@
     return uploadProgress.currentFileName || `${formatSize(uploadProgress.totalBytes)} 待上传`
   })
   const pasteZoneIcon = computed(() => {
-    if (uploading.value) return 'ri-loader-4-line'
+    if (uploading.value) return 'ri-refresh-line'
     if (uploadProgress.phase === 'completed' && uploadProgress.visible) {
       return 'ri-checkbox-circle-line'
     }

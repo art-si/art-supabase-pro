@@ -47,7 +47,7 @@
             role="status"
             aria-live="polite"
           >
-            <ArtSvgIcon icon="ri:loader-4-line" class="auth-callback-progress__spinner" />
+            <ArtSvgIcon icon="ri:refresh-line" class="auth-callback-progress__spinner" />
             <span>{{ oauthProgressText }}</span>
           </div>
           <ArtForm

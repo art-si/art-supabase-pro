@@ -23,6 +23,7 @@
   --art-motion-duration-fast: 180ms;
   --art-motion-duration-base: 260ms;
   --art-motion-duration-slow: 320ms;
+  --art-motion-duration-spin: 800ms;
   --art-motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --art-motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
   // 对齐 Element Plus 组件变量，避免按需样式和全局覆盖各用一套圆角。
@@ -190,6 +191,43 @@ html.dark .el-card {
 .el-pagination.is-background .btn-prev,
 .el-pagination.is-background .el-pager li {
   border-radius: var(--art-control-radius);
+}
+
+// Shared by table workspaces and compact browsers inside drawers.
+.custom-pagination .el-pagination {
+  .btn-prev,
+  .btn-next,
+  .el-pager li {
+    box-sizing: border-box;
+    font-weight: 400;
+    background-color: transparent;
+    border: 1px solid var(--art-gray-300);
+    transition:
+      color var(--art-motion-duration-fast) ease,
+      background-color var(--art-motion-duration-fast) ease,
+      border-color var(--art-motion-duration-fast) ease,
+      box-shadow var(--art-motion-duration-fast) ease;
+
+    &:not(.is-active, :disabled, .is-disabled):hover {
+      color: var(--theme-color);
+      background: color-mix(in srgb, var(--theme-color) 6%, transparent);
+      border-color: var(--art-themed-action-active-border);
+      box-shadow: var(--art-themed-action-hover-shadow);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--art-themed-action-focus-shadow);
+    }
+  }
+
+  .el-pager li.is-active {
+    font-weight: 600;
+    color: var(--el-color-white);
+    background-color: var(--theme-color);
+    border-color: var(--art-themed-action-active-border);
+    box-shadow: var(--art-themed-action-active-shadow);
+  }
 }
 
 .el-popover {
@@ -448,6 +486,51 @@ html.dark .el-card {
     > span {
       margin-left: 0 !important;
     }
+  }
+}
+
+// All action loading uses the same refresh glyph. Element Plus retains its
+// disabled/loading semantics; the original action icon returns when complete.
+.el-button.is-loading {
+  > span > .art-svg-icon:first-of-type,
+  > span > .el-icon:first-of-type,
+  > span > .art-icon-label > .art-svg-icon:first-of-type,
+  > span > .art-icon-label > .el-icon:first-of-type {
+    display: none;
+  }
+
+  > .el-icon.is-loading {
+    font-size: 16px;
+  }
+}
+
+.el-icon.is-loading {
+  transform-origin: center;
+  animation: art-button-action-spin var(--art-motion-duration-spin) linear infinite;
+
+  > svg {
+    display: none;
+  }
+
+  &::before {
+    display: block;
+    width: 1em;
+    height: 1em;
+    content: '';
+    background-color: currentcolor;
+    mask: url('@/assets/svg/action-loading.svg') center / contain no-repeat;
+  }
+}
+
+@keyframes art-button-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .el-icon.is-loading {
+    animation: none !important;
   }
 }
 
@@ -1003,6 +1086,17 @@ html.dark .el-card {
 
 // 工作区组件外观：public/auth 不参与模式覆盖，Teleport 浮层从 html 继承。
 html[data-ui-scope='workspace'] {
+  // 组合输入区的外壳负责边框和焦点，内部 textarea 不再绘制第二层控件表面。
+  .art-composer-input {
+    --art-control-border: transparent;
+    --art-control-focus-border: transparent;
+    --art-control-shadow: none;
+    --art-control-hover-shadow: none;
+    --art-control-focus-shadow: none;
+    --art-control-disabled-shadow: none;
+    --art-control-error-shadow: none;
+  }
+
   // 表单是低层静态表面；hover、focus 与校验状态分别有自己的阴影。
   .el-input__wrapper,
   .el-select__wrapper,
@@ -1041,7 +1135,8 @@ html[data-ui-scope='workspace'] {
   }
 
   // 编辑表格的单元格会裁切外投影，控件在单元格内用内侧轮廓保持边界清晰。
-  &[data-box-mode='shadow-mode'] .el-table__body td.el-table__cell {
+  &[data-box-mode='shadow-mode'] .el-table__body td.el-table__cell,
+  &[data-box-mode='shadow-mode'] .art-table-v2 .el-table-v2__row-cell {
     --art-control-shadow: inset 0 0 0 1px
       color-mix(in srgb, var(--theme-color) 18%, var(--el-border-color));
     --art-control-hover-shadow: inset 0 0 0 1px
