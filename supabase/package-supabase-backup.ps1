@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })][string]$BackupPath,
   [string]$ArchivePath,
@@ -100,7 +100,7 @@ $manifestPath = Join-Path $BackupPath 'manifest.json'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
   throw 'The backup is incomplete: manifest.json is missing.'
 }
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 Assert-BackupManifest -Root $BackupPath -Manifest $manifest
 
 if (-not $ArchivePath) {

@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./VopEFYIT.js";var i=t({name:`MdmPaymentPurpose`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`purpose`,permissions:{View:`MdmPaymentPurpose:View`,Add:`MdmPaymentPurpose:Add`,Edit:`MdmPaymentPurpose:Edit`,Delete:`MdmPaymentPurpose:Delete`}}))}});export{i as default};

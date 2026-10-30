@@ -1,0 +1,1 @@
+function e(e){return typeof e==`object`&&!!e&&!Array.isArray(e)}function t(t){return e(t)?t:{}}export{t as n,e as t};

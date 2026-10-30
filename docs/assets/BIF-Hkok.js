@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./BpTbx-eu.js";var i=t({name:`MesReportDefects`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{"initial-tab":`details`}))}});export{i as default};

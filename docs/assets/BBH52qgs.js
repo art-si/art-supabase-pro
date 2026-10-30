@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./BU0xijYb.js";var i=t({name:`MdmSalesProject`,__name:`index`,setup(t){return(t,i)=>(n(),e(r))}});export{i as default};

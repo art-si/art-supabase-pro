@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./BKef3vz0.js";var i=t({name:`OperationsCommand`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{mode:`operations`}))}});export{i as default};

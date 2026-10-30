@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./UoFo2lTk.js";var i=t({name:`ScmReceiptNotice`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`receipt_notice`}))}});export{i as default};

@@ -10,8 +10,10 @@ import {
 } from '../src/utils/supabase/operations-catalog'
 import { getOperationLogLevel } from '../src/utils/supabase/operations-log'
 import { isBackupVerificationReport } from '../src/utils/supabase/operations-verification'
+import { isBackupUpdateReport } from '../src/utils/supabase/operations-update'
 import type {
   BackupVerificationReport,
+  BackupUpdateReport,
   OperationRun,
   SupabaseOperation
 } from '../src/types/supabase-operations'
@@ -34,6 +36,29 @@ export function readOperationVerificationReport(
     )
       return
     return parsed
+  } catch {
+    return
+  }
+}
+
+export function readOperationUpdateReport(
+  file: string,
+  expectedBackupPath: string
+): BackupUpdateReport | undefined {
+  try {
+    const information = lstatSync(file)
+    if (!information.isFile() || information.isSymbolicLink() || information.size > 2 * 1024 * 1024)
+      return
+    const value: unknown = JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(file)).replace(/^\uFEFF/, '')
+    )
+    if (
+      !isBackupUpdateReport(value) ||
+      path.win32.resolve(value.backupPath).toLowerCase() !==
+        path.win32.resolve(expectedBackupPath).toLowerCase()
+    )
+      return
+    return value
   } catch {
     return
   }
@@ -149,6 +174,9 @@ export class OperationsRunner {
       operation.id === 'verify'
         ? path.join(this.stateRoot, `${run.id}.verification.json`)
         : undefined
+    const updatePath = ['previewBackupUpdate', 'updateBackup'].includes(operation.id)
+      ? path.join(this.stateRoot, `${run.id}.update.json`)
+      : undefined
     const child = spawn(
       process.env.SUPABASE_OPS_POWERSHELL || 'powershell.exe',
       [
@@ -168,7 +196,8 @@ export class OperationsRunner {
           ...process.env,
           CI: 'true',
           NO_COLOR: '1',
-          SUPABASE_OPS_REPORT_PATH: verificationPath || ''
+          SUPABASE_OPS_REPORT_PATH: verificationPath || '',
+          SUPABASE_OPS_UPDATE_REPORT_PATH: updatePath || ''
         }
       }
     )
@@ -270,6 +299,17 @@ export class OperationsRunner {
           run.artifacts.push({ label: '备份校验报告', value: verificationPath, kind: 'path' })
         }
       }
+      if (updatePath) {
+        const report = readOperationUpdateReport(
+          updatePath,
+          String(parameters.UpdateBackupPath || '')
+        )
+        if (report) {
+          run.updateReport = report
+          run.artifacts ||= []
+          run.artifacts.push({ label: '备份更新报告', value: updatePath, kind: 'path' })
+        }
+      }
       run.exitCode = code
       run.endedAt = new Date().toISOString()
       const cancelled = run.status === 'cancelling'
@@ -300,6 +340,20 @@ export class OperationsRunner {
         } else if (run.verificationReport.status !== 'passed') {
           run.status = 'failed'
           run.error = '备份校验未通过，请查看报告中的失败检查和问题后修复。'
+        }
+      }
+      if (updatePath && !startupError && !cancelled) {
+        const report = run.updateReport
+        if (!report) {
+          run.status = 'failed'
+          run.error = '未取得有效更新报告，请检查执行端版本和日志；不能判定更新完成。'
+        } else if (
+          report.status === 'failed' ||
+          (operation.id === 'previewBackupUpdate' && report.mode !== 'preview') ||
+          (operation.id === 'updateBackup' && report.mode !== 'apply')
+        ) {
+          run.status = 'failed'
+          run.error = report.error || '备份更新未完成，请查看更新报告。'
         }
       }
       if (run.status === 'succeeded') run.stage = '执行完成'

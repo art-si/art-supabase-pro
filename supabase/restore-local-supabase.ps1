@@ -23,7 +23,7 @@ $manifestPath = Join-Path $BackupPath 'manifest.json'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
   throw 'The backup is incomplete: manifest.json is missing.'
 }
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 Assert-BackupManifest -Root $BackupPath -Manifest $manifest
 
 $LocalRoot = [IO.Path]::GetFullPath($LocalRoot)
@@ -36,7 +36,7 @@ if ($Resume) {
   if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
     throw 'Cannot resume: the local destination has no transfer-origin.json marker.'
   }
-  $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
+  $marker = Get-Content -LiteralPath $markerPath -Raw -Encoding UTF8 | ConvertFrom-Json
   if ($marker.manifest_sha256 -ne (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash) {
     throw 'Cannot resume: this backup differs from the one used to create the local stack.'
   }
@@ -70,7 +70,7 @@ if (-not $dockerReady) { throw 'Docker Desktop is installed but not running.' }
 $supabaseRoot = Join-Path $LocalRoot 'supabase'
 if (-not $Resume) {
   New-Item -ItemType Directory -Path $supabaseRoot -Force | Out-Null
-  $configText = Get-Content -LiteralPath (Join-Path $BackupPath 'config.toml') -Raw
+  $configText = Get-Content -LiteralPath (Join-Path $BackupPath 'config.toml') -Raw -Encoding UTF8
   $localProjectId = "art-supabase-local-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
   if ($configText -notmatch '(?m)^project_id\s*=\s*"[^"]+"') {
     throw 'The backed-up config.toml has no project_id.'
@@ -79,12 +79,12 @@ if (-not $Resume) {
   # The platform frontend runs on port 3006 in this repository.
   $configText = $configText -replace '(?m)^site_url\s*=\s*"[^"]+"', 'site_url = "http://127.0.0.1:3006"'
   $configText = $configText -replace '(?m)^additional_redirect_urls\s*=\s*\[[^\r\n]*\]', 'additional_redirect_urls = ["http://127.0.0.1:3006", "http://localhost:3006"]'
-  $deployedFunctions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath (Join-Path $BackupPath 'metadata/functions.json') -Raw) -Description 'the function deployment settings')
+  $deployedFunctions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath (Join-Path $BackupPath 'metadata/functions.json') -Raw -Encoding UTF8) -Description 'the function deployment settings')
   $configText = Set-BackupFunctionJwtConfig -Config $configText -Functions $deployedFunctions
   $configText = Set-BackupFunctionSourceConfig -Config $configText -Root $BackupPath
   $serviceMetadataPath = Join-Path $BackupPath 'metadata/service-versions.json'
   if (Test-Path -LiteralPath $serviceMetadataPath) {
-    $services = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $serviceMetadataPath -Raw) -Description 'the source service versions')
+    $services = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $serviceMetadataPath -Raw -Encoding UTF8) -Description 'the source service versions')
     $versionFiles = @{'supabase/postgres'='postgres-version';'supabase/gotrue'='gotrue-version';'supabase/storage-api'='storage-version'}
     $versionRoot = Join-Path $supabaseRoot '.temp'
     New-Item -ItemType Directory -Path $versionRoot -Force | Out-Null
@@ -248,7 +248,7 @@ try {
   $dbUri = [uri]$status.DB_URL
   # Reuse the database image already started by the CLI instead of pulling a
   # separate PostgreSQL client image (which can fail on restricted networks).
-  $localConfig = Get-Content -LiteralPath (Join-Path $supabaseRoot 'config.toml') -Raw
+  $localConfig = Get-Content -LiteralPath (Join-Path $supabaseRoot 'config.toml') -Raw -Encoding UTF8
   if ($localConfig -notmatch '(?m)^project_id\s*=\s*"([A-Za-z0-9_-]+)"') {
     throw 'Unable to identify the local database container.'
   }
@@ -278,7 +278,7 @@ try {
 
   $realtimePath = Join-Path $BackupPath 'metadata/realtime-publication-tables.json'
   $realtimeTables = @(ConvertFrom-SupabaseJsonArray `
-    -Text (Get-Content -LiteralPath $realtimePath -Raw) `
+    -Text (Get-Content -LiteralPath $realtimePath -Raw -Encoding UTF8) `
     -Description 'the backed-up Realtime publication list')
   $existingTableText = Invoke-LocalPsqlQuery -DbUri $dbUri -Sql "select schemaname, tablename from pg_publication_tables where pubname = 'supabase_realtime'"
   $existingNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
@@ -300,7 +300,7 @@ try {
   $storageMetadata = @{}
   $inventoryPath = Join-Path $BackupPath 'metadata/storage-object-inventory.json'
   if (Test-Path -LiteralPath $inventoryPath) {
-    foreach ($object in @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $inventoryPath -Raw) -Description 'the Storage object metadata')) {
+    foreach ($object in @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $inventoryPath -Raw -Encoding UTF8) -Description 'the Storage object metadata')) {
       $storageMetadata["$($object.bucket_id)/$($object.name)"] = $object
     }
   }

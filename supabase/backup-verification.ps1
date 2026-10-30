@@ -36,7 +36,7 @@
     & $addIssue 'MANIFEST_MISSING' 'manifest.json' '缺少最终清单，备份尚未完成。'
   }
   else {
-    try { $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop }
+    try { $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop }
     catch { & $addIssue 'MANIFEST_INVALID' 'manifest.json' '最终清单不是有效 JSON。' }
   }
   $canonicalPassed = $false
@@ -180,7 +180,7 @@
   if (Test-Path -LiteralPath $layoutPath -PathType Leaf) {
     try {
       $layout = Get-BackupFunctionLayout -Root $root
-      $functions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath (Join-Path $root 'metadata/functions.json') -Raw) -Description 'the backed-up Edge Function list')
+      $functions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath (Join-Path $root 'metadata/functions.json') -Raw -Encoding UTF8) -Description 'the backed-up Edge Function list')
       Assert-BackupFunctionLayout -Root $root -Layout $layout -Functions $functions -ManifestPaths $manifestPaths
     }
     catch { $layoutFailed = $true; & $addIssue 'FUNCTION_LAYOUT_INVALID' 'metadata/function-layout.json' '函数入口或依赖布局未通过核对。' }

@@ -1,0 +1,1 @@
+import{Bt as e,Qn as t,Un as n,ln as r,p as i,pn as a,qn as o}from"./CMyQbSvq.js";var s=o(new Map);function c(e){let o=i(),c=Symbol(`assistant-page`),l=o.path,u=()=>{s.set(c,{path:l,read:()=>t(e)})};u(),r(u),a(()=>s.delete(c)),n(()=>s.delete(c))}function l(){let t=i();return e(()=>[...s.values()].filter(e=>e.path===t.path).map(e=>e.read()))}export{l as n,c as t};

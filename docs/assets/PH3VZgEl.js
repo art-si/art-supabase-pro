@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./h_h6culP.js";var i=t({name:`MesMachineAchievement`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{mode:`machine`}))}});export{i as default};

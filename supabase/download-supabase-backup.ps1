@@ -1,4 +1,4 @@
-[CmdletBinding(DefaultParameterSetName = 'SignedUrl')]
+﻿[CmdletBinding(DefaultParameterSetName = 'SignedUrl')]
 param(
   [Parameter(Mandatory = $true, ParameterSetName = 'SignedUrl')][uri]$SignedUrl,
   [Parameter(Mandatory = $true, ParameterSetName = 'LocalArchive')]
@@ -28,7 +28,7 @@ $temporaryArchive = $null
 try {
   if ($PSCmdlet.ParameterSetName -eq 'PartsArchive') {
     $partsRoot = Split-Path -Parent (Resolve-Path -LiteralPath $PartsManifestPath).Path
-    $partsManifest = Get-Content -LiteralPath $PartsManifestPath -Raw | ConvertFrom-Json
+    $partsManifest = Get-Content -LiteralPath $PartsManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($partsManifest.format_version -ne 1 -or $partsManifest.sha256 -notmatch '^[A-Fa-f0-9]{64}$' -or
         @($partsManifest.parts).Count -eq 0) { throw 'Invalid archive parts manifest.' }
     if ($ExpectedSha256 -and $ExpectedSha256 -ne $partsManifest.sha256) { throw 'Archive parts differ from the expected SHA256.' }
@@ -97,7 +97,7 @@ try {
   if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     throw 'The downloaded archive is missing manifest.json.'
   }
-  $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
   if ($manifest.recipient_safe_auth -ne $true) {
     throw 'This archive is not marked as safe for recipient distribution.'
   }

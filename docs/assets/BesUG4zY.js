@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./VopEFYIT.js";var i=t({name:`MdmSettlementMethod`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`method`,permissions:{View:`MdmSettlementMethod:View`,Add:`MdmSettlementMethod:Add`,Edit:`MdmSettlementMethod:Edit`,Delete:`MdmSettlementMethod:Delete`}}))}});export{i as default};

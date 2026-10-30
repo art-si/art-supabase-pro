@@ -4,7 +4,7 @@ import { mkdir, open, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type postgres from 'postgres'
 
-type Sql = ReturnType<typeof postgres>
+export type CopySourceSql = Pick<ReturnType<typeof postgres>, 'unsafe'>
 
 export interface TableFingerprint {
   rows: string
@@ -65,7 +65,8 @@ function parseCopyHeader(line: string): { schema: string; name: string; columns:
   if (line[offset] !== '.') throw new Error('Unsupported COPY table syntax')
   const name = readQuotedIdentifier(line, offset + 1)
   offset = name.next
-  if (line.slice(offset, offset + 2) !== ' (') throw new Error('COPY without explicit columns is unsupported')
+  if (line.slice(offset, offset + 2) !== ' (')
+    throw new Error('COPY without explicit columns is unsupported')
   offset += 2
   const columns: string[] = []
   while (true) {
@@ -96,14 +97,20 @@ function quoted(name: string): string {
 
 function safeOutput(name: string): string {
   const part = '(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:[^"]|"")+")'
-  if (!new RegExp(`^${part}\\.${part}$`).test(name)) throw new Error('Invalid PostgreSQL type output function')
+  if (!new RegExp(`^${part}\\.${part}$`).test(name))
+    throw new Error('Invalid PostgreSQL type output function')
   return name
 }
 
 function copyEscapedOutput(expression: string): string {
   let escaped = `replace(${expression}, chr(92), chr(92) || chr(92))`
   for (const [code, letter] of [
-    [8, 'b'], [12, 'f'], [10, 'n'], [13, 'r'], [9, 't'], [11, 'v']
+    [8, 'b'],
+    [12, 'f'],
+    [10, 'n'],
+    [13, 'r'],
+    [9, 't'],
+    [11, 'v']
   ] as const) {
     escaped = `replace(${escaped}, chr(${code}), chr(92) || '${letter}')`
   }
@@ -116,7 +123,14 @@ export async function readCopyInventory(file: string): Promise<CopyInventory> {
   const extraStatements: string[] = []
   const keys = new Set<string>()
   const prefixLines: Buffer[] = []
-  let current: { schema: string; name: string; columns: string[]; start: number; sums: bigint[]; rows: bigint } | null = null
+  let current: {
+    schema: string
+    name: string
+    columns: string[]
+    start: number
+    sums: bigint[]
+    rows: bigint
+  } | null = null
   let sawCopy = false
   let pending = Buffer.alloc(0)
   let position = 0
@@ -135,9 +149,16 @@ export async function readCopyInventory(file: string): Promise<CopyInventory> {
         if (keys.has(key)) throw new Error(`Duplicate COPY section: ${key}`)
         keys.add(key)
         tables.push({
-          key, schema: current.schema, name: current.name, columns: current.columns,
-          fingerprint: { rows: current.rows.toString(), sums: current.sums.map(value => value.toString()) },
-          start: current.start, end: position
+          key,
+          schema: current.schema,
+          name: current.name,
+          columns: current.columns,
+          fingerprint: {
+            rows: current.rows.toString(),
+            sums: current.sums.map((value) => value.toString())
+          },
+          start: current.start,
+          end: position
         })
         current = null
       } else {
@@ -165,8 +186,10 @@ export async function readCopyInventory(file: string): Promise<CopyInventory> {
       else prefixLines.push(raw)
       return
     }
-    if (/^SET [A-Za-z_][A-Za-z0-9_]* = [^;]*;$/.test(line) ||
-        /^SELECT pg_catalog\.set_config\('search_path', '', false\);$/.test(line)) {
+    if (
+      /^SET [A-Za-z_][A-Za-z0-9_]* = [^;]*;$/.test(line) ||
+      /^SELECT pg_catalog\.set_config\('search_path', '', false\);$/.test(line)
+    ) {
       if (sawCopy) extraStatements.push(line)
       else prefixLines.push(raw)
       return
@@ -185,38 +208,65 @@ export async function readCopyInventory(file: string): Promise<CopyInventory> {
   }
   if (pending.length) processLine(pending)
   if (current) throw new Error('Database COPY block ended without \\. terminator')
-  if (tables.length === 0 && sequenceStatements.length === 0) throw new Error('No supported database data found')
-  return { tables, sequenceStatements, prefix: Buffer.concat(prefixLines).toString('utf8'), extraStatements }
+  if (tables.length === 0 && sequenceStatements.length === 0)
+    throw new Error('No supported database data found')
+  return {
+    tables,
+    sequenceStatements,
+    prefix: Buffer.concat(prefixLines).toString('utf8'),
+    extraStatements
+  }
 }
 
-export async function listSourceTables(sql: Sql, schemas: string[]): Promise<SourceTable[]> {
-  if (!schemas.length || schemas.some(schema => !schema || schema.includes('\0'))) {
+export async function listSourceTables(
+  sql: CopySourceSql,
+  schemas: string[]
+): Promise<SourceTable[]> {
+  if (!schemas.length || schemas.some((schema) => !schema || schema.includes('\0'))) {
     throw new Error('At least one valid source schema is required')
   }
-  const rows = await sql`
+  const rows = await sql.unsafe(
+    `
     SELECT n.nspname AS schema, c.relname AS name,
-      array_agg(a.attname ORDER BY a.attnum) AS columns,
-      array_agg(format('%I.%I', pn.nspname, p.proname) ORDER BY a.attnum) AS outputs
+      array_agg(a.attname ORDER BY a.attnum) FILTER(WHERE a.attnum IS NOT NULL) AS columns,
+      array_agg(format('%I.%I', pn.nspname, p.proname) ORDER BY a.attnum) FILTER(WHERE pn.nspname IS NOT NULL) AS outputs
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+    LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
       AND a.attnum > 0 AND NOT a.attisdropped AND a.attgenerated = ''
-    JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
-    JOIN pg_catalog.pg_proc p ON p.oid = t.typoutput
-    JOIN pg_catalog.pg_namespace pn ON pn.oid = p.pronamespace
-    WHERE n.nspname = ANY(${schemas}::text[])
+    LEFT JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+    LEFT JOIN pg_catalog.pg_proc p ON p.oid = t.typoutput
+    LEFT JOIN pg_catalog.pg_namespace pn ON pn.oid = p.pronamespace
+    WHERE n.nspname = ANY($1::text[])
       AND c.relkind = 'r' AND c.relpersistence <> 't'
     GROUP BY n.nspname, c.relname
     ORDER BY n.nspname, c.relname
-  `
-  return rows.map(row => {
-    const columns = row.columns as string[]
-    const outputs = row.outputs as string[]
-    if (!Array.isArray(columns) || !Array.isArray(outputs) || columns.length !== outputs.length) {
+  `,
+    [schemas]
+  )
+  return rows.map((row) => {
+    const columns: unknown = row.columns
+    const outputs: unknown = row.outputs
+    if (
+      typeof row.schema !== 'string' ||
+      typeof row.name !== 'string' ||
+      !Array.isArray(columns) ||
+      !Array.isArray(outputs) ||
+      !columns.length ||
+      columns.length !== outputs.length ||
+      !columns.every((value: unknown) => typeof value === 'string') ||
+      !outputs.every((value: unknown) => typeof value === 'string')
+    ) {
       throw new Error('Invalid source table column metadata')
     }
     outputs.forEach(safeOutput)
-    return { key: JSON.stringify([row.schema, row.name]), schema: row.schema, name: row.name, columns, outputs }
+    return {
+      key: JSON.stringify([row.schema, row.name]),
+      schema: row.schema,
+      name: row.name,
+      columns,
+      outputs
+    }
   })
 }
 
@@ -231,8 +281,10 @@ export function buildFingerprintQuery(table: SourceTable): string {
   })
   const rowText = fields.join(' || chr(9) || ')
   const tableRef = `${quoted(table.schema)}.${quoted(table.name)}`
-  const sums = Array.from({ length: 8 }, (_, lane) =>
-    `COALESCE(sum((('x' || substring(hash_hex from ${lane * 8 + 1} for 8))::bit(32)::bigint)::numeric), 0)::text AS sum_${lane}`
+  const sums = Array.from(
+    { length: 8 },
+    (_, lane) =>
+      `COALESCE(sum((('x' || substring(hash_hex from ${lane * 8 + 1} for 8))::bit(32)::bigint)::numeric), 0)::text AS sum_${lane}`
   ).join(', ')
   return `WITH row_hashes AS MATERIALIZED (
     SELECT encode(sha256(convert_to(${rowText}, 'UTF8')), 'hex') AS hash_hex
@@ -240,13 +292,16 @@ export function buildFingerprintQuery(table: SourceTable): string {
   ) SELECT count(*)::text AS rows, ${sums} FROM row_hashes`
 }
 
-export async function fingerprintSourceTable(sql: Sql, table: SourceTable): Promise<TableFingerprint> {
+export async function fingerprintSourceTable(
+  sql: CopySourceSql,
+  table: SourceTable
+): Promise<TableFingerprint> {
   const query = buildFingerprintQuery(table)
   const result = await sql.unsafe(query)
   if (result.length !== 1) throw new Error('Unexpected table fingerprint result')
   const row = result[0]
   const values = Array.from({ length: 8 }, (_, lane) => String(row[`sum_${lane}`]))
-  if (!/^\d+$/.test(String(row.rows)) || values.some(value => !/^\d+$/.test(value))) {
+  if (!/^\d+$/.test(String(row.rows)) || values.some((value) => !/^\d+$/.test(value))) {
     throw new Error('Invalid table fingerprint values')
   }
   return { rows: String(row.rows), sums: values }
@@ -268,20 +323,36 @@ export async function buildDataDump(
     }
   }
   try {
-    await writeAll(Buffer.from("-- Incremental database data snapshot\nSET client_encoding = 'UTF8';\nSET standard_conforming_strings = on;\nSELECT pg_catalog.set_config('search_path', '', false);\n\n"))
+    await writeAll(
+      Buffer.from(
+        "-- Incremental database data snapshot\nSET client_encoding = 'UTF8';\nSET standard_conforming_strings = on;\nSELECT pg_catalog.set_config('search_path', '', false);\n\n"
+      )
+    )
     for (const block of blocks) {
       const info = await stat(block.file)
-      if (!Number.isSafeInteger(block.start) || !Number.isSafeInteger(block.end) ||
-          block.start < 0 || block.end <= block.start || block.end > info.size) {
+      if (
+        !Number.isSafeInteger(block.start) ||
+        !Number.isSafeInteger(block.end) ||
+        block.start < 0 ||
+        block.end <= block.start ||
+        block.end > info.size
+      ) {
         throw new Error('Invalid COPY byte range')
       }
-      for await (const chunk of createReadStream(block.file, { start: block.start, end: block.end - 1 })) {
+      for await (const chunk of createReadStream(block.file, {
+        start: block.start,
+        end: block.end - 1
+      })) {
         await writeAll(chunk as Buffer)
       }
       await writeAll(Buffer.from('\n'))
     }
     for (const statement of sequenceStatements) {
-      if (!/^SELECT pg_catalog\.setval\(.+\);$/.test(statement) || statement.includes('\n') || statement.includes('\r')) {
+      if (
+        !/^SELECT pg_catalog\.setval\(.+\);$/.test(statement) ||
+        statement.includes('\n') ||
+        statement.includes('\r')
+      ) {
         throw new Error('Unsupported sequence statement')
       }
       await writeAll(Buffer.from(`${statement}\n`, 'utf8'))
@@ -293,4 +364,37 @@ export async function buildDataDump(
     throw error
   }
   await output.close()
+}
+
+/** pg_dump may quote safe names differently. Compare sequence identity/state,
+ * never edit a quoted identifier by a global text replacement. */
+export function normalizeSequenceStatements(statements: string[]): string {
+  const entries = statements.map((statement) => {
+    const match = statement.match(
+      /^SELECT pg_catalog\.setval\('((?:[^']|'')+)'(?:::regclass)?,\s*(-?\d+),\s*(true|false)\);$/
+    )
+    if (!match) throw new Error('Unsupported sequence state in database dump')
+    const name = match[1].replaceAll("''", "'")
+    let offset = 0
+    const names: string[] = []
+    while (offset < name.length) {
+      if (name[offset] === '"') {
+        const part = readQuotedIdentifier(name, offset)
+        names.push(part.value)
+        offset = part.next
+      } else {
+        const part = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(name.slice(offset))
+        if (!part) throw new Error('Unsupported sequence identifier')
+        names.push(part[0].toLowerCase())
+        offset += part[0].length
+      }
+      if (offset === name.length) break
+      if (name[offset] !== '.') throw new Error('Invalid sequence identifier')
+      offset++
+    }
+    if (names.length !== 2) throw new Error('Sequence name must include its schema')
+    return [names[0], names[1], BigInt(match[2]).toString(), match[3]]
+  })
+  entries.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+  return JSON.stringify(entries)
 }

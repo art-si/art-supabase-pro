@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./DSHClW43.js";var i=t({name:`FinanceReceipt`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`receipt`}))}});export{i as default};

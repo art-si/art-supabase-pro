@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./UoFo2lTk.js";var i=t({name:`ScmPurchaseContract`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`purchase_contract`,"prepayment-permission":`ScmPurchaseContract:Push`}))}});export{i as default};

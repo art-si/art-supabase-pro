@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./963Rf_yO.js";var i=t({name:`WmsCountLoss`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`loss`}))}});export{i as default};

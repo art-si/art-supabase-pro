@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./CViwA6ix.js";var i=t({name:`WmsSalesReturnDocument`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`return`}))}});export{i as default};

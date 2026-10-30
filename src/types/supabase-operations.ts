@@ -3,6 +3,8 @@ export type SupabaseOperationId =
   | 'syncFunctions'
   | 'backup'
   | 'resumeBackup'
+  | 'previewBackupUpdate'
+  | 'updateBackup'
   | 'verify'
   | 'package'
   | 'download'
@@ -83,6 +85,39 @@ export interface OperationRun {
   exitCode?: number | null
   error?: string
   verificationReport?: BackupVerificationReport
+  updateReport?: BackupUpdateReport
+}
+
+export interface BackupUpdateReport {
+  formatVersion: 1
+  mode: 'preview' | 'apply'
+  status: 'planned' | 'unchanged' | 'updated' | 'failed'
+  backupPath: string
+  sourceProjectRef: string
+  planId: string
+  baseManifestSha256: string
+  resultManifestSha256?: string
+  startedAt: string
+  completedAt: string
+  summary: { added: number; changed: number; removed: number; unchanged: number }
+  items: Array<{
+    kind:
+      | 'table'
+      | 'schema'
+      | 'roles'
+      | 'migrationHistory'
+      | 'managedSchema'
+      | 'function'
+      | 'storage'
+      | 'metadata'
+    key: string
+    label: string
+    status: 'added' | 'changed' | 'removed' | 'unchanged' | 'check'
+    detail?: string
+  }>
+  warnings: string[]
+  historyPath?: string
+  error?: string
 }
 export interface OperationsSnapshot {
   projectRef: string

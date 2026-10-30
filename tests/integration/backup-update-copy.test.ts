@@ -5,8 +5,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import type postgres from 'postgres'
-import { fingerprintSourceTable, readCopyInventory, type SourceTable } from '../../scripts/lib/backup-update-data'
+import postgres from 'postgres'
+import { fingerprintSourceTable, readCopyInventory, listSourceTables } from '../../scripts/lib/backup-update-data'
 
 const image = 'public.ecr.aws/supabase/postgres:17.6.1.062'
 
@@ -22,13 +22,14 @@ test('COPY fingerprint matches real pg_dump text for PostgreSQL output types', {
   const container = `codex-copy-${randomUUID().replaceAll('-', '').slice(0, 12)}`
   const root = await mkdtemp(join(tmpdir(), 'backup-copy-pg17-'))
   let started = false
+  let sourceSql:ReturnType<typeof postgres>|undefined
   try {
-    docker(['run', '--rm', '--pull', 'never', '-d', '--network', 'none', '--name', container,
+    docker(['run', '--rm', '--pull', 'never', '-d', '-p', '127.0.0.1::5432', '--name', container,
       '-e', 'POSTGRES_PASSWORD=fixture', image])
     started = true
     let ready = false
     for (let attempt = 0; attempt < 30; attempt++) {
-      const status = spawnSync('docker', ['exec', container, 'pg_isready', '-U', 'postgres'], { encoding: 'utf8' })
+      const status = spawnSync('docker', ['exec', container, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres'], { encoding: 'utf8' })
       if (status.status === 0) { ready = true; break }
       await new Promise(resolve => setTimeout(resolve, 500))
     }
@@ -52,30 +53,11 @@ test('COPY fingerprint matches real pg_dump text for PostgreSQL output types', {
           decode('', 'hex'), '2026-10-30 00:00:00+00',
           ARRAY[]::integer[], 'stop', ROW(NULL,'x')::public.copy_pair, -0.01, '-1 hour');
     `)
-    const catalog = psql(`
-      SELECT a.attname, format('%I.%I', pn.nspname, p.proname)
-      FROM pg_catalog.pg_attribute a
-      JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
-      JOIN pg_catalog.pg_proc p ON p.oid = t.typoutput
-      JOIN pg_catalog.pg_namespace pn ON pn.oid = p.pronamespace
-      WHERE a.attrelid = 'public.copy_fixture'::regclass
-        AND a.attnum > 0 AND NOT a.attisdropped
-      ORDER BY a.attnum;
-    `).split('\n').map(line => line.split('\t'))
-    const table: SourceTable = {
-      key: JSON.stringify(['public', 'copy_fixture']), schema: 'public', name: 'copy_fixture',
-      columns: catalog.map(row => row[0]), outputs: catalog.map(row => row[1])
-    }
-    const sourceSql = { unsafe: async (query: string) => {
-      const values = psql(`
-        SET TIME ZONE 'UTC'; SET DateStyle = 'ISO, MDY';
-        SET IntervalStyle = 'postgres'; SET bytea_output = 'hex';
-        SET extra_float_digits = 3;
-        ${query};
-      `).split('\t')
-      assert.equal(values.length, 9)
-      return [{ rows: values[0], ...Object.fromEntries(values.slice(1).map((value, index) => [`sum_${index}`, value])) }]
-    } } as unknown as ReturnType<typeof postgres>
+    const port=Number(docker(['port',container,'5432/tcp']).trim().split(':').at(-1))
+    sourceSql=postgres({host:'127.0.0.1',port,username:'postgres',password:'fixture',database:'postgres',ssl:false,max:1,prepare:false,onnotice:()=>{}})
+    await sourceSql.unsafe("SET TIME ZONE 'UTC'; SET DateStyle='ISO, MDY'; SET IntervalStyle='postgres'; SET bytea_output='hex'; SET extra_float_digits=3")
+    const table=(await listSourceTables(sourceSql,['public'])).find(table=>table.name==='copy_fixture')
+    assert.ok(table)
     const remoteFingerprint = await fingerprintSourceTable(sourceSql, table)
     const dump = docker(['exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres',
       '--data-only', '--quote-all-identifiers', '--table=public.copy_fixture'])
@@ -91,6 +73,7 @@ test('COPY fingerprint matches real pg_dump text for PostgreSQL output types', {
     psql('DELETE FROM public.copy_fixture WHERE id = 2')
     assert.equal((await fingerprintSourceTable(sourceSql, table)).rows, '2')
   } finally {
+    await sourceSql?.end({timeout:1})
     if (started) spawnSync('docker', ['stop', container], { encoding: 'utf8', timeout: 30_000 })
     await rm(root, { recursive: true, force: true })
   }

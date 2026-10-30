@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./BXg7nt8F.js";var i=t({name:`WmsStock`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`stock`}))}});export{i as default};

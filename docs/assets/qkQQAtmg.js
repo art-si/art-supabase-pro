@@ -1,1 +1,0 @@
-import{ot as e}from"./D1G0yLle.js";var t=()=>e&&/firefox/i.test(window.navigator.userAgent),n=()=>e&&/android/i.test(window.navigator.userAgent);export{t as n,n as t};

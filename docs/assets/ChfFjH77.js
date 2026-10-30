@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./DijKepvI.js";var i=t({name:`FinanceAssetPayable`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`asset_payable`,"view-permission":`FinanceAssetPayable:View`,"action-permission":`FinanceAssetPayable:Approve`}))}});export{i as default};

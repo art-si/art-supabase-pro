@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./B6MCnEWR.js";var i=t({__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`preventive`,mode:`detail`}))}});export{i as default};

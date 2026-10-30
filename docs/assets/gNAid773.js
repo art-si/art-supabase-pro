@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./i53oHfvq.js";var i=t({name:`DataGovernanceCommand`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`data-governance`}))}});export{i as default};

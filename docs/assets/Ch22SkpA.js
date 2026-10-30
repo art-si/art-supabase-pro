@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./BDThcn1S.js";var i=t({name:`ScmSalesContract`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`sales_contract`}))}});export{i as default};

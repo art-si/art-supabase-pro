@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./t_093hRl.js";var i=t({name:`MesReportApproval`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{mode:`approval`}))}});export{i as default};

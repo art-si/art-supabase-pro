@@ -1,0 +1,1 @@
+var e=[13,15,17.5,18,20],t=[5,8,10,16];function n(e){let t=e.category===`按载重`?e.loadTons==null?``:`${e.loadTons} 吨`:e.lengthM==null?``:`${e.lengthM} 米`;return t?`${e.category} · ${t}`:e.category}export{e as n,n as r,t};

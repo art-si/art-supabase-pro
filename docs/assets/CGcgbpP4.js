@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./C6vhycOV.js";var i=t({name:`MesMiscPiecework`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{mode:`misc_piece`}))}});export{i as default};

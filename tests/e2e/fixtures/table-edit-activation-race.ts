@@ -43,7 +43,7 @@ const Preview = defineComponent({
         editRender: { name: 'input', disabled: () => disabled.value }
       }
     ]
-    const editConfig: TableEditConfig<Row> = {
+    const editConfig: TableEditConfig = {
       mode: 'cell',
       trigger: 'dblclick',
       beforeEditMethod: () => allowed.value

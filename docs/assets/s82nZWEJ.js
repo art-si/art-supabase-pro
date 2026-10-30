@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,er as n,vn as r}from"./CMyQbSvq.js";import{t as i}from"./D4XzcLPN.js";import{a}from"./CeQAo5Sp.js";var o=t({name:`WmsPurchaseReturn`,__name:`index`,setup(t){let o=a;return(t,a)=>(r(),e(i,{kind:`purchase_return`,permissions:n(o)},null,8,[`permissions`]))}});export{o as default};

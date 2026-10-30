@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./VmSUUUyu.js";var i=t({name:`WmsProductionIssue`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`issue`}))}});export{i as default};

@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./Bo_c51b-.js";var i=t({name:`SmisPermittedOperationItem`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{"catalog-type":`permitted_operation_item`}))}});export{i as default};

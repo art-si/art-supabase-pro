@@ -134,7 +134,7 @@ function Invoke-SupabaseJsonWithRetry {
       return $true
     }
 
-    $stderrContent = if (Test-Path $errorPath) { Get-Content -Raw $errorPath } else { $null }
+    $stderrContent = if (Test-Path $errorPath) { Get-Content -Raw -Encoding UTF8 $errorPath } else { $null }
     $lastError = if ([string]::IsNullOrWhiteSpace($stderrContent)) {
       "Supabase CLI exited with code $exitCode."
     }
@@ -420,7 +420,7 @@ try {
     $linkedProjectFile = Join-Path $supabaseRoot '.temp\linked-project.json'
     $linkedProjectRef = $null
     if (Test-Path $linkedProjectFile) {
-      try { $linkedProjectRef = (Get-Content -Raw $linkedProjectFile | ConvertFrom-Json).ref } catch {}
+      try { $linkedProjectRef = (Get-Content -Raw -Encoding UTF8 $linkedProjectFile | ConvertFrom-Json).ref } catch {}
     }
     if ($linkedProjectRef -eq $ProjectRef) {
       Write-Host 'Reusing the existing source-project link...'
@@ -438,7 +438,7 @@ try {
     Write-Host "按阶段继续已有备份：$backupPath"
     $linkedRefFile = Join-Path $supabaseRoot '.temp/project-ref'
     if (-not (Test-Path -LiteralPath $linkedRefFile)) { throw '找不到来源项目关联，请先关联原 Supabase 项目后再续跑。' }
-    $linkedRef = (Get-Content -LiteralPath $linkedRefFile -Raw).Trim()
+    $linkedRef = (Get-Content -LiteralPath $linkedRefFile -Raw -Encoding UTF8).Trim()
     if ($linkedRef -ne $ProjectRef) { throw 'The linked CLI project does not match the source project.' }
     Write-Warning '续跑会沿用已完成导出并重做失败阶段；各阶段并非同一事务快照。请避免更改来源结构，恢复前核对业务一致性。'
   }
@@ -449,7 +449,7 @@ try {
   # Management API queries do not accept --password.
   $queryTarget = if ($DbUrl) { @('--db-url', $DbUrl) } else { @('--linked') }
   $connectionUrl = if (-not $needsDatabase -and -not $DbUrl) {
-    (Get-Content -LiteralPath (Join-Path $supabaseRoot '.temp/pooler-url') -Raw).Trim()
+    (Get-Content -LiteralPath (Join-Path $supabaseRoot '.temp/pooler-url') -Raw -Encoding UTF8).Trim()
   } else { $DbUrl }
   $connection = Get-LinkedDatabaseConnection -Password $plainPassword -SourceProjectRef $ProjectRef -DatabaseUrl $connectionUrl
   foreach ($definition in $dumpDefinitions) {
@@ -461,7 +461,7 @@ try {
     -Arguments @('functions', 'list', '--project-ref', $ProjectRef, '--output', 'json') `
     -OutputPath $functionMetadataPath | Out-Null
   $deployedFunctions = @(ConvertFrom-SupabaseJsonArray `
-    -Text (Get-Content -LiteralPath $functionMetadataPath -Raw) `
+    -Text (Get-Content -LiteralPath $functionMetadataPath -Raw -Encoding UTF8) `
     -Description 'the deployed Edge Function list')
 
   # Download into this backup's own Supabase workdir so remote source never
@@ -481,7 +481,7 @@ try {
       Write-Host '阶段：复核函数部署版本'
       $checkPath = Join-Path (Get-BackupIncompleteDirectory -BackupPath $backupPath) ("functions-check-$([guid]::NewGuid()).json")
       Invoke-SupabaseJsonWithRetry -Arguments @('functions', 'list', '--project-ref', $ProjectRef, '--output', 'json') -OutputPath $checkPath | Out-Null
-      $confirmedFunctions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $checkPath -Raw) -Description 'the verified Edge Function list')
+      $confirmedFunctions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $checkPath -Raw -Encoding UTF8) -Description 'the verified Edge Function list')
       if ((Get-BackupFunctionSetHash -Functions $confirmedFunctions) -ne $functionMetadataHash) {
         throw '下载期间远端函数部署发生变化。已下载函数均保留；请从原备份目录继续，仅重新下载发生变化的函数。'
       }
@@ -530,7 +530,7 @@ try {
   $realtimeResult.Output |
     Set-Content -Path (Join-Path $metadataPath 'realtime-publication-tables.json') -Encoding utf8
   [void]@(ConvertFrom-SupabaseJsonArray `
-    -Text (Get-Content -LiteralPath (Join-Path $metadataPath 'realtime-publication-tables.json') -Raw) `
+    -Text (Get-Content -LiteralPath (Join-Path $metadataPath 'realtime-publication-tables.json') -Raw -Encoding UTF8) `
     -Description 'the Realtime publication list')
 
   $storageCountSql = 'select bucket_id, count(*)::bigint as object_count from storage.objects group by bucket_id order by bucket_id'
@@ -539,7 +539,7 @@ try {
   $storageCountResult.Output |
     Set-Content -Path (Join-Path $metadataPath 'storage-object-counts.json') -Encoding utf8
   $storageCounts = @(ConvertFrom-SupabaseJsonArray `
-    -Text (Get-Content -LiteralPath (Join-Path $metadataPath 'storage-object-counts.json') -Raw) `
+    -Text (Get-Content -LiteralPath (Join-Path $metadataPath 'storage-object-counts.json') -Raw -Encoding UTF8) `
     -Description 'the Storage object counts')
   $expectedObjectCounts = @{}
   foreach ($row in $storageCounts) {
@@ -549,7 +549,7 @@ try {
     $expectedObjectCounts[[string]$row.bucket_id] = [long]$row.object_count
   }
 
-  $bucketText = Get-Content -Raw (Join-Path $metadataPath 'storage-buckets.json')
+  $bucketText = Get-Content -Raw -Encoding UTF8 (Join-Path $metadataPath 'storage-buckets.json')
   $buckets = @(ConvertFrom-SupabaseJsonArray -Text $bucketText -Description 'the Storage bucket list')
   $storageDownloadReport = New-Object System.Collections.Generic.List[object]
   $serviceRoleKey = $null

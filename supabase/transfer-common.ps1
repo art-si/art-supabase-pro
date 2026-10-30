@@ -1,4 +1,4 @@
-function Invoke-SupabaseQuiet {
+﻿function Invoke-SupabaseQuiet {
   param([Parameter(Mandatory = $true)][string[]]$Arguments)
 
   $outputLines = New-Object System.Collections.Generic.List[string]
@@ -348,7 +348,7 @@ function Get-BackupFunctionLayout {
 
   $layoutPath = Join-Path $Root 'metadata/function-layout.json'
   if (-not (Test-Path -LiteralPath $layoutPath -PathType Leaf)) { return $null }
-  try { $layout = Get-Content -LiteralPath $layoutPath -Raw | ConvertFrom-Json -ErrorAction Stop }
+  try { $layout = Get-Content -LiteralPath $layoutPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop }
   catch { throw 'Invalid Edge Function layout metadata.' }
   if ($layout.format_version -ne 1 -or $layout.layout -ne 'isolated-bundles' -or
       $layout.functions -isnot [array]) {
@@ -429,7 +429,7 @@ function Set-BackupFunctionSourceConfig {
   $layout = Get-BackupFunctionLayout -Root $Root
   if ($null -eq $layout) { return $Config }
   $functions = @(ConvertFrom-SupabaseJsonArray `
-    -Text (Get-Content -LiteralPath (Join-Path $Root 'metadata/functions.json') -Raw) `
+    -Text (Get-Content -LiteralPath (Join-Path $Root 'metadata/functions.json') -Raw -Encoding UTF8) `
     -Description 'the backed-up Edge Function list')
   Assert-BackupFunctionLayout -Root $Root -Layout $layout -Functions $functions
   foreach ($item in @($layout.functions)) {
@@ -526,12 +526,29 @@ function Assert-BackupPayloadCompleteness {
   }
 }
 
+function Assert-BackupPathWithoutLinks {
+  param([string]$Path)
+  $current = [IO.Path]::GetFullPath($Path)
+  while ($current) {
+    if (Test-Path -LiteralPath $current) {
+      $entry = Get-Item -LiteralPath $current -Force
+      if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw '备份与暂存目录不能包含符号链接或目录联接，请使用实际目录。'
+      }
+    }
+    $parent = Split-Path -Parent $current
+    if ($parent -eq $current) { break }
+    $current = $parent
+  }
+}
+
 function Enter-BackupReadLease {
   param(
     [Parameter(Mandatory = $true)][string]$Root,
     [switch]$AllowPendingUpdate
   )
   $resolved = [IO.Path]::GetFullPath($Root).TrimEnd([char[]]'\/').ToUpperInvariant()
+  Assert-BackupPathWithoutLinks -Path $resolved
   if (-not $script:BackupMutexLeases) { $script:BackupMutexLeases = @{} }
   $sha = [Security.Cryptography.SHA256]::Create()
   try {
@@ -551,6 +568,8 @@ function Enter-BackupReadLease {
     $script:BackupMutexLeases[$name] = $mutex
   }
   if (-not $AllowPendingUpdate -and (Test-Path -LiteralPath "$resolved.update-work/transaction.json")) {
+    $held = $script:BackupMutexLeases[$name]
+    if ($held) { $held.ReleaseMutex(); $held.Dispose(); $script:BackupMutexLeases.Remove($name) }
     throw '备份更新尚未完成，请先运行更新恢复；当前备份不可用于校验、打包或恢复。'
   }
 }
@@ -618,7 +637,7 @@ function Assert-BackupManifest {
   }
   $functionMetadata = Join-Path $Root 'metadata/functions.json'
   $functions = @(ConvertFrom-SupabaseJsonArray `
-    -Text (Get-Content -LiteralPath $functionMetadata -Raw) `
+    -Text (Get-Content -LiteralPath $functionMetadata -Raw -Encoding UTF8) `
     -Description 'the backed-up Edge Function list')
   foreach ($function in $functions) {
     if ($function.slug -notmatch '^[a-z0-9][a-z0-9_-]*$' -or

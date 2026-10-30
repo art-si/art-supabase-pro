@@ -4,6 +4,7 @@ import type {
   OperationRun
 } from '../../types/supabase-operations'
 import { isBackupVerificationReport } from './operations-verification'
+import { isBackupUpdateReport } from './operations-update'
 
 export const OPERATIONS_PROJECT_REF = 'ckbftoopuyophiebamwy'
 const backupPath: OperationField = {
@@ -102,6 +103,43 @@ export const SUPABASE_OPERATIONS: SupabaseOperation[] = [
     risk: 'read',
     fields: [backupPath],
     stages: ['校验文件与清单']
+  },
+  {
+    id: 'previewBackupUpdate',
+    title: '检查远端变化',
+    description: '比较现有完整备份与来源，列出变化和跳过项；只检查，不替换备份。',
+    script: 'backup-supabase.ps1',
+    permission: 'SupabaseOperations:PreviewUpdate',
+    risk: 'read',
+    fields: [
+      { ...backupPath, key: 'UpdateBackupPath', label: '要更新的完整备份目录' },
+      {
+        key: 'DbPassword',
+        label: '来源数据库密码',
+        kind: 'secret',
+        required: true,
+        help: '用于只读比较。密码不进入更新计划或任务历史。'
+      }
+    ],
+    stages: ['校验原备份', '比较结构和表数据', '比较函数与附件', '生成更新计划']
+  },
+  {
+    id: 'updateBackup',
+    title: '更新已有备份',
+    description: '同一目录保留最新完整快照，只下载变化内容；先暂存校验，再归档并替换。',
+    script: 'backup-supabase.ps1',
+    permission: 'SupabaseOperations:UpdateBackup',
+    risk: 'local',
+    fields: [
+      { ...backupPath, key: 'UpdateBackupPath', label: '要更新的完整备份目录' },
+      { key: 'DbPassword', label: '来源数据库密码', kind: 'secret', required: true },
+      {
+        key: 'PlanId',
+        label: '更新计划编号（可选）',
+        help: '从检查结果准备更新时自动填写；留空会重新检查后更新。'
+      }
+    ],
+    stages: ['核对更新计划', '只下载变化内容', '校验暂存快照', '归档旧文件并提交']
   },
   {
     id: 'package',
@@ -228,7 +266,7 @@ export function findSupabaseOperation(id: unknown): SupabaseOperation | undefine
 export function operationNeedsInspectionAfterCancel(operation: SupabaseOperation): boolean {
   return (
     operation.risk === 'remote' ||
-    ['backup', 'resumeBackup', 'restoreLocal', 'resumeLocal'].includes(operation.id)
+    ['backup', 'resumeBackup', 'updateBackup', 'restoreLocal', 'resumeLocal'].includes(operation.id)
   )
 }
 export const OPERATION_STATUS_LABELS = {
@@ -272,6 +310,9 @@ export function isOperationRun(value: unknown): value is OperationRun {
     ) &&
     (run.verificationReport === undefined ||
       (run.operationId === 'verify' && isBackupVerificationReport(run.verificationReport))) &&
+    (run.updateReport === undefined ||
+      (['previewBackupUpdate', 'updateBackup'].includes(String(run.operationId)) &&
+        isBackupUpdateReport(run.updateReport))) &&
     (run.artifacts === undefined ||
       (Array.isArray(run.artifacts) &&
         run.artifacts.every(

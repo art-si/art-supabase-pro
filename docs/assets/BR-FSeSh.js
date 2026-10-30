@@ -1,1 +1,0 @@
-import{o as e}from"./C0FnF6B9.js";import{_ as t}from"./BSNxp16s.js";var n=e(t(),1);function r(e,t=new Date){if(!e)return``;let r=(0,n.default)(e),i=(0,n.default)(t);if(!r.isValid()||r.isAfter(i))return``;let a=i.diff(r,`month`);if(a<12)return`${a} 个月`;let o=Math.floor(a/12),s=a%12;return`${o} 年${s?` ${s} 个月`:``}`}export{r as t};

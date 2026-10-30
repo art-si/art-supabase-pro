@@ -1,0 +1,1 @@
+import{Ht as e,Qt as t,vn as n}from"./CMyQbSvq.js";import{t as r}from"./pT6VRTKI.js";var i=t({name:`MdmChangeManagement`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{"initial-view":`changes`}))}});export{i as default};

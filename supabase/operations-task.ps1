@@ -40,6 +40,7 @@ try {
   } else {
     $scripts = @{
       syncFunctions='sync-supabase-functions.ps1'; backup='backup-supabase.ps1'; resumeBackup='backup-supabase.ps1'
+      previewBackupUpdate='backup-supabase.ps1'; updateBackup='backup-supabase.ps1'
       verify='restore-local-supabase.ps1'; package='package-supabase-backup.ps1'; download='download-supabase-backup.ps1'
       restoreLocal='restore-local-supabase.ps1'; resumeLocal='restore-local-supabase.ps1'; restoreRemote='restore-supabase.ps1'
       publish='publish-supabase-backup.ps1'; setLocalLogin='set-local-login.ps1'
@@ -51,6 +52,8 @@ try {
       if ($env:SUPABASE_OPS_REPORT_PATH) { $parameters.VerificationReportPath = $env:SUPABASE_OPS_REPORT_PATH }
     }
     if ($Operation -eq 'resumeLocal') { $parameters.Resume = $true }
+    if ($Operation -eq 'previewBackupUpdate') { $parameters.PlanOnly = $true }
+    if ($Operation -eq 'updateBackup') { $parameters.ApplyUpdate = $true }
     & (Join-Path $PSScriptRoot $scripts[$Operation]) @parameters
   }
   exit 0
