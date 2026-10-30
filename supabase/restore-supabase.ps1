@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })][string]$BackupPath,
   [Parameter(Mandatory = $true)][ValidatePattern('^[a-z0-9]{20}$')][string]$TargetProjectRef,
@@ -89,7 +89,7 @@ function Invoke-PsqlRestore {
 
 $manifestPath = Join-Path $BackupPath 'manifest.json'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Invalid backup: manifest.json is missing.' }
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 Assert-BackupManifest -Root $BackupPath -Manifest $manifest -TargetProjectRef $TargetProjectRef
 if ($VerifyBackupOnly) {
   Write-Host "Backup verified: $BackupPath" -ForegroundColor Green
@@ -125,9 +125,9 @@ try {
   if (-not (Test-Path -LiteralPath $backupConfig -PathType Leaf)) { throw 'Backup config.toml is missing.' }
   $functionMetadataPath = Join-Path $BackupPath 'metadata/functions.json'
   $deployedFunctions = @(ConvertFrom-SupabaseJsonArray `
-    -Text (Get-Content -LiteralPath $functionMetadataPath -Raw) `
+    -Text (Get-Content -LiteralPath $functionMetadataPath -Raw -Encoding UTF8) `
     -Description 'the function deployment settings')
-  $configText = Set-BackupFunctionJwtConfig -Config (Get-Content -LiteralPath $backupConfig -Raw) -Functions $deployedFunctions
+  $configText = Set-BackupFunctionJwtConfig -Config (Get-Content -LiteralPath $backupConfig -Raw -Encoding UTF8) -Functions $deployedFunctions
   $configText = Set-BackupFunctionSourceConfig -Config $configText -Root $BackupPath
   [IO.File]::WriteAllText((Join-Path $stage 'supabase\config.toml'), $configText, [Text.UTF8Encoding]::new($false))
   Push-Location $stage
@@ -164,7 +164,7 @@ try {
     $realtimePath = Join-Path $BackupPath 'metadata\realtime-publication-tables.json'
     if (Test-Path $realtimePath) {
       $realtimeTables = @(ConvertFrom-SupabaseJsonArray `
-        -Text (Get-Content -Raw $realtimePath) `
+        -Text (Get-Content -Raw -Encoding UTF8 $realtimePath) `
         -Description 'the backed-up Realtime publication list')
       $existingOutput = Invoke-SupabaseQuiet @('db', 'query', '--linked', '--agent=no', '--output', 'json', "select schemaname, tablename from pg_publication_tables where pubname = 'supabase_realtime'")
       if (-not $existingOutput.Succeeded) { throw 'Unable to inspect the target Realtime publication.' }
@@ -211,7 +211,7 @@ try {
     $functionsPath = Join-Path $BackupPath 'functions'
     if ((Test-Path $functionsPath) -and (Test-Path $functionMetadataPath)) {
       Copy-Item -LiteralPath $functionsPath -Destination (Join-Path $stage 'supabase\functions') -Recurse -Force
-      $functions = Get-Content -Raw $functionMetadataPath | ConvertFrom-Json
+      $functions = Get-Content -Raw -Encoding UTF8 $functionMetadataPath | ConvertFrom-Json
       foreach ($function in $functions) {
         if ($function.slug -notmatch '^[a-z0-9][a-z0-9_-]*$') { throw 'Invalid Edge Function slug in backup metadata.' }
         $arguments = @('functions', 'deploy', $function.slug, '--project-ref', $TargetProjectRef, '--use-api')

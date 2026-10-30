@@ -1,4 +1,8 @@
-﻿function Get-BackupDumpDefinitions {
+﻿if (-not (Get-Command Assert-BackupPathWithoutLinks -ErrorAction SilentlyContinue)) {
+  . (Join-Path $PSScriptRoot 'transfer-common.ps1')
+}
+
+function Get-BackupDumpDefinitions {
   @(
     @{ Name = 'roles.sql'; Stage = '导出数据库角色'; Arguments = @('--role-only') },
     @{ Name = 'schema.sql'; Stage = '导出数据库结构'; Arguments = @('--keep-comments') },
@@ -7,22 +11,6 @@
     @{ Name = 'migration-history-data.sql'; Stage = '导出迁移历史数据'; Arguments = @('--schema', 'supabase_migrations', '--data-only', '--use-copy') },
     @{ Name = 'managed-schema-snapshot.sql'; Stage = '导出托管结构参考'; Arguments = @('--schema', 'auth,storage', '--keep-comments') }
   )
-}
-
-function Assert-BackupPathWithoutLinks {
-  param([string]$Path)
-  $current = [IO.Path]::GetFullPath($Path)
-  while ($current) {
-    if (Test-Path -LiteralPath $current) {
-      $entry = Get-Item -LiteralPath $current -Force
-      if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw '备份与暂存目录不能包含符号链接或目录联接，请使用实际目录。'
-      }
-    }
-    $parent = Split-Path -Parent $current
-    if ($parent -eq $current) { break }
-    $current = $parent
-  }
 }
 
 function Test-BackupDumpComplete {
@@ -58,7 +46,7 @@ function Read-BackupProgress {
   if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
     throw '无法安全续跑：缺少备份来源和阶段记录。请先从原运维任务核对目录，不要混用其他来源的导出。'
   }
-  try { $saved = Get-Content -LiteralPath $target -Raw | ConvertFrom-Json }
+  try { $saved = Get-Content -LiteralPath $target -Raw -Encoding UTF8 | ConvertFrom-Json }
   catch { throw '备份阶段记录无法读取，请保留已有文件并核对目录。' }
   if ($saved.format_version -ne 1 -or $saved.project_ref -ne $ProjectRef -or -not $saved.files) {
     throw '备份来源项目或阶段记录不匹配，不能混合续跑。'
@@ -221,7 +209,7 @@ function Read-BackupFunctionProgress {
   $path = Join-Path $BackupPath 'metadata/functions-progress.json'
   Assert-BackupPathWithoutLinks -Path $path
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
-  try { $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json }
+  try { $record = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json }
   catch { Write-Warning '函数阶段记录无法读取，本次将重新下载函数。'; return $null }
   if ($record.format_version -ne 1 -or $record.project_ref -ne $ProjectRef -or $record.metadata_sha256 -ne $MetadataHash) { return $null }
   if ([string]::IsNullOrWhiteSpace($record.source_path)) { return $null }

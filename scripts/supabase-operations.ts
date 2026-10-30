@@ -97,7 +97,9 @@ async function externalActivity() {
   if (
     runner.busy ||
     !runner.runs.some(
-      (run) => run.status === 'interrupted' && ['backup', 'resumeBackup'].includes(run.operationId)
+      (run) =>
+        run.status === 'interrupted' &&
+        ['backup', 'resumeBackup', 'updateBackup'].includes(run.operationId)
     )
   )
     return undefined
@@ -181,6 +183,24 @@ const server = createServer(async (request, response) => {
       const selectedId = requestUrl.searchParams.get('selected') || runner.runs[0]?.id
       const selectedRun = runner.runs.find((run) => run.id === selectedId)
       let mayReadVerificationReport = false
+      let mayReadUpdateReport = false
+      if (
+        selectedRun &&
+        ['previewBackupUpdate', 'updateBackup'].includes(selectedRun.operationId)
+      ) {
+        try {
+          await authorize(
+            request,
+            selectedRun.operationId === 'previewBackupUpdate'
+              ? 'SupabaseOperations:PreviewUpdate'
+              : 'SupabaseOperations:UpdateBackup',
+            true
+          )
+          mayReadUpdateReport = true
+        } catch {
+          /* Read permission only returns the ordinary task summary. */
+        }
+      }
       if (selectedRun?.operationId === 'verify') {
         try {
           await authorize(request, 'SupabaseOperations:Verify', true)
@@ -193,7 +213,18 @@ const server = createServer(async (request, response) => {
         projectRef: OPERATIONS_PROJECT_REF,
         runs: runner.runs.slice(0, 50).map((run) => {
           if (run.id !== selectedId)
-            return { ...run, logs: [], artifacts: undefined, verificationReport: undefined }
+            return {
+              ...run,
+              logs: [],
+              artifacts: undefined,
+              verificationReport: undefined,
+              updateReport: undefined
+            }
+          if (
+            ['previewBackupUpdate', 'updateBackup'].includes(run.operationId) &&
+            !mayReadUpdateReport
+          )
+            return { ...run, updateReport: undefined, artifacts: undefined, logs: [] }
           if (run.operationId === 'verify' && !mayReadVerificationReport)
             return {
               ...run,
@@ -232,7 +263,8 @@ const server = createServer(async (request, response) => {
       if (
         !runner.runs.some(
           (run) =>
-            run.status === 'interrupted' && ['backup', 'resumeBackup'].includes(run.operationId)
+            run.status === 'interrupted' &&
+            ['backup', 'resumeBackup', 'updateBackup'].includes(run.operationId)
         )
       )
         throw new Error('没有需要处理的中断备份，请刷新任务状态。')

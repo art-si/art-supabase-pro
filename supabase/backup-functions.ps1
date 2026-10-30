@@ -68,7 +68,7 @@ function Read-BackupFunctionCheckpoint {
       $Function.ezbr_sha256 -notmatch '^[a-fA-F0-9]{64}$') { return $null }
   $path = Get-BackupFunctionCheckpointPath -BackupPath $BackupPath -Function $Function
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
-  try { $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json }
+  try { $record = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json }
   catch { Write-Warning "函数 $($Function.slug) 的进度记录损坏，将只重新下载该函数。"; return $null }
   if ($record.format_version -ne 1 -or $record.project_ref -ne $ProjectRef -or
       $record.slug -ne $Function.slug -or $record.identity -ne (Get-BackupFunctionIdentity -Function $Function)) { return $null }

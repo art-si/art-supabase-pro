@@ -1,7 +1,11 @@
 import type { OperationLog, OperationRun } from '../../types/supabase-operations'
 
 export function getOperationBackupPath(run: OperationRun | null): string | undefined {
-  if (!run || !['backup', 'resumeBackup'].includes(run.operationId)) return undefined
+  if (!run) return undefined
+  for (const key of ['UpdateBackupPath','ResumeBackupPath','BackupPath']) {
+    if (typeof run.parameters[key] === 'string') return String(run.parameters[key])
+  }
+  if (!['backup', 'resumeBackup'].includes(run.operationId)) return undefined
   if (typeof run.parameters.ResumeBackupPath === 'string') return run.parameters.ResumeBackupPath
   for (const line of [...run.logs].reverse()) {
     const explicit = line.message.match(/^备份目录[:：]\s*(.+)$/)?.[1]

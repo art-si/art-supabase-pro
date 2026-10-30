@@ -376,7 +376,28 @@
                         @click="stopOldExport"
                         >停止旧导出</ElButton
                       >
-                      <template v-if="!workspace.externalActivity.value && !workspace.busy.value">
+                      <template
+                        v-if="
+                          !workspace.externalActivity.value &&
+                          !workspace.busy.value &&
+                          workspace.selectedRun.value.operationId === 'updateBackup'
+                        "
+                      >
+                        <ElButton
+                          v-auth="'SupabaseOperations:PreviewUpdate'"
+                          size="small"
+                          type="primary"
+                          @click="
+                            prepareBackupCheck(
+                              getOperationBackupPath(workspace.selectedRun.value) || ''
+                            )
+                          "
+                          >重新检查并恢复更新</ElButton
+                        >
+                      </template>
+                      <template
+                        v-else-if="!workspace.externalActivity.value && !workspace.busy.value"
+                      >
                         <ElButton
                           v-auth="'SupabaseOperations:Backup'"
                           size="small"
@@ -451,6 +472,19 @@
                     :run-id="workspace.selectedRun.value.id"
                     @prepare-retry="prepareRetry"
                   />
+                  <OperationsUpdateReport
+                    v-if="
+                      ['previewBackupUpdate', 'updateBackup'].includes(
+                        workspace.selectedRun.value.operationId
+                      )
+                    "
+                    :key="workspace.selectedRun.value.id"
+                    :report="workspace.selectedRun.value.updateReport"
+                    :running="running"
+                    :connected="workspace.connected.value"
+                    @prepare-update="prepareBackupUpdate"
+                    @prepare-check="prepareBackupCheck"
+                  />
                   <OperationsTerminalPanel
                     :logs="workspace.selectedRun.value.logs"
                     :run-id="workspace.selectedRun.value.id"
@@ -489,6 +523,8 @@
   import { focusFirstInvalidFormField } from '@/utils/form/validation'
   import OperationsTerminalPanel from './modules/operations-terminal-panel.vue'
   import OperationsVerificationReport from './modules/operations-verification-report.vue'
+  import OperationsUpdateReport from './modules/operations-update-report.vue'
+  import type { BackupUpdateReport } from '@/types/supabase-operations'
   import { validateOperationInput } from '@/utils/supabase/operations-input'
   import { getOperationBackupPath } from '@/utils/supabase/operations-log'
   import { useWorkspaceFocus } from '@/hooks/core/useWorkspaceFocus'
@@ -535,7 +571,12 @@
   const backupOperation = findSupabaseOperation('backup') || SUPABASE_OPERATIONS[0]
   const operationList = [
     backupOperation,
-    ...SUPABASE_OPERATIONS.filter((item) => item.id !== backupOperation.id)
+    ...SUPABASE_OPERATIONS.filter((item) =>
+      ['previewBackupUpdate', 'updateBackup'].includes(item.id)
+    ),
+    ...SUPABASE_OPERATIONS.filter(
+      (item) => ![backupOperation.id, 'previewBackupUpdate', 'updateBackup'].includes(item.id)
+    )
   ]
   const selectedOperation = ref(backupOperation)
   const selectedArtifacts = computed(() => {
@@ -606,6 +647,8 @@
         syncFunctions: hasAuth('SupabaseOperations:SyncFunctions'),
         backup: hasAuth('SupabaseOperations:Backup'),
         resumeBackup: hasAuth('SupabaseOperations:ResumeBackup'),
+        previewBackupUpdate: hasAuth('SupabaseOperations:PreviewUpdate'),
+        updateBackup: hasAuth('SupabaseOperations:UpdateBackup'),
         verify: hasAuth('SupabaseOperations:Verify'),
         package: hasAuth('SupabaseOperations:Package'),
         download: hasAuth('SupabaseOperations:Download'),
@@ -653,6 +696,12 @@
       return {
         title: '先恢复 Docker 连接，再开始下一次备份',
         description: `${activity.message} 系统每 5 秒自动重试，也可点“重新核对状态”；确认旧导出不再运行后，会显示重新备份和续跑入口。`
+      }
+    if (workspace.selectedRun.value?.operationId === 'updateBackup')
+      return {
+        title: '更新已中断，可先恢复原快照再重新比较',
+        description:
+          '使用同一个备份目录重新检查。更新命令会先回滚未完成的文件提交；旧导出确认停止前不会重复启动。以下按钮仅准备表单。'
       }
     return {
       title: '已确认没有旧数据库导出运行，可以选择下一步',
@@ -722,6 +771,24 @@
       const backupPath = getOperationBackupPath(workspace.selectedRun.value)
       if (backupPath) parameters.value.ResumeBackupPath = backupPath
     }
+    if (['previewBackupUpdate', 'updateBackup'].includes(operation.id)) {
+      const backupPath = getOperationBackupPath(workspace.selectedRun.value)
+      if (backupPath) parameters.value.UpdateBackupPath = backupPath
+    }
+  }
+  function prepareBackupUpdate(report: BackupUpdateReport): void {
+    const operation = findSupabaseOperation('updateBackup')
+    if (!operation) return
+    chooseOperation(operation)
+    parameters.value.UpdateBackupPath = report.backupPath
+    parameters.value.PlanId = report.planId
+    ElMessage.info('更新计划已填入，请填写来源密码并核对后执行。')
+  }
+  function prepareBackupCheck(backupPath: string): void {
+    const operation = findSupabaseOperation('previewBackupUpdate')
+    if (!operation) return
+    chooseOperation(operation)
+    parameters.value.UpdateBackupPath = backupPath
   }
   async function execute(): Promise<void> {
     if (workspace.submitting.value || workspace.connecting.value) return

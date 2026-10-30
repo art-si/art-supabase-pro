@@ -77,6 +77,13 @@ export function validateOperationInput(
   }
   if (parameters.Email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(parameters.Email)))
     throw new Error('请输入有效的账号邮箱。')
+  if (
+    parameters.PlanId &&
+    !/^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(
+      String(parameters.PlanId)
+    )
+  )
+    throw new Error('更新计划编号无效，请从检查结果重新准备更新。')
   if (operation.id === 'setLocalLogin' && String(parameters.Password || '').length < 8)
     throw new Error('本地登录密码至少需要 8 个字符。')
   return parameters

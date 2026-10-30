@@ -63,7 +63,8 @@ export function parseCliArray(text: string): unknown[] {
   if (start < 0 || end < start) throw new Error('来源命令未返回有效清单。')
   const value: unknown = JSON.parse(text.slice(start, end + 1))
   if (!Array.isArray(value)) throw new Error('来源命令清单格式无效。')
-  if (value.length === 1 && isObjectRecord(value[0]) && Array.isArray(value[0].rows)) return value[0].rows
+  if (value.length === 1 && isObjectRecord(value[0]) && Array.isArray(value[0].rows))
+    return value[0].rows
   return value
 }
 
@@ -163,12 +164,12 @@ export async function readSourceCatalog(sql: BackupSourceSql): Promise<SourceCat
       union all select null,'description',d.classoid::text||':'||d.objoid::text||':'||d.objsubid::text,to_jsonb(d)
         from pg_description d
     ) select
-      md5(coalesce(jsonb_agg(jsonb_build_array(kind,key,value) order by kind,key)
-        filter(where nspname not in ('auth','storage','supabase_migrations') or nspname is null),'[]'::jsonb)::text) schema,
-      md5(coalesce(jsonb_agg(jsonb_build_array(kind,key,value) order by kind,key)
-        filter(where nspname in ('auth','storage') or nspname is null),'[]'::jsonb)::text) managed,
-      md5(coalesce(jsonb_agg(jsonb_build_array(kind,key,value) order by kind,key)
-        filter(where nspname='supabase_migrations'),'[]'::jsonb)::text) migration,
+      md5(coalesce(string_agg(kind||':'||key||':'||md5(value::text),E'\\n' order by kind,key)
+        filter(where nspname not in ('auth','storage','supabase_migrations') or nspname is null),'')) schema,
+      md5(coalesce(string_agg(kind||':'||key||':'||md5(value::text),E'\\n' order by kind,key)
+        filter(where nspname in ('auth','storage') or nspname is null),'')) managed,
+      md5(coalesce(string_agg(kind||':'||key||':'||md5(value::text),E'\\n' order by kind,key)
+        filter(where nspname='supabase_migrations'),'')) migration,
       (select md5(coalesce(jsonb_agg(to_jsonb(r) - 'rolpassword' order by rolname),'[]'::jsonb)::text)
         from pg_roles r) roles from objects`)
   const row: unknown = rows[0]
@@ -195,8 +196,25 @@ export async function readDataSchemas(sql: BackupSourceSql, existing: string[]):
   schemas.delete('supabase_migrations')
   // Supabase service state is not a project-transfer dataset. Existing COPY
   // schemas are retained explicitly, but newly discovered service schemas skip.
-  const serviceSchemas = new Set(['_analytics', '_realtime', 'realtime', 'net', 'cron', 'vault', 'supabase_functions', 'supabase_storage_admin', 'extensions', 'graphql', 'graphql_public', 'pgbouncer', 'pgsodium', 'pgsodium_masks'])
-  return [...schemas].filter((schema) => existing.includes(schema) || !serviceSchemas.has(schema)).sort()
+  const serviceSchemas = new Set([
+    '_analytics',
+    '_realtime',
+    'realtime',
+    'net',
+    'cron',
+    'vault',
+    'supabase_functions',
+    'supabase_storage_admin',
+    'extensions',
+    'graphql',
+    'graphql_public',
+    'pgbouncer',
+    'pgsodium',
+    'pgsodium_masks'
+  ])
+  return [...schemas]
+    .filter((schema) => existing.includes(schema) || !serviceSchemas.has(schema))
+    .sort()
 }
 
 export async function readStorageObjects(sql: BackupSourceSql): Promise<StorageObject[]> {
@@ -207,20 +225,75 @@ export async function readStorageObjects(sql: BackupSourceSql): Promise<StorageO
     from storage.objects order by bucket_id,name`)
   return rows.map((row) => {
     if (
-      typeof row.id !== 'string' || typeof row.bucket_id !== 'string' ||
+      typeof row.id !== 'string' ||
+      typeof row.bucket_id !== 'string' ||
       !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(row.bucket_id) ||
-      typeof row.name !== 'string' || !row.name ||
-      row.name.split('/').some((part: string) => !part || part === '.' || part === '..' || part.includes('\\') || part.includes(':')) ||
-      !Number.isSafeInteger(Number(row.size)) || Number(row.size) < 0
-    ) throw new Error('Storage 对象清单包含无法安全保存的路径或大小。')
-    const optional = (key: string) => typeof row[key] === 'string' ? String(row[key]) : null
-    return { id: row.id, bucket_id: row.bucket_id, name: row.name, size: Number(row.size), version: optional('version'), etag: optional('etag'), updated_at: optional('updated_at'), content_type: optional('content_type'), cache_control: optional('cache_control') }
+      typeof row.name !== 'string' ||
+      !row.name ||
+      row.name
+        .split('/')
+        .some(
+          (part: string) =>
+            !part || part === '.' || part === '..' || part.includes('\\') || part.includes(':')
+        ) ||
+      !Number.isSafeInteger(Number(row.size)) ||
+      Number(row.size) < 0
+    )
+      throw new Error('Storage 对象清单包含无法安全保存的路径或大小。')
+    const optional = (key: string) => (typeof row[key] === 'string' ? String(row[key]) : null)
+    return {
+      id: row.id,
+      bucket_id: row.bucket_id,
+      name: row.name,
+      size: Number(row.size),
+      version: optional('version'),
+      etag: optional('etag'),
+      updated_at: optional('updated_at'),
+      content_type: optional('content_type'),
+      cache_control: optional('cache_control')
+    }
   })
 }
 
 export function normalizedDump(text: string): string {
-  return text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  return text
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
     .replace(/^\\(?:un)?restrict\s+\S+\n/gm, '')
     .replace(/^-- (?:Started|Completed) on .+\n/gm, '')
-    .replace(/^-- Dumped (?:from database|by pg_dump) version .+\n/gm, '').trim()
+    .replace(/^-- Dumped (?:from database|by pg_dump) version .+\n/gm, '')
+    .trim()
+}
+
+/** Only project policies and triggers backed by project functions. Managed
+ * Supabase base tables/functions are retained in the reference dump, not replayed. */
+export async function readManagedProjectSql(sql: BackupSourceSql): Promise<string> {
+  const rows = await sql.unsafe(`
+    select 'policy' kind,n.nspname||'.'||c.relname||'.'||p.polname key,
+      format('DROP POLICY IF EXISTS %I ON %I.%I;',p.polname,n.nspname,c.relname)||E'\\n'||
+      format('CREATE POLICY %I ON %I.%I AS %s FOR %s TO %s%s%s;',p.polname,n.nspname,c.relname,
+        case when p.polpermissive then 'PERMISSIVE' else 'RESTRICTIVE' end,
+        case p.polcmd when '*' then 'ALL' when 'r' then 'SELECT' when 'a' then 'INSERT' when 'w' then 'UPDATE' when 'd' then 'DELETE' end,
+        (select string_agg(case when r.role_id=0 then 'PUBLIC' else quote_ident(pr.rolname) end,', ' order by r.ordinality)
+          from unnest(p.polroles) with ordinality r(role_id,ordinality) left join pg_roles pr on pr.oid=r.role_id),
+        case when p.polqual is not null then ' USING ('||pg_get_expr(p.polqual,p.polrelid)||')' else '' end,
+        case when p.polwithcheck is not null then ' WITH CHECK ('||pg_get_expr(p.polwithcheck,p.polrelid)||')' else '' end) ddl
+    from pg_policy p join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname in ('auth','storage')
+    union all
+    select 'trigger',n.nspname||'.'||c.relname||'.'||t.tgname,
+      format('DROP TRIGGER IF EXISTS %I ON %I.%I;',t.tgname,n.nspname,c.relname)||E'\\n'||pg_get_triggerdef(t.oid,true)||';'
+    from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace
+      join pg_proc p on p.oid=t.tgfoid join pg_namespace fn on fn.oid=p.pronamespace
+    where n.nspname in ('auth','storage') and fn.nspname in ('public','app_private') and not t.tgisinternal
+    order by kind,key`)
+  const statements = rows.map((row) => {
+    if (typeof row.ddl !== 'string') throw new Error('托管 schema 项目策略读取失败。')
+    return row.ddl
+  })
+  return (
+    '-- Project-owned policies and triggers in managed schemas.\n-- Review managed-schema-snapshot.sql for platform base-schema differences.\n\n' +
+    statements.join('\n\n') +
+    '\n'
+  )
 }
