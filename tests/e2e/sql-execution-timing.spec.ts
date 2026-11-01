@@ -45,8 +45,34 @@ const success = (label: string, duration = true): Record<string, unknown> => ({
 const runButton = (page: Page) => page.getByRole('button', { name: '执行 SQL', exact: true })
 const cancelButton = (page: Page) => page.getByRole('button', { name: '取消查询', exact: true })
 const waitLabel = (page: Page) => page.locator('.sql-execution-wait')
-const browserDuration = (page: Page) => page.getByText(/^浏览器总等待 [\d.]+ (?:ms|s)$/)
-const serverDuration = (page: Page) => page.getByText(/^执行端 [\d.]+ (?:ms|s)$/)
+const browserDuration = (page: Page) => page.locator('.sql-execution-browser')
+const serverDuration = (page: Page) => page.locator('.sql-execution-server')
+
+async function expectHeaderMetrics(page: Page, singleLine = false) {
+  const header = page.locator('.result-section > .tabs-header')
+  await expect(header.locator('.execution-info')).toHaveCount(1)
+  await expect(page.locator('.result-section > .execution-info')).toHaveCount(0)
+  const headerBox = await header.boundingBox()
+  const metricsBox = await header.locator('.execution-info').boundingBox()
+  expect(headerBox).not.toBeNull()
+  expect(metricsBox).not.toBeNull()
+  if (!headerBox || !metricsBox) throw new Error('Execution header geometry is unavailable')
+  if (singleLine) expect(headerBox.height).toBeCloseTo(40, 0)
+  expect(metricsBox.y).toBeGreaterThanOrEqual(headerBox.y)
+  expect(metricsBox.y + metricsBox.height).toBeLessThanOrEqual(headerBox.y + headerBox.height)
+  expect(await header.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
+    true
+  )
+  for (const button of await header.locator('.tabs-actions button:visible').all()) {
+    const box = await button.boundingBox()
+    expect(box).not.toBeNull()
+    if (!box) throw new Error('A visible execution action has no geometry')
+    expect(box.x).toBeGreaterThanOrEqual(headerBox.x - 1)
+    expect(box.x + box.width).toBeLessThanOrEqual(headerBox.x + headerBox.width + 1)
+    expect(box.y).toBeGreaterThanOrEqual(headerBox.y - 1)
+    expect(box.y + box.height).toBeLessThanOrEqual(headerBox.y + headerBox.height + 1)
+  }
+}
 
 async function prepare(page: Page, project: string, replies: Reply[], cancelReplies: Reply[] = []) {
   page.setDefaultTimeout(15_000)
@@ -113,7 +139,7 @@ async function prepare(page: Page, project: string, replies: Reply[], cancelRepl
 
 async function expectWaiting(page: Page, minimumSeconds: number, timeoutSeconds = 10) {
   await expect(page.locator('.execution-info')).toContainText(
-    new RegExp(`本次时限 ${timeoutSeconds}(?:\\.0+)? s`)
+    new RegExp(`本次时限\\s+${timeoutSeconds}(?:\\.0+)? s`)
   )
   await expect
     .poll(async () => Number((await waitLabel(page).textContent())?.match(/已等待 (\d+) 秒/)?.[1]))
@@ -125,8 +151,8 @@ async function expectWaiting(page: Page, minimumSeconds: number, timeoutSeconds 
 
 async function expectFrozenTotal(page: Page, minimumSeconds: number) {
   await expect(browserDuration(page)).toBeVisible()
-  const terminalText = await browserDuration(page).innerText()
-  const match = terminalText.match(/([\d.]+) (ms|s)$/)
+  const terminalText = (await browserDuration(page).textContent()) || ''
+  const match = terminalText.trim().match(/([\d.]+) (ms|s)$/)
   expect(match).not.toBeNull()
   const seconds = Number(match?.[1]) / (match?.[2] === 'ms' ? 1000 : 1)
   expect(seconds).toBeGreaterThanOrEqual(minimumSeconds)
@@ -145,6 +171,7 @@ async function changeScope(page: Page, scopes: string[]) {
 test('delayed success, error and missing server duration retain distinct, frozen timing', async ({
   page
 }, info) => {
+  await page.setViewportSize({ width: 1024, height: 900 })
   const gates = [deferred(), deferred(), deferred()]
   const state = await prepare(page, info.project.name, [
     { wait: gates[0].wait, body: success('timed-success') },
@@ -160,6 +187,19 @@ test('delayed success, error and missing server duration retain distinct, frozen
     },
     { wait: gates[2].wait, body: success('no-server-duration', false) }
   ])
+  const draftStatus = page.locator('.sql-editor-tools [role="status"]')
+  await expect(draftStatus).toHaveAccessibleName('数据库范围 · 草稿自动保存')
+  await draftStatus.focus()
+  await expect(draftStatus).toBeFocused()
+  const draftBox = await draftStatus.boundingBox()
+  expect(draftBox?.height).toBe(26)
+  expect(draftBox?.width).toBe(26)
+  const focusOutline = await draftStatus.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth) }
+  })
+  expect(focusOutline.style).not.toBe('none')
+  expect(focusOutline.width).toBeGreaterThanOrEqual(2)
   for (let index = 0; index < gates.length; index++) {
     await runButton(page).click()
     await expect.poll(() => state.requests.length).toBe(index + 1)
@@ -167,6 +207,7 @@ test('delayed success, error and missing server duration retain distinct, frozen
     await expect(browserDuration(page)).toHaveCount(0)
     await page.clock.fastForward(2100)
     await expectWaiting(page, 2)
+    await expectHeaderMetrics(page, true)
     const live = page.locator('.execution-info [aria-live="polite"]')
     await expect(live).toContainText('执行中')
     await expect(live).not.toContainText('已等待')
@@ -185,10 +226,45 @@ test('delayed success, error and missing server duration retain distinct, frozen
     expect(title).toMatch(/网络|传输/)
     expect(title).toMatch(/客户端|浏览器/)
     await expectFrozenTotal(page, 2)
+    await expectHeaderMetrics(page, true)
   }
   expect(state.requests.map((request) => request.timeoutMs)).toEqual([10000, 10000, 10000])
   expect(state.errors).toEqual([])
   await page.screenshot({ path: info.outputPath('terminal-no-server-duration.png') })
+})
+
+test('45 rows and full execution durations stay in the same compact result header', async ({
+  page
+}, info) => {
+  await page.setViewportSize({ width: 1024, height: 900 })
+  const gate = deferred()
+  const state = await prepare(page, info.project.name, [
+    {
+      wait: gate.wait,
+      body: {
+        ...success('compact-header'),
+        rows: Array.from({ length: 45 }, (_, index) => ({ value: `示例结果 ${index + 1}` })),
+        row_count: 45,
+        duration_ms: 8620
+      }
+    }
+  ])
+  await runButton(page).click()
+  await expect.poll(() => state.requests.length).toBe(1)
+  await page.clock.fastForward(11_100)
+  await expectWaiting(page, 11)
+  await expectHeaderMetrics(page, true)
+  gate.release()
+  await expect(runButton(page)).toBeEnabled()
+  await expect(page.locator('.execution-info')).toContainText('返回 45 行')
+  await expect(serverDuration(page)).toHaveText('执行端 8.62 s')
+  await expectFrozenTotal(page, 11)
+  await expectHeaderMetrics(page, true)
+  await page.locator('.result-section > .tabs-header').screenshot({
+    path: info.outputPath('compact-result-header-45-rows.png'),
+    animations: 'disabled'
+  })
+  expect(state.errors).toEqual([])
 })
 
 for (const retry of [false, true]) {
@@ -539,6 +615,7 @@ test('390px timing stays outside live announcements, wraps without overflow and 
   await expect.poll(() => state.requests.length).toBe(1)
   await page.clock.fastForward(12_100)
   await expectWaiting(page, 12)
+  await expectHeaderMetrics(page)
   const live = page.locator('.execution-info [aria-live="polite"]')
   await expect(live).toHaveText('执行中…')
   await page.clock.fastForward(2100)
@@ -556,6 +633,7 @@ test('390px timing stays outside live announcements, wraps without overflow and 
   gate.release()
   await expect(runButton(page)).toBeEnabled()
   await expect(browserDuration(page)).toBeVisible()
+  await expectHeaderMetrics(page)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true
   )

@@ -275,7 +275,7 @@
       }
 
       &.has-replacement-state .art-section-card__body {
-        padding: 0;
+        padding: 0 0 var(--art-scroll-viewport-inset);
       }
     }
 
@@ -318,7 +318,7 @@
         }
 
         &.has-replacement-state .art-section-card__body {
-          padding: 0;
+          padding: 0 0 var(--art-scroll-viewport-inset);
         }
       }
     }

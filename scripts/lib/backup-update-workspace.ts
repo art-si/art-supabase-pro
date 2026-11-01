@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, lstat, mkdir, readdir, rename, rm } from 'node:fs/promises'
+import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
+import dayjs from 'dayjs'
+import { escapeRegExp } from 'lodash-es'
 import { UPDATE_REPOSITORY_ROOT, exists, fileHash, readJson, writeJson } from './backup-update-io'
 import { isObjectRecord } from '../../src/utils/record'
 
@@ -176,6 +178,84 @@ export async function acquireBackupUpdateSession(backupPath: string): Promise<()
   return acquireMutex(path.resolve(backupPath) + '.update-session')
 }
 
+export async function refreshBackupDirectoryTimestamp(
+  backupPath: string,
+  expectedManifestSha256: string,
+  completedAt = new Date()
+): Promise<{ backupPath: string; warnings: string[] }> {
+  const root = path.resolve(backupPath)
+  const parent = path.dirname(root)
+  const timestamp = dayjs(completedAt).format('YYYYMMDD-HHmmss')
+  if (parent === root || !dayjs(completedAt).isValid() || !HASH.test(expectedManifestSha256))
+    throw new Error('备份目录或更新时间无效，无法刷新目录名称。')
+  const releaseSource = await acquireMutex(root)
+  try {
+    if (await exists(path.join(root + '.update-work', 'transaction.json')))
+      throw new Error('备份文件提交尚未完成，请先恢复更新，再刷新目录时间。')
+    await validateSnapshot(root, expectedManifestSha256)
+    const readme = (await exists(path.join(root, 'README.md')))
+      ? await readFile(path.join(root, 'README.md'), 'utf8')
+      : undefined
+    for (let suffix = 0; suffix < 100; suffix++) {
+      const target = path.resolve(parent, timestamp + (suffix ? `-${suffix}` : ''))
+      // A directory move must stay within the verified backup parent on Windows.
+      if (path.dirname(target) !== parent) throw new Error('更新时间目录超出备份父目录。')
+      if (target.toLowerCase() === root.toLowerCase()) return { backupPath: root, warnings: [] }
+      const reserved = [
+        target,
+        target + '.zip',
+        target + '.history',
+        target + '.update-work',
+        target + '.incomplete'
+      ]
+      if ((await Promise.all(reserved.map(exists))).some(Boolean)) continue
+      await noLinks(target)
+      const releaseSession = await acquireBackupUpdateSession(target)
+      try {
+        const releaseTarget = await acquireMutex(target)
+        try {
+          if ((await Promise.all(reserved.map(exists))).some(Boolean)) continue
+          try {
+            await rename(root, target)
+          } catch (cause) {
+            throw new Error(
+              '完整备份已校验，但目录时间更新失败；请关闭占用目录的程序后重试，备份仍在原路径。',
+              { cause }
+            )
+          }
+          const warnings: string[] = []
+          if (readme !== undefined) {
+            try {
+              const updated = readme
+                .replace(
+                  /^(\uFEFF?)# Supabase backup .+$/m,
+                  `$1# Supabase backup ${path.basename(target)}`
+                )
+                .replace(new RegExp(escapeRegExp(root), 'gi'), () => target)
+                .replace(new RegExp(escapeRegExp(root.split(path.sep).join('/')), 'gi'), () =>
+                  target.split(path.sep).join('/')
+                )
+              await writeFile(path.join(target, 'README.md'), updated, 'utf8')
+            } catch {
+              warnings.push(
+                '目录时间已更新，但备份 README 中的路径未同步；请以执行结果中的实际备份目录为准。'
+              )
+            }
+          }
+          return { backupPath: target, warnings }
+        } finally {
+          await releaseTarget()
+        }
+      } finally {
+        await releaseSession()
+      }
+    }
+    throw new Error('当前时间的备份目录名称均已占用，请稍后重试。')
+  } finally {
+    await releaseSource()
+  }
+}
+
 export async function createBackupUpdateWorkspace(
   backupPath: string,
   planId: string
@@ -226,7 +306,11 @@ export async function createBackupUpdateWorkspace(
   }
 }
 
-async function atomicCopy(source: string, destination: string,tag= randomUUID().slice(0,8)): Promise<void> {
+async function atomicCopy(
+  source: string,
+  destination: string,
+  tag = randomUUID().slice(0, 8)
+): Promise<void> {
   await noLinks(destination)
   await mkdir(path.dirname(destination), { recursive: true })
   const temporary = `${destination}.update-${tag}.tmp`
@@ -263,8 +347,9 @@ function readJournal(value: unknown, root: string): Journal {
     !Array.isArray(value.oldFiles) ||
     !Array.isArray(value.changed) ||
     !Array.isArray(value.additions) ||
-    !Array.isArray(value.removals)
-    ||typeof value.nonce!=='string'||!/^[a-f\d]{12}$/.test(value.nonce)
+    !Array.isArray(value.removals) ||
+    typeof value.nonce !== 'string' ||
+    !/^[a-f\d]{12}$/.test(value.nonce)
   )
     throw new Error('更新恢复记录无效，请保留历史归档并人工核对。')
   const oldManifest = {
@@ -284,8 +369,8 @@ function readJournal(value: unknown, root: string): Journal {
     oldFiles: oldManifest.files,
     changed: strings(value.changed),
     additions: strings(value.additions),
-    removals: strings(value.removals)
-    ,nonce:value.nonce
+    removals: strings(value.removals),
+    nonce: value.nonce
   }
 }
 async function restoreJournal(root: string, journal: Journal, file: string): Promise<void> {
@@ -294,8 +379,9 @@ async function restoreJournal(root: string, journal: Journal, file: string): Pro
   if ((await fileHash(archivedManifest)) !== journal.oldManifestSha256.toLowerCase())
     throw new Error('旧版本归档清单损坏，不能自动恢复。')
   const oldByPath = new Map(journal.oldFiles.map((entry) => [relativePath(entry.path), entry]))
-  for(const relative of [...journal.changed,...journal.additions,'manifest.json'])
-    for(const phase of ['c','r'])await rm(inside(root,relative)+`.update-${phase}-${journal.nonce}.tmp`,{force:true})
+  for (const relative of [...journal.changed, ...journal.additions, 'manifest.json'])
+    for (const phase of ['c', 'r'])
+      await rm(inside(root, relative) + `.update-${phase}-${journal.nonce}.tmp`, { force: true })
   for (const relative of [...journal.changed, ...journal.removals]) {
     const entry = oldByPath.get(relative),
       archived = inside(journal.historyPath, relative)
@@ -311,12 +397,16 @@ async function restoreJournal(root: string, journal: Journal, file: string): Pro
     await rm(inside(root, relative), { force: true })
   }
   for (const relative of [...journal.changed, ...journal.removals]) {
-    const target=inside(root,relative), entry=oldByPath.get(relative)!
-    if(!await exists(target)||await fileHash(target)!==entry.sha256.toLowerCase())
-      await atomicCopy(inside(journal.historyPath, relative), target,`r-${journal.nonce}`)
+    const target = inside(root, relative),
+      entry = oldByPath.get(relative)!
+    if (!(await exists(target)) || (await fileHash(target)) !== entry.sha256.toLowerCase())
+      await atomicCopy(inside(journal.historyPath, relative), target, `r-${journal.nonce}`)
   }
-  if(!await exists(path.join(root,'manifest.json'))||await fileHash(path.join(root,'manifest.json'))!==journal.oldManifestSha256.toLowerCase())
-    await atomicCopy(archivedManifest, path.join(root, 'manifest.json'),`r-${journal.nonce}`)
+  if (
+    !(await exists(path.join(root, 'manifest.json'))) ||
+    (await fileHash(path.join(root, 'manifest.json'))) !== journal.oldManifestSha256.toLowerCase()
+  )
+    await atomicCopy(archivedManifest, path.join(root, 'manifest.json'), `r-${journal.nonce}`)
   await validateSnapshot(root, journal.oldManifestSha256)
   await rm(file, { force: true })
 }
@@ -396,15 +486,19 @@ export async function commitBackupUpdate(
       oldFiles: old.files,
       changed,
       additions,
-      removals
-      ,nonce:randomUUID().replaceAll('-','').slice(0,12)
+      removals,
+      nonce: randomUUID().replaceAll('-', '').slice(0, 12)
     }
     await persistJournal(file, journal)
     try {
       for (const relative of [...changed, ...additions])
-        await atomicCopy(inside(stage, relative), inside(root, relative),`c-${journal.nonce}`)
+        await atomicCopy(inside(stage, relative), inside(root, relative), `c-${journal.nonce}`)
       for (const relative of removals) await rm(inside(root, relative), { force: true })
-      await atomicCopy(path.join(stage, 'manifest.json'), path.join(root, 'manifest.json'),`c-${journal.nonce}`)
+      await atomicCopy(
+        path.join(stage, 'manifest.json'),
+        path.join(root, 'manifest.json'),
+        `c-${journal.nonce}`
+      )
       await validateSnapshot(root, journal.newManifestSha256)
       await rm(file, { force: true })
       return {

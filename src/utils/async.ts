@@ -2,7 +2,7 @@
 export async function withTimeout<T>(
   task: Promise<T>,
   timeoutMs: number,
-  timeoutMessage: string,
+  timeoutMessage: string | Error,
   signal?: AbortSignal
 ): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined
@@ -22,7 +22,11 @@ export async function withTimeout<T>(
       ...(aborted ? [aborted] : []),
       task,
       new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)
+        timeout = setTimeout(
+          () =>
+            reject(typeof timeoutMessage === 'string' ? new Error(timeoutMessage) : timeoutMessage),
+          timeoutMs
+        )
       })
     ])
   } finally {

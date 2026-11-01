@@ -2,9 +2,7 @@ import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdir, open, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type postgres from 'postgres'
-
-export type CopySourceSql = Pick<ReturnType<typeof postgres>, 'unsafe'>
+import type { BackupSourceSql } from './backup-update-source'
 
 export interface TableFingerprint {
   rows: string
@@ -118,6 +116,17 @@ function copyEscapedOutput(expression: string): string {
 }
 
 export async function readCopyInventory(file: string): Promise<CopyInventory> {
+  try {
+    return await parseCopyInventory(file)
+  } catch (cause) {
+    if (cause instanceof Error && !('code' in cause)) {
+      throw Object.assign(new Error(cause.message, { cause }), { code: 'BACKUP_COPY_FORMAT' })
+    }
+    throw cause
+  }
+}
+
+async function parseCopyInventory(file: string): Promise<CopyInventory> {
   const tables: CopyTable[] = []
   const sequenceStatements: string[] = []
   const extraStatements: string[] = []
@@ -187,6 +196,7 @@ export async function readCopyInventory(file: string): Promise<CopyInventory> {
       return
     }
     if (
+      line === 'RESET ALL;' ||
       /^SET [A-Za-z_][A-Za-z0-9_]* = [^;]*;$/.test(line) ||
       /^SELECT pg_catalog\.set_config\('search_path', '', false\);$/.test(line)
     ) {
@@ -219,7 +229,7 @@ export async function readCopyInventory(file: string): Promise<CopyInventory> {
 }
 
 export async function listSourceTables(
-  sql: CopySourceSql,
+  sql: BackupSourceSql,
   schemas: string[]
 ): Promise<SourceTable[]> {
   if (!schemas.length || schemas.some((schema) => !schema || schema.includes('\0'))) {
@@ -228,8 +238,8 @@ export async function listSourceTables(
   const rows = await sql.unsafe(
     `
     SELECT n.nspname AS schema, c.relname AS name,
-      array_agg(a.attname ORDER BY a.attnum) FILTER(WHERE a.attnum IS NOT NULL) AS columns,
-      array_agg(format('%I.%I', pn.nspname, p.proname) ORDER BY a.attnum) FILTER(WHERE pn.nspname IS NOT NULL) AS outputs
+      to_jsonb(array_agg(a.attname ORDER BY a.attnum) FILTER(WHERE a.attnum IS NOT NULL)) AS columns,
+      to_jsonb(array_agg(format('%I.%I', pn.nspname, p.proname) ORDER BY a.attnum) FILTER(WHERE pn.nspname IS NOT NULL)) AS outputs
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
@@ -237,12 +247,12 @@ export async function listSourceTables(
     LEFT JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
     LEFT JOIN pg_catalog.pg_proc p ON p.oid = t.typoutput
     LEFT JOIN pg_catalog.pg_namespace pn ON pn.oid = p.pronamespace
-    WHERE n.nspname = ANY($1::text[])
+    WHERE n.nspname IN (SELECT jsonb_array_elements_text($1::text::jsonb))
       AND c.relkind = 'r' AND c.relpersistence <> 't'
     GROUP BY n.nspname, c.relname
     ORDER BY n.nspname, c.relname
   `,
-    [schemas]
+    [JSON.stringify(schemas)]
   )
   return rows.map((row) => {
     const columns: unknown = row.columns
@@ -293,7 +303,7 @@ export function buildFingerprintQuery(table: SourceTable): string {
 }
 
 export async function fingerprintSourceTable(
-  sql: CopySourceSql,
+  sql: BackupSourceSql,
   table: SourceTable
 ): Promise<TableFingerprint> {
   const query = buildFingerprintQuery(table)
@@ -357,7 +367,7 @@ export async function buildDataDump(
       }
       await writeAll(Buffer.from(`${statement}\n`, 'utf8'))
     }
-    await writeAll(Buffer.from('\n-- PostgreSQL database dump complete\n', 'utf8'))
+    await writeAll(Buffer.from('\nRESET ALL;\n\n-- PostgreSQL database dump complete\n', 'utf8'))
   } catch (error) {
     await output.close()
     await unlink(destination).catch(() => undefined)

@@ -29,6 +29,15 @@ test('deadline rejects a stalled callback and consumes its late rejection', asyn
   await new Promise<void>((resolve) => setImmediate(resolve))
 })
 
+test('deadline preserves the supplied error identity and diagnostic code', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const failure = Object.assign(new Error('来源读取超时'), { code: 'BACKUP_SOURCE_READ_TIMEOUT' })
+  const result = withTimeout(new Promise<never>(() => {}), 150_000, failure)
+  const rejected = assert.rejects(result, (cause) => cause === failure)
+  t.mock.timers.tick(150_000)
+  await rejected
+})
+
 test('deadline aborts immediately, releases timer and consumes late task failures', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const clear = t.mock.method(globalThis, 'clearTimeout')

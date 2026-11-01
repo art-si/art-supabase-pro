@@ -439,7 +439,6 @@
 
 <style scoped lang="scss">
   .tenant-page {
-    gap: 12px;
     min-width: 0;
 
     &__overview {

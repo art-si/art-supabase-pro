@@ -29,6 +29,7 @@ async function openWorkspace(page: Page, theme = 'light') {
     failRecognition: false,
     failSave: false,
     payloads: [] as Record<string, unknown>[],
+    sketchPaths: [] as string[],
     historyFailure: false,
     historyFilters: [] as (string | null)[]
   }
@@ -119,8 +120,11 @@ async function openWorkspace(page: Page, theme = 'light') {
     }
     if (path.includes('/object/sign/'))
       return route.fulfill({ json: { signedURL: `${path.replace('/storage/v1', '')}?token=test` } })
-    if (route.request().method() === 'POST')
+    if (route.request().method() === 'POST') {
+      if (path.includes('/object/mdm-accessory-processing/') && path.includes('/sketch/'))
+        state.sketchPaths.push(path.split('/object/mdm-accessory-processing/')[1])
       return route.fulfill({ json: { Key: path.split('/object/')[1] } })
+    }
     return route.fulfill({ contentType: 'image/png', body: image })
   })
   await page.route('**/functions/v1/ai-accessory-processing-ocr', (route) => {
@@ -217,6 +221,22 @@ test('真实弹窗上传失败重试、跨页签校验定位与保存重试', as
   await dialog.screenshot({ path: info.outputPath('invalid-row.png'), timeout: 60_000 })
   await width.fill('180')
   await width.press('Tab')
+  const sketch = dialog.locator('[data-art-form-item-key="sketchPath"]')
+  const uploadSketch = () =>
+    sketch.locator('input[type="file"]').setInputFiles({
+      name: 'independent-sketch.png',
+      mimeType: 'image/png',
+      buffer: uploadImage
+    })
+  await uploadSketch()
+  await expect(sketch).toContainText('已关联独立草图')
+  await sketch.locator('.preview-list').hover()
+  await sketch.getByRole('button', { name: '删除图片', exact: true }).click()
+  await expect(sketch).toContainText('请上传本件加工草图')
+  await uploadSketch()
+  await expect(sketch).toContainText('已关联独立草图')
+  expect(state.sketchPaths).toHaveLength(2)
+  await dialog.screenshot({ path: info.outputPath('configured-sketch-upload.png') })
   state.failSave = true
   await save.click()
   await expect(page.getByText('加工清单保存失败，请检查内容后重试', { exact: true })).toBeVisible()
@@ -244,6 +264,11 @@ test('真实弹窗上传失败重试、跨页签校验定位与保存重试', as
       }
     ]
   })
+  expect((state.payloads[1].items as Array<{ sketchPath: string }>)[0].sketchPath).toBe(
+    state.sketchPaths[1]
+  )
+  const savedGroupId = String(state.payloads[1].sourcePath).split('/')[1]
+  expect(state.sketchPaths[1]).toMatch(new RegExp(`^${tenantId}/${savedGroupId}/sketch/`))
   await dialog.getByRole('tab', { name: '记录与草稿', exact: true }).click()
   await expect(
     dialog.getByRole('button', { name: `打开${item.name}所在清单`, exact: true })

@@ -343,10 +343,18 @@ test('ArtTable public editing APIs support grouped renderers, object slots, stan
   const table = page.locator('.art-table')
   await expect(table.getByRole('button', { name: '编辑第 2 行 名称', exact: true })).toHaveCount(0)
   await table.getByRole('button', { name: '编辑第 1 行 数量', exact: true }).dblclick()
+  const editRow = table.locator('tbody tr').first()
+  const rowHeight = (await editRow.boundingBox())!.height
   await table.getByRole('spinbutton', { name: '第 1 行 数量', exact: true }).fill('0')
   await page.getByRole('button', { name: '校验', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('数量应在 1–99 之间')
-  await expect(table.locator('.art-table__edit-error')).toContainText('数量应在 1–99 之间')
+  const invalid = table.locator('[data-art-edit-field="quantity"].is-validation-error').first()
+  await expect(invalid).toHaveAttribute('aria-invalid', 'true')
+  await expect(invalid.locator('[role="alert"]')).toHaveClass('sr-only')
+  await expect(invalid.locator('[role="alert"]')).toContainText('数量应在 1–99 之间')
+  await expect(table.locator('.art-table__edit-error')).toHaveCount(0)
+  expect((await editRow.boundingBox())!.height).toBeLessThanOrEqual(rowHeight + 1)
+  await table.screenshot({ path: info.outputPath('validation-red-border-without-inline-text.png') })
   await table.getByRole('spinbutton', { name: '第 1 行 数量', exact: true }).fill('9')
   await table.getByRole('spinbutton', { name: '第 1 行 数量', exact: true }).press('Tab')
   await table.getByRole('switch', { name: '第 1 行 启用', exact: true }).locator('..').click()
@@ -369,6 +377,33 @@ test('ArtTable public editing APIs support grouped renderers, object slots, stan
   await page.getByRole('button', { name: '撤销', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('新增 1')
   await page.screenshot({ path: info.outputPath('art-table-edit-api.png') })
+})
+
+test('virtual table validation retains row height and red border without inline error text', async ({
+  page
+}, info) => {
+  await prepareIsolatedSession(page)
+  await prepareAppearance(page, { theme: 'dark', boxBorderMode: false })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/tests/e2e/fixtures/table-editing.html?virtual=1')
+  const table = page.locator('.art-table')
+  await table.getByRole('button', { name: '编辑第 1 行 数量', exact: true }).dblclick()
+  const editor = table.getByRole('spinbutton', { name: '第 1 行 数量', exact: true })
+  await editor.fill('0')
+  const row = table.locator('.el-table-v2__row').first()
+  const before = (await row.boundingBox())!.height
+  await page.getByRole('button', { name: '校验', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('数量应在 1–99 之间')
+  const cell = table.locator('[data-art-edit-field="quantity"].is-validation-error').first()
+  await expect(cell).toHaveAttribute('aria-invalid', 'true')
+  await expect(cell.locator('[role="alert"]')).toHaveClass('sr-only')
+  await expect(table.locator('.art-table__edit-error')).toHaveCount(0)
+  expect((await row.boundingBox())!.height).toBe(before)
+  await table.screenshot({ path: info.outputPath('virtual-validation-red-border-only.png') })
+  await editor.fill('9')
+  await page.getByRole('button', { name: '校验', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('校验通过')
+  await expect(table.locator('.is-validation-error')).toHaveCount(0)
 })
 
 test('filtered table and function cards expose the same menus, pinning and shortcut actions as tree nodes', async ({

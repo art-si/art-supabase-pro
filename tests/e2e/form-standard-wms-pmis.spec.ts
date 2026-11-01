@@ -143,6 +143,55 @@ for (const kind of ['maintenance', 'repair']) {
   })
 }
 
+test('部门保养设置通过配置化员工多选保存两名执行人并保留姓名', async ({ page }, info) => {
+  await open(page, 'setting', '&kind=maintenance')
+  const tenantId = '11111111-1111-4111-8111-111111111111'
+  const employees = [
+    {
+      id: 'employee-one',
+      tenantId,
+      employeeNo: 'EMP-ONE',
+      employeeName: '验收员工甲',
+      employmentStatus: 'active'
+    },
+    {
+      id: 'employee-two',
+      tenantId,
+      employeeNo: 'EMP-TWO',
+      employeeName: '验收员工乙',
+      employmentStatus: 'active'
+    }
+  ]
+  await page.route('**/rest/v1/rpc/hr_list_employee_selector_secure', (route) =>
+    route.fulfill({ json: { records: employees, total: employees.length, fieldAccess: {} } })
+  )
+  const dialog = page.locator('.art-dialog:visible').first()
+  const responsible = dialog.locator('[data-art-form-item-key="responsibleEmployeeIds"]')
+  await responsible.getByRole('textbox').click()
+  const picker = page.getByRole('dialog', { name: '选择员工', exact: true })
+  for (const employee of employees) {
+    const checkbox = picker
+      .getByRole('row')
+      .filter({ hasText: employee.employeeName })
+      .getByRole('checkbox')
+    await checkbox.locator('..').click()
+    await expect(checkbox).toBeChecked()
+  }
+  await picker.locator('.art-dialog__footer-actions button').last().click()
+  await expect(responsible).toContainText('验收员工甲')
+  await expect(responsible).toContainText('验收员工乙')
+  await dialog.screenshot({
+    path: info.outputPath('multiple-employees.png'),
+    animations: 'disabled'
+  })
+  await dialog.getByRole('button', { name: '保存设置', exact: true }).click()
+  await expect.poll(async () => (await calls(page, 'savePmisDepartmentSetting')).length).toBe(1)
+  const saved = (await calls(page, 'savePmisDepartmentSetting'))[0].args[0] as {
+    responsibleEmployeeIds: string[]
+  }
+  expect(saved.responsibleEmployeeIds).toEqual(employees.map((employee) => employee.id))
+})
+
 for (const kind of ['inspection', 'maintenance']) {
   test(`执行${kind}保留短字段公共区、结果与相册，提交校验并可保存`, async ({ page }) => {
     await open(page, 'execution', `&kind=${kind}`)

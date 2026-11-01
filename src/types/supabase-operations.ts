@@ -118,6 +118,8 @@ export interface BackupUpdateReport {
   warnings: string[]
   historyPath?: string
   error?: string
+  errorCode?: string
+  errorStage?: string
 }
 export interface OperationsSnapshot {
   projectRef: string

@@ -5,7 +5,7 @@ import { store } from '@/store'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useUserStore } from '@/store/modules/user'
 import { setupGlobDirectives } from '@/directives'
-import { useTheme } from '@/hooks/core/useTheme'
+import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
 import { SystemThemeEnum } from '@/enums/app-enum'
 import CalendarWorkspace from '@pmis/views/components/calendar-workspace.vue'
 import InspectionDashboardWorkspace from '@pmis/views/components/inspection-dashboard-workspace.vue'
@@ -60,4 +60,6 @@ scope.tenantOptions = [
 scope.setTenantScope(tenantA)
 await router.push(workspaceRoute)
 await router.isReady()
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
 app.mount('#app')

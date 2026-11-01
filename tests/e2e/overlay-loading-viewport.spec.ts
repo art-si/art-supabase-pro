@@ -11,6 +11,36 @@ async function setLoading(page: Page, kind: 'drawer' | 'dialog', loading: boolea
   )
 }
 
+test('默认确认按钮跟随响应式就绪状态，并保留命令式禁用直到属性改变', async ({ page }) => {
+  await page.goto('/tests/e2e/fixtures/overlay-loading-viewport.html')
+  for (const kind of ['dialog', 'drawer'] as const) {
+    await page
+      .getByRole('button', { name: kind === 'drawer' ? '打开测试抽屉' : '打开测试弹窗' })
+      .click()
+    const root = page.locator(kind === 'drawer' ? '.el-drawer:visible' : '.el-dialog:visible')
+    const confirm = root.getByRole('button', { name: '确定', exact: true })
+    const setDisabled = (disabled: boolean, viaApi = false) =>
+      page.evaluate(
+        (detail) =>
+          window.dispatchEvent(new CustomEvent('overlay-preview-confirm-disabled', { detail })),
+        { kind, disabled, viaApi }
+      )
+    await setDisabled(true)
+    await expect(confirm).toBeDisabled()
+    await setDisabled(false)
+    await expect(confirm).toBeEnabled()
+    await setDisabled(true, true)
+    await setLoading(page, kind, true)
+    await setLoading(page, kind, false)
+    await expect(confirm).toBeDisabled()
+    await setDisabled(true)
+    await setDisabled(false)
+    await expect(confirm).toBeEnabled()
+    await root.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(root).toBeHidden()
+  }
+})
+
 async function expectViewportCentered(root: Locator, kind: 'drawer' | 'dialog'): Promise<void> {
   const viewport = root.locator(`.art-${kind}__viewport`)
   await expect(viewport).toHaveAttribute('aria-busy', 'true')

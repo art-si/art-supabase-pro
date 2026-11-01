@@ -592,6 +592,19 @@
       : artifacts
   })
   const parameters = ref<Record<string, string | boolean>>({})
+  watch(workspace.selectedRun, (run, previousRun) => {
+    if (
+      run?.id !== previousRun?.id ||
+      run?.status !== 'succeeded' ||
+      run.operationId !== 'updateBackup' ||
+      !run.updateReport ||
+      !['previewBackupUpdate', 'updateBackup'].includes(selectedOperation.value.id)
+    )
+      return
+    const previousPath = getOperationBackupPath(previousRun)
+    if (previousPath && parameters.value.UpdateBackupPath === previousPath)
+      parameters.value.UpdateBackupPath = run.updateReport.backupPath
+  })
   const confirmed = ref(false)
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const parametersRoot = ref<HTMLElement>()
@@ -773,6 +786,10 @@
       const backupPath = getOperationBackupPath(workspace.selectedRun.value)
       if (backupPath) parameters.value.UpdateBackupPath = backupPath
     }
+    if (['verify', 'package'].includes(operation.id)) {
+      const backupPath = getOperationBackupPath(workspace.selectedRun.value)
+      if (backupPath) parameters.value.BackupPath = backupPath
+    }
   }
   function prepareBackupUpdate(report: BackupUpdateReport): void {
     const operation = findSupabaseOperation('updateBackup')
@@ -885,6 +902,10 @@
     if (!run || !operation) return
     chooseOperation(operation)
     parameters.value = { ...parameters.value, ...run.parameters }
+    if (['previewBackupUpdate', 'updateBackup'].includes(operation.id)) {
+      const backupPath = getOperationBackupPath(run)
+      if (backupPath) parameters.value.UpdateBackupPath = backupPath
+    }
     ElMessage.info('已复用非敏感参数，请补全密码并核对后执行')
   }
   async function prepareRecovery(id: 'backup' | 'resumeBackup'): Promise<void> {

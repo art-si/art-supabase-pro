@@ -40,7 +40,7 @@ function preset(overrides: Partial<SqlQueryApiParameterPreset> = {}): SqlQueryAp
 }
 
 function state(presets = [preset()]): SqlQueryApiPresetState {
-  return { version: 1, presets }
+  return { version: 2, presets }
 }
 
 function invalidRead(value: unknown, pattern?: RegExp): void {
@@ -108,7 +108,7 @@ test('partial required values preserve decimal precision, false and raw string w
     amount: ` ${precise} `,
     enabled: false,
     note: '   ',
-    date: '',
+    date: undefined,
     owner: undefined
   })
   assert.deepEqual(normalizeQueryApiPresetValues(parameters, input), {
@@ -118,11 +118,99 @@ test('partial required values preserve decimal precision, false and raw string w
   })
   assert.deepEqual(normalizeQueryApiPresetValues(parameters, {}), {})
   assert.deepEqual(
-    normalizeQueryApiPresetValues(parameters, { amount: null, enabled: undefined, note: '' }),
-    {}
+    normalizeQueryApiPresetValues(parameters, { amount: undefined, enabled: undefined, note: '' }),
+    { note: '' }
   )
   assert.equal(parameters[0].required, true)
   assert.equal(input.amount, ` ${precise} `)
+})
+
+test('version 2 preserves explicit empty strings and optional NULL separately from omitted fields', () => {
+  const definitions: SqlQueryApiParameter[] = [
+    ...parameters,
+    { name: 'required_text', type: 'string', required: true }
+  ]
+  const values = {
+    amount: precise,
+    enabled: false,
+    required_text: '',
+    note: null,
+    date: null
+  }
+  assert.deepEqual(normalizeQueryApiPresetValues(definitions, values), values)
+  const source = state([
+    preset({ parameterSignature: queryApiParameterSignature(definitions), values })
+  ])
+  const raw = writeQueryApiPresetState(source, definitionId)
+  assert.equal(JSON.parse(raw).version, 2)
+  const decoded = readQueryApiPresetState(raw, definitionId)
+  assert.equal(decoded.version, 2)
+  assert.deepEqual(decoded.presets[0].values, values)
+  assert.equal(Object.hasOwn(decoded.presets[0].values, 'owner'), false)
+  for (const parameter of parameters.filter((parameter) => parameter.required))
+    assert.throws(
+      () => normalizeQueryApiPresetValues(parameters, { [parameter.name]: null }),
+      /不能为 NULL/
+    )
+  for (const parameter of parameters.filter((parameter) => parameter.type !== 'string'))
+    assert.throws(
+      () => normalizeQueryApiPresetValues(parameters, { [parameter.name]: '' }),
+      SqlQueryApiPresetError
+    )
+})
+
+test('version 1 migration omits every legacy empty string while preserving false and whitespace', () => {
+  const original = {
+    version: 1,
+    presets: [
+      preset({ values: { amount: '', enabled: false, note: '', date: '', owner: '' } }),
+      preset({
+        id: '00000000-0000-4000-8000-000000000011',
+        name: '保留空白',
+        values: { amount: precise, note: '   ' }
+      })
+    ]
+  }
+  const raw = JSON.stringify(original)
+  const decoded = readQueryApiPresetState(raw, definitionId)
+  assert.equal(decoded.version, 2)
+  assert.deepEqual(
+    decoded.presets.map((entry) => entry.values),
+    [{ enabled: false }, { amount: precise, note: '   ' }]
+  )
+  assert.equal(JSON.stringify(original), raw)
+  const written = writeQueryApiPresetState(decoded, definitionId)
+  assert.equal(JSON.parse(written).version, 2)
+  assert.deepEqual(readQueryApiPresetState(written, definitionId), decoded)
+  assert.deepEqual(readQueryApiPresetState('{"version":1,"presets":[]}', definitionId), state([]))
+})
+
+test('legacy NULL remains corrupt and version 2 still rejects required NULL and unsupported scalars', () => {
+  for (const { name } of parameters)
+    invalidRead({ version: 1, presets: [preset({ values: { [name]: null } })] })
+  invalidRead({ version: 1, presets: [preset({ values: { undeclared: '' } })] }, /未定义字段/)
+  for (const value of [undefined, 0, {}, []]) {
+    const source = state()
+    Object.defineProperty(source.presets[0].values, 'note', { value, enumerable: true })
+    assert.throws(() => writeQueryApiPresetState(source, definitionId), SqlQueryApiPresetError)
+  }
+  invalidRead({ version: 2, presets: [preset({ values: { amount: null } })] }, /不能为 NULL/)
+  const literalValues = Object.fromEntries([
+    ['constructor', ''],
+    ['__proto__', null]
+  ])
+  const definitions: SqlQueryApiParameter[] = [
+    { name: 'constructor', type: 'string', required: true },
+    { name: '__proto__', type: 'string', required: false }
+  ]
+  const source = state([
+    preset({ parameterSignature: queryApiParameterSignature(definitions), values: literalValues })
+  ])
+  assert.deepEqual(
+    readQueryApiPresetState(writeQueryApiPresetState(source, definitionId), definitionId).presets[0]
+      .values,
+    literalValues
+  )
 })
 
 test('reactive form DTOs preserve current own scalar values and return independent preset snapshots', () => {
@@ -257,10 +345,9 @@ test('limits enforce ten presets and reject duplicate IDs and trimmed names', ()
 })
 
 test('each string value has a 4000 UTF16-unit limit without truncation or precision conversion', () => {
-  assert.equal(
-    normalizeQueryApiPresetValues(parameters, { note: '😀'.repeat(2000) }).note.length,
-    4000
-  )
+  const note = normalizeQueryApiPresetValues(parameters, { note: '😀'.repeat(2000) }).note
+  assert.ok(typeof note === 'string')
+  assert.equal(note.length, 4000)
   assert.throws(
     () => normalizeQueryApiPresetValues(parameters, { note: '😀'.repeat(2001) }),
     /4000/
@@ -348,7 +435,7 @@ test('malformed JSON, foreign definitions and invalid stored metadata fail with 
     { values: { hidden: 'value' } }
   ])
     invalidRead({ version: 1, presets: [{ ...preset(), ...override }] })
-  invalidRead({ version: 2, presets: [] })
+  invalidRead({ version: 3, presets: [] })
   invalidRead({ version: 1, presets: [], sql: 'must-never-be-stored' })
   invalidRead({ version: 1, presets: [{ ...preset(), token: 'must-never-be-stored' }] })
 })

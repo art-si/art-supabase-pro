@@ -11,7 +11,7 @@
     <ElScrollbar
       v-if="hasSearchBar"
       v-show="showSearchBar"
-      class="art-table-query__search-scrollbar"
+      class="art-table-query__search-scrollbar art-card-xs"
     >
       <ArtSearchBar
         v-model="searchModel"

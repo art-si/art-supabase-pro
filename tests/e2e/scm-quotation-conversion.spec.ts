@@ -531,7 +531,7 @@ test('报价转单供应商按需加载、重试与旧响应失效', async ({ pa
   hold = true
   await page.getByRole('button', { name: '采购转单', exact: true }).click()
   await expect.poll(() => pending.length).toBe(1)
-  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
   await expect(dialog).not.toBeVisible()
   await page.getByRole('button', { name: '采购转单', exact: true }).click()
   await expect(dialog.getByRole('combobox')).toBeVisible()

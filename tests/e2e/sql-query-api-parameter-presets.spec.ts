@@ -623,7 +623,7 @@ test('resetting corrupt data confirms intent, preserves repaired data and invali
     })
   ).toHaveCount(0)
   const resetRaw = await page.evaluate((key) => localStorage.getItem(key), stored.key)
-  if (resetRaw !== null) expect(JSON.parse(resetRaw)).toMatchObject({ version: 1, presets: [] })
+  if (resetRaw !== null) expect(JSON.parse(resetRaw)).toMatchObject({ version: 2, presets: [] })
   expect(await page.evaluate((key) => localStorage.getItem(key), untouched.key)).toBe(
     untouched.value
   )

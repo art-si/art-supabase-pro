@@ -9,7 +9,7 @@ import {
 } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { isEqual } from 'lodash-es'
-import type { SqlQueryApiDefinition } from '@/types/sql-query-api'
+import type { SqlQueryApiDefinition, SqlQueryApiParameters } from '@/types/sql-query-api'
 import {
   normalizeQueryApiPresetName,
   queryApiParameterSignature,
@@ -30,7 +30,7 @@ export interface SqlQueryApiPresetContext {
   definition: SqlQueryApiDefinition
   signature: string
 }
-const empty = (): SqlQueryApiPresetState => ({ version: 1, presets: [] })
+const empty = (): SqlQueryApiPresetState => ({ version: 2, presets: [] })
 const storageError = (message: string, cause: unknown): SqlQueryApiPresetError =>
   cause instanceof SqlQueryApiPresetError ? cause : new SqlQueryApiPresetError(message, { cause })
 
@@ -170,7 +170,7 @@ export function useQueryApiParameterPresets(options: PresetOptions) {
   }
   const save = (
     name: string,
-    values: Record<string, string | boolean>,
+    values: SqlQueryApiParameters,
     context = capture()
   ): SqlQueryApiParameterPreset => {
     const state = fresh(context)
@@ -183,18 +183,18 @@ export function useQueryApiParameterPresets(options: PresetOptions) {
       values: { ...values },
       updatedAt: new Date().toISOString()
     }
-    persist(context, { version: 1, presets: [preset, ...state.presets] })
+    persist(context, { version: 2, presets: [preset, ...state.presets] })
     return preset
   }
   const update = (
     preset: SqlQueryApiParameterPreset,
-    values: Record<string, string | boolean>,
+    values: SqlQueryApiParameters,
     context = capture()
   ): void => {
     const state = fresh(context)
     find(state, preset)
     persist(context, {
-      version: 1,
+      version: 2,
       presets: state.presets.map((item) =>
         item.id === preset.id
           ? {
@@ -211,7 +211,7 @@ export function useQueryApiParameterPresets(options: PresetOptions) {
   const forget = (preset: SqlQueryApiParameterPreset, context = capture()): void => {
     const state = fresh(context)
     find(state, preset)
-    persist(context, { version: 1, presets: state.presets.filter((item) => item.id !== preset.id) })
+    persist(context, { version: 2, presets: state.presets.filter((item) => item.id !== preset.id) })
   }
   const inspect = (
     preset: SqlQueryApiParameterPreset,
@@ -220,7 +220,7 @@ export function useQueryApiParameterPresets(options: PresetOptions) {
   const apply = (
     preset: SqlQueryApiParameterPreset,
     context = capture()
-  ): Record<string, string | boolean> => {
+  ): SqlQueryApiParameters => {
     const saved = inspect(preset, context)
     if (saved.parameterSignature !== context.signature)
       throw new SqlQueryApiPresetError('参数定义已变化，请核对后重新保存')

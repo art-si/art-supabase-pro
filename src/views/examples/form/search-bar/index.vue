@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-  import { ElInput, ElMessage } from 'element-plus'
+  import { ElMessage } from 'element-plus'
   import type { FormItem } from '@/components/core/forms/art-form/index.vue'
 
   interface Emits {
@@ -495,9 +495,10 @@
     },
     { label: '插槽', key: 'slots', type: 'input', placeholder: '请输入邮箱' },
     {
-      label: '渲染组件',
+      label: '配置式控件',
       key: 'iconSelector',
-      render: () => h(ElInput, { placeholder: '渲染自定义 input' })
+      type: 'input',
+      props: { placeholder: '配置式输入控件' }
     },
     {
       label: '自定义组件',

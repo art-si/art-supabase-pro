@@ -29,6 +29,9 @@ import ProjectTransferDialog from '../../../modules/art-supabase-wms/src/views/i
 import { useUserStore } from '@/store/modules/user'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import ReceiptBinDialog from '@/components/business/scm-receipt-target-workspace/modules/receipt-bin-dialog.vue'
 import ReceiptSerialDialog from '@/components/business/scm-receipt-target-workspace/modules/receipt-serial-dialog.vue'
 import WmsBinPicker from '../../../modules/art-supabase-wms/src/views/shared/wms-bin-picker.vue'
@@ -642,6 +645,14 @@ const app = createApp(
   })
 )
 app.use(store)
+const requestedTheme = new URLSearchParams(location.search).get('theme')
+const setting = useSettingStore(store)
+if (requestedTheme === 'light' || requestedTheme === 'dark') {
+  const theme = requestedTheme === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+  setting.setGlobalTheme(theme, theme)
+}
+initializeTheme()
+useTheme().switchThemeStyles(setting.systemThemeType)
 useUserStore(store).setUserInfo({
   userId: 'user-test',
   tenantId: 'tenant-test',

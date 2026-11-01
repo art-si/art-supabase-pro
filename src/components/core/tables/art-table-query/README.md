@@ -705,6 +705,10 @@ const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
 
 ## 标准 CRUD 示例
 
+页面同时包含 `BusinessWorkspaceHeader` 和查询工作区时，父容器使用 `business-workspace-page art-full-height`。全局 `--art-page-gap` 统一管理相邻区块间距，不叠加 `space-y-*` 或直属卡片的上下 margin。仅有表格的页面可以继续使用 `art-full-height`。
+
+查询卡外框和投影由组件内的 `ElScrollbar` 承载，内部表单不重复绘制卡片；独立 `ArtSearchBar` 保留自身卡片。查询卡与表格间距由组件根据筛选区是否显示自动管理，页面不要强制覆盖 `.art-table-card` 的 `margin-top`。
+
 ```vue
 <template>
   <div class="art-full-height">

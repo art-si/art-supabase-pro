@@ -42,6 +42,12 @@
   width: 100%;
   min-width: 0;
   height: auto;
+
+  // 卡片外框由滚动容器承载，避免内部表单的阴影被滚动视口裁掉。
+  :deep(.art-form.art-search-bar) {
+    border: 0 !important;
+    box-shadow: none !important;
+  }
 }
 
 :global(.art-table-focus-hidden) {

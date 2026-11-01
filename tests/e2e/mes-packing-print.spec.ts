@@ -248,14 +248,14 @@ test('排包表格铺满面板，小按钮与整包打印预览', async ({ page 
     'false',
     { timeout: 30_000 }
   )
-  await expect(workOrderDialog.getByText('工单识别', { exact: true })).toBeVisible({
+  await expect(workOrderDialog.getByRole('tab', { name: '基本信息', exact: true })).toBeVisible({
     timeout: 30_000
   })
   await expect(workOrderDialog).toContainText('QA-MO-001')
   await expect(workOrderDialog.getByRole('button', { name: '保存更改' })).toHaveCount(0)
   await expect(workOrderDialog.locator('.el-loading-mask')).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('work-order-detail.png'), fullPage: true })
-  await workOrderDialog.getByRole('button', { name: 'Close this dialog' }).click()
+  await workOrderDialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
   const pageOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth + 1
   )

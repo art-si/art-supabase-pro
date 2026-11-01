@@ -43,6 +43,7 @@ const makeLine = (index: number) => ({
   id: `line-${index}`,
   line_no: index * 10,
   purpose_id: 'purpose-1',
+  purpose_name: '采购付款',
   supplier_id: `supplier-${index}`,
   payee_supplier_id: `supplier-${index}`,
   supplier_name: `示例供应商${index}`,
@@ -657,11 +658,15 @@ for (const theme of ['light', 'dark']) {
         )
         await expect(readonly.getByRole('button', { name: '保存', exact: true })).toHaveCount(0)
         await readonly.getByRole('tab', { name: '付款明细', exact: true }).click()
-        await expect(readonly.locator('.el-table__body-wrapper tbody tr')).toHaveCount(2)
-        await expect(readonly.getByRole('combobox', { name: '往来单位', exact: true })).toHaveCount(
-          0
-        )
-        await expect(readonly.getByText('示例供应商2', { exact: true }).first()).toBeVisible()
+        const readonlyDetails = readonly.getByRole('tabpanel', { name: '付款明细', exact: true })
+        await expect(readonlyDetails.locator('.el-table__body-wrapper tbody tr')).toHaveCount(2)
+        await expect(
+          readonlyDetails.getByRole('combobox', { name: '往来单位', exact: true })
+        ).toHaveCount(0)
+        await expect(
+          readonlyDetails.getByText('示例供应商2', { exact: true }).first()
+        ).toBeVisible()
+        await expect(readonlyDetails.getByText('采购付款', { exact: true }).first()).toBeVisible()
         await captureBusinessEvidence(readonly, {
           path: info.outputPath(`${kind}-${theme}-readonly-details-${index + 1}.png`)
         })

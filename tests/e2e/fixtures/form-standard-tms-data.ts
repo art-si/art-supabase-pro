@@ -82,6 +82,29 @@ export const transportCommissionRule = {
 }
 type Entry = { load: () => Promise<{ default: Component }>; args: () => unknown[] }
 export const tmsEntries: Record<string, Entry> = {
+  'print-count': {
+    load: () => import('@tms/views/order-open/modules/print-count-dialog.vue'),
+    args: () => [{ kind: 'label', cargoQuantity: 7 }]
+  },
+  'waybill-commission': {
+    load: () =>
+      import('@tms/views/waybill-management/detail/modules/waybill-commission-dialog.vue'),
+    args: () => [id]
+  },
+  'execution-signature': {
+    load: () => import('@tms/views/waybill-management/modules/execution-operation-dialog.vue'),
+    args: () => [
+      {
+        row: {
+          ...transportOrder,
+          driverWaybillId: id,
+          receivingContactName: '验收收货人',
+          waybillStatus: 'transporting'
+        },
+        action: 'signature'
+      }
+    ]
+  },
   driver: {
     load: () => import('@tms/views/basic-data/driver/modules/driver-dialog.vue'),
     args: () => [transportDriver]

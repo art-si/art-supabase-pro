@@ -36,6 +36,11 @@ const entries: Record<string, Entry> = {
   ...vehicleEntries,
   ...tmsEntries,
   ...nativeDetailEntries,
+  'company-certification': {
+    load: () => import('@tms/views/basic-data/company-certification/index.vue'),
+    args: () => [],
+    page: true
+  },
   'equipment-detail': {
     load: () => import('@mdm/views/engineering/production-equipment/index.vue'),
     args: () => [],
@@ -195,6 +200,13 @@ const app = createApp({
           h('output', { 'data-testid': 'save-result' }, saved.value),
           h(CurrentDialog, {
             ref: dialog,
+            ...(params.get('entry') === 'print-count'
+              ? {
+                  onConfirm: (...args: unknown[]) => {
+                    saved.value = JSON.stringify(args)
+                  }
+                }
+              : {}),
             onSuccess: () => {
               saved.value = '已保存'
             }

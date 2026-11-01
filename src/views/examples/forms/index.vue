@@ -19,9 +19,6 @@
         @reset="handleReset"
         @submit="handleSubmit"
       >
-        <template #slots>
-          <ElInput v-model="formData.slots" placeholder="我是插槽渲染出来的组件" />
-        </template>
       </ArtForm>
     </ElCard>
 
@@ -58,11 +55,9 @@
 </template>
 
 <script setup lang="ts">
-  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
-  import ArtUploadFile from '@/components/core/forms/art-upload-file/index.vue'
   import ArtTiptapEditor from '@/components/core/forms/art-tiptap-editor/index.vue'
   import type { FormItem } from '@/components/core/forms/art-form/index.vue'
-  import { ElMessage, ElButton, ElInput } from 'element-plus'
+  import { ElMessage, ElButton } from 'element-plus'
 
   interface Emits {
     (e: 'update:modelValue', value: Record<string, unknown>): void
@@ -452,11 +447,20 @@
         data: treeSelectData
       }
     },
-    { label: '插槽', key: 'slots', type: 'input', placeholder: '请输入邮箱' },
     {
-      label: '渲染组件',
+      label: '插槽',
+      key: 'slots',
+      placeholder: '请输入邮箱',
+      type: 'input',
+      get props() {
+        return { placeholder: '我是插槽渲染出来的组件' }
+      }
+    },
+    {
+      label: '配置式控件',
       key: 'iconSelector',
-      render: () => h(ElInput, { placeholder: '渲染自定义 input' })
+      type: 'input',
+      props: { placeholder: '配置式输入控件' }
     },
     {
       label: '自定义组件',
@@ -594,33 +598,33 @@
       label: '文件上传',
       key: 'multipleFiles',
       span: 12,
-      render: () =>
-        h(ArtUploadFile, {
-          modelValue: formData.value.multipleFiles,
-          title: '点击上传',
-          multiple: true,
-          limit: 5,
-          'onUpdate:modelValue': (value: string | string[]) => {
-            formData.value.multipleFiles = Array.isArray(value) ? value : value ? [value] : []
-          }
-        })
+      type: 'uploadFile',
+      props: {
+        modelValue: formData.value.multipleFiles,
+        title: '点击上传',
+        multiple: true,
+        limit: 5,
+        'onUpdate:modelValue': (value: string | string[]) => {
+          formData.value.multipleFiles = Array.isArray(value) ? value : value ? [value] : []
+        }
+      }
     },
     // 图片上传示例 - 使用 render 函数渲染
     {
       label: '图片上传',
       key: 'imageUpload',
       span: 12,
-      render: () =>
-        h(ArtUploadImage, {
-          modelValue: formData.value.imageUpload,
-          title: '上传图片',
-          multiple: true,
-          limit: 4,
-          fileSize: 2 * 1024 * 1024,
-          'onUpdate:modelValue': (value: string | string[]) => {
-            formData.value.imageUpload = Array.isArray(value) ? value : value ? [value] : []
-          }
-        })
+      type: 'uploadImage',
+      props: {
+        modelValue: formData.value.imageUpload,
+        title: '上传图片',
+        multiple: true,
+        limit: 4,
+        fileSize: 2 * 1024 * 1024,
+        'onUpdate:modelValue': (value: string | string[]) => {
+          formData.value.imageUpload = Array.isArray(value) ? value : value ? [value] : []
+        }
+      }
     },
     // 富文本编辑器示例 - 使用 render 函数渲染
     {

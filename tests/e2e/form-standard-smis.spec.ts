@@ -30,12 +30,195 @@ interface Write {
   path: string
   payload: unknown
 }
+
+async function chooseColor(page: Page, key: string, value: string) {
+  await page.locator(`[data-art-form-item-key="${key}"] .el-color-picker__trigger`).click()
+  const picker = page.getByRole('dialog').filter({
+    has: page.getByRole('button', { name: '清空', exact: true })
+  })
+  await picker.getByRole('textbox').fill(value)
+  await picker.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(picker).toBeHidden()
+}
+
+test('危害因素颜色元数据更新视觉标识并保留租户提交', async ({ page }, info) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'hazard-factor-category', writes)
+  await chooseColor(page, 'textColor', '#67C23A')
+  await expect(dialog.locator('[data-art-form-item-key="textColor"]')).toContainText(/#67c23a/i)
+  await dialog.screenshot({ path: info.outputPath('hazard-factor-color.png') })
+  await dialog.getByRole('button', { name: '保存危害因素类别', exact: true }).click()
+  await expect(page.getByTestId('save-result')).toHaveText('已保存')
+  expect(writes[0].payload).toMatchObject({
+    p_tenant_id: tenantId,
+    p_payload: { category_code: 'HF-TEST' }
+  })
+  expect(
+    (writes[0].payload as { p_payload: { text_color: string } }).p_payload.text_color.toUpperCase()
+  ).toBe('#67C23A')
+})
+
+test('风险图形原生颜色字段更新填充与边框', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  await page.goto('/tests/e2e/fixtures/form-standard-smis.html?entry=risk-map-properties')
+  await chooseColor(page, 'fillColor', '#67C23A')
+  await chooseColor(page, 'borderColor', '#409EFF')
+  await expect(page.locator('[data-art-form-item-key="fillColor"]')).toContainText(/#67c23a/i)
+  await expect(page.locator('[data-art-form-item-key="borderColor"]')).toContainText(/#409eff/i)
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+  ).toBeLessThanOrEqual(1)
+  await page.locator('[data-art-form-item-key="fillColor"]').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: info.outputPath('risk-map-colors-mobile.png') })
+})
+
+test('动态评价维度元数据保留必选校验与计算结果', async ({ page }, info) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'risk-evaluation', writes)
+  await dialog.getByRole('button', { name: '提交定量评价', exact: true }).click()
+  await expect(dialog.locator('.el-form-item.is-error')).toHaveCount(3)
+  for (const code of ['L', 'E', 'C']) {
+    await dialog.locator(`[data-art-form-item-key="${code}"] .el-select`).click()
+    await page
+      .getByRole('option')
+      .filter({ hasText: `验收${code}判定` })
+      .click()
+  }
+  await expect(dialog.locator('.el-form-item.is-error')).toHaveCount(0)
+  await expect(dialog.locator('.el-form-item__error:visible')).toHaveCount(0)
+  await expect(dialog.getByText('验收低风险', { exact: true })).toBeVisible()
+  await dialog.screenshot({ path: info.outputPath('risk-evaluation.png') })
+  await dialog.getByRole('button', { name: '提交定量评价', exact: true }).click()
+  await expect(page.getByTestId('save-result')).toHaveText('已保存')
+  expect(writes[0].payload).toMatchObject({
+    p_method_code: 'LEC',
+    p_l_value: 2,
+    p_e_value: 2,
+    p_c_value: 2,
+    p_s_value: null
+  })
+})
+
+test('岗位指导书链接元数据更新文件且保留选中岗位', async ({ page }, info) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'work-instruction', writes)
+  await expect(field(dialog, '适用组织岗位')).toContainText('验收岗位')
+  await dialog.getByRole('button', { name: '查看或修改链接', exact: true }).click()
+  await field(dialog, '文件链接').getByRole('textbox').fill('https://example.invalid/updated.pdf')
+  await dialog.screenshot({ path: info.outputPath('work-instruction-link.png') })
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByTestId('save-result')).toHaveText('已保存')
+  expect(writes[0].payload).toMatchObject({
+    p_payload: {
+      file_url: 'https://example.invalid/updated.pdf',
+      scopes: [{ organization_id: organizationId, position_id: itemId }]
+    }
+  })
+})
+
+test('文档登记原生上传字段保留既有版本提示与保存负载', async ({ page }, info) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'document-register', writes)
+  await expect(dialog.getByRole('button', { name: '选择文档附件', exact: true })).toBeVisible()
+  await expect(
+    dialog.getByText('当前附件：验收附件.pdf。不重新上传则保留现有版本。', { exact: true })
+  ).toBeVisible()
+  await field(dialog, '文件名称').getByRole('textbox').fill('验收文档更新')
+  await dialog.screenshot({ path: info.outputPath('document-upload.png') })
+  await dialog.getByRole('button', { name: '保存更改', exact: true }).click()
+  await expect(page.getByTestId('save-result')).toHaveText('已保存')
+  expect(writes[0].payload).toMatchObject({
+    p_kind: 'required_knowledge',
+    p_payload: { file_name: '验收文档更新', attachment_url: null }
+  })
+})
+
+test('危险源统计查询使用配置化组织字段', async ({ page }, info) => {
+  const requests: Write[] = []
+  const dialog = await open(page, 'hazard-statistics', requests)
+  const organizationField = dialog.locator('[data-art-form-item-key="organizationId"]')
+  await expect(organizationField).toContainText('系统组织部门')
+  await expect(organizationField.getByRole('combobox')).toBeVisible()
+  await dialog.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => requests.length).toBe(2)
+  expect(requests[1].payload).toMatchObject({ p_organization_id: null })
+  await dialog.screenshot({ path: info.outputPath('hazard-statistics-query.png') })
+})
+
+test('隐患排查动态字段保留异常说明校验与项目标识', async ({ page }, info) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'hidden-task-execution', writes)
+  await expect(dialog.getByText('ITEM-SMIS · 验收通道保持畅通', { exact: true })).toBeVisible()
+  await dialog
+    .locator('[data-art-form-item-key="items.0.result"]')
+    .getByText('异常', { exact: true })
+    .click()
+  await dialog.getByRole('button', { name: '提交并完成', exact: true }).click()
+  await expect(page.locator('.el-message')).toContainText('异常项目必须填写问题说明')
+  expect(writes).toEqual([])
+  await dialog
+    .locator('[data-art-form-item-key="items.0.remark"] textarea')
+    .fill('验收通道堆物，已现场通知清理')
+  await dialog.screenshot({ path: info.outputPath('hidden-task-execution.png') })
+  await dialog.getByRole('button', { name: '提交并完成', exact: true }).click()
+  await expect(page.getByTestId('save-result')).toHaveText('已保存')
+  expect(writes[0].payload).toMatchObject({
+    p_id: recordId,
+    p_complete: true,
+    p_items: [
+      {
+        id: itemId,
+        result: 'abnormal',
+        remark: '验收通道堆物，已现场通知清理',
+        attachment_urls: []
+      }
+    ]
+  })
+})
+
 async function open(page: Page, entry: string, writes: Write[], query = '') {
   await prepareIsolatedSession(page)
   await page.route('**/rest/v1/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     const path = url.pathname
+    if (path.endsWith('/smis_hazard_source_statistics_secure')) {
+      writes.push({ path, payload: request.postDataJSON() })
+      return route.fulfill({ json: { rows: [], total: 0 } })
+    }
+    if (path.endsWith('/smis_risk_assessment_model'))
+      return route.fulfill({
+        json: [
+          {
+            id: itemId,
+            tenantId,
+            methodCode: 'LEC',
+            modelName: '验收LEC模型',
+            status: 'enabled',
+            dimensions: ['L', 'E', 'C'].map((code, index) => ({
+              id: code,
+              dimensionCode: code,
+              dimensionName: '验收' + code + '维度',
+              sort: index,
+              criteria: [
+                { id: code + '-2', score: 2, criterionText: '验收' + code + '判定', sort: 1 }
+              ]
+            })),
+            levels: [
+              {
+                id: 'level-test',
+                levelCode: 'low',
+                levelName: '验收低风险',
+                minScore: 0,
+                maxScore: 100,
+                color: '#2563eb',
+                sort: 1
+              }
+            ]
+          }
+        ]
+      })
     if (path.endsWith('/smis_list_question_bank_secure'))
       return route.fulfill({
         json: {
@@ -86,7 +269,29 @@ async function open(page: Page, entry: string, writes: Write[], query = '') {
     if (path.endsWith('/smis_get_hidden_hazard_inspection_task_secure'))
       return route.fulfill({ json: hiddenTaskDetail })
     if (path.endsWith('/smis_get_risk_inspection_task_secure'))
-      return route.fulfill({ json: riskTaskDetail })
+      return route.fulfill({
+        json:
+          entry === 'risk-task-execution'
+            ? {
+                ...riskTaskDetail,
+                status: 'in_progress',
+                items: riskTaskDetail.items.map((item) => ({
+                  ...item,
+                  result: 'pending',
+                  remark: null
+                }))
+              }
+            : riskTaskDetail
+      })
+    if (path.endsWith('/smis_list_risk_hazard_workspace_secure'))
+      return route.fulfill({ json: { activities: [], hazards: [] } })
+    if (
+      path.endsWith('/smis_cancel_risk_inspection_task_secure') ||
+      path.endsWith('/smis_transition_special_operation_permit_secure')
+    ) {
+      writes.push({ path, payload: request.postDataJSON() })
+      return route.fulfill({ json: null })
+    }
     if (path.endsWith('/smis_risk_inspection_task') && request.method() === 'GET')
       return route.fulfill({ json: { tenant_id: tenantId } })
     if (path.endsWith('/smis_position_risk_control') && request.method() === 'PATCH') {
@@ -166,7 +371,22 @@ async function open(page: Page, entry: string, writes: Write[], query = '') {
     .click()
   const dialog = page.getByRole('dialog').last()
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByRole('tablist').first()).toBeVisible()
+  if (
+    ![
+      'hazard-factor-category',
+      'hidden-task-execution',
+      'risk-task-execution',
+      'risk-task-cancel',
+      'permit-void',
+      'permit-approval',
+      'safety-risk',
+      'risk-evaluation',
+      'hazard-statistics',
+      'document-register',
+      'work-instruction'
+    ].includes(entry)
+  )
+    await expect(dialog.getByRole('tablist').first()).toBeVisible()
   await expect(dialog.locator('.el-loading-mask:visible')).toHaveCount(0)
   return dialog
 }
@@ -1230,6 +1450,92 @@ test('permit 窄屏暗色表单切换保持内容，返回后提交完整作业�
     p_submit: true,
     p_tenant_id: tenantId,
     p_payload: { work_content: '验收窄屏修正作业', workers: [{ employee_id: employeeId }] }
+  })
+})
+
+test('risk-task-execution 配置字段保持动态结果校验、异常说明与任务租户负载', async ({
+  page
+}, info) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'risk-task-execution', writes)
+  await expect(dialog.getByText('验收防护罩可靠', { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: '提交并完成', exact: true }).click()
+  await expect(field(dialog, '巡查结果').locator('.el-form-item__error')).toHaveText(
+    '请选择巡查结果'
+  )
+  expect(writes).toHaveLength(0)
+  await dialog.getByText('异常', { exact: true }).click()
+  await dialog.getByRole('button', { name: '提交并完成', exact: true }).click()
+  const remark = field(dialog, '检查说明').getByRole('textbox')
+  await expect(remark).toBeFocused()
+  await expect(field(dialog, '检查说明').locator('.el-form-item__error')).toHaveText(
+    '异常项目必须填写问题说明'
+  )
+  await remark.fill('验收异常防护罩需要立即修复')
+  await field(dialog, '执行总结').getByRole('textbox').fill('验收巡查总体情况')
+  await page.screenshot({ path: info.outputPath('risk-task-configured-fields.png') })
+  await dialog.getByRole('button', { name: '提交并完成', exact: true }).click()
+  await expect(page.getByTestId('save-result')).toHaveText('已保存')
+  expect(writes[0].payload).toMatchObject({
+    p_id: recordId,
+    p_actual_executor_employee_id: employeeId,
+    p_execution_summary: '验收巡查总体情况',
+    p_items: [{ id: itemId, result: 'abnormal', remark: '验收异常防护罩需要立即修复' }],
+    p_complete: true
+  })
+})
+
+test('risk-task-cancel 配置化原因必填定位后按原任务提交取消', async ({ page }) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'risk-task-cancel', writes)
+  await dialog.getByRole('button', { name: '确认取消任务', exact: true }).click()
+  const reason = field(dialog, '取消原因').getByRole('textbox')
+  await expect(field(dialog, '取消原因').locator('.el-form-item__error')).toHaveText(
+    '请输入业务原因'
+  )
+  await reason.fill('  验收设备停机取消本次巡查  ')
+  await dialog.getByRole('button', { name: '确认取消任务', exact: true }).click()
+  await expect(page.getByTestId('save-result')).toHaveText('已保存')
+  expect(writes[0].payload).toEqual({ p_id: recordId, p_reason: '验收设备停机取消本次巡查' })
+})
+
+for (const mode of ['void', 'approval'] as const)
+  test('permit-' + mode + ' 配置化流程保持条件校验与作业票租户', async ({ page }) => {
+    const writes: Write[] = []
+    const dialog = await open(page, 'permit-' + mode, writes)
+    if (mode === 'void') {
+      await dialog.getByRole('button', { name: '确认作废', exact: true }).click()
+      await expect(field(dialog, '作废原因').locator('.el-form-item__error')).toHaveText(
+        '请填写作废原因'
+      )
+      await field(dialog, '作废原因').getByRole('textbox').fill('验收现场条件改变停止作业')
+    } else {
+      await dialog.getByText('拒绝申请', { exact: true }).click()
+      await field(dialog, '处理说明').getByRole('textbox').fill('验收条件未满足')
+    }
+    await dialog
+      .getByRole('button', { name: mode === 'void' ? '确认作废' : '确认审批', exact: true })
+      .click()
+    await expect(page.getByTestId('save-result')).toHaveText('已保存')
+    expect(writes[0].payload).toMatchObject({
+      p_id: permit.id,
+      p_action: mode === 'void' ? 'void' : 'start',
+      p_result: mode === 'void' ? null : 'rejected',
+      p_tenant_id: tenantId
+    })
+  })
+
+test('safety-risk 配置化风险字段选择保留场所信息与关联风险点', async ({ page }) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'safety-risk', writes)
+  await field(dialog, '危险源 / 危害因素').getByRole('textbox').fill('验收设备传动夹伤风险')
+  await field(dialog, '关联风险点').getByRole('combobox').click()
+  await page.getByRole('option', { name: /验收装配区风险点.*验收装配区/ }).click()
+  await dialog.getByRole('button', { name: '保存安全风险', exact: true }).click()
+  await expect(page.getByTestId('save-result')).toHaveText('已保存')
+  expect(writes[0].payload).toMatchObject({
+    p_risk_point_id: recordId,
+    p_payload: { hazard_factor: '验收设备传动夹伤风险' }
   })
 })
 

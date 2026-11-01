@@ -29,7 +29,11 @@ useUserStore(store).setUserInfo({
   platformSuper: false
 })
 useMenuStore(store).setButtonList(
-  ['MdmEsop:View', 'MdmEsop:Import'].map((name) => ({
+  [
+    'MdmEsop:View',
+    'MdmEsop:Import',
+    ...(new URLSearchParams(location.search).has('navigation') ? ['MdmEsop:Add'] : [])
+  ].map((name) => ({
     name,
     path: '',
     type: 'button',

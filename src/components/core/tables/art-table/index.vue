@@ -195,7 +195,7 @@
                 </component>
                 <span
                   v-if="getCellValidationError(child, slotScope.row)"
-                  :class="editing.enabled.value ? 'art-table__edit-error' : 'sr-only'"
+                  class="sr-only"
                   role="alert"
                 >
                   {{ getCellValidationError(child, slotScope.row)?.message }}
@@ -320,11 +320,7 @@
                 />
                 <span v-else>{{ getColumnCellContent(col, slotScope) }}</span>
               </component>
-              <span
-                v-if="getCellValidationError(col, slotScope.row)"
-                :class="editing.enabled.value ? 'art-table__edit-error' : 'sr-only'"
-                role="alert"
-              >
+              <span v-if="getCellValidationError(col, slotScope.row)" class="sr-only" role="alert">
                 {{ getCellValidationError(col, slotScope.row)?.message }}
               </span>
             </div>
@@ -1787,16 +1783,7 @@
         'data-art-validation-key': getCellValidationKey(column, row),
         'aria-invalid': error ? 'true' : undefined
       },
-      [
-        content,
-        error
-          ? h(
-              'span',
-              { class: editing.enabled.value ? 'art-table__edit-error' : 'sr-only', role: 'alert' },
-              error.message
-            )
-          : null
-      ]
+      [content, error ? h('span', { class: 'sr-only', role: 'alert' }, error.message) : null]
     )
   }
 

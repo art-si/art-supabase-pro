@@ -446,6 +446,11 @@
     (value) => setLoading(value)
   )
 
+  watch(
+    () => props.confirmDisabled,
+    (confirmDisabled) => setOptions({ confirmDisabled })
+  )
+
   const drawerBindings = computed<Record<string, unknown>>(() => {
     const runtimeProps = options.value.drawerProps ?? {}
     const inheritedAttrs = { ...attrs } as Record<string, unknown>

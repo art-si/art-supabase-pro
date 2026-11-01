@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { installFixtures, meta, tenantId } from './support/inventory-fixtures'
 import { mockApplicationMenus } from './support/menu-rpc'
+import { captureBusinessEvidence } from './support/capture-business-evidence'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -164,6 +165,7 @@ test('盘点普通用户实际菜单候选加载及失败重试期间不可打�
 })
 
 test('盘点新增范围切换、取消重开及保存失败保留范围', async ({ page }, testInfo) => {
+  test.setTimeout(90_000)
   const payloads: unknown[] = []
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
   await page.route('**/rpc/wms_create_count_plan_v2_secure', (route) => {
@@ -174,7 +176,10 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
         : { json: true }
     )
   })
-  await page.goto('/tests/e2e/fixtures/wms-operation-retry.html?countScope&sectionProjects')
+  const dark = testInfo.project.name.includes('dark') || testInfo.project.name === 'mobile-390'
+  await page.goto(
+    `/tests/e2e/fixtures/wms-operation-retry.html?countScope&sectionProjects&theme=${dark ? 'dark' : 'light'}`
+  )
   const open = page.getByRole('button', { name: '测试盘点创建', exact: true })
   await open.click()
   const dialog = page.getByRole('dialog', { name: '生成盘点方案', exact: true })
@@ -190,6 +195,16 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
   const confirm = dialog.getByRole('button', { name: '确定', exact: true })
   await organization.click()
   await page.getByRole('treeitem', { name: '测试库存组织 · ORG-TEST', exact: true }).click()
+  await dialog.getByRole('textbox', { name: /方案编号/ }).fill('')
+  await dialog.getByRole('tab', { name: '盘点范围', exact: true }).click()
+  await confirm.click()
+  await expect(dialog.getByRole('tab', { name: '基本信息', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await expect(dialog.getByRole('textbox', { name: /方案编号/ })).toBeFocused()
+  await dialog.getByRole('textbox', { name: /方案编号/ }).fill('COUNT-SCOPE-BEFORE-CANCEL')
+  await dialog.getByRole('tab', { name: '盘点范围', exact: true }).click()
   await expect(project).toBeEnabled()
   await warehouse.click()
   await page.getByRole('option', { name: '测试盘点仓库 first · FIRST', exact: true }).click()
@@ -200,6 +215,11 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await open.click()
   await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('tab', { name: '基本信息', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await dialog.getByRole('tab', { name: '盘点范围', exact: true }).click()
   await warehouse.click()
   await page.getByRole('option', { name: '测试盘点仓库 first · FIRST', exact: true }).click()
   await project.click()
@@ -211,10 +231,7 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
   await expect(page.getByText('测试盘点方案创建失败', { exact: false })).toBeVisible()
   await expect(dialog.getByText('COUNT-SECTION · 测试盘点施工号', { exact: true })).toBeVisible()
   await expect(confirm).toBeEnabled()
-  await page.screenshot({
-    path: testInfo.outputPath('count-create-retry.png'),
-    animations: 'disabled'
-  })
+  await captureBusinessEvidence(dialog, { path: testInfo.outputPath('count-create-retry.png') })
   await confirm.click()
   await expect(dialog).toBeHidden()
   expect(payloads).toHaveLength(2)
@@ -229,6 +246,7 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
     }
   })
   await open.click()
+  await dialog.getByRole('tab', { name: '盘点范围', exact: true }).click()
   await warehouse.click()
   await page.getByRole('option', { name: '测试盘点仓库 first · FIRST', exact: true }).click()
   await project.click()
@@ -296,15 +314,25 @@ test('盘点组织保留禁用祖先、允许选择父子组织并按编码搜�
 })
 
 test('截止日期库存自动填入当天并禁用零库存参数', async ({ page }, testInfo) => {
+  const payloads: unknown[] = []
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
   await installFixtures(page)
-  await page.goto('/tests/e2e/fixtures/wms-operation-retry.html?countScope')
+  await page.route('**/rpc/wms_create_count_plan_v2_secure', (route) => {
+    payloads.push(route.request().postDataJSON())
+    return route.fulfill({ json: true })
+  })
+  const dark = testInfo.project.name.includes('dark') || testInfo.project.name === 'mobile-390'
+  await page.goto(
+    `/tests/e2e/fixtures/wms-operation-retry.html?countScope&theme=${dark ? 'dark' : 'light'}`
+  )
   await page.getByRole('button', { name: '测试盘点创建', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '生成盘点方案', exact: true })
   await expect(dialog).toBeVisible()
   const zeroStock = dialog.locator('.el-form-item').filter({ hasText: '零库存参与盘点' })
+  await dialog.getByRole('tab', { name: '盘点参数', exact: true }).click()
   await zeroStock.locator('.el-switch').click()
   await expect(zeroStock.getByRole('switch')).toBeChecked()
+  await dialog.getByRole('tab', { name: '基本信息', exact: true }).click()
   await dialog.locator('.el-radio-button').filter({ hasText: '截止日期库存' }).click()
   await expect(dialog.getByText('截止日期', { exact: true })).toBeVisible()
   const businessDate = dialog.locator('.el-date-editor input').first()
@@ -312,12 +340,23 @@ test('截止日期库存自动填入当天并禁用零库存参数', async ({ pa
   await expect(cutoffDate).toHaveValue(await businessDate.inputValue())
   await expect(cutoffDate).toHaveValue(/^\d{4}-\d{2}-\d{2}$/)
   await expect(cutoffDate).toBeEnabled()
+  const expectedCutoff = await cutoffDate.inputValue()
+  await dialog.getByRole('tab', { name: '盘点参数', exact: true }).click()
   await expect(zeroStock.getByRole('switch')).toBeDisabled()
   await expect(zeroStock.getByRole('switch')).not.toBeChecked()
-  await page.screenshot({
-    path: testInfo.outputPath('count-plan-cutoff.png'),
-    animations: 'disabled'
-  })
+  await captureBusinessEvidence(dialog, { path: testInfo.outputPath('count-plan-cutoff.png') })
+  await dialog.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(payloads).toEqual([
+    expect.objectContaining({
+      p_payload: expect.objectContaining({
+        organization_id: 'org-test',
+        backup_condition: 'cutoff',
+        cutoff_date: expectedCutoff,
+        include_zero_stock: false
+      })
+    })
+  ])
 })
 
 test('盘点物料弹窗可从即时库存多选两条记录', async ({ page }, testInfo) => {
@@ -355,18 +394,21 @@ test('盘点物料弹窗可从即时库存多选两条记录', async ({ page }, 
       ]
     })
   })
-  await page.goto('/tests/e2e/fixtures/wms-operation-retry.html?countScope')
+  const dark = testInfo.project.name.includes('dark') || testInfo.project.name === 'mobile-390'
+  await page.goto(
+    `/tests/e2e/fixtures/wms-operation-retry.html?countScope&theme=${dark ? 'dark' : 'light'}`
+  )
   await page.getByRole('button', { name: '测试盘点创建', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '生成盘点方案', exact: true })
   await expect(dialog).toBeVisible()
+  await dialog.getByRole('tab', { name: '盘点范围', exact: true }).click()
   await dialog.getByPlaceholder('留空盘点全部物料').click()
   const picker = page.getByRole('dialog', { name: '参选盘点物料', exact: true })
   await expect(picker.getByText('盘点物料一描述', { exact: true })).toBeVisible()
   await picker.getByRole('row').filter({ hasText: 'COUNT-M01' }).click()
   await picker.getByRole('row').filter({ hasText: 'COUNT-M02' }).click()
-  await page.screenshot({
-    path: testInfo.outputPath('count-plan-material-picker.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(picker, {
+    path: testInfo.outputPath('count-plan-material-picker.png')
   })
   await picker.getByRole('button', { name: '确定', exact: true }).click()
   await expect(dialog.getByText('盘点物料一描述', { exact: true })).toBeVisible()

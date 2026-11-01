@@ -55,77 +55,12 @@
           </div>
         </div>
 
-        <div class="auth-channel-row__fields">
-          <ElFormItem label="显示名称">
-            <ElInput v-model.trim="channel.label" maxlength="40" :disabled="disabled" />
-          </ElFormItem>
-          <ElFormItem label="渠道标识">
-            <ElInput
-              v-model.trim="channel.key"
-              maxlength="40"
-              placeholder="例如 wechat"
-              :disabled="disabled"
-            />
-          </ElFormItem>
-          <ElFormItem label="Supabase Provider">
-            <ElInput
-              v-model.trim="channel.provider"
-              maxlength="50"
-              placeholder="例如 custom:wechat"
-              :disabled="disabled"
-            />
-          </ElFormItem>
-          <ElFormItem label="图标">
-            <ElInput
-              v-model.trim="channel.icon"
-              maxlength="80"
-              placeholder="例如 ri:wechat-fill"
-              :disabled="disabled"
-            />
-          </ElFormItem>
-          <ElFormItem label="授权范围">
-            <ElInput
-              v-model.trim="channel.scopes"
-              maxlength="200"
-              placeholder="可选，例如 openid profile email"
-              :disabled="disabled"
-            />
-          </ElFormItem>
-          <ElFormItem label="身份中台连接参数">
-            <div class="auth-channel-row__parameter">
-              <ElInput
-                v-model.trim="channel.queryParamName"
-                maxlength="64"
-                placeholder="参数名，例如 connection"
-                :disabled="disabled"
-              />
-              <ElInput
-                v-model.trim="channel.queryParamValue"
-                maxlength="160"
-                placeholder="参数值，例如 wechat"
-                :disabled="disabled"
-              />
-            </div>
-          </ElFormItem>
-          <ElFormItem label="登录说明" class="is-wide">
-            <ElInput
-              v-model.trim="channel.description"
-              maxlength="100"
-              placeholder="告诉用户何时选择此登录方式"
-              :disabled="disabled"
-            />
-          </ElFormItem>
-        </div>
-
+        <component
+          :is="fieldsRenderer"
+          :items="createAuthChannelFormItems(index, disabled)"
+          :actions="false"
+        />
         <div class="auth-channel-row__actions">
-          <div>
-            <span>登录页展示</span>
-            <ElSwitch v-model="channel.enabled" :disabled="disabled" />
-          </div>
-          <div>
-            <span>允许用户绑定</span>
-            <ElSwitch v-model="channel.allowLinking" :disabled="disabled" />
-          </div>
           <ElButton
             v-if="!disabled"
             type="danger"
@@ -143,6 +78,8 @@
 </template>
 
 <script setup lang="ts">
+  import type { Component } from 'vue'
+  import { createAuthChannelFormItems } from './auth-channel-form-items'
   import { cloneDeep, isEqual } from 'lodash-es'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import { AUTH_CHANNEL_PRESETS } from '@/utils/supabase'
@@ -150,6 +87,7 @@
   const props = defineProps<{
     modelValue: Api.Auth.AuthChannel[]
     disabled?: boolean
+    fieldsRenderer: Component
   }>()
 
   const emit = defineEmits<{
@@ -318,13 +256,10 @@
       }
 
       &__fields {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--art-space-3);
         min-width: 0;
 
         :deep(.el-form-item) {
-          margin: 0;
+          margin: 0 0 var(--art-space-3);
         }
 
         :deep(.el-form-item__label) {

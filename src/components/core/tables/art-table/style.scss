@@ -124,16 +124,9 @@
     min-width: 0;
   }
 
-  :deep(.art-table__cell-content:has(.art-table-cell-editor, .art-table__edit-error)) {
+  :deep(.art-table__cell-content:has(.art-table-cell-editor)) {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  :deep(.art-table__edit-error) {
-    font-size: 12px;
-    line-height: 18px;
-    color: var(--el-color-danger);
-    white-space: normal;
   }
 
   :deep(.art-table__cell-value) {

@@ -129,6 +129,59 @@ const app = createApp({
         {
           onClick: () => {
             useUserStore(store).setUserInfo({
+              userId: 'schema-test',
+              tenantId: 'tenant-a',
+              platformSuper: true
+            })
+            useUserStore(store).setDictMap({
+              ...useUserStore(store).getDictMap,
+              commonContractClauseType: [
+                {
+                  label: '验收条款',
+                  name: '验收条款',
+                  code: 'schema-clause',
+                  status: '1',
+                  value: '验收条款'
+                }
+              ],
+              scmTaxRate: [{ label: '0%', name: '0%', code: 'schema-tax', status: '1', value: '0' }]
+            })
+            return salesDocument.value?.handleOpen({
+              kind: 'sales_contract',
+              effectiveTenantId: 'tenant-a',
+              tenantOptions: [{ label: '测试租户', value: 'tenant-a' }],
+              record: {
+                ...quotation,
+                kind: 'sales_contract',
+                documentTypeId: 'type-a',
+                projectId: 'project-a',
+                customerId: 'customer-a',
+                details: {
+                  title: '配置化验收合同',
+                  contractTotalAmount: 100,
+                  paymentPlanMode: 'ratio'
+                },
+                paymentPlans: [
+                  {
+                    id: 'payment-a',
+                    dueDate: '2026-12-01',
+                    ratio: 50,
+                    amount: 50,
+                    isAdvance: false
+                  }
+                ],
+                clauses: [{ id: 'clause-a', title: '验收条款', content: '原条款内容' }]
+              }
+            })
+          }
+        },
+        '编辑合同计划'
+      ),
+      h(
+        'button',
+        {
+          onClick: () => {
+            useUserStore(store).setUserInfo({
               userId: 'scope-test-user',
               tenantId: 'tenant-a',
               platformSuper: true

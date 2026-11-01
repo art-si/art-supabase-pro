@@ -306,6 +306,25 @@ html[data-ui-scope='workspace'][data-box-mode='shadow-mode'] {
   }
 }
 
+// 工作区块间距由页面布局统一管理，不依赖业务头部组件是否被加载。
+.business-workspace-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--art-page-gap);
+  min-width: 0;
+
+  > .el-alert {
+    flex: 0 0 auto;
+  }
+
+  > .art-table-query,
+  > .el-tabs,
+  > .business-workspace-content {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
 // 徽章样式
 .art-badge {
   position: absolute;

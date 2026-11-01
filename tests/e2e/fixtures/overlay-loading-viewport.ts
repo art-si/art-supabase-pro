@@ -68,6 +68,18 @@ const Preview = defineComponent({
     const history = ref<InstanceType<typeof WorkflowHistoryDrawer>>()
     const drawerLoading = ref(false)
     const dialogLoading = ref(false)
+    const drawerConfirmDisabled = ref(false)
+    const dialogConfirmDisabled = ref(false)
+    useEventListener(window, 'overlay-preview-confirm-disabled', (event) => {
+      const { kind, disabled, viaApi } = (
+        event as CustomEvent<{ kind: OverlayKind; disabled: boolean; viaApi?: boolean }>
+      ).detail
+      if (viaApi) {
+        const api = kind === 'drawer' ? drawer.value : dialog.value
+        api?.setOptions({ confirmDisabled: disabled })
+      } else if (kind === 'drawer') drawerConfirmDisabled.value = disabled
+      else dialogConfirmDisabled.value = disabled
+    })
     useEventListener(window, 'overlay-preview-loading', (event) => {
       const { kind, loading } = (event as CustomEvent<{ kind: OverlayKind; loading: boolean }>)
         .detail
@@ -121,7 +133,13 @@ const Preview = defineComponent({
         ),
         h(
           ArtDrawer,
-          { ref: drawer, title: '加载视口抽屉', size: 'lg', loading: drawerLoading.value },
+          {
+            ref: drawer,
+            title: '加载视口抽屉',
+            size: 'lg',
+            loading: drawerLoading.value,
+            confirmDisabled: drawerConfirmDisabled.value
+          },
           { default: content }
         ),
         h(
@@ -131,7 +149,8 @@ const Preview = defineComponent({
             title: '加载视口弹窗',
             size: 'lg',
             contentHeight: 360,
-            loading: dialogLoading.value
+            loading: dialogLoading.value,
+            confirmDisabled: dialogConfirmDisabled.value
           },
           { default: content }
         )

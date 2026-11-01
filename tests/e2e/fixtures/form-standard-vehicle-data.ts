@@ -40,6 +40,19 @@ const card = {
 }
 type Entry = { load: () => Promise<{ default: Component }>; args: () => unknown[] }
 export const vehicleEntries: Record<string, Entry> = {
+  'fuel-card-new': {
+    load: () => import('@vms/views/vehicle-manage/fuel-card-archive/modules/fuel-card-dialog.vue'),
+    args: () => []
+  },
+  'electric-card-new': {
+    load: () =>
+      import('@vms/views/vehicle-manage/electric-card-archive/modules/electric-card-dialog.vue'),
+    args: () => []
+  },
+  'fuel-card-edit': {
+    load: () => import('@vms/views/vehicle-manage/fuel-card-archive/modules/fuel-card-dialog.vue'),
+    args: () => [{ ...card, fuelType: 'diesel', issuer: '', remark: '', imagePath: null }]
+  },
   'part-issue': {
     load: () => import('@vms/views/vehicle-manage/part-manage/modules/part-issue-dialog.vue'),
     args: () => []

@@ -276,6 +276,7 @@ app.use(language)
 app.use(router)
 setupGlobDirectives(app)
 initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
 useTheme().switchThemeStyles(SystemThemeEnum.LIGHT)
 document.documentElement.dataset.boxMode = 'border-mode'
 await router.push('/')

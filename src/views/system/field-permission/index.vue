@@ -811,7 +811,6 @@
 
 <style scoped lang="scss">
   .field-permission-page {
-    gap: 14px;
     min-width: 0;
     overflow: visible;
 

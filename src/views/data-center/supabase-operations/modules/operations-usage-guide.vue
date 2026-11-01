@@ -54,7 +54,7 @@
           v-model="selectedId"
           filterable
           class="min-w-0 flex-1"
-          placeholder="输入名称搜索 12 个功能"
+          :placeholder="`输入名称搜索 ${SUPABASE_OPERATIONS.length} 个功能`"
           aria-label="搜索和选择运维功能"
         >
           <ElOption

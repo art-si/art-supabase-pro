@@ -337,7 +337,6 @@
   .ai-configuration {
     display: flex;
     flex-direction: column;
-    gap: 12px;
     width: 100%;
     min-width: 0;
     max-width: 100%;

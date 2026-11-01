@@ -1,7 +1,11 @@
 import { sortBy, uniqBy } from 'lodash-es'
-import type { SqlQueryApiParameter } from '@/types/sql-query-api'
+import type { SqlQueryApiParameter, SqlQueryApiParameters } from '@/types/sql-query-api'
 import { getOwnRecordValue, isObjectRecord } from '@/utils/record'
-import { isSqlQueryApiParameterType, sqlQueryApiParameters } from './query-api-ui'
+import {
+  isSqlQueryApiParameterType,
+  sqlQueryApiParameters,
+  SqlQueryApiParameterError
+} from './query-api-ui'
 
 export interface SqlQueryApiParameterPreset {
   id: string
@@ -10,11 +14,11 @@ export interface SqlQueryApiParameterPreset {
   definitionVersion: string
   parameterSignature: string
   updatedAt: string
-  values: Record<string, string | boolean>
+  values: SqlQueryApiParameters
 }
 
 export interface SqlQueryApiPresetState {
-  version: 1
+  version: 2
   presets: SqlQueryApiParameterPreset[]
 }
 
@@ -138,7 +142,7 @@ function signatureParameters(signature: unknown): SqlQueryApiParameter[] {
 export function normalizeQueryApiPresetValues(
   parameters: readonly SqlQueryApiParameter[],
   values: Record<string, unknown>
-): Record<string, string | boolean> {
+): SqlQueryApiParameters {
   const definitions = parameterDefinitions(parameters)
   const source = presetRecord(values)
   const declared = definitions.map((parameter) => parameter.name)
@@ -146,19 +150,16 @@ export function normalizeQueryApiPresetValues(
     const value = getOwnRecordValue(source, key)
     if (!declared.includes(key)) return invalid('参数方案包含未定义字段，请刷新接口后重新保存')
     if (typeof value !== 'string' && typeof value !== 'boolean' && value != null)
-      return invalid('参数方案只支持文本或布尔值，请检查输入')
+      return invalid('参数方案只支持文本、布尔值或 NULL，请检查输入')
     if (typeof value === 'string' && value.length > maxValueLength)
       return invalid(`方案中的每个参数最多 ${maxValueLength} 个字符，请缩短输入`)
   }
   try {
-    return sqlQueryApiParameters(
-      definitions.map((parameter) => ({ ...parameter, required: false })),
-      source
-    )
+    return sqlQueryApiParameters(definitions, source, { allowMissingRequired: true })
   } catch (cause) {
     // Names and types were validated above; this helper emits controlled form-validation copy.
     throw new SqlQueryApiPresetError(
-      cause instanceof Error ? cause.message : '参数格式无效，请检查输入后重试',
+      cause instanceof SqlQueryApiParameterError ? cause.message : '参数格式无效，请检查输入后重试',
       { cause }
     )
   }
@@ -182,11 +183,16 @@ export function normalizeQueryApiPresetName(value: unknown): string {
   return name
 }
 
-function presetState(state: unknown, definitionId: string): SqlQueryApiPresetState {
+function presetState(
+  state: unknown,
+  definitionId: string,
+  allowLegacy = false
+): SqlQueryApiPresetState {
   if (typeof definitionId !== 'string' || !uuid.test(definitionId))
     return invalid('接口编号无效，请刷新接口后重试')
   const source = presetRecord(state, ['version', 'presets'])
-  if (getOwnRecordValue(source, 'version') !== 1) return invalid()
+  const version = getOwnRecordValue(source, 'version')
+  if (version !== 2 && !(allowLegacy && version === 1)) return invalid()
   const rawPresets = getOwnRecordValue(source, 'presets')
   if (Array.isArray(rawPresets) && rawPresets.length > maxPresets)
     return invalid(`每个接口最多保存 ${maxPresets} 个参数方案，请先移除不用的方案`)
@@ -213,11 +219,19 @@ function presetState(state: unknown, definitionId: string): SqlQueryApiPresetSta
     if (!Number.isFinite(date.getTime()) || date.toISOString() !== updatedAt) return invalid()
     const values = presetRecord(getOwnRecordValue(value, 'values'))
     if (
-      Object.getOwnPropertyNames(values).some(
-        (key) => !['string', 'boolean'].includes(typeof getOwnRecordValue(values, key))
-      )
+      Object.getOwnPropertyNames(values).some((key) => {
+        const scalar = getOwnRecordValue(values, key)
+        return !['string', 'boolean'].includes(typeof scalar) && !(version === 2 && scalar === null)
+      })
     )
-      return invalid('参数方案只支持文本或布尔值，请清除损坏方案后重试')
+      return invalid('参数方案包含不支持的值，请清除损坏方案后重试')
+    // Version 1 treated every empty string as omitted, even for declared string parameters.
+    const compatibleValues =
+      version === 1
+        ? Object.fromEntries(
+            Object.entries(values).map(([key, scalar]) => [key, scalar === '' ? undefined : scalar])
+          )
+        : values
     return {
       id,
       name,
@@ -225,14 +239,14 @@ function presetState(state: unknown, definitionId: string): SqlQueryApiPresetSta
       definitionVersion,
       parameterSignature: queryApiParameterSignature(parameters),
       updatedAt,
-      values: normalizeQueryApiPresetValues(parameters, values)
+      values: normalizeQueryApiPresetValues(parameters, compatibleValues)
     }
   })
   if (uniqBy(presets, 'id').length !== presets.length)
     return invalid('参数方案编号重复，请清除后重试')
   if (uniqBy(presets, 'name').length !== presets.length)
     return invalid('参数方案名称重复，请使用不同名称')
-  return { version: 1, presets }
+  return { version: 2, presets }
 }
 
 function checkStoreBudget(raw: string): void {
@@ -250,7 +264,7 @@ export function readQueryApiPresetState(raw: string, definitionId: string): SqlQ
   } catch (cause) {
     throw new SqlQueryApiPresetError('参数方案已损坏，请清除本机方案后重试', { cause })
   }
-  return presetState(parsed, definitionId)
+  return presetState(parsed, definitionId, true)
 }
 
 export function writeQueryApiPresetState(

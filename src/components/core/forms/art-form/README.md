@@ -6,6 +6,8 @@
 
 ## 基础用法
 
+业务字段以 `items` 配置为准：现有 `type` 能表达的控件不再写字段插槽、`render` 包装或 `ElFormItem`。只有缺少类型的控件、复合编辑器和业务表格使用命名字段插槽；内部 prefix/suffix、选项内容优先放在配置的 `slots` / `optionComponent`。同一条业务记录的费用等敏感字段与其他字段共用表单，通过字段级显隐、禁用和只读类型保留权限。登录、注册和密码找回页面的特殊布局按用户要求保留。
+
 ```vue
 <template>
   <ArtForm
@@ -274,6 +276,7 @@ await formRef.value?.focusField('plannedEnd')
 | `description` | `string \| () => VNodeChild \| Component` | `undefined` | 字段下方说明 |
 | `help` | `string \| () => VNodeChild \| Component` | `undefined` | 标签旁帮助提示 |
 | `labelWidth` | `string \| number` | `undefined` | 当前字段标签宽度 |
+| `formItemProps` | `Partial<FormItemProps>` | `undefined` | 字段原生校验/展示属性，如 `required`、`error`、`data-validation-key`；不覆盖配置的 key/label |
 | `type` | `FormItemType` | `'input'` | 内置组件类型 |
 | `render` | `() => VNode \| Component` | `undefined` | 自定义渲染组件，优先级高于 `type` |
 | `hidden` | `boolean \| Ref<boolean> \| (model, item) => boolean` | `false` | 是否隐藏字段 |
@@ -450,6 +453,8 @@ const items: FormItem[] = [
 - 独立模型使用 `const form = ref<FormModel>(createInitialForm())` 搭配 `v-model="form"`；分组状态使用 `reactive({ data: createInitialForm(), ... })` 搭配 `v-model="form.data"`。不要直接将 `const form = reactive(...)` 整体绑定到 `v-model`，也无需在每个调用方手写 `model-value` 和更新事件。
 - 组件在现有表单对象上更新字段与重置值，避免无关的复杂控件因引用变化而重建；业务代码主动替换 `form.value` 时，计算属性、校验器和监听应读取最新模型，字段别名也应使用可写 `computed`，避免持有旧对象。
 - 普通字段优先用 `items` 描述；复杂字段用同名插槽。
-- 已有复杂布局可使用 `custom-layout` 和默认插槽复用表单校验；此模式下 `items` 可省略，原有表单样式类通过 `form-class` 传给内部 `ElForm`。
+- 多卡片等特殊容器布局可用 `#layout="{ fields: Fields }"`，在容器内以 `<component :is="Fields" :items="当前分组配置" :actions="false" />` 排列配置字段。完整字段仍统一提供给根 `ArtForm.items`，共享一个模型、表单与校验边界，禁止在分组中嵌套新表单；普通字段不改为手写表单项。`#footer` 用于非字段的尾部动作。
+- 普通字段插槽也提供 `fields` 渲染器，复合子记录编辑器可在卡片内排列配置字段。子字段以完整嵌套路径声明，仍属于父表单；父 `items` 必须包含完整字段集合，以统一处理异步控件、校验和输出。
+- `custom-layout` / 默认插槽仅保留给核心基础设施和明确豁免的认证页面；业务表单不得用它绕过字段元数据。
 - 默认隐藏重置和提交按钮，业务弹窗由 `ArtDialog` / `ArtDrawer` 的 Footer 统一提交，无需重复传入 `false`。独立提交表单按需配置 `show-reset` / `show-submit`；表格查询使用 `ArtSearchBar` / `ArtTableQuery`，搜索边界默认开启搜索和重置。
 - Element Plus 字段组件的所有 Props 和事件都写到 `item.props`，例如 `maxlength`、`showWordLimit`、`onChange`。

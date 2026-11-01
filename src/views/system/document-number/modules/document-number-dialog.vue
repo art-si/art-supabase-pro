@@ -52,25 +52,6 @@
           label-width="auto"
           :validate-on-rule-change="false"
         >
-          <template #template>
-            <ElInput
-              v-model="formModel.template"
-              maxlength="80"
-              show-word-limit
-              placeholder="例如：YD{YYYYMM}-{SEQ:3}"
-            />
-            <div class="number-rule-dialog__tokens" aria-label="可用模板令牌">
-              <ElButton
-                v-for="token in templateTokens"
-                :key="token"
-                size="small"
-                plain
-                @click="appendToken(token)"
-              >
-                {{ token }}
-              </ElButton>
-            </div>
-          </template>
         </ArtForm>
       </ArtSectionCard>
 
@@ -115,6 +96,8 @@
 </template>
 
 <script setup lang="ts">
+  import { h } from 'vue'
+  import { ElButton } from 'element-plus'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
@@ -214,7 +197,22 @@
       key: 'template',
       type: 'input',
       span: 24,
-      description: '日期令牌可以自由组合；SEQ 后的数字表示流水号补零长度。'
+      props: { maxlength: 80, showWordLimit: true, placeholder: '例如：YD{YYYYMM}-{SEQ:3}' },
+      description: () =>
+        h('div', [
+          h('p', '日期令牌可以自由组合；SEQ 后的数字表示流水号补零长度。'),
+          h(
+            'div',
+            { class: 'number-rule-dialog__tokens', 'aria-label': '可用模板令牌' },
+            templateTokens.map((token) =>
+              h(
+                ElButton,
+                { key: token, size: 'small', plain: true, onClick: () => appendToken(token) },
+                { default: () => token }
+              )
+            )
+          )
+        ])
     },
     {
       label: '流水起始值',

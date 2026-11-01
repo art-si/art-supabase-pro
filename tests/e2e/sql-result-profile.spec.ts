@@ -102,6 +102,7 @@ test('field profiles use all original rows, retain decimals and export without a
   await expect(drawer).toContainText(/纯空白字符串\s*1/)
   await expect(drawer).toContainText(/不同值\s*4/)
   await expect(drawer).toContainText(/重复额外行数\s*3/)
+  await drawer.getByRole('tab', { name: '值分布', exact: true }).click()
   const topRow = drawer.getByRole('row', { name: /"华东"/ })
   await expect(topRow.getByRole('cell', { name: '3', exact: true })).toBeVisible()
   await expect(topRow).toContainText('37.5%')
@@ -111,6 +112,7 @@ test('field profiles use all original rows, retain decimals and export without a
   await page.getByRole('option', { name: 'outside', exact: true }).click()
   await expect(drawer).toContainText('1 行超出安全计算范围')
   await expect(drawer).toContainText(/有效数值\s*0/)
+  await expect(drawer.getByRole('tab')).toHaveCount(0)
   await field.click()
   await page.getByRole('option', { name: 'amount', exact: true }).click()
   const exactTotal = drawer.getByText(exactSum, { exact: true })
@@ -181,6 +183,7 @@ test('scope replacement discards an open profile and null-only results start cle
   await expect(drawer).toContainText(/NULL \/ 缺失值\s*2/)
   await expect(drawer).not.toContainText('9007199254740993.01')
   await expect(drawer).not.toContainText('不能代表数据库全量')
+  await expect(drawer.getByRole('tab')).toHaveCount(0)
   await drawer.getByRole('combobox', { name: '统计字段', exact: true }).click()
   await expect(page.getByRole('option', { name: 'replacement', exact: true })).toHaveAttribute(
     'aria-selected',
@@ -210,6 +213,7 @@ test('identical long previews open the correct original value and clear on scope
   await expect(drawer).toContainText(/已加载行数\s*3/)
   await expect(drawer).toContainText(/不同值\s*2/)
   await expect(drawer).toContainText(/重复额外行数\s*1/)
+  await expect(drawer.getByRole('tab')).toHaveCount(0)
   await expect(
     drawer.getByText(`${JSON.stringify(prefix.slice(0, 160))}…`, { exact: true })
   ).toHaveCount(2)
@@ -245,3 +249,71 @@ test('identical long previews open the correct original value and clear on scope
   await expect.poll(() => state.requests).toBe(requests + 1)
   expect(state.executions).toBe(1)
 })
+
+for (const appearance of ['light', 'dark'] as const) {
+  test(`rich profiles use summary and distribution tabs while boolean fields stay compact - ${appearance}`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize(
+      appearance === 'dark' ? { width: 390, height: 844 } : { width: 1440, height: 900 }
+    )
+    const longValue = '统计原始长文本'.repeat(40)
+    const state = await prepare(page, appearance, {
+      rows: [
+        { payload: longValue, flag: true },
+        { payload: '第二项', flag: false },
+        { payload: '第三项', flag: true },
+        { payload: '第四项', flag: false },
+        { payload: longValue, flag: true }
+      ],
+      columns: [
+        { name: 'payload', type: 'text' },
+        { name: 'flag', type: 'boolean' }
+      ]
+    })
+    const requests = state.requests
+    await page.getByRole('button', { name: '字段统计', exact: true }).click()
+    const drawer = page.getByRole('dialog', { name: '字段统计', exact: true })
+    const overview = drawer.getByRole('tab', { name: '统计概览', exact: true })
+    const distribution = drawer.getByRole('tab', { name: '值分布', exact: true })
+    await expect(overview).toHaveAttribute('aria-selected', 'true')
+    await expect(drawer.getByText('文本长度', { exact: true })).toBeVisible()
+    await expect(drawer.getByText('常见值 Top 10', { exact: true })).toBeHidden()
+    await page.screenshot({
+      path: info.outputPath(`result-profile-${appearance}-overview.png`),
+      timeout: 60000
+    })
+    await distribution.click()
+    await expect(drawer.getByRole('row', { name: /第四项/ })).toBeVisible()
+    await page.screenshot({
+      path: info.outputPath(`result-profile-${appearance}-distribution.png`),
+      timeout: 60000
+    })
+    await drawer.getByRole('button', { name: '查看完整值', exact: true }).click()
+    const details = page.getByRole('dialog', { name: '单元格详情', exact: true })
+    await expect(details.getByLabel('单元格内容代码', { exact: true })).toHaveText(longValue)
+    await details.getByRole('button', { name: '关闭', exact: true }).last().click()
+    await expect(distribution).toHaveAttribute('aria-selected', 'true')
+    const field = drawer.getByRole('combobox', { name: '统计字段', exact: true })
+    await field.click()
+    await page.getByRole('option', { name: 'flag', exact: true }).click()
+    await expect(drawer.getByRole('tab')).toHaveCount(0)
+    await expect(drawer.getByRole('row', { name: /true/ })).toBeVisible()
+    await expect(drawer.getByText('文本长度', { exact: true })).toHaveCount(0)
+    await page.screenshot({
+      path: info.outputPath(`result-profile-${appearance}-compact.png`),
+      timeout: 60000
+    })
+    await field.click()
+    await page.getByRole('option', { name: 'payload', exact: true }).click()
+    await expect(overview).toHaveAttribute('aria-selected', 'true')
+    expect(state.requests).toBe(requests)
+    expect(state.executions).toBe(1)
+    expect(await drawer.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
+      true
+    )
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true
+    )
+  })
+}

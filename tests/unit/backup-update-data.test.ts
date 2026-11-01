@@ -6,7 +6,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { buildDataDump, readCopyInventory } from '../../scripts/lib/backup-update-data'
 
-const header = "SET client_encoding = 'UTF8';\nSELECT pg_catalog.set_config('search_path', '', false);\n"
+const header =
+  "SET client_encoding = 'UTF8';\nSELECT pg_catalog.set_config('search_path', '', false);\n"
 const copy = (rows: string[]) =>
   `COPY "public"."weird.name" ("value", "flag") FROM stdin;\n${rows.join('\n')}${rows.length ? '\n' : ''}\\.\n`
 
@@ -23,10 +24,15 @@ test('COPY inventory fingerprints changes, deletions, duplicates, and ignores ro
     const inventories = []
     for (let index = 0; index < variants.length; index++) {
       const path = join(root, `${index}.sql`)
-      await writeFile(path, `${header}${copy(variants[index])}\nSELECT pg_catalog.setval('public.seq'::regclass, 42, true);\n-- PostgreSQL database dump complete\n`)
+      await writeFile(
+        path,
+        `${header}${copy(variants[index])}\nSELECT pg_catalog.setval('public.seq'::regclass, 42, true);\n-- PostgreSQL database dump complete\n`
+      )
       inventories.push(await readCopyInventory(path))
     }
-    const [original, reordered, edited, deleted, duplicated] = inventories.map(item => item.tables[0].fingerprint)
+    const [original, reordered, edited, deleted, duplicated] = inventories.map(
+      (item) => item.tables[0].fingerprint
+    )
     assert.deepEqual(original, reordered)
     assert.notDeepEqual(original, edited)
     assert.notDeepEqual(original, deleted)
@@ -47,15 +53,22 @@ test('COPY ranges reassemble byte-exact blocks with an explicit completion foote
   try {
     const source = join(root, 'source.sql')
     const second = join(root, 'second.sql')
-    await writeFile(source, `${header}${copy(['one\tt'])}\nSELECT pg_catalog.setval('public.seq'::regclass, 1, true);\n`)
+    await writeFile(
+      source,
+      `${header}${copy(['one\tt'])}\nSELECT pg_catalog.setval('public.seq'::regclass, 1, true);\n`
+    )
     await writeFile(second, `${header}${copy(['two\tf'])}`)
     const firstInventory = await readCopyInventory(source)
     const secondInventory = await readCopyInventory(second)
     const destination = join(root, 'merged.sql')
-    await buildDataDump(destination, [
-      { file: source, start: firstInventory.tables[0].start, end: firstInventory.tables[0].end },
-      { file: second, start: secondInventory.tables[0].start, end: secondInventory.tables[0].end }
-    ], firstInventory.sequenceStatements)
+    await buildDataDump(
+      destination,
+      [
+        { file: source, start: firstInventory.tables[0].start, end: firstInventory.tables[0].end },
+        { file: second, start: secondInventory.tables[0].start, end: secondInventory.tables[0].end }
+      ],
+      firstInventory.sequenceStatements
+    )
     const merged = await readFile(destination, 'utf8')
     assert.match(merged, /one\tt/)
     assert.match(merged, /two\tf/)
@@ -70,11 +83,41 @@ test('COPY parser refuses unsupported statements and unfinished blocks', async (
   const root = await mkdtemp(join(tmpdir(), 'backup-update-unsafe-'))
   try {
     const unsupported = join(root, 'unsupported.sql')
-    await writeFile(unsupported, `${header}${copy(['one\tt'])}\nINSERT INTO public.extra VALUES (1);\n`)
+    await writeFile(
+      unsupported,
+      `${header}${copy(['one\tt'])}\nINSERT INTO public.extra VALUES (1);\n`
+    )
     await assert.rejects(readCopyInventory(unsupported), /Unsupported non-COPY/)
     const unfinished = join(root, 'unfinished.sql')
     await writeFile(unfinished, `${header}COPY "public"."items" ("id") FROM stdin;\n1\n`)
     await assert.rejects(readCopyInventory(unfinished), /without \\\./)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('COPY inventory accepts the Supabase CLI RESET ALL epilogue without accepting other SQL', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'backup-update-reset-'))
+  try {
+    const base = join(root, 'base.sql')
+    const reset = join(root, 'reset.sql')
+    await writeFile(base, `${header}${copy(['one\tt'])}`)
+    await writeFile(
+      reset,
+      `${header}${copy(['one\tt'])}\n-- PostgreSQL database dump complete\n\nRESET ALL;\n`
+    )
+    const baseline = await readCopyInventory(base)
+    const inventory = await readCopyInventory(reset)
+    assert.deepEqual(inventory.tables, baseline.tables)
+    assert.deepEqual(inventory.extraStatements, ['RESET ALL;'])
+    for (const statement of [
+      'RESET ALL; DELETE FROM public.items;',
+      'RESET ROLE;',
+      'RESET application_name;'
+    ]) {
+      await writeFile(reset, `${header}${copy(['one\tt'])}\n${statement}\n`)
+      await assert.rejects(readCopyInventory(reset), { code: 'BACKUP_COPY_FORMAT' })
+    }
   } finally {
     await rm(root, { recursive: true, force: true })
   }

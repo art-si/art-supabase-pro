@@ -11,7 +11,10 @@ import { initializeTheme } from '@/hooks/core/useTheme'
 import { SystemThemeEnum } from '@/enums/app-enum'
 import { setupGlobDirectives } from '@/directives'
 import { resolveMasterConfig } from '@mdm/views/components/operational-master/modules/master-config'
-import { formStandardDictionaries } from './form-standard-modules-data'
+import {
+  formStandardDictionaries,
+  formStandardCompensationPlan
+} from './form-standard-modules-data'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -87,11 +90,70 @@ const common = {
 }
 type Entry = {
   load: () => Promise<{ default: Component }>
+  page?: boolean
   args?: () => unknown[]
   props?: Record<string, unknown>
   editRow?: Record<string, unknown>
 }
 const entries: Record<string, Entry> = {
+  'mdm-shift-pattern': {
+    load: () => import('@mdm/views/production/calendar/modules/pattern-dialog.vue'),
+    args: () => [id]
+  },
+  'hr-compensation-plan': {
+    load: () => import('@hr/views/operations/compensation/modules/compensation-dialog.vue'),
+    args: () => ['plan', formStandardCompensationPlan]
+  },
+  'hr-compensation-employee': {
+    load: () => import('@hr/views/operations/compensation/modules/compensation-dialog.vue'),
+    args: () => [
+      'employee',
+      {
+        id,
+        tenantId,
+        employeeId: id,
+        planId: formStandardCompensationPlan.id,
+        baseAmount: 5000,
+        currencyCode: 'CNY',
+        payFrequency: 'monthly',
+        effectiveFrom: '2026-11-01',
+        changeReason: '验收',
+        items: formStandardCompensationPlan.items.map((item) => ({
+          ...item,
+          amount: item.defaultAmount,
+          rate: item.defaultRate,
+          source: 'employee'
+        }))
+      }
+    ]
+  },
+  'mdm-template-binding': {
+    load: () => import('@mdm/views/production/operation-template/modules/binding-dialog.vue'),
+    args: () => [[id]]
+  },
+  'mdm-inventory-policy': {
+    load: () => import('@mdm/views/inventory/storage/modules/inventory-policy-dialog.vue'),
+    args: () => [{ tenantId, warehouseName: '验收仓库' }]
+  },
+  'employee-profile': {
+    page: true,
+    load: () => import('@hr/views/personnel/employee-profile/index.vue')
+  },
+  'employee-detail': {
+    page: true,
+    load: () => import('@hr/views/personnel/employee-detail/index.vue')
+  },
+  'activity-formula-editor': {
+    load: () =>
+      import('@mdm/views/components/operational-master/modules/activity-formula-dialog.vue'),
+    args: () => [{ ...common }]
+  },
+  'hr-service-assignment': {
+    load: () => import('@hr/views/operations/self-service/modules/service-assignment-dialog.vue'),
+    args: () => [
+      { id, tenantId, requestNo: 'SR-TEST', title: '验收员工服务工单', assignedEmployeeId: null }
+    ]
+  },
   industry: {
     load: () => import('@mdm/views/engineering/component-type/modules/industry-group-dialog.vue'),
     args: () => [
@@ -782,6 +844,8 @@ const entries: Record<string, Entry> = {
   }
 }
 const entry = entries[params.get('entry') || 'industry']
+if (entry.page)
+  document.documentElement.style.setProperty('--art-full-height', 'calc(100dvh - 32px)')
 const CurrentDialog = defineAsyncComponent(entry.load)
 const app = createApp({
   setup() {
@@ -789,29 +853,35 @@ const app = createApp({
     const saved = ref('尚未保存')
     return () =>
       h(ElConfigProvider, { locale: zhCn }, () =>
-        h('main', { class: 'p-4' }, [
-          h(
-            ElButton,
-            {
-              disabled: !dialog.value,
-              onClick: () => {
-                const args = entry.args?.() ?? [common]
-                if (valid && entry.editRow)
-                  args[0] = { ...(args[0] as Record<string, unknown>), row: entry.editRow }
-                return dialog.value?.handleOpen(...args)
-              }
-            },
-            () => '打开真实业务入口'
-          ),
-          h('output', { 'data-testid': 'save-result' }, saved.value),
-          h(CurrentDialog, {
-            ...entry.props,
-            ref: dialog,
-            onSuccess: () => {
-              saved.value = '已保存'
-            }
-          })
-        ])
+        entry.page
+          ? h(
+              'main',
+              { class: 'art-page-view h-screen min-h-0 overflow-hidden p-4' },
+              h(CurrentDialog)
+            )
+          : h('main', { class: 'p-4' }, [
+              h(
+                ElButton,
+                {
+                  disabled: !dialog.value,
+                  onClick: () => {
+                    const args = entry.args?.() ?? [common]
+                    if (valid && entry.editRow)
+                      args[0] = { ...(args[0] as Record<string, unknown>), row: entry.editRow }
+                    return dialog.value?.handleOpen(...args)
+                  }
+                },
+                () => '打开真实业务入口'
+              ),
+              h('output', { 'data-testid': 'save-result' }, saved.value),
+              h(CurrentDialog, {
+                ...entry.props,
+                ref: dialog,
+                onSuccess: () => {
+                  saved.value = '已保存'
+                }
+              })
+            ])
       )
   }
 })
@@ -819,7 +889,10 @@ app.use(store)
 app.use(language)
 const router = createRouter({
   history: createMemoryHistory(),
-  routes: [{ path: '/', component: {} }]
+  routes: [
+    { path: '/', component: {} },
+    { path: '/employee/:id', component: {} }
+  ]
 })
 app.use(router)
 setupGlobDirectives(app)
@@ -840,6 +913,15 @@ const settings = useSettingStore(store)
 const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
 settings.setGlobalTheme(theme, theme)
 initializeTheme()
-await router.push('/')
+await router.push({
+  path: entry.page && params.get('recordId') ? `/employee/${params.get('recordId')}` : '/',
+  query: entry.page
+    ? Object.fromEntries(
+        ['sourceUserId', 'email', 'tenantId', 'organizationId', 'returnPath']
+          .filter((key) => params.has(key))
+          .map((key) => [key, params.get(key)])
+      )
+    : {}
+})
 await router.isReady()
 app.mount('#app')

@@ -15,35 +15,22 @@
           <span class="text-[var(--el-text-color-secondary)]">入库仓库</span>
           <strong>{{ warehouse?.warehouseCode }} · {{ warehouse?.warehouseName }}</strong>
         </div>
-        <div class="grid gap-1 text-sm">
-          <label for="receipt-bin-select" class="text-[var(--el-text-color-secondary)]"
-            >入库库位</label
+        <ArtForm
+          v-model="placementForm"
+          :items="placementItems"
+          :span="24"
+          root-class="px-0! pt-0!"
+        >
+          <template #footer
+            ><ElButton
+              v-if="warehouse?.enableLocations"
+              :loading="recommending"
+              :disabled="!canRecommend"
+              @click="recommend"
+              ><ArtSvgIcon icon="ri:magic-line" />自动选位</ElButton
+            ></template
           >
-          <div v-if="warehouse?.enableLocations" class="flex min-w-0 flex-col gap-2 sm:flex-row">
-            <ElSelect
-              id="receipt-bin-select"
-              v-model="selectedBinId"
-              filterable
-              clearable
-              :disabled="recommending"
-              class="min-w-0 flex-1"
-              placeholder="选择可用库位"
-            >
-              <ElOption
-                v-for="bin in availableBins"
-                :key="bin.id"
-                :label="`${bin.binCode} · ${bin.binName}`"
-                :value="bin.id"
-              />
-            </ElSelect>
-            <ElButton :loading="recommending" :disabled="!canRecommend" @click="recommend">
-              <ArtSvgIcon icon="ri:magic-line" />自动选位
-            </ElButton>
-          </div>
-          <div v-else class="rounded-lg bg-[var(--el-fill-color-light)] px-3 py-2">
-            此仓库未启用库位，入库将直接归属仓库。
-          </div>
-        </div>
+        </ArtForm>
         <p class="text-xs text-[var(--el-text-color-secondary)]">
           本行库存数量 {{ quantity
           }}{{ unitDisplayName(context?.tenantId || '', context?.line.lineSnapshot.stockUnit) }}
@@ -60,6 +47,7 @@
   import { useUnitDisplayNames } from '@/hooks/core/useUnitDisplayNames'
   const { loadUnitDisplayNames, unitDisplayName } = useUnitDisplayNames()
   import { ElMessage } from 'element-plus'
+  import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
@@ -89,7 +77,7 @@
   const context = shallowRef<Context>()
   const warehouse = shallowRef<ScmReceiptPlacementWarehouse | null>(null)
   const bins = ref<ScmReceiptPlacementBin[]>([])
-  const selectedBinId = ref<string | null>(null)
+  const placementForm = ref<{ binId: string | null }>({ binId: null })
   const recommending = ref(false)
   const loadError = ref('')
   let generation = 0
@@ -110,6 +98,25 @@
   const availableBins = computed(() =>
     bins.value.filter((bin) => !context.value?.line.serialManagementEnabled || bin.supportsSerial)
   )
+  const placementItems = computed<FormItem[]>(() => [
+    {
+      key: 'binId',
+      label: '入库库位',
+      type: warehouse.value?.enableLocations ? 'select' : 'text',
+      options: availableBins.value.map((bin) => ({
+        label: `${bin.binCode} · ${bin.binName}`,
+        value: bin.id
+      })),
+      props: {
+        id: 'receipt-bin-select',
+        filterable: true,
+        clearable: true,
+        disabled: recommending.value,
+        placeholder: '选择可用库位',
+        emptyText: '此仓库未启用库位，入库将直接归属仓库。'
+      }
+    }
+  ])
   const canRecommend = computed(
     () =>
       Boolean(warehouse.value?.enableLocations && context.value?.line.lineSnapshot.materialId) &&
@@ -145,7 +152,7 @@
         ElMessage.warning('推荐库位不支持序列号，请手动选择支持序列号的库位')
         return
       }
-      selectedBinId.value = bin.id
+      placementForm.value.binId = bin.id
       ElMessage.success(`已选库位 ${bin.binCode}，确认入库时将再次校验`)
     } catch (error) {
       if (requestGeneration === generation)
@@ -158,14 +165,14 @@
   async function submit(): Promise<boolean> {
     const current = context.value
     if (!current || !warehouse.value || loadError.value || recommending.value) return false
-    if (warehouse.value.enableLocations && !selectedBinId.value) {
+    if (warehouse.value.enableLocations && !placementForm.value.binId) {
       ElMessage.warning('请选择入库库位或使用自动选位')
       return false
     }
     try {
       await setScmReceiptLineBin(
         current.line.id,
-        warehouse.value.enableLocations ? selectedBinId.value : null
+        warehouse.value.enableLocations ? placementForm.value.binId : null
       )
       emit('success')
       return true
@@ -201,12 +208,12 @@
       warehouse.value = warehouseResult
       bins.value = binRows
       const currentBinId = data.line.lineSnapshot.binId
-      selectedBinId.value =
+      placementForm.value.binId =
         warehouseResult.enableLocations &&
         availableBins.value.some((bin) => bin.id === currentBinId)
           ? currentBinId || null
           : null
-      if (warehouseResult.enableLocations && currentBinId && !selectedBinId.value)
+      if (warehouseResult.enableLocations && currentBinId && !placementForm.value.binId)
         ElMessage.warning('原库位当前不可用，请重新选择')
     } catch (error) {
       if (requestGeneration === generation)
@@ -228,7 +235,7 @@
     context.value = data
     warehouse.value = null
     bins.value = []
-    selectedBinId.value = null
+    placementForm.value.binId = null
     loadError.value = ''
     await dialogRef.value?.handleOpen(data, {
       title: '指定入库库位',

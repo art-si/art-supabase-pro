@@ -168,6 +168,7 @@ test('administrators publish the current SQL, edit parameter definitions and dis
   await manager.getByRole('button', { name: '编辑与授权', exact: true }).click()
   const edit = page.getByRole('dialog', { name: '编辑查询 API', exact: true })
   await expect(edit.getByRole('textbox', { name: '查询 API 地址标识', exact: true })).toBeDisabled()
+  await edit.getByRole('tab', { name: '执行与授权', exact: true }).click()
   await edit.getByRole('switch', { name: '启用查询 API', exact: true }).press('Space')
   await edit.getByRole('button', { name: '保存 API', exact: true }).click()
   await expect(edit).toHaveCount(0)
@@ -327,3 +328,122 @@ test('cancelled invocation clears the previous result and allows a new call', as
   expect(invocations).toBe(3)
   expect(errors).toEqual([])
 })
+
+for (const appearance of ['light', 'dark'] as const) {
+  test(`query editor tabs validate hidden fields and parameter rows before retrying save - ${appearance}`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize(
+      appearance === 'dark' ? { width: 390, height: 844 } : { width: 1440, height: 900 }
+    )
+    const saves: Record<string, unknown>[] = []
+    let failSave = true
+    await page.route('**/functions/v1/sql-query-api**', (route) => {
+      const body = route.request().postDataJSON() as {
+        action?: string
+        input?: Record<string, unknown>
+      }
+      if (body.action === 'list')
+        return route.fulfill({
+          json: {
+            definitions: [definition],
+            canManage: true,
+            users: [{ id: userId, name: '测试账号', tenantId }]
+          }
+        })
+      if (body.action === 'save' && body.input) {
+        saves.push(body.input)
+        return failSave
+          ? route.fulfill({ status: 503, json: { message: '查询 API 暂时无法保存，请重试' } })
+          : route.fulfill({ json: { ...body.input, updatedAt: '2026-11-01T00:00:00Z' } })
+      }
+      return route.abort()
+    })
+    await prepare(page, appearance)
+    await page.getByRole('button', { name: '查询 API', exact: true }).click()
+    const manager = page.getByRole('dialog', { name: '查询 API', exact: true })
+    await manager.getByRole('button', { name: '编辑与授权', exact: true }).click()
+    const editor = page.getByRole('dialog', { name: '编辑查询 API', exact: true })
+    const name = editor.locator('input[aria-label="查询 API 名称"]')
+    await expect(name).toBeVisible()
+    await expect(editor.locator('.art-async-state[aria-busy="true"]')).toHaveCount(0)
+    const query = editor.getByRole('tab', { name: '查询定义', exact: true })
+    const access = editor.getByRole('tab', { name: '执行与授权', exact: true })
+    const save = editor.getByRole('button', { name: '保存 API', exact: true })
+    await name.fill('')
+    await access.click()
+    await expect(name).toBeAttached()
+    await expect(name).toBeHidden()
+    await save.click()
+    await expect(query).toHaveAttribute('aria-selected', 'true')
+    await expect(editor.getByText('请输入 API 名称', { exact: true })).toBeVisible()
+    await expect(name).toBeFocused()
+    expect(saves).toHaveLength(0)
+    await name.fill('跨页签校验与重试 API')
+    const table = editor.locator('.art-table')
+    await table.getByRole('button', { name: '编辑第 1 行 参数名', exact: true }).click()
+    await table.getByRole('textbox').fill('1bad')
+    await access.click()
+    await editor.getByRole('spinbutton', { name: '查询 API 返回行数', exact: true }).fill('321')
+    await page.screenshot({
+      path: info.outputPath(`query-editor-${appearance}-access.png`),
+      timeout: 60000
+    })
+    await save.click()
+    await expect(query).toHaveAttribute('aria-selected', 'true')
+    await expect(
+      page
+        .locator('.el-message')
+        .getByText('参数名以字母开头，仅支持字母、数字和下划线', { exact: true })
+    ).toBeVisible()
+    await expect(table.locator('.art-table__cell-content.is-validation-error')).toHaveCount(1)
+    await expect(table.locator('.art-table__edit-error')).toHaveCount(0)
+    await expect(
+      table.locator('.art-table__cell-content.is-validation-error [role="alert"]')
+    ).toHaveClass('sr-only')
+    await expect(table.getByRole('textbox')).toBeFocused()
+    await expect(
+      table.getByRole('columnheader', { name: /参数名/ }).locator('.art-table__required-marker')
+    ).toBeVisible()
+    expect(saves).toHaveLength(0)
+    await page.screenshot({
+      path: info.outputPath(`query-editor-${appearance}-parameter-error.png`),
+      timeout: 60000
+    })
+    await table.getByRole('textbox').fill('amount')
+    await access.click()
+    await save.click()
+    await expect(page.getByText('查询 API 暂时无法保存，请重试', { exact: true })).toBeVisible()
+    await expect(editor).toBeVisible()
+    await expect(access).toHaveAttribute('aria-selected', 'true')
+    await query.click()
+    await expect(name).toHaveValue('跨页签校验与重试 API')
+    await expect(editor.getByRole('textbox', { name: '查询 API SQL', exact: true })).toHaveValue(
+      definition.sql
+    )
+    await access.click()
+    failSave = false
+    await save.click()
+    await expect(editor).toHaveCount(0)
+    expect(saves).toHaveLength(2)
+    expect(saves[1]).toMatchObject({
+      id: definition.id,
+      tenantId,
+      sql: definition.sql,
+      parameters: definition.parameters,
+      allowedUserIds: [userId],
+      maxRows: 321,
+      timeoutMs: 10000,
+      enabled: true
+    })
+    expect(saves[0]).toEqual(saves[1])
+    await manager.getByRole('button', { name: '编辑与授权', exact: true }).click()
+    await expect(query).toHaveAttribute('aria-selected', 'true')
+    await expect(name).toHaveValue('跨页签校验与重试 API')
+    await editor.getByRole('button', { name: '取消', exact: true }).click()
+    expect(saves).toHaveLength(2)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true
+    )
+  })
+}

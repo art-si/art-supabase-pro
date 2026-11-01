@@ -126,7 +126,7 @@ export const SUPABASE_OPERATIONS: SupabaseOperation[] = [
   {
     id: 'updateBackup',
     title: '更新已有备份',
-    description: '同一目录保留最新完整快照，只下载变化内容；先暂存校验，再归档并替换。',
+    description: '只下载变化内容；校验、归档并更新完整快照，成功后目录名改为最新时间。',
     script: 'backup-supabase.ps1',
     permission: 'SupabaseOperations:UpdateBackup',
     risk: 'local',

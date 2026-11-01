@@ -61,11 +61,16 @@ export function isBackupUpdateReport(value: unknown): value is BackupUpdateRepor
     )
   )
     return false
-  for (const key of ['historyPath', 'error'])
+  for (const key of ['historyPath', 'error', 'errorStage'])
     if (
       value[key] !== undefined &&
       (typeof value[key] !== 'string' || String(value[key]).length > 4096)
     )
       return false
+  if (
+    value.errorCode !== undefined &&
+    (typeof value.errorCode !== 'string' || !/^[A-Z0-9_]{2,64}$/.test(value.errorCode))
+  )
+    return false
   return true
 }

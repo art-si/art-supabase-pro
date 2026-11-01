@@ -7,7 +7,7 @@ import { SUPABASE_OPERATIONS } from '../../src/utils/supabase/operations-catalog
 import { OperationsRunner } from '../../scripts/supabase-operations-runtime'
 
 test(
-  '12 项操作通过真实 PowerShell 执行入口分发，参数和续跑开关正确且不访问云端',
+  '全部操作通过真实 PowerShell 执行入口分发，参数和续跑开关正确且不访问云端',
   { skip: process.platform !== 'win32', timeout: 180_000 },
   async () => {
     const parent = path.resolve('.artifacts/supabase-operations/runtime-tests')
@@ -40,6 +40,10 @@ test(
         fields.add('LocalRoot')
         fields.add('VerificationReportPath')
       }
+      if (['previewBackupUpdate', 'updateBackup'].includes(operation.id)) {
+        fields.add('PlanOnly')
+        fields.add('ApplyUpdate')
+      }
       declarations.set(operation.script, fields)
     }
     for (const [script, keys] of declarations) {
@@ -51,7 +55,7 @@ test(
           'Password'
         ].includes(key)
           ? 'Security.SecureString'
-          : ['Resume', 'VerifyBackupOnly'].includes(key)
+          : ['Resume', 'VerifyBackupOnly', 'PlanOnly', 'ApplyUpdate'].includes(key)
             ? 'switch'
             : 'object'
         return `[${type}]$${key}`
@@ -68,6 +72,12 @@ test(
             '  $now = (Get-Date).ToUniversalTime().ToString("o")',
             '  $report = @{ formatVersion = 1; status = "passed"; backupPath = [IO.Path]::GetFullPath([string]$BackupPath); sourceProjectRef = $null; snapshotCreatedAt = $null; startedAt = $now; completedAt = $now; summary = @{ files = 1; verifiedFiles = 1; totalBytes = 4; issueCount = 0 }; checks = [object[]]@(@{ id = "manifest"; label = "清单"; status = "passed"; detail = "隔离测试通过" }); groups = [object[]]@(@{ id = "database"; label = "数据库"; files = 1; verifiedFiles = 1; bytes = 4 }); issues = [object[]]@(); limitations = [object[]]@("隔离测试，不读取真实备份") }',
             '  $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $VerificationReportPath -Encoding utf8',
+            '}',
+            'if ($PlanOnly -or $ApplyUpdate) {',
+            '  if (-not $env:SUPABASE_OPS_UPDATE_REPORT_PATH) { throw "Missing fixed update report path." }',
+            '  $now = (Get-Date).ToUniversalTime().ToString("o")',
+            '  $report = @{ formatVersion = 1; mode = $(if ($PlanOnly) { "preview" } else { "apply" }); status = $(if ($PlanOnly) { "planned" } else { "updated" }); backupPath = [IO.Path]::GetFullPath([string]$UpdateBackupPath); sourceProjectRef = "ckbftoopuyophiebamwy"; planId = "11111111-1111-4111-8111-111111111111"; baseManifestSha256 = $("a" * 64); startedAt = $now; completedAt = $now; summary = @{ added = 0; changed = 1; removed = 0; unchanged = 0 }; items = [object[]]@(); warnings = [object[]]@("隔离测试，不读取真实备份") }',
+            '  $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $env:SUPABASE_OPS_UPDATE_REPORT_PATH -Encoding utf8',
             '}'
           ].join('\n')
       )
@@ -109,6 +119,14 @@ test(
         if (operation.id === 'verify')
           assert.ok(run.logs.some((line) => line.message.includes('VERIFY:True')))
         if (operation.id === 'verify') assert.equal(run.verificationReport?.status, 'passed')
+        if (operation.id === 'previewBackupUpdate') {
+          assert.equal(run.updateReport?.mode, 'preview')
+          assert.equal(run.updateReport?.status, 'planned')
+        }
+        if (operation.id === 'updateBackup') {
+          assert.equal(run.updateReport?.mode, 'apply')
+          assert.equal(run.updateReport?.status, 'updated')
+        }
         if (operation.id === 'resumeLocal')
           assert.ok(run.logs.some((line) => line.message.includes('RESUME:True')))
         assert.ok(!JSON.stringify(run).includes('dispatch-secret'))

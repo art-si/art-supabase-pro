@@ -31,17 +31,6 @@
           </span>
         </div>
       </template>
-
-      <template #color>
-        <div class="dict-color-field">
-          <el-color-picker
-            v-model="form.data.color"
-            :predefine="elementPlusPresetColors"
-            aria-label="选择字典文字颜色"
-          />
-          <span>{{ form.data.color || '默认颜色' }}</span>
-        </div>
-      </template>
     </ArtForm>
   </ArtDialog>
 </template>
@@ -267,7 +256,12 @@
           {
             label: '文字颜色',
             key: 'color',
-            slots: 'color'
+            type: 'colorPicker',
+            props: {
+              predefine: elementPlusPresetColors,
+              'aria-label': '选择字典文字颜色'
+            },
+            description: form.value.data.color || '默认颜色'
           },
           {
             label: '标签样式',
@@ -447,13 +441,5 @@
       letter-spacing: 0.01em;
       overflow-wrap: anywhere;
     }
-  }
-
-  .dict-color-field {
-    display: flex;
-    gap: var(--art-space-3);
-    align-items: center;
-    min-height: 36px;
-    color: var(--el-text-color-regular);
   }
 </style>

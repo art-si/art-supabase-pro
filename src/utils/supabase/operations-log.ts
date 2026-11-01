@@ -2,7 +2,8 @@ import type { OperationLog, OperationRun } from '../../types/supabase-operations
 
 export function getOperationBackupPath(run: OperationRun | null): string | undefined {
   if (!run) return undefined
-  for (const key of ['UpdateBackupPath','ResumeBackupPath','BackupPath']) {
+  if (run.updateReport) return run.updateReport.backupPath
+  for (const key of ['UpdateBackupPath', 'ResumeBackupPath', 'BackupPath']) {
     if (typeof run.parameters[key] === 'string') return String(run.parameters[key])
   }
   if (!['backup', 'resumeBackup'].includes(run.operationId)) return undefined
