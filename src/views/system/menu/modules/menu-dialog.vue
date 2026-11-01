@@ -16,6 +16,7 @@
       </section>
 
       <ArtForm
+        v-model:active-tab="activeTab"
         ref="formRef"
         v-model="form"
         :items="formItems"
@@ -24,8 +25,6 @@
         :gutter="20"
         label-width="100px"
         :validate-on-rule-change="false"
-        :show-reset="false"
-        :show-submit="false"
       />
     </div>
   </ArtDialog>
@@ -99,6 +98,7 @@
 
   const emit = defineEmits<Emits>()
   const dialogRef = ref<ArtDialogExpose<MenuDialogOpenData>>()
+  const activeTab = ref('')
   const formRef = ref<InstanceType<typeof ArtForm>>()
 
   const userStore = useUserStore()
@@ -232,7 +232,6 @@
     if (['folder'].includes(form.value.type)) {
       return [
         ...baseItems,
-        { label: '基础定义', key: 'basicSection', type: 'divider', span: 24 },
         {
           label: '父级菜单',
           key: 'parentId',
@@ -258,7 +257,6 @@
           description: '用于侧边导航展示，建议简短明确。'
         },
         { label: '权限标识', key: 'name', type: 'input', props: { placeholder: '如：System' } },
-        { label: '路由与展示', key: 'routeSection', type: 'divider', span: 24 },
         {
           label: '路由地址',
           help: () =>
@@ -303,7 +301,6 @@
           type: 'input',
           props: { placeholder: '如：New、Hot' }
         },
-        { label: '可见性控制', key: 'visibilitySection', type: 'divider', span: 24 },
         { label: '是否启用', key: 'isEnable', type: 'switch', span: switchSpan },
         { label: '隐藏菜单', key: 'isHide', type: 'switch', span: switchSpan },
         { label: '显示徽章', key: 'showBadge', type: 'switch', span: switchSpan }
@@ -312,7 +309,7 @@
     if (['menu'].includes(form.value.type)) {
       return [
         ...baseItems,
-        { label: '基础定义', key: 'basicSection', type: 'divider', span: 24 },
+        { label: '基础定义', key: 'basicSection', type: 'tab', span: 24 },
         {
           label: '父级菜单',
           key: 'parentId',
@@ -337,7 +334,6 @@
           description: '用于导航与页面标签展示。'
         },
         { label: '权限标识', key: 'name', type: 'input', props: { placeholder: '如：User' } },
-        { label: '路由配置', key: 'routeSection', type: 'divider', span: 24 },
         {
           label: '路由地址',
           help: () =>
@@ -407,7 +403,7 @@
           type: 'input',
           props: { placeholder: '如：/system/user' }
         },
-        { label: '页面行为', key: 'behaviorSection', type: 'divider', span: 24 },
+        { label: '页面行为', key: 'behaviorSection', type: 'tab', span: 24 },
         { label: '是否启用', key: 'isEnable', type: 'switch', span: switchSpan },
         { label: '页面缓存', key: 'keepAlive', type: 'switch', span: switchSpan },
         { label: '隐藏菜单', key: 'isHide', type: 'switch', span: switchSpan },
@@ -629,6 +625,7 @@
   }
 
   const handleOpen = async (data: MenuDialogOpenData = {}): Promise<void> => {
+    activeTab.value = ''
     initializeForm(data)
     treeError.value = false
     menuTreeLoader.value = data.menuTree?.length ? undefined : data.loadMenuTree

@@ -232,6 +232,7 @@
       @success="handleDialogSuccess"
     />
   </div>
+  <MasterDataDeleteGuard ref="deleteGuardRef" />
 </template>
 
 <script setup lang="tsx">
@@ -258,7 +259,8 @@
     runNotificationRemindersNow,
     testNotificationChannel
   } from '@/api/notification-reminder'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useUserStore } from '@/store/modules/user'
   import { resolveTenantWorkspaceId } from '@/utils/tenant-scope-context'
@@ -288,7 +290,7 @@
 
   const route = useRoute()
   const router = useRouter()
-  const { confirmAction } = useArtFeedback()
+  const { deleteGuardRef, deleteRecord } = useRecordDeleteGuard('sys_notification_rule', '提醒规则')
   const ruleTableRef = ref<ArtTableQueryExpose>()
   const ruleDialogRef = ref<DialogExpose<Rule>>()
   const channelDialogRef = ref<DialogExpose<ChannelConfig>>()
@@ -561,22 +563,15 @@
   }
 
   const removeRule = async (rule: Rule): Promise<void> => {
-    if (!rule.id || isAllTenants.value) return
-    try {
-      await confirmAction(
-        `确定删除规则“${rule.ruleName}”吗？已经生成的发送记录会继续保留。`,
-        '删除提醒规则',
-        {
-          type: 'warning',
-          confirmButtonText: '确认删除',
-          cancelButtonText: '取消'
-        }
-      )
-      await deleteNotificationRule(rule.id)
-      await loadWorkspace()
-    } catch {
-      // 用户取消时无需提示；接口失败由统一响应层提示。
-    }
+    const id = rule.id
+    if (!id || isAllTenants.value) return
+    await deleteRecord({
+      resource: { id, label: rule.ruleName },
+      permission: 'System:NotificationReminder:DeleteRule',
+      confirmMessage: `确定删除规则“${rule.ruleName}”吗？已经生成的发送记录会继续保留。`,
+      remove: () => deleteNotificationRule(id),
+      onDeleted: loadWorkspace
+    })
   }
 
   const testChannel = async (channel: ChannelConfig): Promise<void> => {

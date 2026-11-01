@@ -1127,6 +1127,7 @@
 
   :global(.art-ai-assistant-drawer .el-drawer__body) {
     --art-drawer-content-padding: 0;
+    --art-scroll-viewport-inset: 0px;
 
     padding: 0;
   }

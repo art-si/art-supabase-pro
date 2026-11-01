@@ -86,6 +86,7 @@
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption, TableEditRecordset } from '@/types'
   import { downloadBlob } from '@/utils/file'
+  import { getOwnRecordValue } from '@/utils/record'
   import type { SqlEditSource, SqlDraftRow } from './result-edit'
   import PlanCodePreview from './plan-code-preview.vue'
   import CellContentView, { type CellContentViewExpose } from './cell-content-view.vue'
@@ -110,8 +111,8 @@
         row: change.row,
         rowIndex: change.rowIndex,
         field,
-        original: change.original[field],
-        value: change.row[field]
+        original: getOwnRecordValue(change.original, field),
+        value: getOwnRecordValue(change.row, field)
       }))
     )
   )
@@ -134,11 +135,11 @@
         'aria-label': `查看第 ${row.rowIndex + 1} 行 ${row.field}${original ? '原值' : '新值'}`,
         onClick: () =>
           cellView.value?.handleOpen({
-            content: display(original ? row.original : row.value),
+            content: display(getOwnRecordValue(row, original ? 'original' : 'value')),
             columnName: row.field
           })
       },
-      display(original ? row.original : row.value)
+      display(getOwnRecordValue(row, original ? 'original' : 'value'))
     )
   const columns: ColumnOption<Difference>[] = [
     { prop: 'rowIndex', label: '行', width: 64, formatter: (row) => row.rowIndex + 1 },
@@ -170,7 +171,12 @@
               class: 'text-xs text-primary',
               'aria-label': `定位第 ${row.rowIndex + 1} 行 ${row.field}`,
               onClick: () => {
-                pendingLocate = { row: row.row, field: row.field }
+                const source = differences.value.find(
+                  (candidate) =>
+                    candidate.rowIndex === row.rowIndex && candidate.field === row.field
+                )
+                if (!source) return
+                pendingLocate = { row: source.row, field: source.field }
                 void drawer.value?.handleClose()
               }
             },
@@ -182,7 +188,13 @@
               type: 'button',
               class: 'text-xs text-g-700',
               'aria-label': `还原第 ${row.rowIndex + 1} 行 ${row.field}`,
-              onClick: () => emit('revert', row.row, row.field)
+              onClick: () => {
+                const source = differences.value.find(
+                  (candidate) =>
+                    candidate.rowIndex === row.rowIndex && candidate.field === row.field
+                )
+                if (source) emit('revert', source.row, source.field)
+              }
             },
             '还原'
           )
@@ -202,7 +214,9 @@
               databaseWritten: false,
               changes: differences.value.map(({ row, rowIndex, field, original, value }) => ({
                 row: rowIndex + 1,
-                keys: Object.fromEntries(props.source.keys.map((key) => [key, row[key]])),
+                keys: Object.fromEntries(
+                  props.source.keys.map((key) => [key, getOwnRecordValue(row, key)])
+                ),
                 field,
                 original,
                 value

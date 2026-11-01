@@ -2,7 +2,7 @@
   <ElSelect
     v-bind="$attrs"
     class="art-user-select"
-    :model-value="modelValue"
+    v-model="modelValue"
     :multiple="multiple"
     :loading="loading"
     :placeholder="placeholder"
@@ -15,8 +15,7 @@
     :no-match-text="noMatchText"
     :popper-class="mergedPopperClass"
     :filter-method="handleFilter"
-    @update:model-value="handleUpdate"
-    @change="handleChange"
+    @change="emit('change', $event)"
   >
     <ElOption
       v-for="option in filteredOptions"
@@ -57,7 +56,6 @@
 
   const props = withDefaults(
     defineProps<{
-      modelValue?: ArtUserSelectValue
       options?: ArtUserSelectOption[]
       multiple?: boolean
       loading?: boolean
@@ -73,7 +71,6 @@
       filterMethod?: (query: string) => void
     }>(),
     {
-      modelValue: undefined,
       options: () => [],
       multiple: false,
       loading: false,
@@ -90,9 +87,10 @@
   )
 
   const emit = defineEmits<{
-    (event: 'update:modelValue', value: ArtUserSelectValue): void
     (event: 'change', value: ArtUserSelectValue): void
   }>()
+
+  const modelValue = defineModel<ArtUserSelectValue>()
 
   const avatarPalette = [
     ['#4f46e5', '#eef2ff'],
@@ -156,14 +154,6 @@
     const seed = Array.from(option.value).reduce((total, char) => total + char.charCodeAt(0), 0)
     const [color, backgroundColor] = avatarPalette[seed % avatarPalette.length]
     return { color, backgroundColor }
-  }
-
-  function handleUpdate(value: ArtUserSelectValue): void {
-    emit('update:modelValue', value)
-  }
-
-  function handleChange(value: ArtUserSelectValue): void {
-    emit('change', value)
   }
 
   function handleFilter(query: string): void {

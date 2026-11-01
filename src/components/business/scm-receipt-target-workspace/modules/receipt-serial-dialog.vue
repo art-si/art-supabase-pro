@@ -11,16 +11,7 @@
         本行库存数量 {{ expectedQuantity }} 件。每行填写一个唯一
         SN；确认入库时会再次校验件数，并逐件写入库存和流水。
       </ElAlert>
-      <ArtForm
-        ref="formRef"
-        :model-value="form"
-        @update:model-value="replaceReactiveModel(form, $event)"
-        :items="items"
-        :rules="rules"
-        label-position="top"
-        :show-reset="false"
-        :show-submit="false"
-      />
+      <ArtForm ref="formRef" v-model="form" :items="items" :rules="rules" label-position="top" />
       <p class="text-xs text-[var(--el-text-color-secondary)]"
         >已输入 {{ parsedSerials.length }} 个 SN</p
       >
@@ -29,7 +20,6 @@
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { ElMessage } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -48,7 +38,7 @@
   const dialogRef = ref<ArtDialogExpose<Context>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const context = shallowRef<Context>()
-  const form = reactive({ serialText: '' })
+  const form = ref({ serialText: '' })
   const expectedQuantity = computed(() =>
     Number(
       context.value?.line.lineSnapshot.stockQuantity ??
@@ -57,7 +47,7 @@
     )
   )
   const parsedSerials = computed(() =>
-    form.serialText
+    form.value.serialText
       .split(/[\s,，;；]+/)
       .map((value) => value.trim())
       .filter(Boolean)
@@ -95,7 +85,7 @@
   }
   async function handleOpen(data: Context): Promise<void> {
     context.value = data
-    form.serialText = data.line.serialNos?.join('\n') || ''
+    form.value.serialText = data.line.serialNos?.join('\n') || ''
     await dialogRef.value?.handleOpen(data, {
       title: '录入收料序列号',
       subtitle: '提交前核对库存数量与唯一编码',

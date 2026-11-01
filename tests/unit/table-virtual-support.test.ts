@@ -36,3 +36,41 @@ test('native-only table capabilities fall back without losing their original ren
     assert.ok(mode.fallbackReason)
   }
 })
+
+test('flat virtual data treats JSON children and truthy hasChildren as ordinary cell fields', () => {
+  const rows = [
+    { name: 'root', children: [{ id: 99, name: 'nested JSON' }], hasChildren: 'yes' },
+    { name: 'other', children: [1, null, { children: ['nested'] }], hasChildren: true }
+  ]
+  for (const virtualScroll of [true, { flatData: false }]) {
+    assert.equal(resolveTableRenderMode({ ...base, rows, virtualScroll }).virtual, false)
+  }
+  assert.equal(
+    resolveTableRenderMode({ ...base, rows, virtualScroll: { flatData: true } }).virtual,
+    true
+  )
+  assert.equal(
+    resolveTableRenderMode({
+      ...base,
+      rows: [{ name: 'root', hasChildren: 'truthy' }],
+      virtualScroll: { flatData: true }
+    }).virtual,
+    true
+  )
+})
+
+test('flat virtual data preserves explicit tree and other native-only capability fallbacks', () => {
+  for (const options of [
+    { lazy: true },
+    { hasTreeProps: true },
+    { treeChildren: 'nodes' },
+    { columns: [{ label: 'group', children: base.columns }] },
+    { columns: [{ type: 'expand' }] },
+    { spanMethod: () => [] },
+    { showSummary: true }
+  ]) {
+    const mode = resolveTableRenderMode({ ...base, ...options, virtualScroll: { flatData: true } })
+    assert.equal(mode.virtual, false)
+    assert.ok(mode.fallbackReason)
+  }
+})

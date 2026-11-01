@@ -1,6 +1,6 @@
 <template>
   <ArtDrawer ref="drawerRef" size="88%">
-    <div v-if="document" class="flex min-w-0 flex-col gap-4">
+    <div v-if="document" ref="contentRef" class="flex min-w-0 flex-col gap-4">
       <ArtEntitySummary
         icon="ri:secure-payment-line"
         :title="document.documentNo || `新增${title}`"
@@ -13,336 +13,355 @@
           ></template
         >
       </ArtEntitySummary>
-      <ArtSectionCard
-        title="基本信息"
-        subtitle="编号由系统按月生成；记账日期与业务日期一致。"
-        :loading="editable && loading"
-        :error="editable ? error : ''"
-        @retry="loadOptions"
-      >
-        <ArtForm
-          v-if="editable"
-          ref="formRef"
-          v-model="document"
-          root-class="art-form--mobile-stack"
-          :items="headerItems"
-          :rules="{
-            documentTypeId: [{ required: true, message: '请选择单据类型' }],
-            businessDate: [{ required: true, message: '请选择日期' }]
-          }"
-          :span="6"
-          label-position="top"
-          :show-submit="false"
-          :show-reset="false"
-        />
-        <ArtDescriptions v-else :data="document" :items="readOnlyItems" />
-      </ArtSectionCard>
-      <ArtSectionCard
-        :title="
-          kind === 'refund' ? '退款收款明细' : kind === 'application' ? '付款申请明细' : '付款明细'
-        "
-        :subtitle="`共 ${document.lines.length} 行 · ${kind === 'refund' ? '退款本金' : kind === 'application' ? '申请金额' : '实付金额'} ${formatCurrencyValue(total)}`"
-      >
-        <template #actions>
-          <ElButton v-if="editable" :disabled="loading || !!error" @click="addLine"
-            ><ArtSvgIcon icon="ri:add-line" />新增明细</ElButton
+      <ElTabs v-model="activeTab" class="min-w-0">
+        <ElTabPane name="basic" label="基本信息" :lazy="false">
+          <ArtSectionCard
+            title="基本信息"
+            subtitle="编号由系统按月生成；记账日期与业务日期一致。"
+            :loading="editable && loading"
+            :error="editable ? error : ''"
+            @retry="loadOptions"
           >
-        </template>
-        <ElAlert
-          v-if="editable"
-          class="mb-4"
-          :closable="false"
-          type="info"
-          :title="
-            kind === 'application'
-              ? '核准与预计付款金额不得超过申请金额；关联应付后将占用可用余额。'
-              : kind === 'refund'
-                ? '仅退原付款未核销现金本金，不含手续费或虚拟结算。同源可拆行收至同账套账户；退完全部本金时剩余未兑现折扣自动失效，不作现金退款或已实现损益。'
-                : '确认付款登记实际资金流；核销由所选方案另行匹配。取消付款保留冲回与操作记录，不代表银行已退款。'
-          "
-        />
-        <ArtTable
-          :data="document.lines"
-          :columns="columns"
-          :pagination="false"
-          row-key="clientKey"
-          :max-height="390"
-        >
-          <template v-for="field in referenceFields" :key="field" #[field]="{ row }">
-            <ElTreeSelect
-              v-if="editable && kind !== 'refund' && field === 'departmentId'"
-              v-model="row.departmentId"
-              aria-label="费用承担部门"
-              :data="organizationTree"
-              :props="{ label: 'organizationName', children: 'children' }"
-              node-key="id"
-              :disabled="referenceDisabled(row, field)"
-              :cache-data="
-                row.departmentId
-                  ? [{ id: row.departmentId, organizationName: referenceLabel(row, field) }]
-                  : []
-              "
-              check-strictly
-              filterable
-              clearable
-              class="w-full!"
-              @change="referenceChanged(row, field)"
-            />
-            <ElSelect
-              v-else-if="
-                editable &&
-                !(
-                  kind === 'refund' &&
-                  [
-                    'supplierId',
-                    'payeeSupplierId',
-                    'projectId',
-                    'contractId',
-                    'departmentId'
-                  ].includes(field)
-                )
-              "
-              v-model="row[field]"
-              :aria-label="referenceLabels[field]"
-              :disabled="referenceDisabled(row, field)"
-              filterable
-              clearable
-              class="w-full!"
-              @change="referenceChanged(row, field)"
-            >
-              <ElOption
-                v-if="
-                  row[field] && !fieldOptions(field, row).some((option) => option.id === row[field])
-                "
-                :value="row[field]"
-                :label="referenceLabel(row, field)"
-                disabled
-              />
-              <ElOption
-                v-for="option in fieldOptions(field, row)"
-                :key="option.id"
-                :value="option.id"
-                :label="referenceOptionLabel(field, option)"
-              />
-            </ElSelect>
-            <span v-else>{{ referenceLabel(row, field) }}</span>
-          </template>
-          <template v-for="field in numericFields" :key="field" #[field]="{ row }">
-            <ElInputNumber
+            <ArtForm
               v-if="editable"
-              v-model="row[field]"
-              :aria-label="
-                field === 'amount' && kind === 'payment' ? '实付金额' : numericLabels[field]
-              "
-              :min="0"
-              :max="field === 'taxRate' ? 100 : undefined"
-              :precision="2"
-              :controls="false"
-              class="w-full!"
-              @change="(value, previous) => amountChanged(row, field, value, previous)"
+              ref="formRef"
+              v-model="document"
+              root-class="art-form--mobile-stack"
+              :items="headerItems"
+              :rules="{
+                documentTypeId: [{ required: true, message: '请选择单据类型' }],
+                businessDate: [{ required: true, message: '请选择日期' }]
+              }"
+              :span="6"
+              label-position="top"
             />
-            <span v-else>{{
-              field === 'taxRate' ? `${row[field]}%` : formatCurrencyValue(row[field])
-            }}</span>
-          </template>
-          <template v-for="field in textFields" :key="field" #[field]="{ row }">
-            <ElSelect
-              v-if="editable && field === 'bankAccount'"
-              v-model="row.bankAccount"
-              aria-label="对方银行账号"
-              filterable
-              allow-create
-              default-first-option
-              class="w-full!"
-              @change="bankChanged(row)"
-            >
-              <ElOption
-                v-for="bank in supplierBanks(row)"
-                :key="bank.id"
-                :value="bank.bankAccount"
-                :label="`${bank.bankName} · ${bank.bankAccount}`"
-              />
-            </ElSelect>
-            <ElInput
-              v-else-if="editable"
-              v-model="row[field]"
-              :aria-label="textLabels[field]"
-              maxlength="200"
-            /><span v-else>{{ row[field] || '—' }}</span>
-          </template>
-          <template #source="{ row }">
-            <ElSelect
-              v-if="editable && kind === 'refund' && !row.id"
-              v-model="row.refundPaymentLineId"
-              aria-label="原付款明细"
-              filterable
-              class="w-full!"
-              @change="(value) => selectRefundSource(row, value)"
-            >
-              <ElOption
-                v-if="
-                  row.refundPaymentLineId &&
-                  !options?.refundSource?.some(
-                    (source) => source.refundPaymentLineId === row.refundPaymentLineId
-                  )
-                "
-                :value="row.refundPaymentLineId"
-                :label="row.refundPaymentDocumentNo || row.sourceDocumentNo || '原付款明细'"
-                disabled
-              />
-              <ElOption
-                v-for="source in options?.refundSource || []"
-                :key="source.refundPaymentLineId || source.id || source.lineNo"
-                :value="source.refundPaymentLineId || ''"
-                :label="`${source.refundPaymentDocumentNo} / ${source.lineNo} · ${source.supplierName || '承运商'} · 可退 ${formatCurrencyValue(source.availableRefundAmount || 0)}`"
-              />
-            </ElSelect>
-            <ElSelect
-              v-else-if="editable && kind !== 'refund' && !row.applicationLineId"
-              :model-value="row.payableId || row.purchaseId"
-              aria-label="来源单据"
-              filterable
-              clearable
-              class="w-full!"
-              @change="(value) => selectSource(row, value)"
-            >
-              <ElOption
-                v-if="
-                  (row.payableId || row.purchaseId) &&
-                  ![...(options?.payable || []), ...(options?.purchase || [])].some(
-                    (option) => option.id === (row.payableId || row.purchaseId)
-                  )
-                "
-                :value="row.payableId || row.purchaseId"
-                :label="row.sourceDocumentNo || '来源已停用，请重新选择'"
-                disabled
-              />
-              <ElOptionGroup label="财务应付"
-                ><ElOption
-                  v-for="option in options?.payable || []"
-                  :key="option.id"
-                  :value="option.id"
-                  :label="`${option.code} · ${option.name}`"
-              /></ElOptionGroup>
-              <ElOptionGroup label="采购合同 / 订单预付款"
-                ><ElOption
-                  v-for="option in options?.purchase || []"
-                  :key="option.id"
-                  :value="option.id"
-                  :label="`${option.code} · ${option.name}`"
-              /></ElOptionGroup> </ElSelect
-            ><span v-else>{{
-              row.refundPaymentDocumentNo || row.sourceDocumentNo || '手工新增'
-            }}</span>
-          </template>
-          <template #employee="{ row }">
-            <ArtEmployeeSelect
-              v-if="editable && kind !== 'refund'"
-              :model-value="row.details.employeeId || undefined"
-              :api-fn="fetchPayableEmployeeSelector"
-              :selected-data="selectedEmployee(row)"
-              @update:model-value="row.details.employeeId = $event || null"
-              :tenant-id="document.tenantId"
-              title="选择采购员"
-              @confirm="
-                (_keys, employees) => {
-                  row.details.employeeName = employees[0]?.employeeName
-                  row.details.employeeNo = employees[0]?.employeeNo
-                }
-              "
-            />
-            <span v-else>{{ row.details.employeeName || '—' }}</span>
-          </template>
-          <template #expense="{ row }">
-            <ElSelect
-              v-if="editable && kind !== 'refund'"
-              v-model="row.details.expenseItemId"
-              aria-label="费用项目"
-              filterable
-              clearable
-              ><ElOption
-                v-for="option in options?.expense || []"
-                :key="option.id"
-                :value="option.id"
-                :label="option.name"
-            /></ElSelect>
-            <span v-else>{{
-              options?.expense.find((option) => option.id === row.details.expenseItemId)?.name ||
-              '—'
-            }}</span>
-          </template>
-          <template #sourceLineNo="{ row }"
-            ><ElInput
-              v-if="editable && kind !== 'refund'"
-              v-model="row.details.sourceLineNo"
-              aria-label="源行号"
-              maxlength="80"
-            /><span v-else>{{ row.details.sourceLineNo || '—' }}</span></template
+            <ArtDescriptions v-else :data="document" :items="readOnlyItems" />
+          </ArtSectionCard>
+        </ElTabPane>
+        <ElTabPane name="details" label="付款明细" :lazy="false">
+          <ArtSectionCard
+            :title="
+              kind === 'refund'
+                ? '退款收款明细'
+                : kind === 'application'
+                  ? '付款申请明细'
+                  : '付款明细'
+            "
+            :subtitle="`共 ${document.lines.length} 行 · ${kind === 'refund' ? '退款本金' : kind === 'application' ? '申请金额' : '实付金额'} ${formatCurrencyValue(total)}`"
           >
-          <template #operation="{ row }">
-            <BusinessTableRowActions v-if="editable">
-              <ArtButtonTable icon="ri:file-copy-line" label="复制明细" @click="copyLine(row)" />
-              <ArtButtonTable type="delete" label="删除明细" @click="removeLine(row)" />
-            </BusinessTableRowActions>
-          </template>
-        </ArtTable>
-      </ArtSectionCard>
-      <ArtSectionCard
-        :title="kind === 'refund' ? '退款金额说明' : '金额与付款说明'"
-        :subtitle="
-          kind === 'refund'
-            ? '退款本金与失效折扣分开记录；保存时校准同源全额退款的失效折扣。'
-            : kind === 'application'
-              ? '申请、核准及预计金额由明细汇总；手续费不冲减供应商应付余额。'
-              : '实付金额由明细汇总；确认付款后登记资金流水，手续费不冲减供应商应付余额。'
-        "
-      >
-        <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <div
-            ><p class="text-sm text-g-600">{{
-              kind === 'refund' ? '退款本金' : kind === 'application' ? '申请金额' : '实付金额'
-            }}</p
-            ><p class="mt-1 text-xl font-semibold text-warning">{{
-              formatCurrencyValue(total)
-            }}</p></div
-          >
-          <div v-if="kind === 'application'"
-            ><p class="text-sm text-g-600">核准金额</p
-            ><p class="mt-1 text-lg font-medium">{{
-              formatCurrencyValue(
-                document.lines.reduce((sum, row) => sum + Number(row.approvedAmount || 0), 0)
-              )
-            }}</p></div
-          >
-          <div v-if="kind === 'application'"
-            ><p class="text-sm text-g-600">预计付款金额</p
-            ><p class="mt-1 text-lg font-medium">{{
-              formatCurrencyValue(
-                document.lines.reduce((sum, row) => sum + Number(row.plannedAmount || 0), 0)
-              )
-            }}</p></div
-          >
-          <div v-if="kind === 'payment'"
-            ><p class="mb-1 text-sm text-g-600">付款方手续费(元)</p
-            ><ElInputNumber
+            <template #actions>
+              <ElButton v-if="editable" :disabled="loading || !!error" @click="addLine"
+                ><ArtSvgIcon icon="ri:add-line" />新增明细</ElButton
+              >
+            </template>
+            <ElAlert
               v-if="editable"
-              v-model="document.details.fee"
-              aria-label="付款方手续费"
-              :min="0"
-              :precision="2"
-              :controls="false"
-            /><p v-else>{{ formatCurrencyValue(document.details.fee || 0) }}</p></div
+              class="mb-4"
+              :closable="false"
+              type="info"
+              :title="
+                kind === 'application'
+                  ? '核准与预计付款金额不得超过申请金额；关联应付后将占用可用余额。'
+                  : kind === 'refund'
+                    ? '仅退原付款未核销现金本金，不含手续费或虚拟结算。同源可拆行收至同账套账户；退完全部本金时剩余未兑现折扣自动失效，不作现金退款或已实现损益。'
+                    : '确认付款登记实际资金流；核销由所选方案另行匹配。取消付款保留冲回与操作记录，不代表银行已退款。'
+              "
+            />
+            <ArtTable
+              ref="lineTableRef"
+              :data="document.lines"
+              :columns="columns"
+              :pagination="false"
+              row-key="clientKey"
+              :max-height="390"
+            >
+              <template v-for="field in referenceFields" :key="field" #[field]="{ row }">
+                <ElTreeSelect
+                  v-if="editable && kind !== 'refund' && field === 'departmentId'"
+                  v-model="row.departmentId"
+                  aria-label="费用承担部门"
+                  :data="organizationTree"
+                  :props="{ label: 'organizationName', children: 'children' }"
+                  node-key="id"
+                  :disabled="referenceDisabled(row, field)"
+                  :cache-data="
+                    row.departmentId
+                      ? [{ id: row.departmentId, organizationName: referenceLabel(row, field) }]
+                      : []
+                  "
+                  check-strictly
+                  filterable
+                  clearable
+                  class="w-full!"
+                  @change="referenceChanged(row, field)"
+                />
+                <ElSelect
+                  v-else-if="
+                    editable &&
+                    !(
+                      kind === 'refund' &&
+                      [
+                        'supplierId',
+                        'payeeSupplierId',
+                        'projectId',
+                        'contractId',
+                        'departmentId'
+                      ].includes(field)
+                    )
+                  "
+                  v-model="row[field]"
+                  :aria-label="referenceLabels[field]"
+                  :disabled="referenceDisabled(row, field)"
+                  filterable
+                  clearable
+                  class="w-full!"
+                  @change="referenceChanged(row, field)"
+                >
+                  <ElOption
+                    v-if="
+                      row[field] &&
+                      !fieldOptions(field, row).some((option) => option.id === row[field])
+                    "
+                    :value="row[field]"
+                    :label="referenceLabel(row, field)"
+                    disabled
+                  />
+                  <ElOption
+                    v-for="option in fieldOptions(field, row)"
+                    :key="option.id"
+                    :value="option.id"
+                    :label="referenceOptionLabel(field, option)"
+                  />
+                </ElSelect>
+                <span v-else>{{ referenceLabel(row, field) }}</span>
+              </template>
+              <template v-for="field in numericFields" :key="field" #[field]="{ row }">
+                <ElInputNumber
+                  v-if="editable"
+                  v-model="row[field]"
+                  :aria-label="
+                    field === 'amount' && kind === 'payment' ? '实付金额' : numericLabels[field]
+                  "
+                  :min="0"
+                  :max="field === 'taxRate' ? 100 : undefined"
+                  :precision="2"
+                  :controls="false"
+                  class="w-full!"
+                  @change="(value, previous) => amountChanged(row, field, value, previous)"
+                />
+                <span v-else>{{
+                  field === 'taxRate' ? `${row[field]}%` : formatCurrencyValue(row[field])
+                }}</span>
+              </template>
+              <template v-for="field in textFields" :key="field" #[field]="{ row }">
+                <ElSelect
+                  v-if="editable && field === 'bankAccount'"
+                  v-model="row.bankAccount"
+                  aria-label="对方银行账号"
+                  filterable
+                  allow-create
+                  default-first-option
+                  class="w-full!"
+                  @change="bankChanged(row)"
+                >
+                  <ElOption
+                    v-for="bank in supplierBanks(row)"
+                    :key="bank.id"
+                    :value="bank.bankAccount"
+                    :label="`${bank.bankName} · ${bank.bankAccount}`"
+                  />
+                </ElSelect>
+                <ElInput
+                  v-else-if="editable"
+                  v-model="row[field]"
+                  :aria-label="textLabels[field]"
+                  maxlength="200"
+                /><span v-else>{{ row[field] || '—' }}</span>
+              </template>
+              <template #source="{ row }">
+                <ElSelect
+                  v-if="editable && kind === 'refund' && !row.id"
+                  v-model="row.refundPaymentLineId"
+                  aria-label="原付款明细"
+                  filterable
+                  class="w-full!"
+                  @change="(value) => selectRefundSource(row, value)"
+                >
+                  <ElOption
+                    v-if="
+                      row.refundPaymentLineId &&
+                      !options?.refundSource?.some(
+                        (source) => source.refundPaymentLineId === row.refundPaymentLineId
+                      )
+                    "
+                    :value="row.refundPaymentLineId"
+                    :label="row.refundPaymentDocumentNo || row.sourceDocumentNo || '原付款明细'"
+                    disabled
+                  />
+                  <ElOption
+                    v-for="source in options?.refundSource || []"
+                    :key="source.refundPaymentLineId || source.id || source.lineNo"
+                    :value="source.refundPaymentLineId || ''"
+                    :label="`${source.refundPaymentDocumentNo} / ${source.lineNo} · ${source.supplierName || '承运商'} · 可退 ${formatCurrencyValue(source.availableRefundAmount || 0)}`"
+                  />
+                </ElSelect>
+                <ElSelect
+                  v-else-if="editable && kind !== 'refund' && !row.applicationLineId"
+                  :model-value="row.payableId || row.purchaseId"
+                  aria-label="来源单据"
+                  filterable
+                  clearable
+                  class="w-full!"
+                  @change="(value) => selectSource(row, value)"
+                >
+                  <ElOption
+                    v-if="
+                      (row.payableId || row.purchaseId) &&
+                      ![...(options?.payable || []), ...(options?.purchase || [])].some(
+                        (option) => option.id === (row.payableId || row.purchaseId)
+                      )
+                    "
+                    :value="row.payableId || row.purchaseId"
+                    :label="row.sourceDocumentNo || '来源已停用，请重新选择'"
+                    disabled
+                  />
+                  <ElOptionGroup label="财务应付"
+                    ><ElOption
+                      v-for="option in options?.payable || []"
+                      :key="option.id"
+                      :value="option.id"
+                      :label="`${option.code} · ${option.name}`"
+                  /></ElOptionGroup>
+                  <ElOptionGroup label="采购合同 / 订单预付款"
+                    ><ElOption
+                      v-for="option in options?.purchase || []"
+                      :key="option.id"
+                      :value="option.id"
+                      :label="`${option.code} · ${option.name}`"
+                  /></ElOptionGroup> </ElSelect
+                ><span v-else>{{
+                  row.refundPaymentDocumentNo || row.sourceDocumentNo || '手工新增'
+                }}</span>
+              </template>
+              <template #employee="{ row }">
+                <ArtEmployeeSelect
+                  v-if="editable && kind !== 'refund'"
+                  :model-value="row.details.employeeId || undefined"
+                  :api-fn="fetchPayableEmployeeSelector"
+                  :selected-data="selectedEmployee(row)"
+                  @update:model-value="row.details.employeeId = $event || null"
+                  :tenant-id="document.tenantId"
+                  title="选择采购员"
+                  @confirm="
+                    (_keys, employees) => {
+                      row.details.employeeName = employees[0]?.employeeName
+                      row.details.employeeNo = employees[0]?.employeeNo
+                    }
+                  "
+                />
+                <span v-else>{{ row.details.employeeName || '—' }}</span>
+              </template>
+              <template #expense="{ row }">
+                <ElSelect
+                  v-if="editable && kind !== 'refund'"
+                  v-model="row.details.expenseItemId"
+                  aria-label="费用项目"
+                  filterable
+                  clearable
+                  ><ElOption
+                    v-for="option in options?.expense || []"
+                    :key="option.id"
+                    :value="option.id"
+                    :label="option.name"
+                /></ElSelect>
+                <span v-else>{{
+                  options?.expense.find((option) => option.id === row.details.expenseItemId)
+                    ?.name || '—'
+                }}</span>
+              </template>
+              <template #sourceLineNo="{ row }"
+                ><ElInput
+                  v-if="editable && kind !== 'refund'"
+                  v-model="row.details.sourceLineNo"
+                  aria-label="源行号"
+                  maxlength="80"
+                /><span v-else>{{ row.details.sourceLineNo || '—' }}</span></template
+              >
+              <template #operation="{ row }">
+                <BusinessTableRowActions v-if="editable">
+                  <ArtButtonTable
+                    icon="ri:file-copy-line"
+                    label="复制明细"
+                    @click="copyLine(row)"
+                  />
+                  <ArtButtonTable type="delete" label="删除明细" @click="removeLine(row)" />
+                </BusinessTableRowActions>
+              </template>
+            </ArtTable>
+          </ArtSectionCard>
+        </ElTabPane>
+        <ElTabPane name="amount" label="金额说明" :lazy="false">
+          <ArtSectionCard
+            :title="kind === 'refund' ? '退款金额说明' : '金额与付款说明'"
+            :subtitle="
+              kind === 'refund'
+                ? '退款本金与失效折扣分开记录；保存时校准同源全额退款的失效折扣。'
+                : kind === 'application'
+                  ? '申请、核准及预计金额由明细汇总；手续费不冲减供应商应付余额。'
+                  : '实付金额由明细汇总；确认付款后登记资金流水，手续费不冲减供应商应付余额。'
+            "
           >
-          <div v-if="kind === 'refund'">
-            <p class="text-sm text-g-600">失效折扣（非现金）</p>
-            <p class="mt-1 text-lg font-medium">{{
-              formatCurrencyValue(
-                document.lines.reduce((sum, row) => sum + Number(row.expiredDiscountAmount || 0), 0)
-              )
-            }}</p>
-          </div>
-        </div>
-      </ArtSectionCard>
+            <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div
+                ><p class="text-sm text-g-600">{{
+                  kind === 'refund' ? '退款本金' : kind === 'application' ? '申请金额' : '实付金额'
+                }}</p
+                ><p class="mt-1 text-xl font-semibold text-warning">{{
+                  formatCurrencyValue(total)
+                }}</p></div
+              >
+              <div v-if="kind === 'application'"
+                ><p class="text-sm text-g-600">核准金额</p
+                ><p class="mt-1 text-lg font-medium">{{
+                  formatCurrencyValue(
+                    document.lines.reduce((sum, row) => sum + Number(row.approvedAmount || 0), 0)
+                  )
+                }}</p></div
+              >
+              <div v-if="kind === 'application'"
+                ><p class="text-sm text-g-600">预计付款金额</p
+                ><p class="mt-1 text-lg font-medium">{{
+                  formatCurrencyValue(
+                    document.lines.reduce((sum, row) => sum + Number(row.plannedAmount || 0), 0)
+                  )
+                }}</p></div
+              >
+              <div v-if="kind === 'payment'"
+                ><p class="mb-1 text-sm text-g-600">付款方手续费(元)</p
+                ><ElInputNumber
+                  v-if="editable"
+                  v-model="document.details.fee"
+                  aria-label="付款方手续费"
+                  :min="0"
+                  :precision="2"
+                  :controls="false"
+                /><p v-else>{{ formatCurrencyValue(document.details.fee || 0) }}</p></div
+              >
+              <div v-if="kind === 'refund'">
+                <p class="text-sm text-g-600">失效折扣（非现金）</p>
+                <p class="mt-1 text-lg font-medium">{{
+                  formatCurrencyValue(
+                    document.lines.reduce(
+                      (sum, row) => sum + Number(row.expiredDiscountAmount || 0),
+                      0
+                    )
+                  )
+                }}</p>
+              </div>
+            </div>
+          </ArtSectionCard>
+        </ElTabPane>
+      </ElTabs>
     </div>
     <MasterDataDeleteGuard ref="deleteGuardRef" />
   </ArtDrawer>
@@ -361,6 +380,8 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
+  import { ElTabs, ElTabPane } from 'element-plus'
+  import { focusFirstInvalidFormField } from '@/utils/form/validation'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
@@ -413,7 +434,10 @@
   }
   const captureOperation = useTenantOperationGuard(permissionMap[props.kind].View)
   const session = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
+  const activeTab = ref('basic')
+  const contentRef = useTemplateRef<HTMLElement>('contentRef')
   const formRef = ref<InstanceType<typeof ArtForm>>()
+  const lineTableRef = ref<InstanceType<typeof ArtTable>>()
   const deleteGuardRef = ref<InstanceType<typeof MasterDataDeleteGuard>>()
   const document = ref<PayableSettlementDocument>()
   const options = ref<PayableSettlementOptions>()
@@ -603,12 +627,51 @@
   ]
   const columns = computed<ColumnOption<PayableSettlementLine>[]>(() => [
     { prop: 'lineNo', label: '行号', width: 70, fixed: 'left' },
-    { prop: 'source', label: '来源单据', width: 265, useSlot: true },
-    ...referenceFields.map((field) => ({
+    {
+      prop: 'source',
+      label: '来源单据',
+      width: 265,
+      useSlot: true,
+      headerTooltip:
+        props.kind === 'refund'
+          ? '退款必须关联原付款明细。'
+          : '可关联来源应付或采购单，保存时校验同一账套与币种。',
+      rules:
+        editable.value && props.kind === 'refund'
+          ? {
+              validator: ({ row }) => Boolean(row.refundPaymentLineId),
+              message: '请选择原付款明细'
+            }
+          : undefined
+    },
+    ...referenceFields.map((field): ColumnOption<PayableSettlementLine> => ({
       prop: field,
       label: referenceLabels[field],
       minWidth: field === 'supplierId' || field === 'payeeSupplierId' ? 225 : 180,
-      useSlot: true
+      useSlot: true,
+      required:
+        editable.value &&
+        (field === 'purposeId' ||
+          field === 'settlementMethodId' ||
+          (field === 'fundAccountId' && props.kind === 'refund')),
+      headerTooltip:
+        field === 'supplierId' || field === 'payeeSupplierId'
+          ? '普通付款必填；承运商或已关联客户退款按来源往来单位处理。'
+          : undefined,
+      rules:
+        editable.value && (field === 'supplierId' || field === 'payeeSupplierId')
+          ? {
+              validator: ({ row, value }) =>
+                Boolean(
+                  value ||
+                  row.carrierId ||
+                  row.customerId ||
+                  row.payeeCustomerId ||
+                  row.receivableLineId
+                ),
+              message: `请选择${referenceLabels[field]}`
+            }
+          : undefined
     })),
     {
       prop: 'counterpartyBalance',
@@ -617,7 +680,7 @@
       formatter: (row) =>
         row.counterpartyBalance == null ? '—' : formatCurrencyValue(row.counterpartyBalance)
     },
-    ...numericFields.value.map((field) => ({
+    ...numericFields.value.map((field): ColumnOption<PayableSettlementLine> => ({
       prop: field,
       fixed: field === 'amount' ? ('right' as const) : undefined,
       label:
@@ -625,7 +688,27 @@
           ? '实付金额(元)'
           : `${numericLabels[field]}${field === 'taxRate' ? '(%)' : '(元)'}`,
       width: 170,
-      useSlot: true
+      useSlot: true,
+      required: editable.value && field === 'amount',
+      headerTooltip:
+        field === 'amount'
+          ? '金额必须大于零。'
+          : field === 'approvedAmount'
+            ? '核准金额不能超过申请金额。'
+            : field === 'plannedAmount'
+              ? '预计付款金额不能超过核准金额。'
+              : '填写有效的非负数值。',
+      rules: editable.value
+        ? {
+            validator: ({ row, value }) =>
+              typeof value === 'number' &&
+              Number.isFinite(value) &&
+              (field === 'amount' ? value > 0 : value >= 0) &&
+              (field !== 'approvedAmount' || value <= row.amount) &&
+              (field !== 'plannedAmount' || value <= row.approvedAmount),
+            message: `${numericLabels[field]}不正确，请核对金额范围`
+          }
+        : undefined
     })),
     {
       prop: 'paidAmount',
@@ -908,6 +991,7 @@
     }
   }
   async function open(value?: PayableSettlementDocument, edit = false): Promise<void> {
+    activeTab.value = 'basic'
     const kind = props.kind
     const scopeCurrent = captureOperation()
     const version = session.invalidate()
@@ -946,16 +1030,27 @@
           ElMessage.warning('操作范围或权限已变化，请重新打开付款单据')
           return false
         }
-        if (
-          !document.value ||
-          loading.value ||
-          error.value ||
-          !(await validateArtFormForSubmit(formRef.value))
-        )
+        if (!document.value || loading.value || error.value) return false
+        if (!(await validateArtFormForSubmit(formRef.value))) {
+          activeTab.value = 'basic'
+          await nextTick()
+          focusFirstInvalidFormField(contentRef)
           return false
+        }
         if (!isCurrent()) return false
+        const validation = await lineTableRef.value?.validate({ focus: false })
+        if (!isCurrent()) return false
+        if (validation?.valid === false) {
+          activeTab.value = 'details'
+          await nextTick()
+          if (validation.firstError)
+            await lineTableRef.value?.validateField(validation.firstError.prop)
+          ElMessage.warning(validation.firstError?.message || '请完整填写付款明细')
+          return false
+        }
         const invalid = validateSettlementAmounts(document.value.lines, props.kind)
         if (invalid) {
+          activeTab.value = 'details'
           ElMessage.warning(invalid)
           return false
         }

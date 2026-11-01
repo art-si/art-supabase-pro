@@ -76,8 +76,6 @@
         :items="formItems"
         :disabled="preview.loading || preview.executing || !!preview.error"
         label-position="top"
-        :show-submit="false"
-        :show-reset="false"
       />
       <ArtTable
         :data="preview.data?.lines || []"

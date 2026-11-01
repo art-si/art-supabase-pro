@@ -52,12 +52,9 @@
           </div>
           <ArtForm
             custom-layout
-            :show-reset="false"
-            :show-submit="false"
             v-else-if="!showFeishuQr"
             ref="formRef"
-            :model-value="formData"
-            @update:model-value="replaceReactiveModel(formData, $event)"
+            v-model="formData"
             :rules="rules"
             :key="formKey"
             @submit="handleSubmit"
@@ -199,7 +196,6 @@
 
 <script setup lang="ts">
   import { useEventListener } from '@vueuse/core'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtForm from '@/components/core/forms/art-form/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import { useI18n } from 'vue-i18n'
@@ -279,7 +275,7 @@
   const rememberPasswordPreference = readRememberPasswordPreference()
   const rememberedIdentifier = readRememberedIdentifier()
 
-  const formData = reactive({
+  const formData = ref({
     account: '',
     username: '',
     identifier: rememberedIdentifier || '624944977@qq.com',
@@ -361,29 +357,30 @@
   })
 
   watch(
-    () => formData.rememberPassword,
+    () => formData.value.rememberPassword,
     (rememberPassword) => {
       writeRememberPasswordPreference(rememberPassword)
     }
   )
 
   const restoreBrowserPassword = async (): Promise<void> => {
-    const initialPassword = formData.password
+    const initialPassword = formData.value.password
     const password = await readBrowserPassword(rememberedIdentifier)
     if (
       password &&
-      formData.identifier === rememberedIdentifier &&
-      formData.password === initialPassword
+      formData.value.identifier === rememberedIdentifier &&
+      formData.value.password === initialPassword
     ) {
-      formData.password = password
+      formData.value.password = password
     }
   }
 
   const syncBrowserAutofill = (): void => {
     const identifier = identifierInputRef.value?.input?.value.trim()
     const password = passwordInputRef.value?.input?.value
-    if (identifier && identifier !== formData.identifier) formData.identifier = identifier
-    if (password && password !== formData.password) formData.password = password
+    if (identifier && identifier !== formData.value.identifier)
+      formData.value.identifier = identifier
+    if (password && password !== formData.value.password) formData.value.password = password
   }
 
   useEventListener(window, 'pageshow', syncBrowserAutofill)
@@ -534,7 +531,7 @@
       const captchaToken = await resolveCaptchaToken()
 
       // 登录请求
-      const { identifier, password } = formData
+      const { identifier, password } = formData.value
 
       const params: Api.Auth.LoginParams = {
         identifier,
@@ -550,7 +547,7 @@
           }
         : await getCurrentAuthSession()
 
-      if (formData.rememberPassword) {
+      if (formData.value.rememberPassword) {
         if (!writeRememberedIdentifier(identifier)) {
           ElMessage.warning('浏览器未能记住账号，请检查浏览器存储设置')
         }

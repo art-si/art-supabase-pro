@@ -65,6 +65,8 @@ const columns: ColumnOption<MyRow>[] = [
 
 组件没有内置写入接口。真实业务保存必须调用相应业务 API，继续执行租户、权限、状态及审计规则；把本地 removeRecords 转换为实际删除前，必须使用 MasterDataDeleteGuard 并保留服务端引用校验。
 
+编辑模型将已有自有数据属性优先作为字面字段处理，`__proto__`、`constructor` 和含点的字段也通过安全属性定义修改；撤销、重做和恢复保留同一字面语义。不允许借此创建缺失的危险原型路径，正常嵌套 `prop` 路径保持原有行为。原始 SQL DTO 的精确字段读取另使用 `getOwnRecordValue`，通用单元格 getter 不改变嵌套对象、数组或 Ref 的响应式语义。
+
 ## 可选虚拟滚动
 
 默认仍为 `ElTable`。显式传入 `:virtual-scroll="true"` 或 `:virtual-scroll="{ rowHeight: 44, headerHeight: 56, cache: 3 }"`，兼容的平面表格使用独立的 `ElTableV2` 分支。父容器必须有可用高度，也可传入 `height`。`minRows` 可指定启用的行数阈值，`estimatedRowHeight` 用于已验证的动态行高场景。
@@ -74,6 +76,12 @@ const columns: ColumnOption<MyRow>[] = [
 复用列配置、formatter、普通/表头/编辑插槽、字典、链接、操作列、列过滤、校验、编辑历史、本地分页和选择事件。公开的选行、排序、滚动、布局方法通过 `elTableRef` 适配；`setEditCell` 会先定位虚拟视区，再激活编辑。原生内部 DOM 和未公开的 ElTable 私有 store 不属于兼容接口。
 
 原生 `ElTableColumn` 默认插槽、分组表头、展开行、树/懒加载、拖拽行、原生列筛选、合计/合并单元格、百分比列宽、原生初始排序、自定义表头/行样式、关闭 fit 及仅 `maxHeight` 的自然增长表格会自动保留 `ElTable`。`getRenderMode()` 返回 `{ requested, virtual, fallbackReason }`，供调用方诊断；不会为了虚拟滚动丢弃这些功能。
+
+SQL 等明确的平铺记录可传入 `virtualScroll.flatData: true`，将 `children` 数组、`hasChildren` 作为普通单元格数据，不触发隐式树回退。仅在实际兼容的虚拟分支中，筛选、校验和行索引也停止对子行递归并保留 JSON；显式树参数或其他不兼容功能仍回退原生，相关树语义不被关闭。普通业务表默认不启用此选项。
+
+虚拟分支发出 `column-layout` 事件，数据类型为 `TableColumnLayout`：`{ viewportWidth, columns: [{ key, width }] }`。它只包含布局元数据，宽度包含弹性分配与用户调整，顺序对应当前可见列；相同布局不会因固定位置或行数据变化重复发送。首次尚未测量时不发零宽，已经测量后隐藏容器可发零宽，恢复后重新报告。调用方可用它做展示空间预算，不需要读取内部 DOM 或私有 store；原生分支不发此虚拟布局事件。
+
+虚拟列宽缓存使用 `Map` 按完整字段 key 读写，`__proto__`、`constructor`、`hasOwnProperty` 等名称也作为普通字段处理，不读取对象原型属性。特殊字段的真实行渲染、键盘/指针改宽、固定、隐藏和重排由 `tests/e2e/table-column-layout.spec.ts` 验证。
 
 `editConfig.editor: 'external'` 是显式外部编辑入口。它只发送带 `cell` 锚点的 `edit-activated`，调用方负责弹层和类型控件，通过 `setCellValue` 保留到本地工作副本。SQL 控制台采用这一模式；默认编辑器仍为原有行内编辑。校验 API 可传 `{ focus: false }` 更新错误而不抢夺弹层焦点，默认仍定位第一处错误。
 
@@ -110,6 +118,8 @@ const columns: ColumnOption<MyRow>[] = [
 ## 编辑表格必填列
 
 编辑型表格通过列配置的 `required: true` 声明必填列。`ArtTable` 会在标题前统一渲染与表单一致的红色星号，并为辅助技术补充“必填”语义；不要在 `label` 中手写 `*`。
+
+通过 `headerTooltip: '长度必须大于 0 mm'` 为列标题添加填写说明。普通列、分组列和虚拟表头统一展示帮助图标，鼠标悬停或键盘聚焦可查看说明，无需为帮助提示创建表头插槽。
 
 ```ts
 const columns: ColumnOption<EditableRow>[] = [
@@ -153,6 +163,12 @@ await tableRef.value?.validateField(['quantity', 'unitId'])
 
 固定列不应遮住其他单元格。不得通过隐藏有效操作、覆盖全局 sticky 样式或把整页横向撑开解决窄屏问题。操作列宽度仍应与实际控件数量相符，响应式解除固定不能替代合理的列宽设计。
 
+虚拟分支通过生成列的稳定 key 解析原始列与索引，不能用固定子表或重排后的局部 `columnIndex` 索引原始列数组。第三列固定到左侧、末列固定到右侧时，表头点击/右键、单元格样式和校验仍须对应实际字段。`tests/e2e/table-virtual-fixed-identity.spec.ts` 验证这些身份和窄容器解除固定；640px 阈值本身不提供固定列总宽预算保护。
+
+Table V2 会以排序处理覆盖 `headerCellProps.onClick`，适配层通过表头行的自然冒泡委托派发表头点击；排序继续工作，调整列宽、全选及自定义表头按钮可以通过 `stopPropagation` 保留自己的点击边界。
+
+列宽握柄保留在表头现有右侧留白中，避免被单元格溢出裁剪缩成细线。回归逐像素检查普通区和左右固定区的命中范围，并从握柄中心真实拖动，验证公开布局事件与实际列宽同步；不通过强制点击跳过命中检查。布局元数据回归位于 `tests/e2e/table-column-layout.spec.ts`，握柄与固定区交互回归位于 `table-virtual-fixed-identity.spec.ts`。
+
 操作列按可见按钮本身的宽度、控件间距、单元格留白和滚动条空间计算，最低 64px。不要测量被当前列宽拉伸的操作容器，否则增删行触发重新布局时会重复累加旧列宽。单个更多按钮和带序列号按钮的明细表均有连续删行回归。
 
 回归包含人员工作台中的姓名可读性、横向访问操作、容器缩放恢复，以及专注模式进入、按钮退出与 Esc 退出；使用浏览器隔离数据，不写入业务库。
@@ -160,3 +176,17 @@ await tableRef.value?.validateField(['quantity', 'unitId'])
 仅设置 maxHeight 的表格按内容自然增长，由 Element Plus 限高并计算含表头、合计行和滚动条的可视区域，不同时传入 100% 高度。显式 height 和页面全屏填充仍保留。滚动条不持续显示，使用 Element Plus 默认的悬停显示行为。
 
 展开行内容默认限制在表格可视宽度内，随容器缩放，横向滚动时仍可访问。业务展开表单按可视宽度分列，不应按整张宽表拉长输入框。可展开的明细表优先使用 maxHeight，使少量数据与展开内容自然撑开；空状态切换到数据状态时公用表格会清除旧高度。展开输入框获取焦点仅定位实际控件，不滚动整张跨列单元格；普通单元格与校验错误定位保持有效。
+
+## 主列表列配置目录
+
+`ArtTable` 和 `useTableColumns` 统一读取当前菜单的有效列方案。业务页面继续保留自己的列工厂、格式化、权限判断与数据查询；目录只记录展示元数据，不会生成未授权的业务列。
+
+从当前 `sys_menu` 导出菜单快照（`id/component/type/path/parent_id`）后运行 `pnpm exec tsx scripts/generate-table-column-catalog.ts <菜单快照.json>`，更新两个 `src/config/table-column-*.generated.json` 文件；不要手工维护目录。生成器跟踪实际路由、包装组件的静态 props、动态工作区、条件分支、循环及 `push/splice` 生成的列；运行期的权限、标签页与单据/明细模式保留所有可达列。同页多张主表通过 `groups` 分别匹配，分组子列通过 `parentKey` 关联，不能把子列数算进顶层主表匹配门槛。弹窗、抽屉、选择器、对象详情与附件表不作为主列表注册。
+
+运行期选择条件按完整工厂生成各模式的分组，公共列同时属于对应分组；保留未显式比较的默认分支。字段权限控制的列标记为 `optional`，不计入主表必需列的覆盖率，但仍必须属于目录；实际可见列始终由业务工厂授权，保存的方案不能生成缺少权限的列。`operation` 以及标题为“操作”的 `action` 列受结构保护，不允许通过列方案隐藏。
+
+分组 `prop` 使用稳定的业务标识；勾选数量口径时只改变 `children`。表格根据可见子列成员重新挂载分组，避免 Element Plus 缓存旧表头。月度日历使用 `day01`～`day31`，仅渲染当月有效日期，取数仍使用真实年月日；目录不能固化生成时的月份。
+
+发布更新后，在“列配置”执行“同步目录”，更新当前主列表的元数据并保留已有平台、租户、角色和用户方案。核验业务页改名、显隐、排序、切回前端定义、读取失败回退，以及权限变化和数量/月份切换。对应回归见 `table-column-catalog`、`column-profile`、`wms-inventory-column-config` 单测及物料、库存、设备日历浏览器用例。
+
+2026-10-31 全局核验：扫描当前 500 个菜单入口，登记 431 个列表、6549 列；其余 68 个入口没有可配置主列表，另排除列配置控制页本身。相对原 400 项目录，新增 32 项（TMS 19、VMS 7、FMS 2、MDM 2、MES 1、数据中心 1），移除 1 项附件详情误登记。计量单位从 2 列补全为 10 列；同时补全物料参考、运营主数据、运单、HR 标签页、审批/治理/项目仓/账簿多主表、采购销售与财务单据/明细模式、库存数量分组及设备日历。远端目录逐项核对与生成文件一致，已有 7 份列方案的完整内容指纹保持不变。

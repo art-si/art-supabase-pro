@@ -4,7 +4,7 @@
     trigger="click"
     :width="300"
     placement="bottom-start"
-    @show="resetDraft"
+    @before-enter="resetDraft"
   >
     <template #reference>
       <ArtIconButton

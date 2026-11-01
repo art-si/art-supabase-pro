@@ -1,6 +1,5 @@
 <template>
   <ArtSectionCard
-    :show-scrollbar="false"
     class="production-work-center-navigator"
     title="生产范围"
     subtitle="先选车间，再定位工作中心"
@@ -9,7 +8,6 @@
     :empty="hasLoaded && !error && !workshops.length && !workCenters.length"
     empty-title="暂无可用车间"
     empty-description="请先在“部门 / 产线”与“工作中心”中完成基础配置。"
-    body-class="production-work-center-navigator__body"
     retryable
     @retry="$emit('refresh')"
   >
@@ -28,48 +26,52 @@
       />
     </template>
 
-    <div class="production-work-center-navigator__workshop-field">
-      <label :for="selectId">车间 / 产线</label>
-      <ElSelect
-        :id="selectId"
-        :model-value="selectedWorkshopId"
-        :clearable="allowAllWorkshops"
-        filterable
-        :placeholder="allowAllWorkshops ? '全部车间 / 产线' : '选择车间或产线'"
-        @update:model-value="$emit('select-workshop', String($event || ''))"
-      >
-        <ElOption
-          v-for="workshop in workshops"
-          :key="workshop.id"
-          :label="workshop.name"
-          :value="workshop.id"
+    <template #toolbar
+      ><div class="production-work-center-navigator__controls">
+        <div class="production-work-center-navigator__workshop-field">
+          <label :for="selectId">车间 / 产线</label>
+          <ElSelect
+            :id="selectId"
+            :model-value="selectedWorkshopId"
+            :clearable="allowAllWorkshops"
+            filterable
+            :placeholder="allowAllWorkshops ? '全部车间 / 产线' : '选择车间或产线'"
+            @update:model-value="$emit('select-workshop', String($event || ''))"
+          >
+            <ElOption
+              v-for="workshop in workshops"
+              :key="workshop.id"
+              :label="workshop.name"
+              :value="workshop.id"
+            >
+              <div class="production-work-center-navigator__workshop-option">
+                <span>{{ workshop.name }}</span>
+                <small>{{ workshop.path }}</small>
+              </div>
+            </ElOption>
+            <template #empty>
+              <ArtPickerEmpty title="没有匹配的车间或产线" />
+            </template>
+          </ElSelect>
+        </div>
+
+        <div class="production-work-center-navigator__section-heading">
+          <ArtSectionTitle :show-line="false" :show-marker="false">工作中心</ArtSectionTitle>
+          <span class="production-work-center-navigator__count"
+            >共 {{ workCenters.length }} 项</span
+          >
+        </div>
+
+        <ElInput
+          v-model="keyword"
+          clearable
+          placeholder="搜索工作中心编码或名称"
+          aria-label="搜索工作中心"
         >
-          <div class="production-work-center-navigator__workshop-option">
-            <span>{{ workshop.name }}</span>
-            <small>{{ workshop.path }}</small>
-          </div>
-        </ElOption>
-        <template #empty>
-          <ArtPickerEmpty title="没有匹配的车间或产线" />
-        </template>
-      </ElSelect>
-    </div>
-
-    <div class="production-work-center-navigator__section-heading">
-      <ArtSectionTitle :show-line="false" :show-marker="false">工作中心</ArtSectionTitle>
-      <span class="production-work-center-navigator__count">共 {{ workCenters.length }} 项</span>
-    </div>
-
-    <ElInput
-      v-model="keyword"
-      clearable
-      placeholder="搜索工作中心编码或名称"
-      aria-label="搜索工作中心"
-    >
-      <template #prefix><ArtSvgIcon icon="ri:search-line" /></template>
-    </ElInput>
-
-    <ElScrollbar v-if="filteredCenters.length" class="production-work-center-navigator__scroll">
+          <template #prefix><ArtSvgIcon icon="ri:search-line" /></template>
+        </ElInput> </div
+    ></template>
+    <template v-if="filteredCenters.length">
       <div class="production-work-center-navigator__list">
         <button
           v-if="showAllWorkCenters"
@@ -113,7 +115,7 @@
           />
         </button>
       </div>
-    </ElScrollbar>
+    </template>
 
     <ArtEmptyState
       v-else
@@ -209,12 +211,9 @@
     height: 100%;
     min-height: 0;
 
-    :deep(.production-work-center-navigator__body) {
-      display: flex;
-      flex: 1;
-      flex-direction: column;
+    &__controls {
+      display: grid;
       gap: 12px;
-      min-height: 0;
     }
 
     &__workshop-field {
@@ -272,15 +271,9 @@
       }
     }
 
-    &__scroll {
-      flex: 1;
-      min-height: 0;
-    }
-
     &__list {
       display: grid;
       gap: 4px;
-      padding-right: 4px;
     }
 
     &__item {

@@ -71,6 +71,8 @@ const app = createApp({
             modelValue: model.value,
             items,
             span: 24,
+            showReset: true,
+            showSubmit: true,
             submitText: '提交测试',
             resetText: '重置测试',
             sanitizeOutput: { removeEmptyString: true },

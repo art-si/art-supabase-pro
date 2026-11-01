@@ -43,16 +43,13 @@
 
         <ArtForm
           ref="formRef"
-          :model-value="formModel"
-          @update:model-value="replaceReactiveModel(formModel, $event)"
+          v-model="formModel"
           :items="formItems"
           :rules="formRules"
           :span="12"
           :gutter="20"
           label-position="top"
           label-width="auto"
-          :show-reset="false"
-          :show-submit="false"
           :validate-on-rule-change="false"
         >
           <template #template>
@@ -118,7 +115,6 @@
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
@@ -164,18 +160,18 @@
     remark: ''
   })
 
-  const formModel = reactive<NumberRule>(createInitialForm())
+  const formModel = ref<NumberRule>(createInitialForm())
   const resetCycleOptions = computed(() => getDictMap.value.documentNumberResetCycle ?? [])
   const tenantName = computed(
-    () => formModel.tenant?.tenantName || formModel.tenant?.tenantCode || '当前租户'
+    () => formModel.value.tenant?.tenantName || formModel.value.tenant?.tenantCode || '当前租户'
   )
   const previewText = computed(() => {
-    if (!formModel.autoEnabled) return '手工填写'
+    if (!formModel.value.autoEnabled) return '手工填写'
     try {
       return renderDocumentNumber(
-        formModel.template,
-        formModel.nextValue ?? formModel.sequenceStart,
-        formModel.timezone
+        formModel.value.template,
+        formModel.value.nextValue ?? formModel.value.sequenceStart,
+        formModel.value.timezone
       )
     } catch {
       return '模板或时区无效'
@@ -277,9 +273,9 @@
 
   const appendToken = (token: string): void => {
     if (token.startsWith('{SEQ:')) {
-      formModel.template = formModel.template.replace(/\{SEQ:[1-9][0-9]?\}/, '')
+      formModel.value.template = formModel.value.template.replace(/\{SEQ:[1-9][0-9]?\}/, '')
     }
-    formModel.template += token
+    formModel.value.template += token
   }
 
   const handleSubmit = async (): Promise<boolean> => {
@@ -289,17 +285,17 @@
       notifyFriendlyError(error, '表单校验未完成，请稍后重试', 'warning')
       return false
     }
-    if (!formModel.id) return false
+    if (!formModel.value.id) return false
 
     try {
       await editDocumentNumberRule({
-        id: formModel.id,
-        autoEnabled: formModel.autoEnabled,
-        template: formModel.template,
-        resetCycle: formModel.resetCycle,
-        sequenceStart: formModel.sequenceStart,
-        timezone: formModel.timezone,
-        remark: formModel.remark
+        id: formModel.value.id,
+        autoEnabled: formModel.value.autoEnabled,
+        template: formModel.value.template,
+        resetCycle: formModel.value.resetCycle,
+        sequenceStart: formModel.value.sequenceStart,
+        timezone: formModel.value.timezone,
+        remark: formModel.value.remark
       })
       emit('success')
       return true
@@ -310,7 +306,7 @@
   }
 
   const handleOpen = async (row: NumberRule): Promise<void> => {
-    Object.assign(formModel, createInitialForm(), cloneDeep(row))
+    Object.assign(formModel.value, createInitialForm(), cloneDeep(row))
     await nextTick()
     formRef.value?.clearValidate()
     await dialogRef.value?.handleOpen(row, {

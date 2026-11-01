@@ -127,6 +127,7 @@
                       size="small"
                       icon="ri:delete-bin-5-line"
                       tone="danger"
+                      :disabled="deleteBusy"
                       :label="`删除${data.name}`"
                       @click="handleDelete(data)"
                     />
@@ -198,7 +199,8 @@
 
 <script setup lang="ts">
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
   import { ElMessage, ElTreeV2, type NodeDropType, type TreeV2Instance } from 'element-plus'
   import { ElAutoResizer } from 'element-plus/es/components/table-v2/index.mjs'
   import { cloneDeep, uniq } from 'lodash-es'
@@ -212,6 +214,7 @@
   } from '@/components/business/master-data-delete-guard/index.vue'
 
   const { confirmAction } = useArtFeedback()
+  const deleteBusy = ref(false)
 
   const props = defineProps<{
     targetNodeId?: string
@@ -833,16 +836,23 @@
   }
 
   const handleDelete = async (row: DictTypeItem): Promise<void> => {
-    if (!row.id) return
-
-    try {
-      const blocked = await deleteGuardRef.value?.inspect({
+    if (!row.id || deleteBusy.value) return
+    if (!deleteGuardRef.value) {
+      ElMessage.error('关联校验尚未就绪，请刷新页面后重试删除')
+      return
+    }
+    const guard = deleteGuardRef.value
+    const inspect = () =>
+      guard.inspect({
         resourceType: 'dict_type',
         resourceLabel: row.nodeType === 'directory' ? '字典目录' : '字典类型',
-        resources: [{ id: row.id, label: row.name }]
+        resources: [{ id: row.id!, label: row.name }]
       })
-      if (blocked) return
-
+    const assertScope = createTenantScopeReadGuard()
+    deleteBusy.value = true
+    try {
+      if (await inspect()) return
+      assertScope()
       await confirmAction(
         row.nodeType === 'directory'
           ? '确定删除该目录吗？目录下存在子节点时不能删除。'
@@ -855,10 +865,22 @@
           confirmButtonType: 'danger'
         }
       )
-      await deleteDictType(row)
+      assertScope()
+      try {
+        await deleteDictType(row)
+      } catch (error) {
+        assertScope()
+        if (await inspect()) return
+        throw error
+      }
+      assertScope()
+      ElMessage.success(row.nodeType === 'directory' ? '字典目录已删除' : '字典类型已删除')
       await handleGetDictTypeList()
-    } catch {
-      // 用户取消或数据库拒绝删除时保留当前树。
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close')
+        notifyFriendlyError(error, '字典节点删除失败，请刷新目录后重试')
+    } finally {
+      deleteBusy.value = false
     }
   }
 

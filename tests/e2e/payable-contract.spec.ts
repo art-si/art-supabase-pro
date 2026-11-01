@@ -126,6 +126,7 @@ for (const kind of ['estimated', 'financial'] as const) {
         await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeEnabled({
           timeout: 60000
         })
+        await drawer.getByRole('tab', { name: '应付明细', exact: true }).click()
         const quantity = drawer.getByRole('spinbutton', { name: '数量', exact: true })
         await quantity.scrollIntoViewIfNeeded()
         if (index === 0) {
@@ -133,7 +134,13 @@ for (const kind of ['estimated', 'financial'] as const) {
           await quantity.press('Backspace')
           await quantity.press('Tab')
           await expect(quantity).toHaveValue('')
+          await drawer.getByRole('tab', { name: '基本信息', exact: true }).click()
           await drawer.getByRole('button', { name: '保存', exact: true }).click()
+          await expect(drawer.getByRole('tab', { name: '应付明细', exact: true })).toHaveAttribute(
+            'aria-selected',
+            'true'
+          )
+          await expect(quantity).toBeFocused()
           expect(errors).toEqual([])
           await expect(
             drawer.locator('.art-table__cell-content[aria-invalid="true"]').filter({
@@ -163,6 +170,7 @@ for (const kind of ['estimated', 'financial'] as const) {
       await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeEnabled({
         timeout: 60000
       })
+      await drawer.getByRole('tab', { name: '应付明细', exact: true }).click()
       const selector = drawer.getByRole('combobox', { name: '合同', exact: true })
       await selector.scrollIntoViewIfNeeded()
       const control = drawer
@@ -170,6 +178,7 @@ for (const kind of ['estimated', 'financial'] as const) {
         .filter({ has: page.getByRole('combobox', { name: '合同', exact: true }) })
       await expect(control).toContainText(contracts[0].code)
       await expect(control).not.toContainText(contracts[0].id)
+      await drawer.getByRole('tab', { name: '基本信息', exact: true }).click()
       await drawer
         .getByRole('textbox', { name: '备注', exact: true })
         .first()

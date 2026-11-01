@@ -360,9 +360,40 @@ const app = createApp(
                       countCreate.value?.handleOpen({
                         ...context,
                         organizations: [
+                          ...(new URLSearchParams(location.search).has('countTree')
+                            ? [
+                                {
+                                  id: 'org-parent',
+                                  tenantId: 'tenant-test',
+                                  parentId: null,
+                                  organizationCode: 'ORG-PARENT',
+                                  organizationName: '未启用库存总公司',
+                                  organizationType: 'company',
+                                  status: '1',
+                                  enabledOn: null,
+                                  isDefault: false,
+                                  initializationClosedAt: null
+                                },
+                                {
+                                  id: 'org-child',
+                                  tenantId: 'tenant-test',
+                                  parentId: 'org-test',
+                                  organizationCode: 'ORG-CHILD',
+                                  organizationName: '测试下属库存组织',
+                                  organizationType: 'department',
+                                  status: '1',
+                                  enabledOn: '2026-10-01',
+                                  isDefault: false,
+                                  initializationClosedAt: null
+                                }
+                              ]
+                            : []),
                           {
                             id: 'org-test',
                             tenantId: 'tenant-test',
+                            parentId: new URLSearchParams(location.search).has('countTree')
+                              ? 'org-parent'
+                              : null,
                             organizationCode: 'ORG-TEST',
                             organizationName: '测试库存组织',
                             organizationType: 'company',

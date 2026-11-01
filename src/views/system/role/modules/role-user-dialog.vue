@@ -38,14 +38,7 @@
         :retryable="true"
         @retry="loadUsers"
       >
-        <ArtForm
-          v-model="formData"
-          :items="formItems"
-          :span="24"
-          label-position="top"
-          :show-submit="false"
-          :show-reset="false"
-        />
+        <ArtForm v-model="formData" :items="formItems" :span="24" label-position="top" />
       </ArtAsyncState>
 
       <ElAlert v-if="saveError" :title="saveError" type="error" :closable="false" show-icon>

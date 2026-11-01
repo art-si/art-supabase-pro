@@ -271,6 +271,13 @@ const app = createApp(
                     new URLSearchParams(location.search).get('permission') === 'empty'
                       ? []
                       : 'Hr:Recruitment:Delete',
+                  ...(params.has('resolve')
+                    ? {
+                        resolveResources: async () => [
+                          { id: 'cccccccc-cccc-4ccc-accc-cccccccccccc', label: '实际关联配置' }
+                        ]
+                      }
+                    : {}),
                   remove: async () => {
                     deletedTable.value = targetTable
                     throw new Error('Concurrent reference change')

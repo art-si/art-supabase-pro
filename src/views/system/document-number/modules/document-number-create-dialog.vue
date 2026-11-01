@@ -13,6 +13,7 @@
         </template>
 
         <ArtForm
+          v-model:active-tab="activeTab"
           ref="formRef"
           v-model="form.data"
           :items="form.items"
@@ -21,8 +22,6 @@
           :gutter="20"
           label-position="top"
           label-width="auto"
-          :show-reset="false"
-          :show-submit="false"
           :validate-on-rule-change="false"
         >
           <template #template>
@@ -139,6 +138,7 @@
 
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose>()
+  const activeTab = ref('')
   const formRef = ref<FormExpose>()
   const userStore = useUserStore()
   const tenantScopeStore = useTenantScopeStore()
@@ -164,7 +164,7 @@
     menuTree: [] as MenuNode[],
     tenantOptions: [] as Array<{ label: string; value: string }>,
     items: computed<FormItem[]>(() => [
-      { label: '业务归属', key: 'businessSection', type: 'divider', span: 24 },
+      { label: '业务归属', key: 'businessSection', type: 'tab', span: 24 },
       {
         label: '所属菜单',
         key: 'menuId',
@@ -225,7 +225,7 @@
             ? '当前只配置顶部所选租户；切换范围后请重新打开。'
             : '当前账号只能配置所属租户。'
       },
-      { label: '生成策略', key: 'strategySection', type: 'divider', span: 24 },
+      { label: '生成策略', key: 'strategySection', type: 'tab', span: 24 },
       {
         label: '自动编码',
         key: 'autoEnabled',
@@ -453,6 +453,7 @@
   }
 
   const handleOpen = async (): Promise<void> => {
+    activeTab.value = ''
     Object.assign(form.data, createInitialForm())
     await dialogRef.value?.handleOpen(undefined, {
       title: '新增编号规则',

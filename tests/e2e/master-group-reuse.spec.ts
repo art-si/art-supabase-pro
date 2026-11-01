@@ -133,7 +133,7 @@ for (const theme of ['light', 'dark']) {
       expect((await panel.boundingBox())?.height ?? Infinity).toBeLessThanOrEqual(
         mobile ? 440 : 520
       )
-      const treeScroll = panel.locator('.master-group-panel__scroll .el-scrollbar__wrap')
+      const treeScroll = panel.locator('.art-section-card__scrollbar > .el-scrollbar__wrap')
       expect(
         await treeScroll.evaluate((element) => element.scrollHeight - element.clientHeight)
       ).toBeGreaterThan(0)

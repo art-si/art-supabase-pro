@@ -3,13 +3,10 @@
     <ElDrawer
       :size="drawerSize"
       v-model="visible"
-      :lock-scroll="true"
       :with-header="false"
-      :before-close="handleClose"
-      :destroy-on-close="false"
       modal-class="setting-modal"
-      @open="handleOpen"
-      @close="handleDrawerClose"
+      @open="emit('open')"
+      @close="emit('close')"
     >
       <ElScrollbar class="setting-drawer__scrollbar">
         <div class="drawer-con">
@@ -21,35 +18,13 @@
 </template>
 
 <script setup lang="ts">
-  interface Props {
-    modelValue: boolean
-  }
-
   interface Emits {
-    (e: 'update:modelValue', value: boolean): void
     (e: 'open'): void
     (e: 'close'): void
   }
 
-  const props = defineProps<Props>()
+  const visible = defineModel<boolean>({ required: true })
   const emit = defineEmits<Emits>()
   const { width } = useWindowSize()
   const drawerSize = computed(() => (width.value <= 640 ? '100%' : '420px'))
-
-  const visible = computed({
-    get: () => props.modelValue,
-    set: (value: boolean) => emit('update:modelValue', value)
-  })
-
-  const handleOpen = () => {
-    emit('open')
-  }
-
-  const handleDrawerClose = () => {
-    emit('close')
-  }
-
-  const handleClose = () => {
-    visible.value = false
-  }
 </script>

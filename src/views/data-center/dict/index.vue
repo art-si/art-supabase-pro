@@ -75,14 +75,14 @@
 
 <script setup lang="tsx">
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
   import type { ComputedRef, UnwrapNestedRefs } from 'vue'
   import { ElMessage } from 'element-plus'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
     ArtTableQueryExpose,
-    ArtTableQueryHeaderAction,
-    ArtTableQueryHeaderActionContext
+    ArtTableQueryHeaderAction
   } from '@/components/core/tables/art-table-query/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore, {
@@ -112,6 +112,7 @@
   defineOptions({ name: 'Dict' })
 
   const { confirmAction } = useArtFeedback()
+  const deleteBusy = ref(false)
   const route = useRoute()
   type DictListItem = Api.DataCenter.DictListItem
   type SearchParams = Partial<Pick<DictListItem, 'label' | 'code' | 'i18nScope' | 'status'>>
@@ -218,22 +219,10 @@
       },
       {
         type: 'delete',
-        content: ({ selectedCount }: ArtTableQueryHeaderActionContext) =>
-          `确定要删除选中的 ${selectedCount} 个字典项吗？`,
+        confirm: false,
+        disabled: () => deleteBusy.value,
         onClick: async ({ selectedRows }) => {
-          const ids = selectedRows
-            .map((row) => row.id)
-            .filter((id): id is string => typeof id === 'string')
-          const blocked = await deleteGuardRef.value?.inspect({
-            resourceType: 'dictionary',
-            resourceLabel: '字典项',
-            resources: (selectedRows as DictListItem[])
-              .filter((row) => Boolean(row.id))
-              .map((row) => ({ id: String(row.id), label: row.label || row.name || row.code }))
-          })
-          if (blocked) return
-          await deleteDictBatch(ids)
-          await tableQueryRef.value?.refreshRemove()
+          await removeDictionaryRows(selectedRows as DictListItem[])
         }
       }
     ]),
@@ -439,7 +428,8 @@
       key: 'delete',
       label: '删除',
       icon: 'ri:delete-bin-line',
-      color: 'var(--el-color-danger)'
+      color: 'var(--el-color-danger)',
+      disabled: deleteBusy.value
     }
   ]
 
@@ -454,26 +444,58 @@
     }
   }
 
-  const handleDelete = async (row: DictListItem): Promise<void> => {
+  const handleDelete = (row: DictListItem): Promise<void> => removeDictionaryRows([row])
+  async function removeDictionaryRows(rows: DictListItem[]): Promise<void> {
+    if (deleteBusy.value || !rows.length) return
+    const resources = rows.map((row) => ({
+      id: row.id || '',
+      label: row.label || row.name || row.code
+    }))
+    if (resources.some((row) => !row.id)) {
+      ElMessage.error('字典项已变化，请刷新后重试删除')
+      return
+    }
+    if (!deleteGuardRef.value) {
+      ElMessage.error('关联校验尚未就绪，请刷新页面后重试删除')
+      return
+    }
+    const guard = deleteGuardRef.value
+    const inspect = () =>
+      guard.inspect({ resourceType: 'dictionary', resourceLabel: '字典项', resources })
+    const assertScope = createTenantScopeReadGuard()
+    deleteBusy.value = true
     try {
-      if (!row.id) return
-      const blocked = await deleteGuardRef.value?.inspect({
-        resourceType: 'dictionary',
-        resourceLabel: '字典项',
-        resources: [{ id: row.id, label: row.label || row.name || row.code }]
-      })
-      if (blocked) return
-
-      await confirmAction('确定要删除该字典项吗？', '删除字典项', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-        confirmButtonType: 'danger'
-      })
-      await deleteDict(row)
+      if (await inspect()) return
+      assertScope()
+      await confirmAction(
+        rows.length === 1
+          ? `确定删除字典项“${resources[0]!.label}”吗？`
+          : `确定删除选中的 ${resources.length} 个字典项吗？`,
+        '删除字典项',
+        {
+          confirmButtonText: '删除',
+          cancelButtonText: '取消',
+          type: 'warning',
+          confirmButtonType: 'danger'
+        }
+      )
+      assertScope()
+      try {
+        if (rows.length === 1) await deleteDict(rows[0]!)
+        else await deleteDictBatch(resources.map((row) => row.id))
+      } catch (error) {
+        assertScope()
+        if (await inspect()) return
+        throw error
+      }
+      assertScope()
+      ElMessage.success('字典项已删除')
       await tableQueryRef.value?.refreshRemove()
-    } catch {
-      // 用户取消删除时无需额外提示。
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close')
+        notifyFriendlyError(error, '字典项删除失败，请刷新后重试')
+    } finally {
+      deleteBusy.value = false
     }
   }
 

@@ -1,12 +1,11 @@
 <template>
   <div class="art-icon-picker">
     <ElInput
-      :model-value="modelValue"
+      v-model="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
       :clearable="clearable"
-      @update:model-value="handleInput"
-      @change="handleInputChange"
+      @change="emit('change', $event)"
       @clear="handleClear"
     >
       <template #prepend>
@@ -284,14 +283,6 @@
     if (props.closeOnSelect) {
       void dialogRef.value?.handleClose()
     }
-  }
-
-  const handleInput = (value: string): void => {
-    modelValue.value = value
-  }
-
-  const handleInputChange = (value: string): void => {
-    emit('change', value)
   }
 
   const handleClear = (): void => {

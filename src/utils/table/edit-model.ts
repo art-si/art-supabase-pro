@@ -1,9 +1,18 @@
-import { assign, cloneDeep, get, has, isEqual, set, unset, toPath } from 'lodash-es'
+import { cloneDeep, get, has, isEqual, set, unset, toPath } from 'lodash-es'
+import { getOwnRecordValue } from '@/utils/record'
 import type { TableEditRecordset } from '@/types/table-edit'
 
 type EditCommand<T> =
   | { kind: 'row'; row: T; before: T; after: T }
-  | { kind: 'cell'; row: T; prop: string; before: unknown; after: unknown; existed: boolean }
+  | {
+      kind: 'cell'
+      row: T
+      prop: string
+      before: unknown
+      after: unknown
+      existed: boolean
+      literal: boolean
+    }
   | { kind: 'insert' | 'remove'; entries: Array<{ row: T; index: number }> }
 
 /** A working set with stable row references and bounded command history. No server writes. */
@@ -41,13 +50,17 @@ export class TableEditModel<T extends object> {
   }
 
   setCellValue(row: T, prop: string, value: unknown): boolean {
+    const descriptor = Object.getOwnPropertyDescriptor(row, prop)
+    const literal = Boolean(descriptor && 'value' in descriptor)
     if (
       !this.rows.includes(row) ||
       !prop ||
-      toPath(prop).some((key) => ['__proto__', 'prototype', 'constructor'].includes(key))
+      (descriptor && !literal) ||
+      (!literal &&
+        toPath(prop).some((key) => ['__proto__', 'prototype', 'constructor'].includes(key)))
     )
       return false
-    const before: unknown = get(row, prop)
+    const before: unknown = literal ? getOwnRecordValue(row, prop) : get(row, prop)
     if (isEqual(before, value)) return false
     this.record({
       kind: 'cell',
@@ -55,10 +68,23 @@ export class TableEditModel<T extends object> {
       prop,
       before: cloneDeep(before),
       after: cloneDeep(value),
-      existed: has(row, prop)
+      existed: literal || has(row, prop),
+      literal
     })
-    set(row, prop, cloneDeep(value))
+    this.writeCell(row, prop, value, literal)
     return true
+  }
+
+  private writeCell(row: T, prop: string, value: unknown, literal: boolean): void {
+    const copy: unknown = cloneDeep(value)
+    if (literal)
+      Object.defineProperty(row, prop, {
+        value: copy,
+        enumerable: true,
+        configurable: true,
+        writable: true
+      })
+    else set(row, prop, copy)
   }
 
   getRecordset(): TableEditRecordset<T> {
@@ -66,7 +92,7 @@ export class TableEditModel<T extends object> {
       const original = this.originals.get(row)
       if (!original || isEqual(row, original)) return []
       const fields = Object.keys(row).filter(
-        (key) => !isEqual(get(row, [key]), get(original, [key]))
+        (key) => !isEqual(getOwnRecordValue(row, key), getOwnRecordValue(original, key))
       )
       return [{ row, original: cloneDeep(original), fields, rowIndex }]
     })
@@ -122,8 +148,16 @@ export class TableEditModel<T extends object> {
       return
     }
     if (command.kind === 'cell') {
-      if (reverse && !command.existed) unset(command.row, command.prop)
-      else set(command.row, command.prop, cloneDeep(reverse ? command.before : command.after))
+      if (reverse && !command.existed) {
+        if (command.literal) Reflect.deleteProperty(command.row, command.prop)
+        else unset(command.row, command.prop)
+      } else
+        this.writeCell(
+          command.row,
+          command.prop,
+          reverse ? command.before : command.after,
+          command.literal
+        )
       return
     }
     const inserting = (command.kind === 'insert') !== reverse
@@ -178,8 +212,9 @@ export class TableEditModel<T extends object> {
   }
 
   private replaceRow(row: T, value: T): void {
-    for (const key of Object.keys(row)) if (!has(value, [key])) unset(row, [key])
-    assign(row, cloneDeep(value))
+    for (const key of Object.keys(row))
+      if (!Object.hasOwn(value, key)) Reflect.deleteProperty(row, key)
+    Object.defineProperties(row, Object.getOwnPropertyDescriptors(cloneDeep(value)))
   }
 
   revertData(row?: T, prop?: string): void {

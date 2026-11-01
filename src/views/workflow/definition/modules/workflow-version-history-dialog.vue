@@ -73,81 +73,102 @@
             </article>
           </div>
 
-          <ArtSectionCard class="workflow-version__diff" preserve-content-structure>
-            <template #header
-              ><div class="workflow-version__section-heading">
-                <div>
-                  <ArtSectionTitle :show-line="false">版本差异</ArtSectionTitle>
-                  <p>
-                    {{
-                      comparisonVersion
-                        ? `与 V${comparisonVersion.versionNo} 对比`
-                        : '首个版本，无历史基线'
-                    }}
-                  </p>
-                </div>
-                <ElTag :type="changes.length ? 'warning' : 'success'" effect="light" round>
-                  {{ changes.length ? `${changes.length} 项变化` : '配置一致' }}
-                </ElTag>
-              </div></template
+          <component
+            :is="useTabs ? ElTabs : 'div'"
+            v-bind="useTabs ? { modelValue: activeTab } : {}"
+            :class="useTabs ? 'min-w-0' : 'workflow-version__detail-sections'"
+            @update:model-value="setActiveTab"
+          >
+            <component
+              :is="useTabs ? ElTabPane : 'div'"
+              v-bind="useTabs ? { name: 'changes', label: '版本差异', lazy: false } : {}"
             >
+              <ArtSectionCard class="workflow-version__diff" preserve-content-structure>
+                <template #header
+                  ><div class="workflow-version__section-heading">
+                    <div>
+                      <ArtSectionTitle :show-line="false">版本差异</ArtSectionTitle>
+                      <p>
+                        {{
+                          comparisonVersion
+                            ? `与 V${comparisonVersion.versionNo} 对比`
+                            : '首个版本，无历史基线'
+                        }}
+                      </p>
+                    </div>
+                    <ElTag :type="changes.length ? 'warning' : 'success'" effect="light" round>
+                      {{ changes.length ? `${changes.length} 项变化` : '配置一致' }}
+                    </ElTag>
+                  </div></template
+                >
 
-            <ArtEmptyState
-              v-if="!changes.length"
-              title="未发现配置变化"
-              description="该版本与上一版本的节点、规则和时限保持一致。"
-              icon="ri:checkbox-circle-line"
-            />
-            <div v-else class="workflow-version__changes">
-              <article v-for="change in changes" :key="change.key" :class="`is-${change.kind}`">
-                <span>
-                  <ArtSvgIcon
-                    :icon="
-                      change.kind === 'added'
-                        ? 'ri:add-line'
-                        : change.kind === 'removed'
-                          ? 'ri:subtract-line'
-                          : 'ri:edit-line'
-                    "
-                  />
-                </span>
-                <div>
-                  <strong>{{ change.title }}</strong>
-                  <p>{{ change.description }}</p>
+                <ArtEmptyState
+                  v-if="!changes.length"
+                  title="未发现配置变化"
+                  description="该版本与上一版本的节点、规则和时限保持一致。"
+                  icon="ri:checkbox-circle-line"
+                />
+                <div v-else class="workflow-version__changes">
+                  <article v-for="change in changes" :key="change.key" :class="`is-${change.kind}`">
+                    <span>
+                      <ArtSvgIcon
+                        :icon="
+                          change.kind === 'added'
+                            ? 'ri:add-line'
+                            : change.kind === 'removed'
+                              ? 'ri:subtract-line'
+                              : 'ri:edit-line'
+                        "
+                      />
+                    </span>
+                    <div>
+                      <strong>{{ change.title }}</strong>
+                      <p>{{ change.description }}</p>
+                    </div>
+                  </article>
                 </div>
-              </article>
-            </div>
-          </ArtSectionCard>
-
-          <ArtSectionCard class="workflow-version__nodes" preserve-content-structure>
-            <template #header
-              ><div class="workflow-version__section-heading">
-                <div>
-                  <ArtSectionTitle :show-line="false">节点快照</ArtSectionTitle>
-                  <p>历史版本只读，恢复操作会生成或覆盖草稿，不修改已发布证据。</p>
-                </div>
-              </div></template
+              </ArtSectionCard>
+            </component>
+            <component
+              :is="useTabs ? ElTabPane : 'div'"
+              v-bind="useTabs ? { name: 'nodes', label: '节点快照', lazy: false } : {}"
             >
-            <div class="workflow-version__node-list">
-              <article
-                v-for="node in [...selectedVersion.config.nodes].sort((a, b) => a.order - b.order)"
-                :key="node.key"
-              >
-                <span>{{ node.order.toString().padStart(2, '0') }}</span>
-                <div>
-                  <strong>{{ node.name }}</strong>
-                  <small :title="nodeRuleLabel(node)">{{ nodeRuleLabel(node) }}</small>
+              <ArtSectionCard class="workflow-version__nodes" preserve-content-structure>
+                <template #header
+                  ><div class="workflow-version__section-heading">
+                    <div>
+                      <ArtSectionTitle :show-line="false">节点快照</ArtSectionTitle>
+                      <p>历史版本只读，恢复操作会生成或覆盖草稿，不修改已发布证据。</p>
+                    </div>
+                  </div></template
+                >
+                <div class="workflow-version__node-list">
+                  <article
+                    v-for="node in [...selectedVersion.config.nodes].sort(
+                      (a, b) => a.order - b.order
+                    )"
+                    :key="node.key"
+                  >
+                    <span>{{ node.order.toString().padStart(2, '0') }}</span>
+                    <div>
+                      <strong>{{ node.name }}</strong>
+                      <small :title="nodeRuleLabel(node)">{{ nodeRuleLabel(node) }}</small>
+                    </div>
+                    <div
+                      class="workflow-version__sla"
+                      :aria-label="`审批时限 ${node.dueHours} 小时`"
+                    >
+                      <span><ArtSvgIcon icon="ri:time-line" /></span>
+                      <div>
+                        <small>审批时限</small>
+                        <strong>{{ node.dueHours }} 小时</strong>
+                      </div>
+                    </div>
+                  </article>
                 </div>
-                <div class="workflow-version__sla" :aria-label="`审批时限 ${node.dueHours} 小时`">
-                  <span><ArtSvgIcon icon="ri:time-line" /></span>
-                  <div>
-                    <small>审批时限</small>
-                    <strong>{{ node.dueHours }} 小时</strong>
-                  </div>
-                </div>
-              </article>
-            </div>
-          </ArtSectionCard>
+              </ArtSectionCard>
+            </component>
+          </component>
         </main>
       </div>
     </div>
@@ -156,6 +177,8 @@
 
 <script setup lang="ts">
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import { ElTabs, ElTabPane } from 'element-plus'
+  import { cloneDeep } from 'lodash-es'
   import { createDateTimeFormatter } from '@/utils/ui/format'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -171,6 +194,7 @@
 
   const emit = defineEmits<{ (event: 'success'): void }>()
   const dialogRef = ref<ArtDialogExpose>()
+  const activeTab = ref('changes')
   const { confirmAction } = useArtFeedback()
   const { hasAuth } = useAuth()
   const state = reactive<{
@@ -195,6 +219,21 @@
     if (!selected) return []
     return diffWorkflowConfigs(comparisonVersion.value?.config, selected.config)
   })
+  const useTabs = computed(
+    () =>
+      Boolean(comparisonVersion.value) &&
+      (selectedVersion.value?.config.nodes.length ?? 0) >= 4 &&
+      changes.value.length >= 3
+  )
+  function setActiveTab(value: string | number): void {
+    activeTab.value = String(value)
+  }
+  watch(
+    () => state.selectedVersionId,
+    () => {
+      activeTab.value = 'changes'
+    }
+  )
 
   const formatDate = createDateTimeFormatter({ format: 'YYYY-MM-DD HH:mm' })
 
@@ -239,7 +278,7 @@
       description: definition.description,
       tenantId: definition.tenantId,
       changeNote: `从 V${version.versionNo} 恢复为草稿`,
-      config: structuredClone(version.config)
+      config: cloneDeep(version.config)
     })
     emit('success')
     dialogRef.value?.handleClose()
@@ -249,6 +288,7 @@
     definition: Api.Workflow.WorkflowDefinitionRecord,
     options: { canManage?: boolean } = {}
   ): Promise<void> {
+    activeTab.value = 'changes'
     state.definition = definition
     state.canManage = Boolean(options.canManage)
     state.selectedVersionId =
@@ -275,6 +315,12 @@
     display: grid;
     gap: 14px;
     min-width: 0;
+
+    &__detail-sections {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }
 
     &__summary {
       display: flex;
@@ -647,17 +693,13 @@
       }
 
       &__effective {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
   }
 
   @media only screen and (width <= 520px) {
     .workflow-version {
-      &__workspace > aside {
-        grid-template-columns: 1fr;
-      }
-
       &__detail-header {
         flex-direction: column;
         align-items: flex-start;

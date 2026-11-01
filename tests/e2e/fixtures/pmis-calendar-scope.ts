@@ -14,7 +14,14 @@ import '@styles/index.scss'
 
 const scenario = new URLSearchParams(location.search).get('mode')
 const darkTheme = new URLSearchParams(location.search).get('theme') === 'dark'
+const configured = new URLSearchParams(location.search).get('configured') === 'true'
 const mode = scenario === 'sheet' ? 'sheet' : 'detail'
+const workspaceRoute =
+  !configured || scenario === 'dashboard'
+    ? '/'
+    : mode === 'sheet'
+      ? '/pmis/inspection/inspection-sheet'
+      : '/pmis/inspection/inspection-detail'
 const tenantA = '11111111-1111-4111-8111-111111111111'
 const tenantB = '22222222-2222-4222-8222-222222222222'
 const scope = useTenantScopeStore(store)
@@ -37,7 +44,7 @@ app.use(store)
 app.use(language)
 const router = createRouter({
   history: createMemoryHistory(),
-  routes: [{ path: '/:pathMatch(.*)*', component: {} }]
+  routes: [{ path: workspaceRoute, component: {} }]
 })
 app.use(router)
 setupGlobDirectives(app)
@@ -51,6 +58,6 @@ scope.tenantOptions = [
   { id: tenantB, tenantCode: 'B', tenantName: '租户 B' }
 ]
 scope.setTenantScope(tenantA)
-await router.push('/')
+await router.push(workspaceRoute)
 await router.isReady()
 app.mount('#app')

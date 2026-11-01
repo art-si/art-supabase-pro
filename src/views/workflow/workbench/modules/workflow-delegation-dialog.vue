@@ -32,33 +32,28 @@
           v-model="form.data"
           :items="form.items"
           :rules="form.rules"
-          :show-reset="false"
-          :show-submit="false"
           label-position="top"
         />
       </ArtSectionCard>
 
       <ArtSectionCard
         class="workflow-delegation__history"
+        title="委托记录"
+        subtitle="我发出的委托可以撤销；收到的委托用于说明待办来源。"
+        :show-marker="false"
+        scroll-max-height="280px"
         :error="loadError"
         @retry="loadData"
-        preserve-content-structure
       >
-        <template #header>
-          <div class="workflow-delegation__heading">
-            <div>
-              <ArtSectionTitle :show-line="false">委托记录</ArtSectionTitle>
-              <p>我发出的委托可以撤销；收到的委托用于说明待办来源。</p>
-            </div>
-            <ArtTooltip content="刷新委托记录" placement="top">
-              <ArtIconButton
-                icon="ri:refresh-line"
-                label="刷新委托记录"
-                :loading="state.loading"
-                @click="loadData"
-              />
-            </ArtTooltip>
-          </div>
+        <template #actions>
+          <ArtTooltip content="刷新委托记录" placement="top">
+            <ArtIconButton
+              icon="ri:refresh-line"
+              label="刷新委托记录"
+              :loading="state.loading"
+              @click="loadData"
+            />
+          </ArtTooltip>
         </template>
 
         <ArtEmptyState
@@ -67,44 +62,42 @@
           description="需要离岗时，可在上方创建审批委托。"
           icon="ri:user-shared-line"
         />
-        <ElScrollbar v-else max-height="280px">
-          <div class="workflow-delegation__list">
-            <article v-for="record in state.records" :key="record.id">
-              <div class="workflow-delegation__record-icon">
-                <ArtSvgIcon
-                  :icon="
-                    record.delegatorUserId === state.userId
-                      ? 'ri:share-forward-line'
-                      : 'ri:inbox-unarchive-line'
-                  "
-                />
+        <div v-else class="workflow-delegation__list">
+          <article v-for="record in state.records" :key="record.id">
+            <div class="workflow-delegation__record-icon">
+              <ArtSvgIcon
+                :icon="
+                  record.delegatorUserId === state.userId
+                    ? 'ri:share-forward-line'
+                    : 'ri:inbox-unarchive-line'
+                "
+              />
+            </div>
+            <div class="workflow-delegation__record-main">
+              <div>
+                <strong>
+                  {{ record.delegatorUserId === state.userId ? '委托给' : '来自' }}
+                  {{ counterpartName(record) }}
+                </strong>
+                <ElTag :type="statusOf(record).type" size="small" effect="light" round>
+                  {{ statusOf(record).label }}
+                </ElTag>
               </div>
-              <div class="workflow-delegation__record-main">
-                <div>
-                  <strong>
-                    {{ record.delegatorUserId === state.userId ? '委托给' : '来自' }}
-                    {{ counterpartName(record) }}
-                  </strong>
-                  <ElTag :type="statusOf(record).type" size="small" effect="light" round>
-                    {{ statusOf(record).label }}
-                  </ElTag>
-                </div>
-                <span>{{ formatPeriod(record) }}</span>
-                <p>{{ record.reason }}</p>
-                <small v-if="record.revokeReason">撤销原因：{{ record.revokeReason }}</small>
-              </div>
-              <ElButton
-                v-if="canRevoke(record)"
-                type="danger"
-                plain
-                size="small"
-                @click="handleRevoke(record)"
-              >
-                撤销
-              </ElButton>
-            </article>
-          </div>
-        </ElScrollbar>
+              <span>{{ formatPeriod(record) }}</span>
+              <p>{{ record.reason }}</p>
+              <small v-if="record.revokeReason">撤销原因：{{ record.revokeReason }}</small>
+            </div>
+            <ElButton
+              v-if="canRevoke(record)"
+              type="danger"
+              plain
+              size="small"
+              @click="handleRevoke(record)"
+            >
+              撤销
+            </ElButton>
+          </article>
+        </div>
       </ArtSectionCard>
     </div>
   </ArtDialog>
@@ -466,6 +459,9 @@
     &__history {
       width: 100%;
       min-width: 0;
+    }
+
+    &__create {
       padding: 16px;
     }
 
@@ -490,13 +486,14 @@
     }
 
     &__history {
+      --art-section-padding: var(--art-space-4);
+
       min-height: 190px;
     }
 
     &__list {
       display: grid;
       gap: 10px;
-      padding-right: 8px;
     }
 
     &__list article {

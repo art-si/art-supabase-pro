@@ -26,16 +26,11 @@
 
   const { scrollToTop } = useCommon()
 
-  const showButton = ref(false)
-  const scrollThreshold = 300
+  const scrollContainer = shallowRef<HTMLElement | null>(null)
+  const { y } = useScroll(scrollContainer)
+  const showButton = computed(() => y.value > 300)
 
   onMounted(() => {
-    const scrollContainer = getPageScrollContainer()
-    if (scrollContainer) {
-      const { y } = useScroll(scrollContainer)
-      watch(y, (newY: number) => {
-        showButton.value = newY > scrollThreshold
-      })
-    }
+    scrollContainer.value = getPageScrollContainer()
   })
 </script>

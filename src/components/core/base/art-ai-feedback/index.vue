@@ -54,8 +54,6 @@
         :span="24"
         label-position="top"
         label-width="auto"
-        :show-reset="false"
-        :show-submit="false"
         :validate-on-rule-change="false"
       />
 

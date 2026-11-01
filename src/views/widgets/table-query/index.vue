@@ -133,7 +133,7 @@
         </ArtSectionCard>
 
         <ArtSectionCard
-          :show-scrollbar="false"
+          scroll-max-height="420px"
           class="table-query-widget__section table-query-widget__log"
           title="事件日志"
           subtitle="展示 search、reset、refresh、分页、header action、缓存命中和行拖拽等回调。"
@@ -149,12 +149,10 @@
             </ElButton>
           </template>
 
-          <ElScrollbar height="420px">
-            <div v-for="item in eventLogs" :key="item.id" class="table-query-widget__log-item">
-              <span>{{ item.time }}</span>
-              <strong>{{ item.text }}</strong>
-            </div>
-          </ElScrollbar>
+          <div v-for="item in eventLogs" :key="item.id" class="table-query-widget__log-item">
+            <span>{{ item.time }}</span>
+            <strong>{{ item.text }}</strong>
+          </div>
         </ArtSectionCard>
       </div>
     </div>

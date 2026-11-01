@@ -24,6 +24,27 @@
     padding: 0 !important;
   }
 
+  &__tabs {
+    min-width: 0;
+    max-width: 100%;
+
+    :deep(.el-tabs__header) {
+      margin-bottom: var(--art-space-4);
+    }
+
+    :deep(.el-tabs__content) {
+      min-width: 0;
+      overflow: visible;
+    }
+  }
+
+  &__tab-description {
+    margin-bottom: var(--art-space-4);
+    font-size: 12px;
+    line-height: 20px;
+    color: var(--art-gray-700);
+  }
+
   @media (width <= 767px) {
     &.art-form--mobile-stack {
       :deep(.el-col) {

@@ -178,6 +178,10 @@
         height: auto;
         min-height: var(--art-workspace-splitter-stacked-secondary-min-size);
         padding-left: 0;
+
+        > :deep(*) {
+          min-height: inherit;
+        }
       }
     }
   }

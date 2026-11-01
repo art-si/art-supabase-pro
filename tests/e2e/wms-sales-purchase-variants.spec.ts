@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test'
 import { expectInputTextUnclipped } from './support/input-text-width'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 async function checkLineDates(drawer: Locator, labels: string[]): Promise<void> {
   for (const label of labels) {
@@ -86,13 +87,14 @@ for (const { family, query, kind } of scenarios) {
     page
   }, testInfo) => {
     test.setTimeout(90_000)
+    await prepareIsolatedSession(page)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     let writes = 0
     const tenantId = '11111111-1111-4111-8111-111111111111'
     const organizationId = '33333333-3333-4333-8333-333333333333'
     const documentTypeId = '44444444-4444-4444-8444-444444444444'
-    const records: Record<string, object[]> = {
+    const records: Record<string, Record<string, unknown>[]> = {
       mdm_organization: [
         {
           id: organizationId,
@@ -181,6 +183,14 @@ for (const { family, query, kind } of scenarios) {
     })
     records.mdm_warehouse = [
       {
+        id: 'warehouse-test',
+        tenant_id: tenantId,
+        organization_id: organizationId,
+        warehouse_code: 'STORED-WH',
+        warehouse_name: '测试已存仓库',
+        status: 'enabled'
+      },
+      {
         id: '99999999-9999-4999-8999-999999999999',
         tenant_id: tenantId,
         organization_id: organizationId,
@@ -219,6 +229,44 @@ for (const { family, query, kind } of scenarios) {
     }))
     records.sys_dictionary = dictionaryRows
     await page.route('**/rest/v1/**', (route) => {
+      if (
+        new URL(route.request().url()).pathname.endsWith(
+          '/rpc/wms_purchase_return_stock_picker_secure'
+        )
+      ) {
+        const entrusted = kind === 'entrusted_processing_return'
+        return route.fulfill({
+          json: {
+            data: records.mdm_material.map((material, index) => ({
+              id: `return-stock-${index}`,
+              material_id: material.id,
+              material,
+              material_code: material.code,
+              material_description: material.name,
+              inventory_unit: '件',
+              inventory_unit_id: '88888888-8888-4888-8888-888888888888',
+              quantity: 2,
+              available_quantity: 2,
+              reserved_quantity: 0,
+              batch_no: `RETURN-BATCH-${index}`,
+              serial_nos: [],
+              unit_price: 0,
+              amount: 0,
+              warehouse_id: '99999999-9999-4999-8999-999999999999',
+              warehouse_name: '测试新增仓库',
+              project_id: null,
+              construction_no: null,
+              bin_id: null,
+              keeper_id: null,
+              owner_type: entrusted ? 'customer' : 'self',
+              owner_id: entrusted ? '66666666-6666-4666-8666-666666666666' : null,
+              stock_type: entrusted ? 'entrusted_processing' : 'normal',
+              stock_status: 'available'
+            })),
+            total: 2
+          }
+        })
+      }
       if (new URL(route.request().url()).pathname.endsWith('/rpc/wms_sales_choices_secure')) {
         return route.fulfill({
           json: {
@@ -278,6 +326,7 @@ for (const { family, query, kind } of scenarios) {
       const open = page.getByRole('button', { name: '打开初始库存单', exact: true })
       await open.click()
       const stockDrawer = page.locator('.el-drawer:visible')
+      await stockDrawer.getByRole('tab', { name: '物料明细', exact: true }).click()
       const save = stockDrawer.getByRole('button', { name: '保存', exact: true })
       await expect(save).toBeEnabled()
       await expect(stockDrawer.locator('.el-table__body tr')).toHaveCount(2)
@@ -314,6 +363,7 @@ for (const { family, query, kind } of scenarios) {
       await stockDrawer.getByRole('button', { name: '取消', exact: true }).click()
       await page.getByRole('button', { name: '查看初始库存单', exact: true }).click()
       await expect(stockDrawer.locator('.el-descriptions')).toBeVisible()
+      await stockDrawer.getByRole('tab', { name: '物料明细', exact: true }).click()
       await expect(stockDrawer.locator('.el-table__body').getByRole('checkbox')).toHaveCount(0)
       for (const [header, label] of [
         ['库存类型', '正常库存'],
@@ -351,7 +401,7 @@ for (const { family, query, kind } of scenarios) {
         animations: 'disabled'
       })
       await expect(stockDrawer.getByRole('button', { name: '保存', exact: true })).toHaveCount(0)
-      await stockDrawer.getByRole('button', { name: 'Close this dialog', exact: true }).click()
+      await stockDrawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
       expect(writes).toBe(0)
       expect(errors).toEqual([])
       if (kind === 'stock') {
@@ -370,9 +420,12 @@ for (const { family, query, kind } of scenarios) {
         for (const draft of [1, 2]) {
           await page.getByRole('button', { name: '新增初始库存单', exact: true }).click()
           await expect(save).toBeEnabled()
-          const remark = stockDrawer.getByRole('textbox', { name: '备注', exact: true }).first()
+          const remark = stockDrawer
+            .locator('[data-art-form-item-key="remark"]')
+            .getByRole('textbox', { includeHidden: true })
           await expect(remark).toHaveValue('')
           await expect(stockDrawer.locator('.el-table__body tr')).toHaveCount(0)
+          await stockDrawer.getByRole('tab', { name: '物料明细', exact: true }).click()
           await stockDrawer.getByRole('button', { name: '新增', exact: true }).click()
           const picker = page.locator('.el-dialog:visible')
           await expect(
@@ -406,7 +459,14 @@ for (const { family, query, kind } of scenarios) {
               .getByRole('option', { name: /测试新增仓库/ })
               .click()
           }
+          await stockDrawer.getByRole('tab', { name: '单据表头', exact: true }).click()
+          const stockBusinessDate = stockDrawer.locator(
+            '[data-art-form-item-key="businessDate"] input'
+          )
+          await stockBusinessDate.fill('2026-10-01')
+          await stockBusinessDate.press('Tab')
           await remark.fill(`初始库存新增 ${draft}`)
+          await stockDrawer.getByRole('tab', { name: '物料明细', exact: true }).click()
           const serialRow = rows.first()
           await serialRow.getByRole('button', { name: '序列号 0', exact: true }).click()
           const serialDialog = page.getByRole('dialog', { name: /^第 \d+ 行序列号$/ })
@@ -471,6 +531,7 @@ for (const { family, query, kind } of scenarios) {
     await page.getByRole('button', { name: `复制${family}单据`, exact: true }).click()
     const drawer = page.locator('.el-drawer:visible')
     await expect(drawer.getByRole('button', { name: '保存副本', exact: true })).toBeEnabled()
+    await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
     await checkLineDates(drawer, ['生产日期', '有效期至'])
     await page.screenshot({
       path: testInfo.outputPath('trade-line-dates.png'),
@@ -478,6 +539,7 @@ for (const { family, query, kind } of scenarios) {
     })
     await expect(drawer.getByRole('button', { name: '保存副本', exact: true })).toBeVisible()
     await expect(drawer.getByRole('button', { name: '保存副本', exact: true })).toBeEnabled()
+    await drawer.getByRole('tab', { name: '单据表头', exact: true }).click()
     await expect(drawer.getByRole('textbox', { name: '单据编号', exact: true })).toHaveValue('')
     await expect(drawer.getByText('测试业务类型', { exact: true })).toBeVisible()
     const partyName =
@@ -518,6 +580,7 @@ for (const { family, query, kind } of scenarios) {
     await picker.getByRole('button', { name: '取消', exact: true }).click()
     await expect(party).toHaveValue(new RegExp(`备选测试${partyName}`))
     const table = drawer.locator('.art-table.wms-editable-line-table')
+    await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
     await expect(table.locator('.el-table__body tr')).toHaveCount(2)
     expect(await drawer.evaluate((node) => node.scrollWidth > node.clientWidth + 1)).toBe(false)
     await page.screenshot({ path: testInfo.outputPath('variant-copy.png'), animations: 'disabled' })
@@ -550,6 +613,7 @@ for (const { family, query, kind } of scenarios) {
     await page.getByRole('button', { name: `查看${family}单据`, exact: true }).click()
     await expect(drawer).toBeVisible()
     await expect(drawer.locator('.el-descriptions')).toBeVisible()
+    await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
     await expect(drawer.getByRole('button', { name: '保存', exact: true })).toHaveCount(0)
     await expect(drawer.locator('.el-table__body tr')).toHaveCount(2)
     if (family === '销售' && kind.includes('return')) {
@@ -589,7 +653,7 @@ for (const { family, query, kind } of scenarios) {
       path: testInfo.outputPath('variant-view-lines.png'),
       animations: 'disabled'
     })
-    await drawer.getByRole('button', { name: 'Close this dialog', exact: true }).click()
+    await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
     await expect(drawer).toBeHidden()
     expect(writes).toBe(0)
     let rejectSave = true
@@ -607,7 +671,12 @@ for (const { family, query, kind } of scenarios) {
     )
     await page.getByRole('button', { name: `复制${family}单据`, exact: true }).click()
     await expect(drawer.getByRole('button', { name: '保存副本', exact: true })).toBeEnabled()
+    if (family === '采购' && ['purchase_return', 'entrusted_processing_return'].includes(kind))
+      await expect(drawer.locator('[data-art-form-item-key="warehouseId"]')).toContainText(
+        '测试已存仓库'
+      )
     await drawer.getByRole('button', { name: '保存副本', exact: true }).click()
+    await expect.poll(() => payloads.length).toBe(1)
     await expect(page.getByText('测试保存失败，请重试', { exact: true })).toBeVisible()
     await expect(drawer).toBeVisible()
     expect(payloads).toHaveLength(1)
@@ -629,7 +698,9 @@ for (const { family, query, kind } of scenarios) {
     await page.getByRole('button', { name: `打开${family}单据`, exact: true }).click()
     const editSave = drawer.getByRole('button', { name: '保存', exact: true })
     await expect(editSave).toBeEnabled()
-    const remark = drawer.getByRole('textbox', { name: '备注', exact: true }).first()
+    const remark = drawer
+      .locator('[data-art-form-item-key="remark"]')
+      .getByRole('textbox', { includeHidden: true })
     await remark.fill('编辑保存重试验证')
     rejectSave = true
     await editSave.click()
@@ -675,14 +746,26 @@ for (const { family, query, kind } of scenarios) {
       await picker.locator('.el-table__body').getByText(`测试${partyName}`, { exact: true }).click()
       await picker.getByRole('button', { name: '确定', exact: true }).click()
       await expect(picker).toBeHidden()
-      const stockPicker = family === '销售' && ['outbound', 'other_outbound'].includes(kind)
-      if (stockPicker) {
+      const salesStockPicker = family === '销售' && ['outbound', 'other_outbound'].includes(kind)
+      const purchaseStockPicker =
+        family === '采购' && ['purchase_return', 'entrusted_processing_return'].includes(kind)
+      const stockPicker = salesStockPicker || purchaseStockPicker
+      if (salesStockPicker) {
         await drawer.getByRole('combobox', { name: '仓库号', exact: true }).click()
         await page.getByRole('option', { name: /测试新增仓库/ }).click()
       }
+      if (purchaseStockPicker) {
+        await drawer.locator('[data-art-form-item-key="warehouseId"]').getByRole('combobox').click()
+        await page.getByRole('option', { name: /测试新增仓库/ }).click()
+      }
+      await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
       await drawer.getByRole('button', { name: '添加物料', exact: true }).click()
       const materials = page.getByRole('dialog', {
-        name: stockPicker ? '选择出库库存' : `选择${family}物料`,
+        name: salesStockPicker
+          ? '选择出库库存'
+          : purchaseStockPicker
+            ? '选择退货库存'
+            : `选择${family}物料`,
         exact: true
       })
       await expect(
@@ -720,6 +803,10 @@ for (const { family, query, kind } of scenarios) {
           .getByRole('option', { name: /测试新增仓库/ })
           .click()
       }
+      await drawer.getByRole('tab', { name: '单据表头', exact: true }).click()
+      const businessDate = drawer.locator('[data-art-form-item-key="businessDate"] input')
+      await businessDate.fill(kind.startsWith('initial_') ? '2026-10-01' : '2026-10-31')
+      await businessDate.press('Tab')
       await remark.fill(`新增草稿 ${draft}`)
       const entrusted = kind.startsWith('entrusted_processing_')
       await expect(
@@ -730,13 +817,16 @@ for (const { family, query, kind } of scenarios) {
         entrusted ? 2 : 4
       )
       if (entrusted) {
+        await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
         const ownerIndex = headers.findIndex((text) => text.trim() === '货主')
         expect(ownerIndex).toBeGreaterThan(-1)
         for (const row of await rows.all()) {
+          await row.locator('td').nth(ownerIndex).scrollIntoViewIfNeeded()
           await expect(row.locator('td').nth(ownerIndex).getByRole('textbox')).toHaveValue(
             '测试客户'
           )
         }
+        await drawer.getByRole('tab', { name: '单据表头', exact: true }).click()
       }
       rejectSave = true
       await editSave.click()

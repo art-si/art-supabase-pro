@@ -6,7 +6,8 @@ export interface ArtDescriptionItem<TData extends object = Record<string, unknow
   key: string
   label: string
   field?: string
-  value?: unknown | ((data: TData) => unknown)
+  // Keep static values unrestricted without unknown absorbing the callback's contextual type.
+  value?: NonNullable<unknown> | null | ((data: TData) => unknown)
   span?: number
   dictCode?: string
   dictDisplay?: DictDisplayMode

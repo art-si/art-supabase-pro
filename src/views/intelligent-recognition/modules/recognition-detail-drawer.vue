@@ -45,66 +45,76 @@
           </div>
         </section>
 
-        <ArtSectionTitle class="recognition-detail__section">原始票据</ArtSectionTitle>
-        <RecognitionSourceGallery :urls="sourceImageUrls" :expected-count="sourceImageCount" />
+        <ElTabs v-model="activeTab" class="min-w-0">
+          <ElTabPane name="results" label="识别结果与进度" :lazy="false"
+            ><div class="grid min-w-0 gap-4">
+              <ArtSectionTitle class="recognition-detail__section">处理进度</ArtSectionTitle>
+              <div class="recognition-detail__progress" aria-label="处理进度">
+                <article
+                  v-for="item in progressItems"
+                  :key="item.key"
+                  class="recognition-detail__progress-item"
+                  :class="`is-${item.state}`"
+                  :aria-current="item.state === 'active' ? 'step' : undefined"
+                >
+                  <span class="recognition-detail__progress-marker" aria-hidden="true">
+                    <ArtSvgIcon :icon="item.icon" />
+                  </span>
+                  <div class="recognition-detail__progress-copy">
+                    <strong>{{ item.title }}</strong>
+                    <span>{{ item.description }}</span>
+                  </div>
+                  <span class="recognition-detail__progress-state">{{ item.stateLabel }}</span>
+                </article>
+              </div>
 
-        <ArtSectionTitle class="recognition-detail__section">原始识别内容</ArtSectionTitle>
-        <OcrOriginalText
-          :text="detail.data.rawOcrText"
-          title="识别结果"
-          description="这里保留识别时生成的原始 OCR 文字，不随后续表单修正而变化。"
-        />
+              <template v-if="detail.data.warnings?.length">
+                <ArtSectionTitle class="recognition-detail__section">复核提示</ArtSectionTitle>
+                <div class="recognition-detail__warnings">
+                  <div v-for="warning in detail.data.warnings" :key="warning">
+                    <ArtSvgIcon icon="ri:error-warning-line" /><span>{{ warning }}</span>
+                  </div>
+                </div>
+              </template>
 
-        <ArtSectionTitle class="recognition-detail__section">处理进度</ArtSectionTitle>
-        <div class="recognition-detail__progress" aria-label="处理进度">
-          <article
-            v-for="item in progressItems"
-            :key="item.key"
-            class="recognition-detail__progress-item"
-            :class="`is-${item.state}`"
-            :aria-current="item.state === 'active' ? 'step' : undefined"
-          >
-            <span class="recognition-detail__progress-marker" aria-hidden="true">
-              <ArtSvgIcon :icon="item.icon" />
-            </span>
-            <div class="recognition-detail__progress-copy">
-              <strong>{{ item.title }}</strong>
-              <span>{{ item.description }}</span>
-            </div>
-            <span class="recognition-detail__progress-state">{{ item.stateLabel }}</span>
-          </article>
-        </div>
+              <ArtSectionTitle class="recognition-detail__section">识别字段</ArtSectionTitle>
+              <div v-if="payloadFields.length" class="recognition-detail__fields">
+                <article v-for="field in payloadFields" :key="field.key">
+                  <span>{{ field.label }}</span>
+                  <strong>{{ field.value }}</strong>
+                  <small v-if="field.confidence !== undefined" :class="field.level">
+                    字段可信度 {{ Math.round(field.confidence * 100) }}%
+                  </small>
+                  <small v-else>需人工核对</small>
+                </article>
+              </div>
+              <ArtEmptyState
+                v-else
+                title="暂无可展示的结构化字段"
+                description="请检查原始内容，或重新运行识别。"
+                size="compact"
+                :visual-size="72"
+              />
 
-        <template v-if="detail.data.warnings?.length">
-          <ArtSectionTitle class="recognition-detail__section">复核提示</ArtSectionTitle>
-          <div class="recognition-detail__warnings">
-            <div v-for="warning in detail.data.warnings" :key="warning">
-              <ArtSvgIcon icon="ri:error-warning-line" /><span>{{ warning }}</span>
-            </div>
-          </div>
-        </template>
+              <ArtSectionTitle class="recognition-detail__section">运行与审计</ArtSectionTitle>
+              <ArtDescriptions :data="auditData" :items="auditItems" :columns="2" /> </div
+          ></ElTabPane>
+          <ElTabPane name="sources" label="原始票据与文本" :lazy="false"
+            ><div class="grid min-w-0 gap-4">
+              <ArtSectionTitle class="recognition-detail__section">原始票据</ArtSectionTitle>
+              <RecognitionSourceGallery
+                :urls="sourceImageUrls"
+                :expected-count="sourceImageCount"
+              />
 
-        <ArtSectionTitle class="recognition-detail__section">识别字段</ArtSectionTitle>
-        <div v-if="payloadFields.length" class="recognition-detail__fields">
-          <article v-for="field in payloadFields" :key="field.key">
-            <span>{{ field.label }}</span>
-            <strong>{{ field.value }}</strong>
-            <small v-if="field.confidence !== undefined" :class="field.level">
-              字段可信度 {{ Math.round(field.confidence * 100) }}%
-            </small>
-            <small v-else>需人工核对</small>
-          </article>
-        </div>
-        <ArtEmptyState
-          v-else
-          title="暂无可展示的结构化字段"
-          description="请检查原始内容，或重新运行识别。"
-          size="compact"
-          :visual-size="72"
-        />
-
-        <ArtSectionTitle class="recognition-detail__section">运行与审计</ArtSectionTitle>
-        <ArtDescriptions :data="auditData" :items="auditItems" :columns="2" />
+              <ArtSectionTitle class="recognition-detail__section">原始识别内容</ArtSectionTitle>
+              <OcrOriginalText
+                :text="detail.data.rawOcrText"
+                title="识别结果"
+                description="这里保留识别时生成的原始 OCR 文字，不随后续表单修正而变化。"
+              /> </div
+          ></ElTabPane>
+        </ElTabs>
       </div>
     </ArtAsyncState>
 
@@ -119,6 +129,7 @@
 </template>
 
 <script setup lang="ts">
+  import { ElTabs, ElTabPane } from 'element-plus'
   import { copyTextToClipboard } from '@/utils/file/clipboard'
 
   import { createDateTimeFormatter, formatArtValue, formatDurationMs } from '@/utils/ui/format'
@@ -173,6 +184,7 @@
 
   const router = useRouter()
   const tenantScope = useTenantScopeStore()
+  const activeTab = ref('results')
   const drawerRef = ref<ArtDrawerExpose<Artifact>>()
   const detail = reactive<{ data?: Artifact; loading: boolean }>({ loading: false })
   const loadError = shallowRef<Error | null>(null)
@@ -342,6 +354,7 @@
   }
 
   async function handleOpen(row: Artifact | string): Promise<void> {
+    activeTab.value = 'results'
     const seed = typeof row === 'string' ? undefined : row
     const id = typeof row === 'string' ? row : row.id
     requestedArtifactId.value = id

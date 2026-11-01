@@ -267,6 +267,7 @@ test('盘点表双单据列表与明细可读', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: '查看盘点表', exact: true }).first().click()
   const drawer = page.getByRole('dialog', { name: '盘点表', exact: true })
   await expect(drawer).toBeVisible()
+  await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
   await expect(drawer.getByText('R00-0013', { exact: false })).toBeVisible()
   await page.screenshot({
     path: testInfo.outputPath('count-sheet-detail.png'),
@@ -279,6 +280,94 @@ test('盘点表双单据列表与明细可读', async ({ page }, testInfo) => {
   })
   expect(pageErrors).toEqual([])
 })
+
+for (const appearance of [
+  { theme: 'light', boxBorderMode: true, width: 1440 },
+  { theme: 'dark', boxBorderMode: false, width: 1024 }
+] as const) {
+  test(`盘点表库存组织保留层级、搜索和选中回显 ${appearance.theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: appearance.width, height: 900 })
+    await installCountSheetMenu(page)
+    await prepareAppearance(page, appearance)
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    const organizationFilters: Array<string | null> = []
+    page.on('request', (request) => {
+      const url = new URL(request.url())
+      if (url.pathname === '/rest/v1/wms_count_sheet') {
+        organizationFilters.push(url.searchParams.get('organization_id'))
+      }
+    })
+    await page.route('**/rest/v1/mdm_organization?*', (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: 'count-root',
+            tenant_id: tenantId,
+            parent_id: null,
+            organization_code: 'ROOT',
+            organization_name: '测试集团',
+            organization_type: 'company',
+            status: '1'
+          },
+          {
+            id: 'count-org',
+            tenant_id: tenantId,
+            parent_id: 'count-root',
+            organization_code: 'WMS-01',
+            organization_name: '测试仓储部门',
+            organization_type: 'department',
+            status: '1'
+          }
+        ],
+        headers: { 'content-range': '0-1/2', 'access-control-expose-headers': 'content-range' }
+      })
+    )
+    await page.goto('#/wms/count-business/count-sheet')
+    await expect(page.getByRole('heading', { name: '盘点表', exact: true })).toBeVisible({
+      timeout: 30_000
+    })
+    const guide = page.getByRole('button', { name: '知道了', exact: true })
+    if (await guide.isVisible()) await guide.click()
+    const field = page
+      .locator('.el-form-item')
+      .filter({ has: page.getByText('库存组织', { exact: true }) })
+      .first()
+    const input = field.getByRole('combobox')
+    await input.click()
+    const tree = page.locator('.el-select-dropdown:visible .el-tree')
+    await expect(tree).toBeVisible()
+    const root = tree.locator(':scope > .el-tree-node').first()
+    if ((await root.getAttribute('aria-expanded')) !== 'true') {
+      await root.locator(':scope > .el-tree-node__content .el-tree-node__expand-icon').click()
+    }
+    await expect(root.getByText('测试仓储部门 · WMS-01', { exact: true })).toBeVisible()
+    await page.screenshot({
+      path: testInfo.outputPath(`organization-tree-${appearance.theme}.png`)
+    })
+    await input.fill('WMS-01')
+    await expect(tree.getByText('测试仓储部门 · WMS-01', { exact: true })).toBeVisible()
+    await tree.getByText('测试仓储部门 · WMS-01', { exact: true }).click()
+    await expect(
+      field.locator('.el-select__selected-item').filter({ hasText: '测试仓储部门 · WMS-01' })
+    ).toBeVisible()
+    await page.getByRole('button', { name: '查询', exact: true }).click()
+    await expect.poll(() => organizationFilters.at(-1)).toBe('eq.count-org')
+    await input.click()
+    await input.fill('不存在的组织')
+    await expect(page.locator('.el-select-dropdown:visible .art-picker-empty')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: '重置', exact: true }).click()
+    await expect(field.getByText('全部库存组织', { exact: true })).toBeVisible()
+    await input.click()
+    await tree.getByText('测试集团 · ROOT', { exact: true }).click()
+    await expect(
+      field.locator('.el-select__selected-item').filter({ hasText: '测试集团 · ROOT' })
+    ).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    expect(errors).toEqual([])
+  })
+}
 
 test('盘点表暗色与阴影模式保持可读', async ({ page }, testInfo) => {
   await installCountSheetMenu(page)
@@ -561,6 +650,10 @@ test('已审核盘点表可只读查看初盘和复盘序列号', async ({ page 
   )
   await page.goto('#/wms/count-business/count-sheet')
   await page.getByRole('button', { name: '查看盘点表', exact: true }).click()
+  await page
+    .getByRole('dialog', { name: '盘点表', exact: true })
+    .getByRole('tab', { name: '物料明细', exact: true })
+    .click()
   await page.getByRole('button', { name: '查看序列号', exact: true }).click()
   const serialDialog = page.getByRole('dialog', { name: '序列号记录', exact: true })
   await expect(serialDialog).toBeVisible()
@@ -568,6 +661,13 @@ test('已审核盘点表可只读查看初盘和复盘序列号', async ({ page 
   await expect(serialDialog.getByText('复盘序列号', { exact: true })).toBeVisible()
   await expect(serialDialog.getByText('SN-OLD-001', { exact: true })).toBeVisible()
   await expect(serialDialog.getByText('SN-RECOUNT-001', { exact: true })).toBeVisible()
+  await expect(
+    serialDialog.locator('.art-section-card > .art-section-card__scrollbar')
+  ).toHaveCount(2)
+  await expect(serialDialog.locator('.art-section-card .el-scrollbar')).toHaveCount(2)
+  await expect(
+    serialDialog.locator('.art-section-card__scrollbar > .el-scrollbar__wrap').first()
+  ).toHaveCSS('max-height', '260px')
   await expect(serialDialog.getByRole('button', { name: '导入序列号' })).toHaveCount(0)
   await expect(serialDialog.getByRole('button', { name: '确定', exact: true })).toHaveCount(0)
   await page.screenshot({

@@ -1,4 +1,5 @@
 import type { SqlDialect } from '@/types/sql-connections'
+import { sortedIndex } from 'lodash-es'
 
 export interface SqlColumnRef {
   name: string
@@ -19,6 +20,9 @@ export interface SqlIndexRef {
 }
 
 export interface SqlTableRef {
+  detailsLoaded?: boolean
+  columnCount?: number
+  matchedColumns?: string[]
   tableSchema: string
   tableName: string
   description?: string | null
@@ -59,6 +63,10 @@ export interface SqlForeignKeyRef {
 }
 
 export interface SqlMetadataRef {
+  metadataMode?: 'catalog' | 'tables' | 'functions' | 'search'
+  searchTruncated?: boolean
+  functionsTruncated?: boolean
+  functionsTruncatedSchemas?: string[]
   schemas: string[]
   tables: SqlTableRef[]
   columns: Array<{
@@ -340,15 +348,30 @@ function maskSql(sql: string, dialect: SqlDialect = 'postgres') {
   return { masked, state }
 }
 
-/** The editor runs one statement; delimiters inside PostgreSQL literals/comments stay intact. */
-export function getSqlStatements(sql: string, dialect: SqlDialect = 'postgres'): SqlStatementRef[] {
+export interface SqlScriptIndex {
+  statements: SqlStatementRef[]
+  getExecutionTarget: (
+    cursorOffset: number,
+    selection?: { start: number; end: number }
+  ) => SqlExecutionTarget
+}
+
+/** One lexical pass per model revision; cursor movement searches the delimiter offsets. */
+export function createSqlScriptIndex(
+  sql: string,
+  dialect: SqlDialect = 'postgres'
+): SqlScriptIndex {
   const masked = maskSql(sql, dialect).masked
   const statements: SqlStatementRef[] = []
+  const delimiters: number[] = []
+  const targets: SqlExecutionTarget[] = []
+  const lastCodeEnd = masked.trimEnd().length
   let start = 0
   let lineNumber = 1
   let previousStart = 0
   for (let end = 0; end <= masked.length; end += 1) {
     if (end !== masked.length && masked[end] !== ';') continue
+    if (end < masked.length) delimiters.push(end)
     const firstCode = masked.slice(start, end).search(/\S/)
     if (firstCode !== -1) {
       const startOffset = start + firstCode
@@ -362,10 +385,34 @@ export function getSqlStatements(sql: string, dialect: SqlDialect = 'postgres'):
         lineNumber,
         command: masked.slice(startOffset, end).match(/^\w+/)?.[0].toUpperCase() || 'SQL'
       })
+      targets.push({ sql: statements[statements.length - 1].sql, startOffset, source: 'statement' })
+    } else {
+      targets.push({
+        sql: end < masked.length ? ';' : '',
+        startOffset: end < masked.length ? end : start,
+        source: 'statement'
+      })
     }
     start = end + 1
   }
-  return statements
+  return {
+    statements,
+    getExecutionTarget(cursorOffset, selection) {
+      if (selection) return getSelectedSqlTarget(sql, selection, dialect)
+      let offset = Math.max(0, Math.min(cursorOffset, sql.length))
+      // Keep the previous statement active immediately after its delimiter and
+      // throughout trailing whitespace/comments, matching the execution toolbar.
+      if (offset >= lastCodeEnd) offset = lastCodeEnd
+      if (masked[offset - 1] === ';') offset -= 1
+      if (offset === 0 && masked[0] === ';') return { sql: '', startOffset: 1, source: 'statement' }
+      return { ...targets[sortedIndex(delimiters, offset)] }
+    }
+  }
+}
+
+/** The editor runs one statement; literal/comment delimiters stay intact. */
+export function getSqlStatements(sql: string, dialect: SqlDialect = 'postgres'): SqlStatementRef[] {
+  return createSqlScriptIndex(sql, dialect).statements
 }
 
 export function getSqlExecutionTarget(
@@ -374,21 +421,21 @@ export function getSqlExecutionTarget(
   selection?: { start: number; end: number },
   dialect: SqlDialect = 'postgres'
 ): SqlExecutionTarget {
-  let start = selection?.start ?? 0
-  let end = selection?.end ?? sql.length
-  if (!selection) {
-    const masked = maskSql(sql, dialect).masked
-    let offset = Math.max(0, Math.min(cursorOffset, sql.length))
-    // At a statement's trailing semicolon (or trailing whitespace), keep that statement active.
-    if (!masked.slice(offset).trim()) offset = masked.trimEnd().length
-    if (masked[offset - 1] === ';') offset -= 1
-    start = masked.lastIndexOf(';', offset - 1) + 1
-    const delimiter = masked.indexOf(';', offset)
-    end = delimiter === -1 ? sql.length : delimiter + 1
-  }
+  return selection
+    ? getSelectedSqlTarget(sql, selection, dialect)
+    : createSqlScriptIndex(sql, dialect).getExecutionTarget(cursorOffset)
+}
+
+function getSelectedSqlTarget(
+  sql: string,
+  selection: { start: number; end: number },
+  dialect: SqlDialect
+): SqlExecutionTarget {
+  let start = selection.start
+  const end = selection.end
   const text = sql.slice(start, end)
   const firstCode = maskSql(text, dialect).masked.search(/\S/)
-  const source = selection ? 'selection' : 'statement'
+  const source = 'selection'
   if (firstCode === -1) return { sql: '', startOffset: start, source }
   start += firstCode
   return {
@@ -745,42 +792,100 @@ export function buildSqlTemplateSuggestions(metadata: SqlMetadataRef): SqlJoinSu
   ]
 }
 
-// 解析 Postgres 报错中的 LINE / Position，供 Monaco marker 和结果面板复用。
-export function parseSqlErrorLocation(message: string): SqlErrorLocation | null {
-  if (!message) return null
-
-  const lineMatch = message.match(/LINE\s+(\d+):([^\n]*)/i)
-  const caretMatch = message.match(/\n([ \t]*)\^/m)
-
-  if (lineMatch && caretMatch) {
-    const lineNumber = Number(lineMatch[1])
-    const lineText = lineMatch[2] || ''
-    const startColumn = Math.min(caretMatch[1].length + 1, lineText.length + 1)
-    return {
-      lineNumber,
-      startColumn,
-      endColumn: Math.max(startColumn + 1, startColumn)
-    }
+function postgresErrorPosition(query: string, position: number | string): SqlErrorLocation | null {
+  if (typeof position !== 'number' && typeof position !== 'string') return null
+  if (typeof position === 'string' && !/^\d+$/.test(position)) return null
+  const ordinal = Number(position)
+  if (!Number.isSafeInteger(ordinal) || ordinal < 1 || ordinal > query.length + 1) return null
+  let offset = 0
+  let current = 1
+  for (const character of query) {
+    if (current === ordinal) break
+    offset += character.length
+    current++
   }
-
-  const positionMatch = message.match(/Position:\s*(\d+)/i)
-  if (positionMatch) {
-    return {
-      lineNumber: 1,
-      startColumn: Number(positionMatch[1]),
-      endColumn: Number(positionMatch[1]) + 1
+  if (current !== ordinal) return null
+  let lineNumber = 1
+  let lineStart = 0
+  let lineEnd = query.length
+  for (const newline of query.matchAll(/\r\n|\r|\n/g)) {
+    if (offset < newline.index + newline[0].length) {
+      lineEnd = newline.index
+      break
     }
+    lineStart = newline.index + newline[0].length
+    lineNumber++
   }
-
-  return null
+  // Neither a marker nor a column can point between the two characters of CRLF.
+  const start = Math.min(offset, lineEnd)
+  const width = start < lineEnd ? ((query.codePointAt(start) ?? 0) > 0xffff ? 2 : 1) : 0
+  const startColumn = start - lineStart + 1
+  return { lineNumber, startColumn, endColumn: startColumn + width }
 }
 
-export function buildCaretDiagnostic(sql: string, location: SqlErrorLocation | null) {
-  if (!location) return ''
-  const lines = sql.split(/\r?\n/)
-  const lineText = lines[location.lineNumber - 1] || ''
-  const caretPadding = ' '.repeat(Math.max(location.startColumn - 1, 0))
-  return `${lineText}\n${caretPadding}^`
+/** PostgreSQL positions count code points; all returned columns use Monaco's UTF-16 units. */
+export function parseSqlErrorLocation(
+  message: string,
+  context?: { query: string; position?: number | string }
+): SqlErrorLocation | null {
+  if (context?.position !== undefined) return postgresErrorPosition(context.query, context.position)
+  if (!message) return null
+  const positions = message.matchAll(/(?:^|\r\n|\r|\n)[ \t]*Position:[ \t]*([^\r\n]*)/gi)
+  const position = positions.next().value
+  if (position)
+    return positions.next().done && context
+      ? postgresErrorPosition(context.query, position[1].trim())
+      : null
+  // These fields describe another query or server source, never the submitted SQL.
+  if (/(?:^|\r\n|\r|\n)[ \t]*(?:Internal Position|Internal Query|Query|Context):/i.test(message))
+    return null
+  const reports = message.matchAll(
+    /(?:^|\r\n|\r|\n)(LINE +(\d+): )([^\r\n]*)(?:\r\n|\r|\n)( *)\^[ \t]*(?=$|\r|\n)/gi
+  )
+  const report = reports.next().value
+  if (!report || !reports.next().done) return null
+  const [, prefix, line, lineText, padding] = report
+  const lineNumber = Number(line)
+  if (!Number.isSafeInteger(lineNumber) || lineNumber < 1 || !/^[\x20-\x7e]*$/.test(lineText))
+    return null
+  if (context) {
+    if (context.query.split(/\r\n|\r|\n/)[lineNumber - 1] !== lineText) return null
+  } else if (lineText.includes('...')) return null
+  const startColumn = padding.length - prefix.length + 1
+  if (startColumn < 1 || startColumn > lineText.length + 1) return null
+  return {
+    lineNumber,
+    startColumn,
+    endColumn: startColumn + (startColumn <= lineText.length ? 1 : 0)
+  }
+}
+
+export function buildCaretDiagnostic(sql: string, location: SqlErrorLocation | null): string {
+  if (
+    !location ||
+    ![location.lineNumber, location.startColumn, location.endColumn].every(
+      (value) => Number.isSafeInteger(value) && value >= 1
+    )
+  )
+    return ''
+  const line = sql.split(/\r\n|\r|\n/)[location.lineNumber - 1]
+  if (
+    line === undefined ||
+    location.startColumn > line.length + 1 ||
+    location.endColumn < location.startColumn ||
+    location.endColumn > line.length + 1
+  )
+    return ''
+  const boundary = (offset: number): boolean =>
+    offset <= 0 || offset >= line.length || (line.codePointAt(offset - 1) ?? 0) <= 0xffff
+  if (!boundary(location.startColumn - 1) || !boundary(location.endColumn - 1)) return ''
+  let start = Math.max(0, location.startColumn - 1 - 120)
+  const end = Math.min(line.length, start + 240)
+  if (!boundary(start)) start++
+  const safeEnd = boundary(end) ? end : end - 1
+  const snippet = `${start > 0 ? '…' : ''}${line.slice(start, safeEnd)}${safeEnd < line.length ? '…' : ''}`
+  // Screen width differs for CJK, combining characters and tabs; avoid a misleading space caret.
+  return `第 ${location.lineNumber} 行，第 ${location.startColumn} 列\n${snippet}`
 }
 
 // AI 只需要一个可控大小的 schema 摘要，避免把整库信息全塞进 prompt。

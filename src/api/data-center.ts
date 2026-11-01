@@ -1,7 +1,12 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { WRITE_PERMISSION_DENIED_MESSAGE } from '@/hooks/core/useSupabase'
 import type { QueryResult } from '@/types/api/response'
-import { applyFilters, fetchAllRangePages, FilterSpec } from '@/utils/supabase'
+import {
+  applyFilters,
+  createFriendlySupabaseFunctionError,
+  fetchAllRangePages,
+  FilterSpec
+} from '@/utils/supabase'
 import { invokeSupabaseFunctionWithSessionRecovery } from '@/utils/supabase/functions'
 import TreeUtils from '@/utils/tree'
 import { filterSqlWorkbenchMetadata } from '@/utils/sql-workbench'
@@ -25,6 +30,9 @@ const dictTypeTreeUtils = new TreeUtils({
 })
 
 interface MetadataPayload {
+  metadataMode?: 'catalog' | 'tables' | 'functions' | 'search'
+  searchTruncated?: boolean
+  functionsTruncated?: boolean
   schemas: string[]
   tables?: MetadataTableRow[]
   columns: MetadataColumnRow[]
@@ -33,6 +41,9 @@ interface MetadataPayload {
 }
 
 interface MetadataTableRow {
+  detailsLoaded?: boolean
+  columnCount?: number
+  matchedColumns?: string[]
   tableSchema: string
   tableName: string
   description?: string | null
@@ -75,6 +86,14 @@ function isMetadataTableRow(value: unknown): value is MetadataTableRow {
   return (
     typeof row.tableSchema === 'string' &&
     typeof row.tableName === 'string' &&
+    (row.detailsLoaded === undefined || typeof row.detailsLoaded === 'boolean') &&
+    (row.columnCount === undefined ||
+      (typeof row.columnCount === 'number' &&
+        Number.isInteger(row.columnCount) &&
+        row.columnCount >= 0)) &&
+    (row.matchedColumns === undefined ||
+      (Array.isArray(row.matchedColumns) &&
+        row.matchedColumns.every((name) => typeof name === 'string'))) &&
     isOptionalText(row.description) &&
     (row.kind === undefined ||
       row.kind === 'table' ||
@@ -137,6 +156,10 @@ function isMetadataPayload(payload: unknown): payload is MetadataPayload {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
   const value = payload as Record<string, unknown>
   return (
+    (value.metadataMode === undefined ||
+      ['catalog', 'tables', 'functions', 'search'].includes(String(value.metadataMode))) &&
+    (value.searchTruncated === undefined || typeof value.searchTruncated === 'boolean') &&
+    (value.functionsTruncated === undefined || typeof value.functionsTruncated === 'boolean') &&
     Array.isArray(value.schemas) &&
     value.schemas.every((schema) => typeof schema === 'string') &&
     (value.tables === undefined ||
@@ -218,7 +241,10 @@ export async function deleteDictType(params: Api.DataCenter.DictTypeItem) {
   return await responseHandle(
     () => supabase.from('sys_dict_type').delete({ count: 'exact' }).eq('id', id),
     {
-      showMessage: true,
+      showMessage: false,
+      breakReturn: true,
+      showErrorMessage: false,
+      showReferenceFeedback: false,
       requireAffected: true,
       noAffectedMessage: WRITE_PERMISSION_DENIED_MESSAGE
     }
@@ -403,7 +429,10 @@ export async function deleteDict(params: Api.DataCenter.DictListItem) {
   return await responseHandle(
     () => supabase.from('sys_dictionary').delete({ count: 'exact' }).eq('id', id),
     {
-      showMessage: true,
+      showMessage: false,
+      breakReturn: true,
+      showErrorMessage: false,
+      showReferenceFeedback: false,
       requireAffected: true,
       noAffectedMessage: WRITE_PERMISSION_DENIED_MESSAGE
     }
@@ -415,7 +444,10 @@ export async function deleteDictBatch(ids: string[]) {
   return await responseHandle(
     () => supabase.from('sys_dictionary').delete({ count: 'exact' }).in('id', ids),
     {
-      showMessage: true,
+      showMessage: false,
+      breakReturn: true,
+      showErrorMessage: false,
+      showReferenceFeedback: false,
       requireAffected: true,
       noAffectedMessage: WRITE_PERMISSION_DENIED_MESSAGE
     }
@@ -544,10 +576,18 @@ export async function deleteResource(params: Api.DataCenter.Resources.ResourceLi
  * 当前除了 schema / table / column / function，也会补上外键信息，
  * 这样前端才能做 JOIN 自动推断。
  */
-export async function fetchDatabaseMetadata(): Promise<Api.DataCenter.SqlConsole.DatabaseMetadata> {
+export type SqlMetadataRequest =
+  | { mode: 'catalog' }
+  | { mode: 'tables'; tables: { schema: string; name: string }[] }
+  | { mode: 'functions'; schema: string }
+  | { mode: 'search'; keyword: string }
+
+export async function fetchDatabaseMetadata(
+  request?: SqlMetadataRequest
+): Promise<Api.DataCenter.SqlConsole.DatabaseMetadata> {
   const { data, error } = await invokeSupabaseFunctionWithSessionRecovery(
     'execute-sql-with-columns',
-    { body: { action: 'metadata' } }
+    { body: { action: 'metadata', ...request } }
   )
 
   if (error) throw new Error('数据库结构加载失败，请稍后重试', { cause: error })
@@ -576,6 +616,9 @@ export async function fetchDatabaseMetadata(): Promise<Api.DataCenter.SqlConsole
     tablesMap.set(`${table.tableSchema}.${table.tableName}`, {
       tableSchema: table.tableSchema,
       tableName: table.tableName,
+      detailsLoaded: table.detailsLoaded,
+      columnCount: table.columnCount,
+      matchedColumns: table.matchedColumns,
       description: table.description,
       kind: table.kind,
       indexes: table.indexes,
@@ -611,6 +654,9 @@ export async function fetchDatabaseMetadata(): Promise<Api.DataCenter.SqlConsole
   )
 
   return filterSqlWorkbenchMetadata({
+    metadataMode: payload.metadataMode,
+    searchTruncated: payload.searchTruncated,
+    functionsTruncated: payload.functionsTruncated,
     schemas,
     columns,
     tables,
@@ -711,6 +757,16 @@ export async function explainSql(
     convertToCamelShadow: true,
     returnRawError: true
   })
+}
+
+/** The original execution response confirms termination; accepting cancel alone does not. */
+export async function cancelSql(requestId: string): Promise<void> {
+  const { data, error } = await invokeSupabaseFunctionWithSessionRecovery<{
+    status: string
+  }>('execute-sql-with-columns', { body: { action: 'cancel', requestId } })
+  if (error)
+    throw await createFriendlySupabaseFunctionError(error, '取消查询失败，请重试或等待查询结束')
+  if (data?.status !== 'ok') throw new Error('取消请求未被接受，请重试或等待查询结束')
 }
 
 // AI SQL 入口单独保留，方便后面替换模型提供方而不动工作台页面。

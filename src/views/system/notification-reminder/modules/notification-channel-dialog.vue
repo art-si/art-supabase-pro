@@ -10,22 +10,18 @@
       />
       <ArtForm
         ref="formRef"
-        :model-value="form"
-        @update:model-value="replaceReactiveModel(form, $event)"
+        v-model="form"
         :items="items"
         :rules="rules"
         :span="12"
         :gutter="18"
         label-width="104px"
-        :show-reset="false"
-        :show-submit="false"
       />
     </div>
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { ElAlert, type FormRules } from 'element-plus'
@@ -64,7 +60,7 @@
     config: {},
     secretConfigured: true
   })
-  const form = reactive<ChannelForm>({
+  const form = ref<ChannelForm>({
     enabled: true,
     providerCode: 'builtin',
     fromEmail: '',
@@ -99,17 +95,17 @@
 
   const rules = computed<FormRules<ChannelForm>>(() => ({
     fromEmail:
-      channel.channelCode === 'email' && form.enabled
+      channel.channelCode === 'email' && form.value.enabled
         ? [{ required: true, message: '请输入发件邮箱', trigger: 'blur' }]
         : [],
     apiKey:
-      channel.channelCode === 'email' && form.enabled && !channel.secretConfigured
+      channel.channelCode === 'email' && form.value.enabled && !channel.secretConfigured
         ? [{ required: true, message: '首次启用需填写 API Key', trigger: 'blur' }]
         : [],
     webhookUrl:
       channel.channelCode !== 'in_app' &&
       channel.channelCode !== 'email' &&
-      form.enabled &&
+      form.value.enabled &&
       !channel.secretConfigured
         ? [{ required: true, message: '首次启用需填写服务地址', trigger: 'blur' }]
         : []
@@ -225,28 +221,28 @@
     const secret: Record<string, unknown> = {}
     if (channel.channelCode === 'email') {
       Object.assign(config, {
-        fromEmail: form.fromEmail.trim(),
-        senderName: form.senderName.trim(),
-        endpointUrl: form.endpointUrl.trim()
+        fromEmail: form.value.fromEmail.trim(),
+        senderName: form.value.senderName.trim(),
+        endpointUrl: form.value.endpointUrl.trim()
       })
-      if (form.apiKey.trim()) secret.apiKey = form.apiKey.trim()
+      if (form.value.apiKey.trim()) secret.apiKey = form.value.apiKey.trim()
     } else if (channel.channelCode === 'sms') {
-      config.templateCode = form.templateCode.trim()
-      if (form.webhookUrl.trim()) secret.webhookUrl = form.webhookUrl.trim()
-      if (form.authorization.trim()) secret.authorization = form.authorization.trim()
+      config.templateCode = form.value.templateCode.trim()
+      if (form.value.webhookUrl.trim()) secret.webhookUrl = form.value.webhookUrl.trim()
+      if (form.value.authorization.trim()) secret.authorization = form.value.authorization.trim()
     } else if (channel.channelCode === 'dingtalk') {
-      if (form.webhookUrl.trim()) secret.webhookUrl = form.webhookUrl.trim()
-      if (form.signSecret.trim()) secret.signSecret = form.signSecret.trim()
-    } else if (channel.channelCode === 'wecom' && form.webhookUrl.trim()) {
-      secret.webhookUrl = form.webhookUrl.trim()
+      if (form.value.webhookUrl.trim()) secret.webhookUrl = form.value.webhookUrl.trim()
+      if (form.value.signSecret.trim()) secret.signSecret = form.value.signSecret.trim()
+    } else if (channel.channelCode === 'wecom' && form.value.webhookUrl.trim()) {
+      secret.webhookUrl = form.value.webhookUrl.trim()
     }
 
     try {
       await saveNotificationChannel({
         tenantId: props.tenantId,
         channelCode: channel.channelCode,
-        providerCode: form.providerCode,
-        enabled: channel.channelCode === 'in_app' ? true : form.enabled,
+        providerCode: form.value.providerCode,
+        enabled: channel.channelCode === 'in_app' ? true : form.value.enabled,
         config,
         secret: Object.keys(secret).length ? secret : null
       })
@@ -261,7 +257,7 @@
   const handleOpen = async (row: Api.NotificationReminder.ChannelConfig): Promise<void> => {
     Object.assign(channel, structuredClone(toRaw(row)))
     const config = row.config ?? {}
-    Object.assign(form, {
+    Object.assign(form.value, {
       enabled: row.channelCode === 'in_app' ? true : row.enabled,
       providerCode: row.providerCode,
       fromEmail: String(config.fromEmail ?? ''),

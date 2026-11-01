@@ -50,6 +50,7 @@ function readColumns(value: unknown): TableColumnSetting[] {
         ? { showOverflowTooltip: item.showOverflowTooltip }
         : {}),
       ...(typeof item.locked === 'boolean' ? { locked: item.locked } : {}),
+      ...(typeof item.optional === 'boolean' ? { optional: item.optional } : {}),
       ...(typeof item.parentKey === 'string' ? { parentKey: item.parentKey } : {}),
       ...(Array.isArray(item.groups)
         ? { groups: item.groups.filter((group): group is string => typeof group === 'string') }

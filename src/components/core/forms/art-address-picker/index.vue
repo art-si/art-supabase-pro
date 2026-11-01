@@ -37,7 +37,7 @@
           <div class="art-address-picker__detail">
             <ElInput
               v-model.trim="addressDetail"
-              class="art-address-picker__control"
+              class="art-address-picker__control art-address-picker__address-input"
               :maxlength="detailMaxlength"
               :placeholder="detailPlaceholder"
               :disabled="disabled"
@@ -55,6 +55,7 @@
                   <ElButton
                     v-if="showLocateButton"
                     class="art-address-picker__action"
+                    text
                     :disabled="disabled || locating"
                     aria-label="定位当前位置"
                     title="定位当前位置"
@@ -68,6 +69,7 @@
                   </ElButton>
                   <ElButton
                     class="art-address-picker__action"
+                    text
                     :disabled="disabled"
                     aria-label="打开地图选择地址"
                     title="打开地图选择地址"
@@ -148,6 +150,7 @@
             :fallback-address="fullAddress || addressDetail"
             :message="mapMessage"
             @location-pick="setDraftLocation"
+            @view-interaction="initialView.cancel"
             @error="mapMessage = $event"
           />
         </div>
@@ -195,6 +198,7 @@
     type AmapLocationAddressComponent
   } from '@/hooks/core/useAmapGeolocation'
   import { artOverlayRequestScopeKey } from '@/hooks/core/useArtOverlay'
+  import { useAmapInitialView } from '@/hooks/core/useAmapInitialView'
   import { stripRegionPrefix } from './address'
   import ArtAddressMap from './modules/map.vue'
   import type {
@@ -238,7 +242,7 @@
   }
 
   interface MapExpose {
-    initialize: (options: { center: [number, number]; zoom?: number }) => Promise<unknown>
+    initialize: (options: { center?: [number, number]; zoom?: number }) => Promise<unknown>
     setMarker: (longitude: number | string, latitude: number | string) => void
     setZoomAndCenter: (zoom: number, center: [number, number]) => void
     centerByRegion: () => void
@@ -340,6 +344,7 @@
     key: () => props.amapKey || import.meta.env.VITE_AMAP_KEY,
     securityJsCode: () => props.amapSecurityJsCode || import.meta.env.VITE_AMAP_SECURITY_JS_CODE
   })
+  const initialView = useAmapInitialView(getCurrentLocation)
 
   const cancelLocate = (): void => {
     const request = locationRequest
@@ -353,12 +358,16 @@
     [addressDetail, regionPath, regionAdcode, longitude, latitude, coordinateSystem],
     () => {
       if (!applyingLocation) cancelLocate()
+      initialView.cancel()
     },
     { deep: true, flush: 'sync' }
   )
   watch(
     [() => props.disabled, () => overlayScope?.visible.value, () => overlayScope?.version.value],
-    cancelLocate,
+    () => {
+      cancelLocate()
+      initialView.cancel()
+    },
     { flush: 'sync' }
   )
   onBeforeUnmount(cancelLocate)
@@ -670,6 +679,7 @@
   }
 
   const setDraftLocation = (payload: AddressMapPickResult): void => {
+    initialView.cancel()
     const nextRegionPath = resolveRegionPath(payload)
     draftAddress.value = payload.address
     draftLongitude.value = payload.longitude
@@ -684,12 +694,13 @@
 
   const initializeMap = async (session: number): Promise<void> => {
     mapMessage.value = ''
-    const defaultCenter: [number, number] = hasCoordinate.value
-      ? [Number(longitude.value), Number(latitude.value)]
-      : [120.1551, 30.2741]
+    const existingCoordinate = normalizeCoordinatePair(longitude.value, latitude.value)
+    const center: [number, number] | undefined = existingCoordinate
+      ? [existingCoordinate.longitude, existingCoordinate.latitude]
+      : undefined
     await mapRef.value?.initialize({
-      center: defaultCenter,
-      zoom: hasCoordinate.value ? 15 : 11
+      center,
+      zoom: existingCoordinate ? 15 : 11
     })
     if (session !== pickerSession) return
 
@@ -702,10 +713,23 @@
         regionAdcode: regionAdcode.value ?? undefined
       })
     } else {
-      mapRef.value?.centerByRegion()
+      void centerOnCurrentLocation(session)
     }
 
     mapRef.value?.resize()
+  }
+
+  const centerOnCurrentLocation = async (session: number): Promise<void> => {
+    try {
+      const center = await initialView.resolveCenter()
+      if (center && session === pickerSession) mapRef.value?.setZoomAndCenter(15, center)
+    } catch (error) {
+      if (session !== pickerSession) return
+      mapMessage.value = getFriendlySupabaseErrorMessage(
+        error,
+        '暂时无法获取当前位置，可搜索或点击地图选择地址'
+      )
+    }
   }
 
   const waitForMapLayout = async (): Promise<void> => {
@@ -718,6 +742,7 @@
   const handleOpenPicker = async (): Promise<void> => {
     if (props.disabled) return
     cancelLocate()
+    initialView.cancel()
     pickerSession += 1
     regionAdcode.value = findRegionAdcode(resolvedRegionOptions.value, currentRegionPath.value)
     searchKeyword.value = fullAddress.value
@@ -772,6 +797,7 @@
   }
 
   const handleDialogClose = (): void => {
+    initialView.cancel()
     pickerSession += 1
     mapRef.value?.destroy()
     mapMessage.value = ''
@@ -865,6 +891,65 @@
       min-width: 0;
     }
 
+    &__address-input {
+      display: inline-flex;
+      overflow: hidden;
+      background: var(--el-input-bg-color, var(--el-fill-color-blank));
+      border-radius: var(--el-input-border-radius, var(--el-border-radius-base));
+      box-shadow: var(--art-control-shadow);
+
+      &:hover:not(.is-disabled) {
+        box-shadow: var(--art-control-hover-shadow);
+      }
+
+      &:focus-within {
+        box-shadow: var(--art-control-focus-shadow);
+      }
+
+      &.is-disabled {
+        background: var(--el-disabled-bg-color);
+        box-shadow: var(--art-control-disabled-shadow);
+      }
+
+      :deep(.el-input__wrapper) {
+        min-width: 0;
+        background: transparent;
+        box-shadow: none !important;
+
+        --art-control-shadow: none;
+        --art-control-hover-shadow: none;
+        --art-control-focus-shadow: none;
+        --art-control-disabled-shadow: none;
+        --art-control-error-shadow: none;
+      }
+
+      :deep(.el-input-group__append) {
+        display: flex;
+        flex-shrink: 0;
+        align-items: stretch;
+        width: auto;
+        padding: 0;
+        background: transparent;
+        border-inline-start: 1px solid var(--el-border-color-lighter);
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      :deep(.el-input-group__append .art-address-picker__action) {
+        border-radius: 0;
+        box-shadow: none;
+
+        &:focus-visible {
+          outline: 2px solid var(--el-color-primary);
+          outline-offset: -3px;
+        }
+      }
+    }
+
+    .el-form-item.is-error &__address-input:not(.is-disabled) {
+      box-shadow: var(--art-control-error-shadow);
+    }
+
     &__actions {
       display: inline-flex;
       align-items: stretch;
@@ -874,15 +959,19 @@
     &__action {
       height: 100%;
       min-height: var(--el-component-size);
-      padding-inline: 20px;
+      padding-inline: 14px;
       margin: 0 !important;
       border: 0;
       border-radius: 0;
+
+      & + & {
+        border-inline-start: 1px solid var(--el-border-color-lighter);
+      }
     }
 
     &__action-content {
       display: inline-flex;
-      gap: 4px;
+      gap: var(--art-control-icon-gap);
       align-items: center;
       justify-content: center;
       height: 100%;
@@ -1042,7 +1131,7 @@
       margin-left: 0 !important;
     }
 
-    :deep(.el-input-group__append) {
+    .art-address-picker__address-input :deep(.el-input-group__append) {
       display: none;
     }
 
@@ -1082,6 +1171,7 @@
     overflow: hidden;
 
     --art-dialog-content-padding: 20px 24px 0;
+    --art-scroll-viewport-inset: 0px;
   }
 
   :global(.art-address-picker-dialog.is-fullscreen .art-dialog__content) {

@@ -424,6 +424,9 @@ verify_jwt = true
 [functions.ai-sql-assistant]
 verify_jwt = true
 
+[functions.sql-query-api]
+verify_jwt = true
+
 [functions.ai-run-diagnosis]
 verify_jwt = true
 

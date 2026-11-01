@@ -7,6 +7,39 @@ export function getColumnKey<T>(column: ColumnOption<T>): string {
     : (column.prop ?? (column.children?.length ? `__group__${column.label ?? ''}` : ''))
 }
 
+/** Both aliases are used by business tables; an ordinary action field remains configurable. */
+export function isTableOperationColumn(column: {
+  prop?: unknown
+  key?: unknown
+  label?: unknown
+}): boolean {
+  const key = column.prop ?? column.key
+  return key === 'operation' || (key === 'action' && column.label === '操作')
+}
+
+/** Keep fit tables full-width even when a saved layout gives every column a pixel width. */
+export function ensureTableFillColumn<T>(columns: ColumnOption<T>[]): ColumnOption<T>[] {
+  const leaves = columns.flatMap((column) => (column.children?.length ? column.children : [column]))
+  if (leaves.some((column) => !column.width)) return columns
+  const business = leaves.filter((column) => !column.type && !isTableOperationColumn(column))
+  const fill =
+    business.find((column) => column.minWidth) ??
+    business.findLast((column) => !column.fixed) ??
+    business.at(-1)
+  if (!fill || !Number.isFinite(Number(fill.width))) return columns
+  const expand = (column: ColumnOption<T>): ColumnOption<T> =>
+    column === fill
+      ? {
+          ...column,
+          width: undefined,
+          minWidth: Math.max(Number(column.width), Number(column.minWidth) || 0)
+        }
+      : column.children?.length
+        ? { ...column, children: column.children.map(expand) }
+        : column
+  return columns.map(expand)
+}
+
 /** Leave enough room for the label and independently operated header controls. */
 export function fitColumnHeaderControls<T>(column: ColumnOption<T>): ColumnOption<T> {
   const filtered = Boolean(column.filterType && column.filterType !== 'none')
@@ -27,12 +60,12 @@ export function hasVisibleBusinessColumn(
   settings: TableColumnSetting[],
   catalog: TableColumnSetting[]
 ): boolean {
+  const definitions = new Map(catalog.map((column) => [column.key, column]))
   return visibleColumnSettings(settings, catalog).some(
     (column) =>
       !column.key.startsWith('__group__') &&
-      !['__selection__', '__index__', '__globalIndex__', '__expand__', 'operation'].includes(
-        column.key
-      )
+      !isTableOperationColumn(definitions.get(column.key) ?? column) &&
+      !['__selection__', '__index__', '__globalIndex__', '__expand__'].includes(column.key)
   )
 }
 
@@ -80,7 +113,7 @@ export function applyColumnProfile<T>(
           order: settings.length + index
         }
       const { setting } = configured
-      const structural = Boolean(column.type || column.prop === 'operation' || column.disabled)
+      const structural = Boolean(column.type || isTableOperationColumn(column) || column.disabled)
       const sourceHidden =
         column.visible === false &&
         defaults.find((item) => item.key === getColumnKey(column))?.visible !== false
@@ -154,21 +187,32 @@ export function matchesColumnCatalog<T>(
   catalog: TableColumnSetting[] = []
 ): boolean {
   const groups = new Set(catalog.flatMap((column) => column.groups ?? []))
-  if (groups.size)
-    return [...groups].some((group) =>
-      matchesColumnCatalog(
-        columns,
-        catalog.filter((column) => column.groups?.includes(group)).map((column) => column.key)
-      )
+  const variants = groups.size
+    ? [...groups].map((group) => catalog.filter((column) => column.groups?.includes(group)))
+    : [catalog]
+  const business = columns.filter((column) => !column.type && !isTableOperationColumn(column))
+  const operationKeys = new Set(columns.filter(isTableOperationColumn).map(getColumnKey))
+  return variants.some((variant) => {
+    // Match each main-list variant at the same top-level depth as its rendered columns.
+    const variantKeys =
+      groups.size || variant.some((column) => column.parentKey)
+        ? variant.filter((column) => !column.parentKey).map((column) => column.key)
+        : keys
+    const known = new Set(variantKeys)
+    const required = new Set(
+      variant.length
+        ? variant
+            .filter(
+              (column) => !column.parentKey && !column.optional && !isTableOperationColumn(column)
+            )
+            .map((column) => column.key)
+        : variantKeys.filter((key) => !operationKeys.has(key) && !isTableOperationColumn({ key }))
     )
-  if (catalog.some((column) => column.parentKey))
-    keys = catalog.filter((column) => !column.parentKey).map((column) => column.key)
-  const business = columns.filter((column) => !column.type && column.prop !== 'operation')
-  const known = new Set(keys)
-  return (
-    business.length > 0 &&
-    business.every((column) => known.has(getColumnKey(column))) &&
-    business.length >=
-      Math.max(1, keys.filter((key) => !key.startsWith('__') && key !== 'operation').length * 0.6)
-  )
+    return (
+      business.length > 0 &&
+      business.every((column) => known.has(getColumnKey(column))) &&
+      business.filter((column) => required.has(getColumnKey(column))).length >=
+        Math.max(1, [...required].filter((key) => !key.startsWith('__')).length * 0.6)
+    )
+  })
 }

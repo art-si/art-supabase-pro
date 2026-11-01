@@ -94,7 +94,9 @@ for (const mode of ['success', 'denied', 'unsupported'])
     )
     if (mode === 'success')
       await expect(page.locator('html')).toHaveAttribute('data-copied', /menuType:/)
-    await page.locator('td').filter({ hasText: /^0$/ }).first().click({ button: 'right' })
+    await page
+      .getByRole('button', { name: '查看 value 内容', exact: true })
+      .click({ button: 'right' })
     await page.getByRole('menuitem', { name: '复制', exact: true }).click()
     await expect(page.locator('.el-message').last()).toContainText(
       mode === 'success' ? '复制成功' : '复制失败'

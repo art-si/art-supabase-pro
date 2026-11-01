@@ -348,8 +348,6 @@ Form-based CRUD dialogs must use `ArtDialog + ArtForm`.
       :span="12"
       :gutter="20"
       label-width="120px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>

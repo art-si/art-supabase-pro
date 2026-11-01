@@ -1,6 +1,7 @@
 <template>
   <ArtDialog ref="dialogRef" size="md">
     <ArtForm
+      v-model:active-tab="activeTab"
       ref="formRef"
       v-model="form.data"
       :items="form.items"
@@ -10,8 +11,6 @@
       label-position="top"
       label-width="auto"
       root-class="dict-maintenance-form dict-entry-form"
-      :show-reset="false"
-      :show-submit="false"
       :validate-on-rule-change="false"
       scroll-to-error
     >
@@ -86,6 +85,7 @@
   const { getDictMap } = storeToRefs(userStore)
 
   const dialogRef = ref<ArtDialogExpose<DictListItem>>()
+  const activeTab = ref('')
   const formRef = ref<ArtFormExpose>()
   const treeUtils = new TreeUtils({
     idKey: 'id',
@@ -135,9 +135,9 @@
       (): FormItem[] =>
         [
           {
-            label: '归属与层级',
+            label: '字典定义',
             key: 'ownershipSection',
-            type: 'divider',
+            type: 'tab',
             span: 24
           },
           {
@@ -191,12 +191,7 @@
               }
             }
           },
-          {
-            label: '字典内容',
-            key: 'contentSection',
-            type: 'divider',
-            span: 24
-          },
+
           {
             label: '字典标签',
             key: 'label',
@@ -234,9 +229,9 @@
             }
           },
           {
-            label: '展示设置',
+            label: '展示与说明',
             key: 'presentationSection',
-            type: 'divider',
+            type: 'tab',
             span: 24
           },
           {
@@ -291,12 +286,7 @@
                 }
               ]
             : []),
-          {
-            label: '补充说明',
-            key: 'descriptionSection',
-            type: 'divider',
-            span: 24
-          },
+
           {
             label: '备注信息',
             key: 'remark',
@@ -353,6 +343,7 @@
   const handleOpen = async (
     data: DictListItem & { dictTypeCode?: string; dictTypeName?: string } = {} as DictListItem
   ): Promise<void> => {
+    activeTab.value = ''
     handleResetFields()
     if (!isEmpty(data)) {
       form.value.data = {

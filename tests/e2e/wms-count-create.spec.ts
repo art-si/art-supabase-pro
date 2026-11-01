@@ -189,7 +189,7 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
   const section = dialog.getByRole('combobox', { name: '施工号范围', exact: true })
   const confirm = dialog.getByRole('button', { name: '确定', exact: true })
   await organization.click()
-  await page.getByRole('option', { name: '测试库存组织 · ORG-TEST', exact: true }).click()
+  await page.getByRole('treeitem', { name: '测试库存组织 · ORG-TEST', exact: true }).click()
   await expect(project).toBeEnabled()
   await warehouse.click()
   await page.getByRole('option', { name: '测试盘点仓库 first · FIRST', exact: true }).click()
@@ -255,6 +255,44 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
       construction_no: null
     }
   })
+})
+
+test('盘点组织保留禁用祖先、允许选择父子组织并按编码搜索', async ({ page }, testInfo) => {
+  await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+  await page.goto('/tests/e2e/fixtures/wms-operation-retry.html?countScope&countTree')
+  await page.getByRole('button', { name: '测试盘点创建', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '生成盘点方案', exact: true })
+  const organization = dialog.getByRole('combobox', { name: '* 库存组织', exact: true })
+  await organization.click()
+  const ancestor = page.getByRole('treeitem', {
+    name: '未启用库存总公司 · ORG-PARENT',
+    exact: true
+  })
+  await expect(ancestor).toHaveAttribute('aria-disabled', 'true')
+  if ((await ancestor.getAttribute('aria-expanded')) !== 'true')
+    await ancestor.locator('.el-tree-node__expand-icon').first().click()
+  const parent = page.getByRole('treeitem', { name: '测试库存组织 · ORG-TEST', exact: true })
+  await expect(
+    ancestor.getByRole('treeitem', { name: '测试库存组织 · ORG-TEST', exact: true })
+  ).toBeVisible()
+  if ((await parent.getAttribute('aria-expanded')) !== 'true')
+    await parent.locator('.el-tree-node__expand-icon').first().click()
+  const child = page.getByRole('treeitem', { name: '测试下属库存组织 · ORG-CHILD', exact: true })
+  await expect(
+    parent.getByRole('treeitem', { name: '测试下属库存组织 · ORG-CHILD', exact: true })
+  ).toBeVisible()
+  await child.click()
+  await expect(dialog.getByText('测试下属库存组织 · ORG-CHILD', { exact: true })).toBeVisible()
+  await organization.click()
+  await organization.fill('ORG-CHILD')
+  await expect(child).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('count-organization-tree.png'),
+    animations: 'disabled'
+  })
+  await organization.fill('')
+  await parent.locator('.el-tree-node__content').first().click()
+  await expect(dialog.getByText('测试库存组织 · ORG-TEST', { exact: true })).toBeVisible()
 })
 
 test('截止日期库存自动填入当天并禁用零库存参数', async ({ page }, testInfo) => {

@@ -78,6 +78,8 @@ export interface ColumnOption<T = ComponentRecord> {
   prop?: string
   // 列标题
   label?: string
+  /** 表头旁的填写或业务规则说明；支持键盘聚焦查看。 */
+  headerTooltip?: string
   // 编辑型表格中的必填列；表头会以与表单一致的红色星号提示
   required?: boolean
   // 必填校验失败提示；支持根据当前行生成业务提示

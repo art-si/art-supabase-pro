@@ -34,42 +34,40 @@ test('Excel row mapping ignores inherited columns and preserves explicit special
 })
 
 test('spreadsheet imports preserve UTF-8 CSV headers and binary Excel files', async () => {
-  const originalReader = Object.getOwnPropertyDescriptor(globalThis, 'FileReader')
-  class ImportFileReader {
-    onload?: (event: { target: { result: string | ArrayBuffer } }) => void
-    onerror?: (error: unknown) => void
+  const expected = [
+    { 客户: '测试甲', 金额: 12 },
+    { 客户: '测试乙', 金额: 18 }
+  ]
+  const csv = new File(['\uFEFF客户,金额\n测试甲,12\n测试乙,18'], '流水.CSV')
+  assert.deepEqual(await importExcelFile(csv), expected)
+  const XLSX = await import('../../src/vendor/sheetjs/xlsx.mjs')
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expected), '流水')
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet([{ 客户: '第二页不应导入' }]),
+    '说明'
+  )
+  const excel = new File([XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })], '流水.xlsx')
+  assert.deepEqual(await importExcelFile(excel), expected)
+})
 
-    readAsText(file: File) {
-      void file.text().then(
-        (result) => this.onload?.({ target: { result } }),
-        (error: unknown) => this.onerror?.(error)
-      )
-    }
+test('CSV imports retain quoted multiline headers, commas and escaped quotes', async () => {
+  const csv = new File(
+    ['"客户\n名称","备注","金额"\r\n"测试,甲","他说""已收款""\n待核对",12'],
+    '引号换行.csv'
+  )
+  assert.deepEqual(await importExcelFile(csv), [
+    { '客户\n名称': '测试,甲', 备注: '他说"已收款"\n待核对', 金额: 12 }
+  ])
+})
 
-    readAsArrayBuffer(file: File) {
-      void file.arrayBuffer().then(
-        (result) => this.onload?.({ target: { result } }),
-        (error: unknown) => this.onerror?.(error)
-      )
-    }
+test('empty spreadsheet imports return no rows and corrupt XLSX errors reach the caller', async () => {
+  for (const filename of ['空文件.csv', '空文件.xlsx']) {
+    assert.deepEqual(await importExcelFile(new File([], filename)), [])
   }
-  Object.defineProperty(globalThis, 'FileReader', { configurable: true, value: ImportFileReader })
-  try {
-    const expected = [
-      { 客户: '测试甲', 金额: 12 },
-      { 客户: '测试乙', 金额: 18 }
-    ]
-    const csv = new File(['\uFEFF客户,金额\n测试甲,12\n测试乙,18'], '流水.CSV')
-    assert.deepEqual(await importExcelFile(csv), expected)
-    const XLSX = await import('../../src/vendor/sheetjs/xlsx.mjs')
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expected), '流水')
-    const excel = new File([XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })], '流水.xlsx')
-    assert.deepEqual(await importExcelFile(excel), expected)
-  } finally {
-    if (originalReader) Object.defineProperty(globalThis, 'FileReader', originalReader)
-    else Reflect.deleteProperty(globalThis, 'FileReader')
-  }
+  const corruptZip = new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], '损坏.xlsx')
+  await assert.rejects(importExcelFile(corruptZip), /ZIP|zip/)
 })
 
 test('Excel export rejects a tenant change before saving its generated file', async () => {
@@ -147,6 +145,52 @@ test('Excel rows preserve column policy and format supported values', () => {
   )
 
   assert.deepEqual(rows, [{ 序号: '1', 名称: '测试', 金额: '0', 启用: '否', 日期: '2026-09-10' }])
+})
+
+test('Excel rows retain prototype-named headers as own cells', () => {
+  const input = JSON.parse(
+    '{"__proto__":"原型字段","constructor":"构造字段","hasOwnProperty":"自有字段"}'
+  )
+  const rows = buildExcelRows(
+    [input],
+    ['__proto__', 'constructor', 'hasOwnProperty'].map((name) => ({ key: name, title: name }))
+  )
+  assert.equal(Object.getPrototypeOf(rows[0]), Object.prototype)
+  for (const name of ['__proto__', 'constructor', 'hasOwnProperty']) {
+    assert.equal(Object.hasOwn(rows[0], name), true)
+    assert.equal(rows[0][name], input[name])
+  }
+})
+
+test('Excel empty exports require opt-in and still run the download guard without fabricating data', async () => {
+  const blocked = new Error('验证仅表头工作簿后阻止下载')
+  const progress: number[] = []
+  let formatted = false
+  const columns = [
+    {
+      key: 'id',
+      title: '编号',
+      formatter: () => {
+        formatted = true
+        return '不应生成记录'
+      }
+    }
+  ]
+  await assert.rejects(exportExcel({ data: [], columns }), { message: '没有可导出的数据' })
+  await assert.rejects(
+    exportExcel({
+      data: [],
+      columns,
+      allowEmpty: true,
+      onProgress: (value) => progress.push(value),
+      assertCanDownload: () => {
+        throw blocked
+      }
+    }),
+    (error: unknown) => error === blocked
+  )
+  assert.equal(formatted, false)
+  assert.equal(progress.at(-1), 95)
 })
 
 test('Excel filename policy supports stable date, timestamp and no suffix', () => {

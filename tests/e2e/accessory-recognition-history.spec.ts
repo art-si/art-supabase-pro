@@ -56,6 +56,7 @@ test('识别历史完整翻页并原位重试', async ({ page }, testInfo) => {
     })
   })
   await page.goto('/tests/e2e/fixtures/accessory-recognition-history.html')
+  await page.getByRole('tab', { name: '记录与草稿', exact: true }).click()
   await expect(page.getByRole('button', { name: /历史项目 1 / })).toBeVisible()
   const next = page.getByRole('button', { name: /next page|下一页/i })
   for (let index = 0; index < 5; index++) {
@@ -113,6 +114,7 @@ for (const oldFailure of [false, true]) {
     await page.goto('/tests/e2e/fixtures/accessory-recognition-history.html')
     await expect.poll(() => oldStarted).toBe(true)
     await page.getByRole('button', { name: '切换测试租户', exact: true }).click()
+    await page.getByRole('tab', { name: '记录与草稿', exact: true }).click()
     await expect(page.getByRole('button', { name: /新租户历史/ })).toBeVisible()
     releaseOld?.()
     await expect.poll(() => finished.length).toBe(2)

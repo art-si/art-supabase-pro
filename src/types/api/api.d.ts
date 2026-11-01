@@ -797,6 +797,10 @@ declare namespace Api {
     }
     namespace SqlConsole {
       interface DatabaseMetadata {
+        metadataMode?: 'catalog' | 'tables' | 'functions' | 'search'
+        searchTruncated?: boolean
+        functionsTruncated?: boolean
+        functionsTruncatedSchemas?: string[]
         columns: ColumnMetadata[]
         schemas: string[]
         tables: TableMetadata[]
@@ -805,6 +809,9 @@ declare namespace Api {
       }
 
       interface TableMetadata {
+        detailsLoaded?: boolean
+        columnCount?: number
+        matchedColumns?: string[]
         tableSchema: string
         tableName: string
         description?: string | null
@@ -857,18 +864,21 @@ declare namespace Api {
       }
 
       interface SqlExecuteRequest {
+        requestId?: string
         query: string
         maxRows?: number
         timeoutMs?: number
       }
 
       interface SqlExplainRequest {
+        requestId?: string
         query: string
         timeoutMs?: number
       }
 
       interface SqlExplainResponse {
         status: 'ok' | 'error'
+        errorCode?: string
         errorMessage?: string
         executionScope?: 'database'
         plan?: Array<Record<string, unknown>>
@@ -881,7 +891,11 @@ declare namespace Api {
 
       interface SqlExecuteResponse {
         status: 'ok' | 'error'
+        errorCode?: string
         errorMessage?: string
+        /** One-based PostgreSQL code-point position in errorQuery, when its source is verified. */
+        errorPosition?: number
+        errorQuery?: string
         executionScope?: 'database'
         rows?: Array<Record<string, unknown>>
         columns?: Array<{

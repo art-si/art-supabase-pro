@@ -1,25 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
 test('保险公司弹窗区分字段校验与服务拒绝', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'sb-ckbftoopuyophiebamwy-auth-token',
-      JSON.stringify({
-        access_token: 'a.b.c',
-        refresh_token: 'test-refresh-token',
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
-        token_type: 'bearer',
-        user: {
-          id: '00000000-0000-0000-0000-000000000000',
-          aud: 'authenticated',
-          role: 'authenticated'
-        }
-      })
-    )
-  })
+  await prepareIsolatedSession(page)
 
   let requests = 0
   await page.route('**/rest/v1/mdm_insurance_company**', async (route) => {
@@ -31,10 +17,13 @@ test('保险公司弹窗区分字段校验与服务拒绝', async ({ page }, tes
     })
   })
 
-  await page.goto('http://127.0.0.1:3015/tests/e2e/fixtures/insurance-company-feedback.html')
-  await page.getByRole('button', { name: '打开保险公司弹窗' }).click()
+  await page.goto('/tests/e2e/fixtures/scrollbar-workspace.html?page=form-reuse')
+  await page.getByRole('button', { name: '新增保险公司', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '新增保险公司' })
   await expect(dialog).toBeVisible()
+  await expect(dialog.locator('.art-async-state[aria-busy="true"]')).toHaveCount(0, {
+    timeout: 30_000
+  })
 
   await dialog.getByRole('button', { name: '确定' }).click()
   await expect(dialog.getByText('请输入保险公司名称')).toBeVisible()

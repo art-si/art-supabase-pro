@@ -100,6 +100,7 @@ test('期初采购入库空明细取表头默认值并保留逐行修改，仓�
   )
   await page.getByRole('button', { name: '打开采购单据', exact: true }).click()
   const drawer = page.locator('.el-drawer:visible')
+  await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
   await expect(drawer.getByRole('columnheader', { name: '采购员', exact: true })).toBeAttached()
   await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
   await drawer.getByRole('button', { name: '保存', exact: true }).click()
@@ -125,6 +126,7 @@ test('期初采购入库空明细取表头默认值并保留逐行修改，仓�
     ])
   }
   await page.getByRole('button', { name: '查看采购单据', exact: true }).click()
+  await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
   const table = drawer.locator('.el-table__body')
   await table.getByText('行采购员', { exact: true }).scrollIntoViewIfNeeded()
   await expect(table.getByText('行采购员', { exact: true })).toBeVisible()

@@ -104,7 +104,7 @@ export function filterColumnRows<T>(
   rows: T[],
   columns: ColumnOption<T>[],
   conditions: Record<string, ColumnFilterCondition>,
-  childrenKey = 'children'
+  childrenKey: string | null = 'children'
 ): T[] {
   const active = columns.filter(
     (column) =>
@@ -117,11 +117,11 @@ export function filterColumnRows<T>(
   )
   if (!active.length) return rows
   return rows.flatMap((row) => {
-    const children: unknown = get(row, childrenKey)
+    const children: unknown = childrenKey === null ? undefined : get(row, childrenKey)
     const matched = active.every((column) =>
       matchesColumnFilter(get(row, column.prop!), column.filterType!, conditions[column.prop!])
     )
-    if (!Array.isArray(children)) return matched ? [row] : []
+    if (childrenKey === null || !Array.isArray(children)) return matched ? [row] : []
     const filtered = filterColumnRows(children, columns, conditions, childrenKey)
     return matched || filtered.length ? [{ ...row, [childrenKey]: filtered }] : []
   })

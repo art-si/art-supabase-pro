@@ -44,20 +44,94 @@ export function createNamedClipboardFile(file: File, index: number, total: numbe
   })
 }
 
-/** Copy only after a confirmed native write; unsupported or denied writes must reject. */
+/** Copy only after a confirmed write; an aborted owner cannot fall back or accept a late acknowledgement. */
 export async function copyTextToClipboard(
   value: string,
-  options: { legacyFallback?: boolean } = {}
+  options: { legacyFallback?: boolean; signal?: AbortSignal } = {}
 ): Promise<void> {
+  options.signal?.throwIfAborted()
   if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') {
+    options.signal?.throwIfAborted()
     if (options.legacyFallback) return copyTextWithSelection(value)
     throw new Error('当前浏览器不支持复制，请手动选择文字复制')
   }
   try {
     await navigator.clipboard.writeText(value)
+    options.signal?.throwIfAborted()
   } catch (cause) {
+    options.signal?.throwIfAborted()
     if (options.legacyFallback) return copyTextWithSelection(value)
     throw new Error('复制失败，请检查浏览器剪贴板权限或手动复制', { cause })
+  }
+}
+
+export interface ClipboardTextRepresentations {
+  html: string
+  text: string
+}
+
+function supportsClipboardItems(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.clipboard?.write === 'function' &&
+    typeof ClipboardItem === 'function'
+  )
+}
+
+function supportsClipboardType(type: string): boolean {
+  if (!supportsClipboardItems()) return false
+  try {
+    return typeof ClipboardItem.supports !== 'function' || ClipboardItem.supports(type)
+  } catch {
+    return false
+  }
+}
+
+/** Capability only: permission and focus are checked by the actual native write. */
+export function supportsFormattedClipboard(): boolean {
+  return supportsClipboardType('text/html') && supportsClipboardType('text/plain')
+}
+
+/** Keep the native write in the click gesture while deferred content is being prepared. */
+export async function copyFormattedTextToClipboard(
+  prepare: () => Promise<ClipboardTextRepresentations>,
+  format: 'table' | 'text' = 'table'
+): Promise<void> {
+  if (format === 'table' && !supportsFormattedClipboard())
+    throw new Error('当前浏览器不支持表格复制，可选择复制 TSV，或使用导出结果')
+  if (!supportsClipboardType('text/plain')) {
+    if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function')
+      throw new Error('当前浏览器不支持复制，请使用导出结果')
+    const content = await prepare()
+    await copyTextToClipboard(content.text)
+    return
+  }
+
+  let preparationFailed = false
+  let preparationError: unknown
+  const prepared = Promise.resolve()
+    .then(prepare)
+    .catch((cause: unknown) => {
+      preparationFailed = true
+      preparationError = cause
+      throw cause
+    })
+  const representations: Record<string, Promise<Blob>> = {}
+  if (format === 'table')
+    representations['text/html'] = prepared.then(
+      (content) => new Blob([content.html], { type: 'text/html' })
+    )
+  representations['text/plain'] = prepared.then(
+    (content) => new Blob([content.text], { type: 'text/plain' })
+  )
+  // A permission rejection can happen before the browser consumes these promises.
+  // Keep late preparation failures handled, without changing what the native item receives.
+  for (const value of Object.values(representations)) void value.catch(() => undefined)
+  try {
+    await navigator.clipboard.write([new ClipboardItem(representations)])
+  } catch (cause) {
+    if (preparationFailed) throw preparationError
+    throw new Error('复制失败，请检查浏览器剪贴板权限，或使用导出结果', { cause })
   }
 }
 

@@ -33,6 +33,15 @@ import CustomerAddress from '../../../modules/art-supabase-tms/src/views/basic-d
 import ShippingNotice from '../../../modules/art-supabase-scm/src/views/sales-management/shipping-notice/index.vue'
 import MovementType from '../../../modules/art-supabase-mdm/src/views/inventory-master/movement-type/index.vue'
 import FavoriteRouteDialog from '../../../modules/art-supabase-tms/src/views/basic-data/favorite-route/modules/favorite-route-dialog.vue'
+import AccidentRecord from '../../../modules/art-supabase-vms/src/views/vehicle-manage/accident-record/index.vue'
+import RoutineInspection from '../../../modules/art-supabase-vms/src/views/vehicle-manage/routine-inspection/index.vue'
+import VehicleInspection from '../../../modules/art-supabase-vms/src/views/vehicle-manage/vehicle-inspection/index.vue'
+import VehicleInsurance from '../../../modules/art-supabase-vms/src/views/vehicle-manage/vehicle-insurance/index.vue'
+import DriverBlacklist from '../../../modules/art-supabase-tms/src/views/basic-data/driver-blacklist/index.vue'
+import ElectronicContract from '../../../modules/art-supabase-tms/src/views/basic-data/electronic-contract/index.vue'
+import ServiceCase from '../../../modules/art-supabase-tms/src/views/basic-data/service-case/index.vue'
+import TransportAgreement from '../../../modules/art-supabase-tms/src/views/basic-data/transport-agreement/index.vue'
+import AppointmentDrawer from '../../../modules/art-supabase-tms/src/views/waybill-management/modules/appointment-drawer.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -268,7 +277,60 @@ const formWorkspace = defineComponent({
       ])
   }
 })
+const appointmentWorkspace = defineComponent({
+  setup() {
+    const drawer = ref<InstanceType<typeof AppointmentDrawer>>()
+    return () =>
+      h('main', {}, [
+        h(
+          'button',
+          {
+            onClick: () =>
+              drawer.value?.handleOpen({
+                id: '00000000-0000-4000-a000-000000000003',
+                waybillNo: 'YD-TEST-003',
+                orderNo: 'DD-TEST-003',
+                originStation: '',
+                destinationStation: '',
+                deliveryMethod: '',
+                paymentMethod: '',
+                shippingContactName: '',
+                shippingContactPhone: '',
+                shippingAddressDetail: '',
+                receivingContactName: '',
+                receivingContactPhone: '',
+                receivingAddressDetail: '',
+                appointments: [],
+                appointmentStatus: 'confirming'
+              })
+          },
+          '打开预约'
+        ),
+        h(AppointmentDrawer, {
+          ref: drawer,
+          kind: 'pickup',
+          permissions: {
+            add: 'TmsPickupAppointment:Add',
+            edit: 'TmsPickupAppointment:Edit',
+            delete: 'TmsPickupAppointment:Delete',
+            confirm: 'TmsPickupAppointment:Confirm',
+            complete: 'TmsPickupAppointment:Complete',
+            arrival: 'TmsPickupAppointment:Arrival'
+          }
+        })
+      ])
+  }
+})
 const pages: Record<string, Component> = {
+  'accident-record': AccidentRecord,
+  'routine-inspection': RoutineInspection,
+  'vehicle-inspection': VehicleInspection,
+  'vehicle-insurance': VehicleInsurance,
+  'driver-blacklist': DriverBlacklist,
+  'electronic-contract': ElectronicContract,
+  'service-case': ServiceCase,
+  'transport-agreement': TransportAgreement,
+  'appointment-delete': appointmentWorkspace,
   'focus-search': focusSearchWorkspace,
   'movement-type': MovementType,
   'parts-category': PartsCategory,
@@ -298,7 +360,9 @@ const router = createRouter({
           name:
             new URLSearchParams(location.search).get('page') === 'movement-type'
               ? 'MdmStockMovementType'
-              : 'ScrollbarWorkspace',
+              : new URLSearchParams(location.search).get('page') === 'electronic-contract'
+                ? 'TmsElectronicContract'
+                : 'ScrollbarWorkspace',
           component: pages[new URLSearchParams(location.search).get('page') ?? ''] ?? workspace
         }
       ]

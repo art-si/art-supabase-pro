@@ -28,17 +28,15 @@
       />
 
       <ArtForm
+        v-model:active-tab="activeTab"
         tenant-scope-mode="manual"
         ref="formRef"
-        :model-value="form"
-        @update:model-value="replaceReactiveModel(form, $event)"
+        v-model="form"
         :items="formItems"
         :rules="rules"
         :span="12"
         :gutter="20"
         label-width="104px"
-        :show-reset="false"
-        :show-submit="false"
       />
     </div>
   </ArtDialog>
@@ -46,7 +44,6 @@
 
 <script setup lang="ts">
   import { normalizeIdentityDisplayText } from '@/utils/identity-display'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
@@ -95,6 +92,7 @@
   const userStore = useUserStore()
   const { getDictMap, getUserInfo, isPlatformSuper } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
+  const activeTab = ref('')
   const formRef = ref<ArtFormExpose>()
   const dialogType = ref<DialogType>('add')
   const editingTenantOption = ref<Api.SystemManage.TenantListItem | null>(null)
@@ -139,7 +137,7 @@
     isSystem: false
   })
 
-  const form = reactive<FormModel>(createInitialForm())
+  const form = ref<FormModel>(createInitialForm())
 
   const fetchTenantOptions = async () => {
     const response = await fetchEnabledTenantList()
@@ -169,8 +167,8 @@
         validator: uniqueValidator({
           table: 'mdm_organization',
           field: 'organization_code',
-          getExcludeId: () => form.id,
-          extraWhere: () => ({ tenant_id: form.tenantId }),
+          getExcludeId: () => form.value.id,
+          extraWhere: () => ({ tenant_id: form.value.tenantId }),
           message: '当前租户已存在相同组织编码'
         }),
         trigger: 'blur'
@@ -186,7 +184,7 @@
     {
       label: '组织层级',
       key: 'hierarchySection',
-      type: 'divider',
+      type: 'tab',
       span: 24
     },
     {
@@ -214,20 +212,20 @@
       span: 24,
       api: fetchEnabledOrganizationTree,
       immediate: false,
-      beforeFetch: () => ({ tenantId: form.tenantId, excludeId: form.id }),
+      beforeFetch: () => ({ tenantId: form.value.tenantId, excludeId: form.value.id }),
       resultField: 'data',
       labelField: 'organizationName',
       valueField: 'id',
       childrenField: 'children',
       props: {
-        disabled: form.isSystem || !form.tenantId,
+        disabled: form.value.isSystem || !form.value.tenantId,
         clearable: true,
         checkStrictly: true,
         defaultExpandAll: true,
         renderAfterExpand: false,
-        placeholder: form.tenantId ? '不选则为一级组织' : '请先选择租户'
+        placeholder: form.value.tenantId ? '不选则为一级组织' : '请先选择租户'
       },
-      description: form.isSystem ? '系统根组织固定为最高层级。' : '支持跨层级选择上级组织。'
+      description: form.value.isSystem ? '系统根组织固定为最高层级。' : '支持跨层级选择上级组织。'
     },
     {
       label: '组织名称',
@@ -244,7 +242,7 @@
       key: 'organizationCode',
       type: 'input',
       props: {
-        disabled: form.isSystem,
+        disabled: form.value.isSystem,
         maxlength: 50,
         clearable: true,
         placeholder: '如：EAST_OPS'
@@ -256,7 +254,7 @@
       key: 'organizationType',
       type: 'select',
       props: {
-        disabled: form.isSystem,
+        disabled: form.value.isSystem,
         options: getDictMap.value.organizationType ?? [],
         placeholder: '请选择组织类型'
       }
@@ -275,7 +273,7 @@
     {
       label: '职责与联系',
       key: 'contactSection',
-      type: 'divider',
+      type: 'tab',
       span: 24
     },
     {
@@ -285,16 +283,16 @@
       span: 24,
       api: fetchEnabledOrganizationUserList,
       immediate: false,
-      beforeFetch: () => ({ tenantId: form.tenantId }),
+      beforeFetch: () => ({ tenantId: form.value.tenantId }),
       resultField: 'data',
       labelField: 'nickName',
       valueField: 'id',
       labelFn: getOrganizationUserLabel,
       props: {
-        disabled: !form.tenantId,
+        disabled: !form.value.tenantId,
         clearable: true,
         filterable: true,
-        placeholder: form.tenantId ? '请选择负责人' : '请先选择租户',
+        placeholder: form.value.tenantId ? '请选择负责人' : '请先选择租户',
         noDataText: '当前租户暂无启用用户',
         noMatchText: '未找到匹配用户'
       },
@@ -338,17 +336,17 @@
       type: 'segment',
       span: 24,
       props: {
-        disabled: form.isSystem,
+        disabled: form.value.isSystem,
         options: getDictMap.value.status ?? []
       },
-      description: form.isSystem
+      description: form.value.isSystem
         ? '系统根组织始终启用。'
         : '停用组织不会删除成员和角色，但不再出现在可选组织列表中。'
     }
   ])
 
   const resetForm = async (): Promise<void> => {
-    Object.assign(form, createInitialForm())
+    Object.assign(form.value, createInitialForm())
     editingTenantOption.value = null
     await nextTick()
     formRef.value?.clearValidate()
@@ -367,7 +365,7 @@
           tenantCode: row.tenant.tenantCode
         }
       }
-      Object.assign(form, {
+      Object.assign(form.value, {
         id: row.id,
         tenantId: row.tenantId,
         parentId: row.parentId ?? null,
@@ -387,40 +385,40 @@
     }
 
     if (data.parent) {
-      Object.assign(form, {
+      Object.assign(form.value, {
         tenantId: data.parent.tenantId,
         parentId: data.parent.id ?? null
       })
     } else if (!canSelectTenant.value) {
-      form.tenantId = currentTenantId.value
+      form.value.tenantId = currentTenantId.value
     }
   }
 
   const handleTenantChange = (): void => {
-    Object.assign(form, { parentId: null, leaderUserId: null })
+    Object.assign(form.value, { parentId: null, leaderUserId: null })
     void Promise.all([
       formRef.value?.reloadOptions('parentId'),
       formRef.value?.reloadOptions('leaderUserId')
     ])
-    if (form.organizationCode) {
+    if (form.value.organizationCode) {
       void formRef.value?.validateField('organizationCode')
     }
   }
 
   const buildPayload = (): OrganizationSavePayload => ({
-    id: form.id,
-    tenantId: form.tenantId,
-    parentId: form.parentId || null,
-    organizationCode: form.organizationCode.trim().toUpperCase(),
-    organizationName: form.organizationName.trim(),
-    organizationType: form.organizationType,
-    leaderUserId: form.leaderUserId || null,
-    status: form.status,
-    sort: Number(form.sort || 0),
-    phone: normalizeNullableText(form.phone),
-    email: normalizeNullableText(form.email),
-    address: normalizeNullableText(form.address),
-    description: normalizeNullableText(form.description)
+    id: form.value.id,
+    tenantId: form.value.tenantId,
+    parentId: form.value.parentId || null,
+    organizationCode: form.value.organizationCode.trim().toUpperCase(),
+    organizationName: form.value.organizationName.trim(),
+    organizationType: form.value.organizationType,
+    leaderUserId: form.value.leaderUserId || null,
+    status: form.value.status,
+    sort: Number(form.value.sort || 0),
+    phone: normalizeNullableText(form.value.phone),
+    email: normalizeNullableText(form.value.email),
+    address: normalizeNullableText(form.value.address),
+    description: normalizeNullableText(form.value.description)
   })
 
   const handleSubmit = async (): Promise<boolean> => {
@@ -448,6 +446,7 @@
   }
 
   const handleOpen = async (data: OpenData): Promise<void> => {
+    activeTab.value = ''
     await initializeForm(data)
     await dialogRef.value?.handleOpen(data, {
       title: data.type === 'add' ? '新增组织' : '编辑组织',

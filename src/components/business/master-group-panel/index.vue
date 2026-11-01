@@ -1,6 +1,5 @@
 <template>
   <ArtSectionCard
-    :show-scrollbar="loading || Boolean(error) || !groups.length"
     class="master-group-panel"
     :class="{ 'is-narrow': isNarrow, 'is-collapsed': collapsed, 'has-groups': groups.length }"
     :title="title"
@@ -15,7 +14,6 @@
       managePermission ? '可先建立顶级分组，再逐层补充分组结构。' : '请先在 MDM 主数据中维护分组。'
     "
     retryable
-    body-class="master-group-panel__body"
     @retry="$emit('refresh')"
   >
     <template #actions>
@@ -45,63 +43,64 @@
       </div>
     </template>
 
-    <ElInput v-model="keyword" clearable placeholder="搜索分组名称或编码" aria-label="搜索分组">
-      <template #prefix><ArtSvgIcon icon="ri:search-line" /></template>
-    </ElInput>
+    <template #toolbar>
+      <div class="master-group-panel__toolbar">
+        <ElInput v-model="keyword" clearable placeholder="搜索分组名称或编码" aria-label="搜索分组">
+          <template #prefix><ArtSvgIcon icon="ri:search-line" /></template>
+        </ElInput>
 
-    <button
-      type="button"
-      class="master-group-panel__all art-master-group-all-button"
-      :class="{ 'is-current': !selectedId }"
-      :aria-pressed="!selectedId"
-      @click="$emit('select', '')"
+        <button
+          type="button"
+          class="master-group-panel__all art-master-group-all-button"
+          :class="{ 'is-current': !selectedId }"
+          :aria-pressed="!selectedId"
+          @click="$emit('select', '')"
+        >
+          <span aria-hidden="true"><ArtSvgIcon icon="ri:apps-2-line" /></span>
+          <span
+            ><strong>全部分组</strong><small>{{ groups.length }} 个分组节点</small></span
+          >
+          <ArtSvgIcon v-if="!selectedId" icon="ri:check-line" aria-hidden="true" />
+        </button>
+      </div>
+    </template>
+    <ElTree
+      ref="treeRef"
+      :data="treeData"
+      node-key="id"
+      :props="{ label: 'name', children: 'children' }"
+      :current-node-key="selectedId || undefined"
+      :filter-node-method="filterNode"
+      :default-expand-all="groups.length < 18"
+      highlight-current
+      :expand-on-click-node="false"
+      @node-click="$emit('select', $event.id)"
     >
-      <span aria-hidden="true"><ArtSvgIcon icon="ri:apps-2-line" /></span>
-      <span
-        ><strong>全部分组</strong><small>{{ groups.length }} 个分组节点</small></span
-      >
-      <ArtSvgIcon v-if="!selectedId" icon="ri:check-line" aria-hidden="true" />
-    </button>
-
-    <ElScrollbar class="master-group-panel__scroll">
-      <ElTree
-        ref="treeRef"
-        :data="treeData"
-        node-key="id"
-        :props="{ label: 'name', children: 'children' }"
-        :current-node-key="selectedId || undefined"
-        :filter-node-method="filterNode"
-        :default-expand-all="groups.length < 18"
-        highlight-current
-        :expand-on-click-node="false"
-        @node-click="$emit('select', $event.id)"
-      >
-        <template #default="{ data }">
-          <div class="master-group-panel__node">
-            <span aria-hidden="true"><ArtSvgIcon icon="ri:folder-3-line" /></span>
-            <span
-              ><strong :title="data.name">{{ data.name }}</strong
-              ><small>{{ data.code }}</small></span
-            >
-            <span class="master-group-panel__node-actions" @click.stop>
-              <ArtButtonMore
-                v-if="managePermission"
-                :list="groupActions"
-                @click="handleGroupAction($event, data)"
-              />
-            </span>
-          </div>
-        </template>
-        <template #empty>
-          <ArtEmptyState
-            title="未找到匹配项"
-            description="请调整关键词或清空筛选条件。"
-            size="compact"
-            :visual-size="64"
-          />
-        </template>
-      </ElTree>
-    </ElScrollbar>
+      <template #default="{ data }">
+        <div class="master-group-panel__node">
+          <span aria-hidden="true"><ArtSvgIcon icon="ri:folder-3-line" /></span>
+          <span
+            ><strong :title="data.name">{{ data.name }}</strong
+            ><small>{{ data.code }}</small></span
+          >
+          <span class="master-group-panel__node-actions" @click.stop>
+            <ArtButtonMore
+              v-if="managePermission"
+              :list="groupActions"
+              @click="handleGroupAction($event, data)"
+            />
+          </span>
+        </div>
+      </template>
+      <template #empty>
+        <ArtEmptyState
+          title="未找到匹配项"
+          description="请调整关键词或清空筛选条件。"
+          size="compact"
+          :visual-size="64"
+        />
+      </template>
+    </ElTree>
   </ArtSectionCard>
 </template>
 
@@ -217,11 +216,13 @@
 
     &.is-collapsed {
       :deep(.art-section-card__header) {
+        padding-bottom: var(--art-section-padding);
         margin-bottom: 0;
       }
 
+      :deep(.art-section-card__toolbar),
       :deep(.art-section-card__scrollbar),
-      :deep(.master-group-panel__body) {
+      :deep(.art-section-card__body) {
         display: none;
       }
     }
@@ -244,12 +245,9 @@
       white-space: nowrap;
     }
 
-    :deep(.master-group-panel__body) {
-      display: flex;
-      flex: 1;
-      flex-direction: column;
+    &__toolbar {
+      display: grid;
       gap: 12px;
-      min-height: 0;
     }
 
     &__actions,
@@ -273,11 +271,6 @@
         font-size: 11px;
         color: var(--el-text-color-secondary);
       }
-    }
-
-    &__scroll {
-      flex: 1;
-      min-height: 0;
     }
 
     &__node {

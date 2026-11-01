@@ -142,11 +142,18 @@ test('object favorites and editor tools persist safely without executing queries
     .filter({ has: page.getByRole('switch', { name: 'SQL 代码缩略图', exact: true }) })
     .click()
   await page.screenshot({ path: info.outputPath('editor-tools.png') })
-  await page.getByLabel('选择 SQL 文件', { exact: true }).setInputFiles({
+  const fileChooser = page.waitForEvent('filechooser')
+  await tools.getByRole('button', { name: '导入 SQL 文件', exact: true }).click()
+  await (
+    await fileChooser
+  ).setFiles({
     name: 'analysis.sql',
     mimeType: 'text/plain',
     buffer: Buffer.from('SELECT 42 AS imported;\nSELECT 43 AS next_query;')
   })
+  const importDialog = page.getByRole('dialog', { name: '导入 SQL 文件', exact: true })
+  await importDialog.getByRole('button', { name: '导入新页签', exact: true }).click()
+  await expect(importDialog).toHaveCount(0)
   await expect(editor.locator('.view-lines')).toContainText('SELECT 42 AS imported;')
   await expect(
     page.getByRole('tablist', { name: 'SQL 查询页签', exact: true }).getByRole('tab')

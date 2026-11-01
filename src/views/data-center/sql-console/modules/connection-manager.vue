@@ -2,12 +2,14 @@
   <ArtDrawer
     ref="drawerRef"
     :size="640"
+    :loading="loading"
+    loading-text="正在连接数据库服务…"
     :show-confirm-button="false"
     :show-form-focus-button="false"
     cancel-text="关闭"
   >
     <div class="flex flex-col gap-4">
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <span class="art-icon-label text-sm font-medium"
           ><ArtSvgIcon
             :icon="snapshot ? 'ri:checkbox-circle-line' : 'ri:database-2-line'"
@@ -18,17 +20,11 @@
           ><ArtSvgIcon icon="ri:refresh-line" />{{ snapshot ? '刷新连接' : '连接执行端' }}</ElButton
         >
       </div>
-      <details class="connection-manager__advanced">
+      <details class="connection-manager__advanced" :open="Boolean(error)">
         <summary class="art-icon-label text-xs text-g-600"
           ><ArtSvgIcon icon="ri:settings-3-line" />高级连接设置</summary
         >
-        <ArtForm
-          v-model="endpoint"
-          :items="endpointItems"
-          :show-submit="false"
-          :show-reset="false"
-          label-position="top"
-        />
+        <ArtForm v-model="endpoint" :items="endpointItems" label-position="top" />
         <div class="flex flex-wrap items-center justify-between gap-2">
           <ElButton @click="copyCommand"
             ><ArtSvgIcon icon="ri:terminal-box-line" />复制启动命令</ElButton
@@ -40,7 +36,6 @@
         >
       </details>
       <ArtAsyncState
-        :loading="loading"
         :error="error"
         error-title="数据库连接服务未就绪"
         :empty="!snapshot"
@@ -98,15 +93,7 @@
   </ArtDrawer>
   <ArtDialog ref="formDialogRef">
     <div class="flex flex-col gap-3">
-      <ArtForm
-        ref="formRef"
-        v-model="form"
-        :items="formItems"
-        :rules="rules"
-        :show-submit="false"
-        :show-reset="false"
-        label-position="top"
-      >
+      <ArtForm ref="formRef" v-model="form" :items="formItems" :rules="rules" label-position="top">
         <template #allowedUserIds>
           <ArtUserSelect
             v-model="form.allowedUserIds"
@@ -199,6 +186,7 @@
   })
   const form = ref<SqlConnectionInput>(emptyForm())
   const testing = ref(false)
+  let testGeneration = 0
   const testOk = ref(false)
   const testMessage = ref('')
   const userOptions = computed(() =>
@@ -289,15 +277,20 @@
   const connect = async () => {
     if (loading.value) return
     const current = ++generation
+    const base = endpoint.value.base.trim()
+    const owner = scope.value
     loading.value = true
     error.value = ''
     try {
-      const value = await fetchSqlConnections(endpoint.value.base, scope.value)
+      const value = await fetchSqlConnections(base, owner)
       if (current !== generation) return
       snapshot.value = value
-      emit('connected', endpoint.value.base, value)
+      emit('connected', base, value)
     } catch (cause) {
-      if (current === generation) error.value = message(cause)
+      if (current === generation) {
+        snapshot.value = null
+        error.value = message(cause)
+      }
     } finally {
       if (current === generation) loading.value = false
     }
@@ -340,25 +333,27 @@
   const test = async () => {
     if (testing.value) return
     const current = generation
+    const attempt = ++testGeneration
+    const isCurrent = () => current === generation && attempt === testGeneration
     const owner = scope.value
     const base = endpoint.value.base
     testing.value = true
     testMessage.value = ''
     try {
       await formRef.value?.validate()
-      if (current !== generation) return
+      if (!isCurrent()) return
       await testSqlConnection(base, owner, validateSqlConnection(form.value))
-      if (current === generation) {
+      if (isCurrent()) {
         testOk.value = true
         testMessage.value = '连接成功 · 只读事务可用'
       }
     } catch (cause) {
-      if (current === generation) {
+      if (isCurrent()) {
         testOk.value = false
         testMessage.value = message(cause)
       }
     } finally {
-      testing.value = false
+      if (attempt === testGeneration) testing.value = false
     }
   }
   const use = (connection: SqlConnection) => {
@@ -373,6 +368,27 @@
       ElMessage.warning('复制失败，请手动运行 pnpm sql:gateway')
     }
   }
+  watch(
+    () => endpoint.value.base,
+    () => {
+      generation++
+      loading.value = false
+      snapshot.value = null
+      error.value = ''
+      formDialogRef.value?.handleClose()
+    },
+    { flush: 'sync' }
+  )
+  watch(
+    form,
+    () => {
+      testGeneration++
+      testing.value = false
+      testMessage.value = ''
+      testOk.value = false
+    },
+    { deep: true, flush: 'sync' }
+  )
   watch(
     () => [userStore.getUserInfo.userId, scope.value],
     () => {
@@ -410,7 +426,11 @@
       return drawerRef.value?.handleOpen(undefined, {
         title: '数据库连接',
         subtitle: '连接执行端，管理只读数据源',
-        headerIcon: 'ri:database-2-line'
+        headerIcon: 'ri:database-2-line',
+        onClose: () => {
+          generation++
+          loading.value = false
+        }
       })
     }
   })

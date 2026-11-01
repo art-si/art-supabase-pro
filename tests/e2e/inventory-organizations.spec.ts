@@ -17,6 +17,7 @@ for (const mode of [
       expect(url.searchParams.get('select')).toContain(
         'initialization:wms_inventory_initialization!wms_inventory_initialization_organization_id_fkey'
       )
+      expect(url.searchParams.get('select')?.split(',')).toContain('parent_id')
       expect(url.searchParams.get('tenant_id')).toBe('eq.tenant-a')
       expect(url.searchParams.get('organization_type')).toBe('eq.company')
       expect(url.searchParams.get('status')).toBe('eq.1')
@@ -42,6 +43,7 @@ for (const mode of [
           const id = offset + index
           return {
             id: `org-${id}`,
+            parent_id: id === 0 ? null : 'org-0',
             tenant_id: 'tenant-a',
             organization_code: `ORG-${id}`,
             organization_name: '测试组织',
@@ -67,6 +69,7 @@ for (const mode of [
       expect(result.total).toBe(mode === 'page' || mode === 'initialization-status' ? 2000 : 2001)
       expect(result.last.enabledOn).toBe('2026-10-01')
       expect(result.last.isDefault).toBe(true)
+      expect(result.last.parentId).toBe('org-0')
       expect(result.last.initializationClosedAt).toBe('2026-10-02')
       expect(result.last.initialization).toBeUndefined()
       if (mode === 'page' || mode === 'initialization-status') {

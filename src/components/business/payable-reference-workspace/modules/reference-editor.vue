@@ -2,6 +2,7 @@
   <ArtDialog ref="dialogRef" :size="kind === 'scheme' ? 'xl' : 'md'" confirm-text="保存配置">
     <ArtForm
       ref="formRef"
+      v-model:active-tab="activeTab"
       v-model="form"
       :items="items"
       :rules="{
@@ -10,90 +11,93 @@
       }"
       :span="12"
       label-position="top"
-      :show-submit="false"
-      :show-reset="false"
-    />
-    <div v-if="kind === 'scheme'" class="mt-4">
-      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <label class="art-icon-label text-sm text-g-800">
-          <ElSwitch
-            v-model="separateRules"
-            aria-label="按核销关系分别配置"
-            :disabled="!supportsMatrix"
-            :before-change="beforeModeChange"
-            @change="changeMode"
-          />按核销关系分别配置
-        </label>
-        <span class="text-xs text-g-600">仅已配置关系参与核销，保存后生效；既有核销快照不变。</span>
-      </div>
-      <ElAlert
-        v-if="!supportsMatrix"
-        class="mb-4"
-        type="info"
-        :closable="false"
-        show-icon
-        title="当前服务仅支持共用规则，分关系配置需升级服务后使用。"
-      />
-      <ArtSectionCard
-        v-if="separateRules"
-        title="核销关系"
-        subtitle="每种关系独立维护匹配条件，不会回退使用其他关系的规则。"
-      >
-        <template #actions>
-          <ElSelect
-            v-model="pendingRelation"
-            class="w-52! shrink-0"
-            aria-label="新增核销关系"
-            placeholder="选择核销关系"
-            :disabled="!availableRelations.length"
+    >
+      <template #matchingRules>
+        <div v-if="kind === 'scheme'" class="min-w-0">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <label class="art-icon-label text-sm text-g-800">
+              <ElSwitch
+                v-model="separateRules"
+                aria-label="按核销关系分别配置"
+                :disabled="!supportsMatrix"
+                :before-change="beforeModeChange"
+                @change="changeMode"
+              />按核销关系分别配置
+            </label>
+            <span class="text-xs text-g-600"
+              >仅已配置关系参与核销，保存后生效；既有核销快照不变。</span
+            >
+          </div>
+          <ElAlert
+            v-if="!supportsMatrix"
+            class="mb-4"
+            type="info"
+            :closable="false"
+            show-icon
+            title="当前服务仅支持共用规则，分关系配置需升级服务后使用。"
+          />
+          <ArtSectionCard
+            v-if="separateRules"
+            title="核销关系"
+            subtitle="每种关系独立维护匹配条件，不会回退使用其他关系的规则。"
           >
-            <ElOption
-              v-for="option in availableRelations"
-              :key="option.value"
-              :value="option.value"
-              :label="option.label"
-            />
-          </ElSelect>
-          <ElButton :disabled="!pendingRelation" @click="addRelation"
-            ><ArtSvgIcon icon="ri:add-line" />新增关系</ElButton
+            <template #actions>
+              <ElSelect
+                v-model="pendingRelation"
+                class="w-52! shrink-0"
+                aria-label="新增核销关系"
+                placeholder="选择核销关系"
+                :disabled="!availableRelations.length"
+              >
+                <ElOption
+                  v-for="option in availableRelations"
+                  :key="option.value"
+                  :value="option.value"
+                  :label="option.label"
+                />
+              </ElSelect>
+              <ElButton :disabled="!pendingRelation" @click="addRelation"
+                ><ArtSvgIcon icon="ri:add-line" />新增关系</ElButton
+              >
+            </template>
+            <ArtTable
+              :data="form.relationRules || []"
+              :columns="relationColumns"
+              row-key="relation"
+              :pagination="false"
+              :max-height="300"
+            >
+              <template #description="{ row }"
+                ><ElInput
+                  v-model="row.description"
+                  :aria-label="`${relationLabel(row.relation)}关系说明`"
+                  :maxlength="1000"
+                  placeholder="可选：说明本关系的适用范围"
+              /></template>
+              <template #operation="{ row }">
+                <ArtButtonTable
+                  icon="ri:settings-3-line"
+                  label="配置匹配规则"
+                  @click="editRelation(row)"
+                />
+                <ArtButtonTable
+                  icon="ri:subtract-line"
+                  label="移除核销关系"
+                  @click="removeRelation(row)"
+                />
+              </template>
+            </ArtTable>
+          </ArtSectionCard>
+          <ArtSectionCard
+            v-else
+            title="共用匹配规则"
+            subtitle="沿用旧方案行为，所有支持的核销关系共用下列条件。"
           >
-        </template>
-        <ArtTable
-          :data="form.relationRules || []"
-          :columns="relationColumns"
-          row-key="relation"
-          :pagination="false"
-          :max-height="300"
-        >
-          <template #description="{ row }"
-            ><ElInput
-              v-model="row.description"
-              :aria-label="`${relationLabel(row.relation)}关系说明`"
-              :maxlength="1000"
-              placeholder="可选：说明本关系的适用范围"
-          /></template>
-          <template #operation="{ row }">
-            <ArtButtonTable
-              icon="ri:settings-3-line"
-              label="配置匹配规则"
-              @click="editRelation(row)"
-            />
-            <ArtButtonTable
-              icon="ri:subtract-line"
-              label="移除核销关系"
-              @click="removeRelation(row)"
-            />
-          </template>
-        </ArtTable>
-      </ArtSectionCard>
-      <ArtSectionCard
-        v-else
-        title="共用匹配规则"
-        subtitle="沿用旧方案行为，所有支持的核销关系共用下列条件。"
-      >
-        <PayableMatchRuleEditor ref="commonEditorRef" v-model="commonRules" />
-      </ArtSectionCard>
-    </div>
+            <PayableMatchRuleEditor ref="commonEditorRef" v-model="commonRules" />
+          </ArtSectionCard>
+        </div>
+      </template>
+    </ArtForm>
   </ArtDialog>
   <ArtDialog ref="relationDialogRef" size="xl" confirm-text="应用条件">
     <p v-if="editingConfig?.relation === 'payable_receivable'" class="mb-4 text-sm text-g-600"
@@ -147,6 +151,7 @@
   )
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose>()
+  const activeTab = ref('identity')
   const formRef = ref<InstanceType<typeof ArtForm>>()
   watch(
     [() => formRef.value?.readyToSubmit, dialogRef],
@@ -285,6 +290,9 @@
     pendingRelation.value = availableRelations.value[0]?.value
   }
   const items = computed<FormItem[]>(() => [
+    ...(props.kind === 'scheme'
+      ? [{ key: 'identity', label: '方案信息', type: 'tab' } as FormItem]
+      : []),
     {
       key: 'code',
       label: '编码',
@@ -353,9 +361,16 @@
         props.kind === 'scheme'
           ? { maxlength: 1000, placeholder: '可选：说明核销范围' }
           : { rows: 3, maxlength: 1000 }
-    }
+    },
+    ...(props.kind === 'scheme'
+      ? [
+          { key: 'rulesSection', label: '匹配规则', type: 'tab' } as FormItem,
+          { key: 'matchingRules', label: '', type: 'slot', span: 24 } as FormItem
+        ]
+      : [])
   ])
   async function open(value?: PayableReference): Promise<void> {
+    activeTab.value = 'identity'
     if (props.kind === 'scheme' && value?.relationRules != null && !supportsMatrix.value) {
       ElMessage.warning('分关系配置能力尚未就绪，请刷新后再修改')
       return
@@ -389,6 +404,8 @@
       onConfirm: async () => {
         if (!(await validateArtFormForSubmit(formRef.value))) return false
         if (props.kind === 'scheme') {
+          activeTab.value = 'rulesSection'
+          await nextTick()
           if (!separateRules.value && !(await commonEditorRef.value?.validate())) return false
           const invalid = separateRules.value
             ? validatePayableRelationConfigs(form.value.relationRules)

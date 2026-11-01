@@ -10,23 +10,20 @@
       </section>
 
       <ArtForm
+        v-model:active-tab="activeTab"
         ref="formRef"
-        :model-value="form"
-        @update:model-value="replaceReactiveModel(form, $event)"
+        v-model="form"
         :items="items"
         :rules="rules"
         :span="12"
         :gutter="18"
         label-width="104px"
-        :show-reset="false"
-        :show-submit="false"
       />
     </div>
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
@@ -71,6 +68,7 @@
   const props = defineProps<Props>()
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<Api.NotificationReminder.Rule | undefined>>()
+  const activeTab = ref('')
   const formRef = ref<RuleFormExpose>()
 
   const createInitialForm = (): RuleForm => ({
@@ -90,11 +88,11 @@
     enabled: true
   })
 
-  const form = reactive<RuleForm>(createInitialForm())
+  const form = ref<RuleForm>(createInitialForm())
   const roleSelection = reactive<RoleSelectionState>({ loaded: false, availableCodes: [] })
   const isDriverCertificateScenario = computed(
     () =>
-      props.scenarios.find((scenario) => scenario.id === form.scenarioId)?.scenarioCode ===
+      props.scenarios.find((scenario) => scenario.id === form.value.scenarioId)?.scenarioCode ===
       'vms_driver_certificate_expiry'
   )
   const recipientModeOptions = computed(() =>
@@ -106,7 +104,7 @@
   )
   const unavailableRoleCodes = computed(() =>
     roleSelection.loaded
-      ? form.recipientRoleCodes.filter((code) => !roleSelection.availableCodes.includes(code))
+      ? form.value.recipientRoleCodes.filter((code) => !roleSelection.availableCodes.includes(code))
       : []
   )
 
@@ -129,7 +127,7 @@
     roleSelection.availableCodes = activeRoles.map((role) => role.roleCode)
     roleSelection.loaded = true
 
-    const unavailableOptions = uniq(form.recipientRoleCodes)
+    const unavailableOptions = uniq(form.value.recipientRoleCodes)
       .filter((code) => !roleSelection.availableCodes.includes(code))
       .map<RoleOption>((code) => ({
         roleName: '已失效角色',
@@ -162,7 +160,7 @@
       {
         validator: (_rule, value, callback) => {
           if (
-            form.leadUnit === 'months' &&
+            form.value.leadUnit === 'months' &&
             (!Number.isInteger(value) || value < 1 || value > 120)
           ) {
             callback(new Error('请输入 1—120 个月的提前量'))
@@ -176,7 +174,10 @@
     recipientRoleCodes: [
       {
         validator: (_rule, value, callback) => {
-          if (isDriverCertificateScenario.value && form.recipientStrategy === 'owner_then_roles') {
+          if (
+            isDriverCertificateScenario.value &&
+            form.value.recipientStrategy === 'owner_then_roles'
+          ) {
             callback()
             return
           }
@@ -199,7 +200,7 @@
   const channelOptions = useDictionaryOptions('notificationChannel')
 
   const items = computed<FormItem[]>(() => [
-    { label: '触发条件', key: 'triggerSection', type: 'divider', span: 24 },
+    { label: '触发条件', key: 'triggerSection', type: 'tab', span: 24 },
     {
       label: '提醒场景',
       key: 'scenarioId',
@@ -232,7 +233,7 @@
       label: '提前天数',
       key: 'leadDays',
       type: 'number',
-      hidden: () => form.leadUnit === 'months',
+      hidden: () => form.value.leadUnit === 'months',
       props: { min: 0, max: 3650, controlsPosition: 'right' },
       description: '0 表示到期当天开始提醒。'
     },
@@ -240,7 +241,7 @@
       label: '提前月数',
       key: 'leadMonths',
       type: 'number',
-      hidden: () => form.leadUnit === 'days',
+      hidden: () => form.value.leadUnit === 'days',
       props: { min: 1, max: 120, controlsPosition: 'right' },
       description: '按到期日倒推日历月，例如 1 月 31 日到期，提前 3 个月为 10 月 31 日。'
     },
@@ -268,11 +269,11 @@
       label: '重复间隔',
       key: 'repeatEveryDays',
       type: 'number',
-      hidden: () => form.repeatMode === 'once',
+      hidden: () => form.value.repeatMode === 'once',
       props: { min: 1, max: 365, controlsPosition: 'right' },
       description: '例如 1 表示每天，7 表示每周。'
     },
-    { label: '接收与渠道', key: 'deliverySection', type: 'divider', span: 24 },
+    { label: '接收与渠道', key: 'deliverySection', type: 'tab', span: 24 },
     {
       label: '接收范围',
       key: 'recipientStrategy',
@@ -311,12 +312,12 @@
       },
       description: unavailableRoleCodes.value.length
         ? `检测到 ${unavailableRoleCodes.value.length} 个历史角色已失效，请移除后重新选择。`
-        : isDriverCertificateScenario.value && form.recipientStrategy === 'owner_then_roles'
-          ? form.recipientRoleCodes.length
+        : isDriverCertificateScenario.value && form.value.recipientStrategy === 'owner_then_roles'
+          ? form.value.recipientRoleCodes.length
             ? '责任人有效时仅发给责任人；责任人失效时由所选角色兜底。'
             : '责任人失效且未配置兜底角色时不发送消息；风险仍在证件看板显示。'
-          : form.recipientRoleCodes.length
-            ? `已选择 ${form.recipientRoleCodes.length} 个角色；可按角色名称或编码继续搜索。`
+          : form.value.recipientRoleCodes.length
+            ? `已选择 ${form.value.recipientRoleCodes.length} 个角色；可按角色名称或编码继续搜索。`
             : '负责人缺失时将由所选角色兜底接收，请至少选择一个。'
     },
     {
@@ -337,7 +338,7 @@
   ])
 
   const replaceForm = (next: RuleForm): void => {
-    Object.assign(form, next)
+    Object.assign(form.value, next)
   }
 
   const handleSubmit = async (): Promise<boolean> => {
@@ -349,19 +350,21 @@
     }
     try {
       await saveNotificationRule({
-        id: form.id,
+        id: form.value.id,
         tenantId: props.tenantId,
-        scenarioId: form.scenarioId,
-        ruleName: form.ruleName.trim(),
-        leadDays: form.leadUnit === 'months' ? 0 : Number(form.leadDays),
-        leadMonths: form.leadUnit === 'months' ? Number(form.leadMonths) : null,
+        scenarioId: form.value.scenarioId,
+        ruleName: form.value.ruleName.trim(),
+        leadDays: form.value.leadUnit === 'months' ? 0 : Number(form.value.leadDays),
+        leadMonths: form.value.leadUnit === 'months' ? Number(form.value.leadMonths) : null,
         repeatEveryDays:
-          form.repeatMode === 'repeat' ? Math.max(Number(form.repeatEveryDays) || 1, 1) : null,
-        sendHour: Number(form.sendHour),
-        recipientStrategy: form.recipientStrategy,
-        recipientRoleCodes: uniq(form.recipientRoleCodes),
-        channels: form.channels,
-        enabled: form.enabled
+          form.value.repeatMode === 'repeat'
+            ? Math.max(Number(form.value.repeatEveryDays) || 1, 1)
+            : null,
+        sendHour: Number(form.value.sendHour),
+        recipientStrategy: form.value.recipientStrategy,
+        recipientRoleCodes: uniq(form.value.recipientRoleCodes),
+        channels: form.value.channels,
+        enabled: form.value.enabled
       })
       emit('success')
       return true
@@ -372,6 +375,7 @@
   }
 
   const handleOpen = async (row?: Api.NotificationReminder.Rule): Promise<void> => {
+    activeTab.value = ''
     const base = createInitialForm()
     Object.assign(roleSelection, { loaded: false, availableCodes: [] })
     replaceForm(

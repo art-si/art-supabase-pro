@@ -102,6 +102,7 @@ For editable controls returned by an `ArtTable` column `formatter`, use TSX/JSX 
 Editable `ArtTable` field validation must use the table's public validation contract instead of page-local error classes or `items.some(...)` field scans:
 
 - Declare required fields with `required: true`; use `requiredMessage` when the row-specific prompt needs business context.
+- Use column `headerTooltip` for concise field rules beside the title; reuse the shared tooltip instead of recreating a header slot for help text. Keep field errors as the existing message plus red-control treatment unless the business workflow explicitly requires inline editors.
 - Put range, format, and conditional field rules in the column's `rules` validator. Validators return `true`/`void` when valid, `false` or a business-safe Chinese message when invalid. Keep cross-row uniqueness, minimum/maximum row counts, and workflow-state rules in the owning business component.
 - Bind a typed `ref<ArtTableExpose>()` and call `await tableRef.value?.validate()` from the parent submit flow. Use the returned `firstError?.message` for one concise toast or inline summary; `ArtTable` owns red control borders, `aria-invalid`, first-error scrolling/focus, and clearing corrected errors.
 - Use `validateField()` only for an intentional partial check and `clearValidate()` when resetting or replacing the table model. Do not add feature-local `is-error` classes, danger-border SCSS, `aria-invalid` expressions, or duplicated required-value helpers for editable table cells.
@@ -201,8 +202,6 @@ The business component owns `ArtDialog`, form state, initialization, submission,
     v-model="form"
     :items="formItems"
     :rules="rules"
-    :show-reset="false"
-    :show-submit="false"
   />
 </ArtDialog>
 ```
@@ -237,6 +236,7 @@ Follow these rules:
 - Business dialogs that contain forms must use `ArtDialog + ArtForm`. Do not place a raw `ElForm` or page-local `ElFormItem` layout directly under `ArtDialog`.
 - Express standard layout with `ArtForm` items, responsive `span`, `divider`, `hidden`, field slots, `render`, and shared core controls.
 - If a required form layout or reusable control cannot be expressed by `ArtForm`, extend `src/components/core/forms/art-form` or the relevant shared core control first, document the capability beside that component, and then consume it from the business dialog. Do not bypass `ArtForm` with a business-page-only `ElForm` implementation.
+- Evaluate content density before using tabs in entry or detail overlays. Keep a small form that fits one clear screen as a compact single page, following the user-approved ESOP category dialog. Existing divider headings alone do not justify tabs. Do not isolate one or two ordinary fields, tenant scope, status, or a remark into their own pane; merge small related groups. Use tabs for substantial business sections or independent complex tables/editors, keep the viewing/editing classification consistent, and retain whole-form validation and error reveal across inactive panes.
 - Do not expose `visible`, `modelValue`, `type`, or edit-data props to the list page.
 - Do not make the parent compose `<ArtDialog><FeatureForm /></ArtDialog>`.
 - Return `false` from `onConfirm` when validation or persistence fails.
@@ -254,6 +254,7 @@ Apply the same ownership model to `ArtDrawer`.
 - Type `defineEmits`, exposed Ref APIs, table rows, columns, and open payloads.
 - Group related page variables by business responsibility instead of scattering top-level refs and computed values. On every page, first look for state and configuration that can be classified into typed `table`, `form`, `dialog`, `overview`, or other feature-specific groups. Keep each group's model, items, options, rules, columns, actions, and component props together, and bind templates through the group such as `table.searchQuery` and `table.searchItems`. Keep component refs, API functions, event handlers, and reusable utilities outside these groups.
 - Use `reactive<GroupInterface>()` when the group contains ordinary reactive state. Use `Ref<GroupInterface>` only when the whole group or nested model is intentionally replaced.
+- Bind whole standalone form/query models with `ref<Model>()` and standard `v-model`; bind grouped reactive models through a writable property such as `v-model="form.data"`. Do not bind a top-level `const reactive(...)` object directly to `v-model` or repeat template-only `replaceReactiveModel` callbacks. Keep validators, computed state, watches, and writable field aliases attached to the latest model when its whole value can be replaced.
 - Do not create one large untyped page state object. Define an interface for each group and keep unrelated workflows in separate groups.
 - When assigning multiple fields under the same reactive model, prefer a typed patch object and `Object.assign` over repeated property assignments. For branch-specific form updates, build a `patchMap` keyed by mode/status/type and apply it with `Object.assign(form.data, patchMap[mode])`. This is especially required for grouped form models such as `form.data.shippingCustomerId`, `form.data.shippingContactName`, and similar nested business fields; avoid long runs of `form.data.xxx = ...` when the fields belong to one business update.
 - Prefer `unknown` plus narrowing over introducing new `any`.

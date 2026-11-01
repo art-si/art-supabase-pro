@@ -52,7 +52,7 @@
 
 <script setup lang="ts">
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { formatMenuTitle } from '@/utils/router'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
@@ -95,14 +95,11 @@
     type MenuListParams
   } from '@/api/system-manage'
   import { useAuth } from '@/hooks/core/useAuth'
-  import MasterDataDeleteGuard, {
-    type MasterDataDeleteGuardOpenOptions
-  } from '@/components/business/master-data-delete-guard/index.vue'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import MasterDeleteProcessingNotice from '@/components/business/master-delete-processing-notice/index.vue'
 
   defineOptions({ name: 'Menus' })
 
-  const { confirmAction } = useArtFeedback()
   const route = useRoute()
 
   const treeUtils = new TreeUtils({
@@ -141,10 +138,6 @@
     ) => Promise<void>
   }
 
-  interface MasterDataDeleteGuardExpose {
-    inspect: (options: MasterDataDeleteGuardOpenOptions) => Promise<boolean>
-  }
-
   const { hasAuth } = useAuth()
   const canSortMenu = computed(() => hasAuth('System:Menu:Edit'))
 
@@ -154,7 +147,7 @@
   const menuDialogRef = ref<MenuDialogExpose>()
   const menuDetailDrawerRef = ref<MenuDetailDrawerExpose>()
   const menuSortDialogRef = ref<MenuSortDialogExpose>()
-  const deleteGuardRef = ref<MasterDataDeleteGuardExpose>()
+  const { deleteGuardRef, deleteRecord, deleteBusy } = useRecordDeleteGuard('sys_menu', '菜单')
 
   const openMenuDialog = async (data: MenuDialogOpenData): Promise<void> => {
     await menuDialogRef.value?.handleOpen(data)
@@ -413,7 +406,8 @@
         label: `删除${getMenuActionSubject(row)}`,
         icon: 'ri:delete-bin-4-line',
         color: 'var(--el-color-danger)',
-        auth: 'System:Menu:Delete'
+        auth: 'System:Menu:Delete',
+        disabled: deleteBusy.value
       }
     ].filter((item) => !item.hidden)
 
@@ -567,47 +561,37 @@
    * 删除菜单
    */
   const handleDelete = async (row: AppRouteRecord): Promise<void> => {
-    try {
-      if (!row.id) throw new Error('未找到需要删除的菜单')
-      const menuId = row.id
-
-      let ids: string[] = []
-      const blocked = await deleteGuardRef.value?.inspect({
-        resourceType: 'menu',
-        resourceLabel: '菜单',
-        resources: [{ id: String(row.id), label: formatMenuTitle(row.meta?.title) }],
-        resolveResources: async () => {
-          const completeMenuTree = await loadCompleteMenuTree()
-          const descendants = treeUtils.getDescendants(completeMenuTree, menuId, true)
-          ids = descendants.map((item) => String(item.id))
-          return descendants.map((item) => ({
-            id: String(item.id),
-            label: formatMenuTitle(item.meta?.title)
-          }))
-        }
-      })
-      if (blocked) return
-
-      await confirmAction(
-        `删除「${formatMenuTitle(row.meta?.title)}」后，其下级菜单与按钮权限会一并移除，关联角色也将失去对应访问权限。确认继续吗？`,
-        '删除菜单',
-        {
-          confirmButtonText: '确认删除',
-          cancelButtonText: '取消',
-          type: 'warning',
-          confirmButtonType: 'danger'
-        }
-      )
-      await deleteMenu({ ids })
-      ElMessage.success('菜单删除成功')
-      completeMenuTreeCache.value = null
-      loadedChildrenByParent.clear()
-      await tableQueryRef.value?.refreshData()
-    } catch (error) {
-      if (error !== 'cancel') {
-        ElMessage.error(getFriendlySupabaseErrorMessage(error, '删除失败'))
-      }
+    if (!row.id) {
+      ElMessage.error('未找到需要删除的菜单，请刷新后重试')
+      return
     }
+    const menuId = row.id
+    let ids: string[] = []
+    await deleteRecord({
+      resourceType: 'menu',
+      resource: { id: String(menuId), label: formatMenuTitle(row.meta?.title) },
+      permission: 'System:Menu:Delete',
+      resolveResources: async () => {
+        if (completeMenuTreeLoad) await completeMenuTreeLoad
+        completeMenuTreeCache.value = null
+        const completeMenuTree = await loadCompleteMenuTree()
+        const descendants = treeUtils.getDescendants(completeMenuTree, menuId, true)
+        if (!descendants.length) throw new Error('菜单已变化，请刷新后重试删除')
+        ids = descendants.map((item) => String(item.id))
+        return descendants.map((item) => ({
+          id: String(item.id),
+          label: formatMenuTitle(item.meta?.title)
+        }))
+      },
+      confirmMessage: `删除「${formatMenuTitle(row.meta?.title)}」后，其下级菜单与按钮权限会一并移除，关联角色也将失去对应访问权限。确认继续吗？`,
+      remove: () => deleteMenu({ ids }),
+      successMessage: '菜单删除成功',
+      onDeleted: async () => {
+        completeMenuTreeCache.value = null
+        loadedChildrenByParent.clear()
+        await tableQueryRef.value?.refreshData()
+      }
+    })
   }
 
   watch(

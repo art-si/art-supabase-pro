@@ -628,6 +628,9 @@
       "file-zip-line": {
         "body": "<path fill=\"currentColor\" d=\"M20 22H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1m-1-2V4H5v16zm-5-8v5h-4v-3h2v-2zm-2-8h2v2h-2zm-2 2h2v2h-2zm2 2h2v2h-2zm-2 2h2v2h-2z\"/>"
       },
+      "filter-2-line": {
+        "body": "<path fill=\"currentColor\" d=\"M14 14v6l-4 2v-8L4 5V3h16v2zM6.404 5L12 13.394L17.596 5z\"/>"
+      },
       "filter-3-line": {
         "body": "<path fill=\"currentColor\" d=\"M10 18h4v-2h-4zM3 6v2h18V6zm3 7h12v-2H6z\"/>"
       },
@@ -1225,6 +1228,9 @@
       "question-answer-line": {
         "body": "<path fill=\"currentColor\" d=\"M5.455 15L1 18.5V3a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1v12zm-.692-2H16V4H3v10.385zM8 17h10.237L20 18.385V8h1a1 1 0 0 1 1 1v13.5L17.546 19H9a1 1 0 0 1-1-1z\"/>"
       },
+      "question-fill": {
+        "body": "<path fill=\"currentColor\" d=\"M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10s-4.477 10-10 10m-1-7v2h2v-2zm2-1.645A3.502 3.502 0 0 0 12 6.5a3.5 3.5 0 0 0-3.433 2.813l1.962.393A1.5 1.5 0 1 1 12 11.5a1 1 0 0 0-1 1V14h2z\"/>"
+      },
       "question-line": {
         "body": "<path fill=\"currentColor\" d=\"M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10s-4.477 10-10 10m0-2a8 8 0 1 0 0-16a8 8 0 0 0 0 16m-1-5h2v2h-2zm2-1.645V14h-2v-1.5a1 1 0 0 1 1-1a1.5 1.5 0 1 0-1.471-1.794l-1.962-.393A3.501 3.501 0 1 1 13 13.355\"/>"
       },
@@ -1350,6 +1356,9 @@
       },
       "shape-2-line": {
         "body": "<path fill=\"currentColor\" d=\"M20 16h2v6h-6v-2H8v2H2v-6h2V8H2V2h6v2h8V2h6v6h-2zm-2 0V8h-2V6H8v2H6v8h2v2h8v-2zM4 4v2h2V4zm0 14v2h2v-2zM18 4v2h2V4zm0 14v2h2v-2z\"/>"
+      },
+      "share-box-line": {
+        "body": "<path fill=\"currentColor\" d=\"M10 3v2H5v14h14v-5h2v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm7.586 2H13V3h8v8h-2V6.414l-7 7L10.586 12z\"/>"
       },
       "share-forward-2-line": {
         "body": "<path fill=\"currentColor\" d=\"M4 19h16v-5h2v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-6h2zM16.172 7l-3.95-3.95l1.414-1.414L20 8l-6.364 6.364l-1.414-1.415L16.172 9H5V7z\"/>"

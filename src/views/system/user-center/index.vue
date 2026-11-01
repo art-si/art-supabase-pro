@@ -116,8 +116,6 @@
                 :rules="rules"
                 :disabled="!isEdit"
                 label-position="top"
-                :show-reset="false"
-                :show-submit="false"
                 root-class="user-center__form"
               />
             </section>
@@ -171,8 +169,6 @@
                 :rules="pwdRules"
                 :disabled="!isEditPwd"
                 label-position="top"
-                :show-reset="false"
-                :show-submit="false"
                 :span="24"
                 root-class="user-center__form user-center__password-form"
               />

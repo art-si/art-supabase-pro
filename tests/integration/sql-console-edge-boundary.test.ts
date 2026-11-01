@@ -37,6 +37,53 @@ test('SQL console metadata includes bounded catalog relationships', { skip: !rea
   )
 })
 
+test(
+  'SQL console scoped metadata loads table details and server search without eager columns',
+  { skip: !ready },
+  async () => {
+    const catalog = await invoke(superToken!, { action: 'metadata', mode: 'catalog' })
+    assert.equal(catalog.httpStatus, 200)
+    assert.equal(catalog.body.metadataMode, 'catalog')
+    assert.deepEqual(catalog.body.columns, [])
+    assert.deepEqual(catalog.body.foreignKeys, [])
+    const tables = catalog.body.tables
+    assert.ok(Array.isArray(tables))
+    const target = tables.find(
+      (raw) =>
+        raw &&
+        typeof raw === 'object' &&
+        raw.tableSchema === 'public' &&
+        raw.tableName === 'sys_menu'
+    )
+    assert.ok(target)
+    assert.equal(target.detailsLoaded, false)
+    const detail = await invoke(superToken!, {
+      action: 'metadata',
+      mode: 'tables',
+      tables: [{ schema: 'public', name: 'sys_menu' }]
+    })
+    assert.equal(detail.httpStatus, 200)
+    assert.equal(detail.body.metadataMode, 'tables')
+    assert.ok(Array.isArray(detail.body.tables) && detail.body.tables.length === 1)
+    assert.equal(detail.body.tables[0].detailsLoaded, true)
+    assert.ok(Array.isArray(detail.body.columns) && detail.body.columns.length > 0)
+    const search = await invoke(superToken!, {
+      action: 'metadata',
+      mode: 'search',
+      keyword: 'sys_menu'
+    })
+    assert.equal(search.httpStatus, 200)
+    assert.equal(search.body.metadataMode, 'search')
+    assert.ok(Array.isArray(search.body.tables) && search.body.tables.length <= 100)
+    const invalid = await invoke(superToken!, {
+      action: 'metadata',
+      mode: 'tables',
+      tables: Array.from({ length: 33 }, () => ({ schema: 'public', name: 'sys_menu' }))
+    })
+    assert.equal(invalid.httpStatus, 400)
+  }
+)
+
 test('SQL console explains without executing the statement', { skip: !ready }, async () => {
   const result = await invoke(superToken!, { action: 'explain', query: 'SELECT 1 AS probe' })
   assert.equal(result.httpStatus, 200)

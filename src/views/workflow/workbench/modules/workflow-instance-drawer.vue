@@ -48,66 +48,76 @@
           </div>
         </section>
 
-        <ArtAsyncState
-          v-if="state.snapshotError"
-          :error="state.snapshotError"
-          error-title="业务资料暂时不可用"
-          :min-height="132"
-          @retry="loadSnapshot"
-        />
-        <WorkflowBusinessSnapshot v-else-if="state.snapshot" :snapshot="state.snapshot" />
+        <ElTabs v-model="activeTab" class="min-w-0">
+          <ElTabPane name="overview" label="业务与概览" :lazy="false"
+            ><div class="grid min-w-0 gap-4">
+              <ArtAsyncState
+                v-if="state.snapshotError"
+                :error="state.snapshotError"
+                error-title="业务资料暂时不可用"
+                :min-height="132"
+                @retry="loadSnapshot"
+              />
+              <WorkflowBusinessSnapshot v-else-if="state.snapshot" :snapshot="state.snapshot" />
 
-        <ArtSectionCard class="workflow-instance__section" preserve-content-structure>
-          <template #header
-            ><div class="workflow-instance__section-heading">
-              <ArtSectionTitle>实例概览</ArtSectionTitle>
-              <span>流程身份与当前进度</span>
-            </div></template
-          >
-          <ArtDescriptions :data="state.detail" :items="descriptionItems" :columns="2" />
-        </ArtSectionCard>
+              <ArtSectionCard class="workflow-instance__section" preserve-content-structure>
+                <template #header
+                  ><div class="workflow-instance__section-heading">
+                    <ArtSectionTitle>实例概览</ArtSectionTitle>
+                    <span>流程身份与当前进度</span>
+                  </div></template
+                >
+                <ArtDescriptions :data="state.detail" :items="descriptionItems" :columns="2" />
+              </ArtSectionCard> </div
+          ></ElTabPane>
+          <ElTabPane name="progress" label="审批进度" :lazy="false"
+            ><div class="grid min-w-0 gap-4">
+              <ArtSectionCard
+                v-if="state.detail.version?.config?.nodes?.length"
+                class="workflow-instance__section"
+                preserve-content-structure
+                title="流程图"
+              >
+                <WorkflowFlowMap
+                  :nodes="state.detail.version.config.nodes"
+                  :tasks="state.detail.tasks"
+                  :skipped-node-keys="skippedNodeKeys"
+                  :current-node-key="state.detail.currentNodeKey"
+                  :instance-status="state.detail.status"
+                />
+              </ArtSectionCard>
 
-        <ArtSectionCard
-          v-if="state.detail.version?.config?.nodes?.length"
-          class="workflow-instance__section"
-          preserve-content-structure
-          title="流程图"
-        >
-          <WorkflowFlowMap
-            :nodes="state.detail.version.config.nodes"
-            :tasks="state.detail.tasks"
-            :skipped-node-keys="skippedNodeKeys"
-            :current-node-key="state.detail.currentNodeKey"
-            :instance-status="state.detail.status"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard class="workflow-instance__section" preserve-content-structure>
-          <template #header
-            ><div class="workflow-instance__section-heading">
-              <ArtSectionTitle>审批任务</ArtSectionTitle>
-              <span>{{ taskNodeCount }} 个节点 · {{ sortedTasks.length }} 位审批人</span>
-            </div></template
-          >
-          <WorkflowTaskBoard :tasks="sortedTasks" />
-        </ArtSectionCard>
-
-        <ArtSectionCard class="workflow-instance__section" preserve-content-structure>
-          <ArtProcessTimeline
-            :items="actionTimelineItems"
-            title="流转记录"
-            summary="不可篡改审计轨迹"
-            action-dict-code="workflowActionType"
-            empty-title="暂无流转记录"
-            empty-description="流程动作发生后会自动记录在这里。"
-          />
-        </ArtSectionCard>
+              <ArtSectionCard class="workflow-instance__section" preserve-content-structure>
+                <template #header
+                  ><div class="workflow-instance__section-heading">
+                    <ArtSectionTitle>审批任务</ArtSectionTitle>
+                    <span>{{ taskNodeCount }} 个节点 · {{ sortedTasks.length }} 位审批人</span>
+                  </div></template
+                >
+                <WorkflowTaskBoard :tasks="sortedTasks" />
+              </ArtSectionCard> </div
+          ></ElTabPane>
+          <ElTabPane name="history" label="流转记录" :lazy="false"
+            ><div class="grid min-w-0 gap-4">
+              <ArtSectionCard class="workflow-instance__section" preserve-content-structure>
+                <ArtProcessTimeline
+                  :items="actionTimelineItems"
+                  title="流转记录"
+                  summary="不可篡改审计轨迹"
+                  action-dict-code="workflowActionType"
+                  empty-title="暂无流转记录"
+                  empty-description="流程动作发生后会自动记录在这里。"
+                />
+              </ArtSectionCard> </div
+          ></ElTabPane>
+        </ElTabs>
       </div>
     </ArtAsyncState>
   </ArtDrawer>
 </template>
 
 <script setup lang="ts">
+  import { ElTabs, ElTabPane } from 'element-plus'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { createFriendlySupabaseError } from '@/utils/supabase'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
@@ -129,6 +139,7 @@
 
   defineOptions({ name: 'WorkflowInstanceDrawer' })
 
+  const activeTab = ref('overview')
   const drawerRef = ref<ArtDrawerExpose<string>>()
   const state = reactive<{
     instanceId: string
@@ -235,6 +246,7 @@
   }
 
   async function handleOpen(instanceId: string): Promise<void> {
+    activeTab.value = 'overview'
     state.instanceId = instanceId
     state.detail = null
     state.snapshot = null
@@ -297,11 +309,7 @@
       align-items: center;
       justify-content: space-between;
       padding: 20px;
-      background: linear-gradient(
-        135deg,
-        var(--el-color-primary-light-9),
-        var(--default-box-color) 70%
-      );
+      background: color-mix(in srgb, var(--theme-color) 4%, var(--default-box-color));
     }
 
     &__hero-main {
@@ -317,8 +325,8 @@
         width: 46px;
         height: 46px;
         font-size: 22px;
-        color: #fff;
-        background: linear-gradient(145deg, var(--el-color-primary), #7467f6);
+        color: var(--el-color-white);
+        background: var(--theme-color);
         border-radius: var(--art-surface-radius);
       }
 

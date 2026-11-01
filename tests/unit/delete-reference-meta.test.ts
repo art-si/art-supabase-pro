@@ -30,6 +30,8 @@ test('引用分类只读取显式业务配置', () => {
 test('引用状态保留中文业务文案并安全降级未知技术状态', () => {
   assert.equal(formatReferenceStatus('active'), '有效')
   assert.equal(formatReferenceStatus('generated'), '已生成')
+  assert.equal(formatReferenceStatus('true'), '启用')
+  assert.equal(formatReferenceStatus('false'), '停用')
   assert.equal(formatReferenceStatus('待续签'), '待续签')
   assert.equal(formatReferenceStatus(null), '')
   for (const key of ['constructor', '__proto__', 'toString', 'unknown_status'])

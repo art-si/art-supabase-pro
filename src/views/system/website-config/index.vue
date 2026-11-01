@@ -28,16 +28,13 @@
 
     <ArtForm
       ref="formRef"
-      :model-value="form"
+      v-model="form"
       :items="[]"
       class="website-config-page__form"
       :rules="rules"
       :disabled="isReadOnly"
       label-position="top"
       custom-layout
-      :show-reset="false"
-      :show-submit="false"
-      @update:model-value="replaceReactiveModel(form, $event)"
     >
       <div class="website-config-page__body">
         <aside class="website-config-page__nav-panel art-card-xs">
@@ -422,7 +419,6 @@
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { getScrollBehavior } from '@/utils/ui/scroll'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { ElMessage, type FormRules } from 'element-plus'
@@ -476,7 +472,7 @@
     saving: false,
     error: null
   })
-  const form = reactive<WebsiteConfig>(createWebsiteConfigDefaults())
+  const form = ref<WebsiteConfig>(createWebsiteConfigDefaults())
   const originalForm = ref<WebsiteConfig>(createWebsiteConfigDefaults())
   const pageScrollContainer = shallowRef<HTMLElement | null>(null)
   const { setWebsiteConfig, loadWebsiteConfig } = useWebsiteConfig()
@@ -484,7 +480,7 @@
   const { isPlatformSuper } = storeToRefs(userStore)
   const platformTenantId = computed(() => userStore.getUserInfo.tenantId || '')
   const isReadOnly = computed(() => !isPlatformSuper.value)
-  const hasUnsavedChanges = computed(() => !isEqual(form, originalForm.value))
+  const hasUnsavedChanges = computed(() => !isEqual(form.value, originalForm.value))
   const publishState = computed(() => {
     if (isReadOnly.value) {
       return {
@@ -501,7 +497,7 @@
       }
     }
     return {
-      title: `${form.siteName || '网站配置'}已同步`,
+      title: `${form.value.siteName || '网站配置'}已同步`,
       description: '当前表单与线上配置一致，可继续编辑后再统一发布。',
       icon: 'ri:checkbox-circle-line'
     }
@@ -576,7 +572,10 @@
     wordmarkImageEnabled: [
       {
         validator: (_rule, value, callback) => {
-          if (value && (!form.wordmarkLightUrl?.trim() || !form.wordmarkDarkUrl?.trim())) {
+          if (
+            value &&
+            (!form.value.wordmarkLightUrl?.trim() || !form.value.wordmarkDarkUrl?.trim())
+          ) {
             callback(new Error('启用品牌字图后，请同时配置亮色和暗色字图'))
             return
           }
@@ -591,7 +590,7 @@
     turnstileSiteKey: [
       {
         validator: (_rule, value, callback) => {
-          if (form.captchaEnabled && !String(value || '').trim()) {
+          if (form.value.captchaEnabled && !String(value || '').trim()) {
             callback(new Error('请输入 Turnstile Site Key'))
             return
           }
@@ -604,7 +603,7 @@
     maintenanceMessage: [
       {
         validator: (_rule, value, callback) => {
-          if (form.maintenanceEnabled && !String(value || '').trim()) {
+          if (form.value.maintenanceEnabled && !String(value || '').trim()) {
             callback(new Error('开启维护模式后，请填写维护提示文案'))
             return
           }
@@ -616,56 +615,63 @@
   }
 
   const lastUpdateText = computed(() =>
-    form.updateTime || form.createTime ? formatWithDayjs(form.updateTime || form.createTime) : '-'
+    form.value.updateTime || form.value.createTime
+      ? formatWithDayjs(form.value.updateTime || form.value.createTime)
+      : '-'
   )
 
   const defaultLanguageLabel = computed(
-    () => languageOptions.find((item) => item.value === form.defaultLanguage)?.label || '-'
+    () => languageOptions.find((item) => item.value === form.value.defaultLanguage)?.label || '-'
   )
 
   const watermarkLabel = computed(
-    () => watermarkOptions.find((item) => item.value === form.watermarkContentType)?.label || '-'
+    () =>
+      watermarkOptions.find((item) => item.value === form.value.watermarkContentType)?.label || '-'
   )
 
   const captchaLabel = computed(
-    () => captchaOptions.value.find((item) => item.value === form.captchaType)?.label || '-'
+    () => captchaOptions.value.find((item) => item.value === form.value.captchaType)?.label || '-'
   )
 
   const summaryCards = computed(() => [
     {
       label: '站点状态',
-      value: form.maintenanceEnabled ? '维护模式已开启' : '正常运行',
-      description: form.maintenanceEnabled ? '登录页将展示维护公告。' : '登录页将按常规流程展示。',
-      icon: form.maintenanceEnabled ? 'ri:alarm-warning-line' : 'ri:sun-line'
+      value: form.value.maintenanceEnabled ? '维护模式已开启' : '正常运行',
+      description: form.value.maintenanceEnabled
+        ? '登录页将展示维护公告。'
+        : '登录页将按常规流程展示。',
+      icon: form.value.maintenanceEnabled ? 'ri:alarm-warning-line' : 'ri:sun-line'
     },
     {
       label: '开放注册',
-      value: form.registerEnabled ? '已开启' : '已关闭',
-      description: form.registerEnabled
+      value: form.value.registerEnabled ? '已开启' : '已关闭',
+      description: form.value.registerEnabled
         ? '新用户可从登录页进入注册流程。'
         : '登录页不展示注册入口。',
       icon: 'ri:user-add-line'
     },
     {
       label: '登录验证',
-      value: form.captchaEnabled ? captchaLabel.value : '未启用',
-      description: form.captchaEnabled ? '登录页将要求完成人机验证。' : '登录页不会显示验证码。',
+      value: form.value.captchaEnabled ? captchaLabel.value : '未启用',
+      description: form.value.captchaEnabled
+        ? '登录页将要求完成人机验证。'
+        : '登录页不会显示验证码。',
       icon: 'ri:shield-check-line'
     },
     {
       label: '品牌名称',
-      value: form.siteName || '-',
+      value: form.value.siteName || '-',
       description: '影响登录页、标题、水印和系统品牌展示。',
       icon: 'ri:bookmark-3-line'
     }
   ])
 
   const setForm = (config: WebsiteConfig): void => {
-    Object.assign(form, createWebsiteConfigDefaults(), config, {
+    Object.assign(form.value, createWebsiteConfigDefaults(), config, {
       turnstileSize: config.turnstileSize === 'flexible' ? 'hidden' : config.turnstileSize,
       authChannels: normalizeAuthChannels(config.authChannels)
     })
-    originalForm.value = cloneDeep(form)
+    originalForm.value = cloneDeep(form.value)
   }
 
   const fetchConfig = async (): Promise<void> => {
@@ -677,7 +683,7 @@
   }
 
   const normalizePayload = (): WebsiteConfig => {
-    const payload = omit(cloneDeep(form), [
+    const payload = omit(cloneDeep(form.value), [
       'tenantId',
       'createBy',
       'createTime',
@@ -726,7 +732,7 @@
       ElMessage.info('当前配置没有需要发布的变更')
       return
     }
-    const authChannelError = getAuthChannelValidationMessage(form.authChannels)
+    const authChannelError = getAuthChannelValidationMessage(form.value.authChannels)
     if (authChannelError) {
       ElMessage.warning(authChannelError)
       scrollToSection('auth')
@@ -740,7 +746,7 @@
       const payload = normalizePayload()
       await saveWebsiteConfig(payload)
       await fetchConfig()
-      setWebsiteConfig(form)
+      setWebsiteConfig(form.value)
       await loadWebsiteConfig(true)
       ElMessage.success('网站配置已发布')
     } finally {

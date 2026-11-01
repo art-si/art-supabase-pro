@@ -52,7 +52,7 @@
 
 <script setup lang="ts">
   import { getOrganizationTypeIcon } from '@/utils/organization-display'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useLazyComponent } from '@/hooks/core/useLazyComponent'
   import type { ColumnOption } from '@/types'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
@@ -75,9 +75,7 @@
   import { deleteOrganization, fetchOrganizationTree } from '@/api/system-manage'
   import { formatWithDayjs } from '@/utils/time'
   import TreeUtils from '@/utils/tree'
-  import MasterDataDeleteGuard, {
-    type MasterDataDeleteGuardOpenOptions
-  } from '@/components/business/master-data-delete-guard/index.vue'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import MasterDeleteProcessingNotice from '@/components/business/master-delete-processing-notice/index.vue'
 
   defineOptions({ name: 'Organization' })
@@ -97,10 +95,6 @@
     handleOpen: (row: Organization) => Promise<void>
   }
 
-  interface MasterDataDeleteGuardExpose {
-    inspect: (options: MasterDataDeleteGuardOpenOptions) => Promise<boolean>
-  }
-
   interface OverviewState {
     organizations: number
     members: number
@@ -108,7 +102,6 @@
     menus: number
   }
 
-  const { confirmDelete } = useArtFeedback()
   const route = useRoute()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
@@ -116,7 +109,10 @@
   const tableQueryRef = ref<ArtTableQueryExpose>()
   const organizationDialogRef = ref<OrganizationDialogExpose>()
   const organizationDetailDrawerRef = ref<OrganizationDetailDrawerExpose>()
-  const deleteGuardRef = ref<MasterDataDeleteGuardExpose>()
+  const { deleteGuardRef, deleteRecord, deleteBusy } = useRecordDeleteGuard(
+    'mdm_organization',
+    '组织'
+  )
   const { component: organizationDialogComponent, load: loadOrganizationDialog } = useLazyComponent(
     () => import('./modules/organization-dialog.vue')
   )
@@ -393,7 +389,8 @@
         label: '删除组织',
         icon: 'ri:delete-bin-4-line',
         color: 'var(--el-color-danger)',
-        auth: 'System:Organization:Delete'
+        auth: 'System:Organization:Delete',
+        disabled: deleteBusy.value
       }
     ]
 
@@ -469,22 +466,18 @@
 
   const handleDelete = async (row: Organization): Promise<void> => {
     if (!row.id || isProtectedOrganization(row)) return
-    try {
-      const blocked = await deleteGuardRef.value?.inspect({
-        resourceType: 'organization',
-        resourceLabel: '组织',
-        resources: [{ id: row.id, label: row.organizationName }]
-      })
-      if (blocked) return
-
-      await confirmDelete(
-        `确定删除组织「${row.organizationName}」吗？删除后无法恢复。仅无下级组织、无成员且无角色的节点可以删除。`
-      )
-      await deleteOrganization(row.id)
-      await tableQueryRef.value?.refreshRemove()
-    } catch {
-      // 用户取消或数据库阻止删除时，反馈由统一请求层处理。
-    }
+    const id = row.id
+    await deleteRecord({
+      resourceType: 'organization',
+      resource: { id, label: row.organizationName },
+      permission: 'System:Organization:Delete',
+      confirmMessage: `确定删除组织「${row.organizationName}」吗？删除后无法恢复。仅无下级组织、无成员且无角色的节点可以删除。`,
+      remove: () => deleteOrganization(id),
+      successMessage: '组织已删除',
+      onDeleted: async () => {
+        await tableQueryRef.value?.refreshRemove()
+      }
+    })
   }
 
   const handleDeleteDependenciesCleared = (): void => {

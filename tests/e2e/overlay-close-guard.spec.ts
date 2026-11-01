@@ -3,6 +3,35 @@ import { expect, test } from '@playwright/test'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
+for (const kind of ['弹窗', '抽屉']) {
+  test(`${kind}声明式生命周期回调各执行一次并收到公开 API`, async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto('/tests/e2e/fixtures/overlay-close-guard.html?callback-contract')
+    await page.getByRole('button', { name: `打开${kind}`, exact: true }).click()
+    const overlay = page.getByRole('dialog', { name: `关闭检查${kind}`, exact: true })
+    const counts = page.getByTestId('callback-counts')
+    await expect(overlay).toBeVisible()
+    await expect(counts).toHaveText('{"open":1,"confirm":0,"close":0,"reset":0}')
+    await overlay.getByRole('button', { name: '确定', exact: true }).click()
+    await expect(counts).toHaveText('{"open":1,"confirm":1,"close":0,"reset":0}')
+    await expect(overlay).toBeVisible()
+    await overlay.getByRole('button', { name: '重置回调检查', exact: true }).click()
+    await expect(counts).toHaveText('{"open":1,"confirm":1,"close":0,"reset":1}')
+    await overlay.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(counts).toHaveText('{"open":1,"confirm":1,"close":1,"reset":1}')
+    await expect(overlay).toBeVisible()
+    await page
+      .getByRole('button', { name: '允许业务关闭', exact: true })
+      .evaluate((element: HTMLButtonElement) => element.click())
+    await overlay.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(overlay).toBeHidden()
+    await expect(counts).toHaveText('{"open":1,"confirm":1,"close":2,"reset":2}')
+    await expect(page.getByTestId('callback-api-valid')).toHaveText('true')
+    expect(errors).toEqual([])
+  })
+}
+
 test('含回调的嵌套表单编辑与重置保持原始记录隔离', async ({ page }) => {
   await page.goto('/tests/e2e/fixtures/overlay-close-guard.html')
   await page.getByRole('button', { name: '打开快照检查', exact: true }).click()
@@ -175,14 +204,11 @@ for (const kind of ['弹窗', '抽屉']) {
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('close-counts')).toHaveText('{"native":2,"project":1}')
     await expect(overlay).toBeVisible()
-    await overlay
-      .locator('.el-dialog__headerbtn:not(.art-dialog__fullscreen-button), .el-drawer__close-btn')
-      .last()
-      .click()
-    await expect(page.getByTestId('close-counts')).toHaveText('{"native":3,"project":2}')
+    await overlay.getByRole('button', { name: `关闭${kind}`, exact: true }).click()
+    await expect(page.getByTestId('close-counts')).toHaveText('{"native":2,"project":2}')
     await expect(overlay.getByText('测试草稿保持完整')).toBeVisible()
     await overlay.getByRole('button', { name: '取消', exact: true }).click()
-    await expect(page.getByTestId('close-counts')).toHaveText('{"native":3,"project":3}')
+    await expect(page.getByTestId('close-counts')).toHaveText('{"native":2,"project":3}')
     await expect(overlay).toBeVisible()
     await overlay.screenshot({
       path: `.artifacts/overlay-close-${kind}-${testInfo.project.name}.png`
@@ -192,7 +218,7 @@ for (const kind of ['弹窗', '抽屉']) {
       .evaluate((element: HTMLButtonElement) => element.click())
     await page.keyboard.press('Escape')
     await expect(overlay).toBeHidden()
-    await expect(page.getByTestId('close-counts')).toHaveText('{"native":4,"project":4}')
+    await expect(page.getByTestId('close-counts')).toHaveText('{"native":3,"project":4}')
     expect(errors).toEqual([])
   })
 }

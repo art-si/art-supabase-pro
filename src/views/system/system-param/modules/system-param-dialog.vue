@@ -16,6 +16,7 @@
 
         <div class="system-param-dialog__form-body">
           <ArtForm
+            v-model:active-tab="activeTab"
             ref="formRef"
             v-model="formState.model"
             :items="formState.items.value"
@@ -24,8 +25,6 @@
             :gutter="20"
             label-position="top"
             label-width="auto"
-            :show-reset="false"
-            :show-submit="false"
             :validate-on-rule-change="false"
           >
             <template #defaultValue v-if="formState.model.paramType === 'json'">
@@ -219,6 +218,7 @@
   }>()
 
   const dialogRef = ref<ArtDialogExpose<SystemParam | undefined>>()
+  const activeTab = ref('')
   const formRef = ref<ArtFormExpose>()
   const jsonDrawerRef = ref<InstanceType<typeof JsonValueDrawer>>()
   const registrationRoleLoading = ref(false)
@@ -280,7 +280,7 @@
       {
         label: '基础信息',
         key: 'basicInfoTitle',
-        type: 'divider',
+        type: 'tab',
         span: 24
       },
       {
@@ -340,7 +340,7 @@
       {
         label: '状态与内容',
         key: 'statusContentTitle',
-        type: 'divider',
+        type: 'tab',
         span: 24
       },
       {
@@ -610,6 +610,7 @@
   }
 
   const handleOpen = async (row?: SystemParam): Promise<void> => {
+    activeTab.value = ''
     await resetForm()
     if (row?.id) {
       initializeForm(row)

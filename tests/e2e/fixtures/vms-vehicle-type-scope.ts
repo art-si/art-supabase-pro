@@ -6,6 +6,8 @@ import { useMenuStore } from '@/store/modules/menu'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { setupGlobDirectives } from '@/directives'
 import language from '@/locales'
+import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import VehicleTypeTab from '@vms/views/vehicle-archive-edit/modules/vehicle-type-tab.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
@@ -123,6 +125,12 @@ const app = createApp({
   }
 })
 app.use(store)
+initializeTheme()
+useTheme().switchThemeStyles(
+  params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+)
+document.documentElement.dataset.boxMode =
+  params.get('theme') === 'dark' ? 'shadow-mode' : 'border-mode'
 app.use(router)
 app.use(language)
 setupGlobDirectives(app)

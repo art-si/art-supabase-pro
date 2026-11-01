@@ -1,7 +1,7 @@
 import { uniq } from 'lodash-es'
 import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
-import { toObjectRecord } from '@/utils/record'
+import { getOwnRecordValue, toObjectRecord } from '@/utils/record'
 import {
   quoteSqlIdentifier,
   type SqlColumnRef,
@@ -63,11 +63,10 @@ export const isSqlDraftNumber = (column?: SqlColumnRef): boolean =>
 export function containsUnsafeSqlNumber(value: unknown): boolean {
   if (typeof value === 'number')
     return !Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))
-  if (Array.isArray(value)) return value.some(containsUnsafeSqlNumber)
   return (
     value !== null &&
     typeof value === 'object' &&
-    Object.values(value).some(containsUnsafeSqlNumber)
+    Object.keys(value).some((key) => containsUnsafeSqlNumber(getOwnRecordValue(value, key)))
   )
 }
 
@@ -188,7 +187,10 @@ export async function resolveSqlEditSource(input: {
 }
 
 export function sqlDraftColumn(source: SqlEditSource, field: string): SqlColumnRef | undefined {
-  return source.table?.columns.find((column) => column.name === source.mapping[field])
+  const mapped = getOwnRecordValue(source.mapping, field)
+  return typeof mapped === 'string'
+    ? source.table?.columns.find((column) => column.name === mapped)
+    : undefined
 }
 
 export function prepareSqlDraftRows(
@@ -198,7 +200,8 @@ export function prepareSqlDraftRows(
 ): SqlDraftRow[] {
   return rows.map((row) =>
     Object.fromEntries(
-      Object.entries(row).map(([field, value]) => {
+      Object.keys(row).map((field) => {
+        const value = getOwnRecordValue(row, field)
         const column = sqlDraftColumn(source, field) || fallback?.(field)
         return [
           field,
@@ -315,7 +318,7 @@ export function buildSqlDraftUpdate(
   if (records.insertRecords.length || records.removeRecords.length)
     return blocked('SQL 结果编辑仅导出已有行的字段修改，不生成插入或删除语句。')
   if (!records.changes.length) return blocked('还没有已修改字段。')
-  const signatures = allRows.map((row) => source.keys.map((key) => row[key]))
+  const signatures = allRows.map((row) => source.keys.map((key) => getOwnRecordValue(row, key)))
   if (
     signatures.some((values) =>
       values.some((value) => value == null || typeof value === 'object')
@@ -336,7 +339,7 @@ export function buildSqlDraftUpdate(
       const assignments = fields.map((field) => {
         const column = sqlDraftColumn(source, field)
         if (!column) throw new Error('变更字段不在来源表结构中，请重新查询')
-        return `  ${quote(column.name)} = ${valueLiteral(row[field], column, dialect)}`
+        return `  ${quote(column.name)} = ${valueLiteral(getOwnRecordValue(row, field), column, dialect)}`
       })
       const conditions = uniq([
         ...source.keys,
@@ -345,12 +348,13 @@ export function buildSqlDraftUpdate(
       ]).map((field) => {
         const column = sqlDraftColumn(source, field)!
         let lhs = quote(column.name)
-        const rhs = valueLiteral(original[field], column, dialect)
+        const originalValue = getOwnRecordValue(original, field)
+        const rhs = valueLiteral(originalValue, column, dialect)
         if (isSqlDraftJson(column) && dialect === 'postgres') lhs = `CAST(${lhs} AS JSONB)`
         if (dialect === 'postgres') return `${lhs} IS NOT DISTINCT FROM ${rhs}`
         if (dialect === 'mysql')
-          return `${!isSqlDraftNumber(column) && !isSqlDraftJson(column) && typeof original[field] === 'string' ? `BINARY ${lhs} <=> BINARY ${rhs}` : `${lhs} <=> ${rhs}`}`
-        return original[field] === null ? `${lhs} IS NULL` : `${lhs} = ${rhs}`
+          return `${!isSqlDraftNumber(column) && !isSqlDraftJson(column) && typeof originalValue === 'string' ? `BINARY ${lhs} <=> BINARY ${rhs}` : `${lhs} <=> ${rhs}`}`
+        return originalValue === null ? `${lhs} IS NULL` : `${lhs} = ${rhs}`
       })
       return `UPDATE ${relation}\nSET\n${assignments.join(',\n')}\nWHERE ${conditions.join('\n  AND ')};`
     })

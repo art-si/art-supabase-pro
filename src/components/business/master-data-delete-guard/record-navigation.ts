@@ -101,6 +101,40 @@ export function createRecordReferenceNavigation(
       routePath: '/vms/vehicle-manage/fuel-card-archive',
       ...permitted('FuelCardArchive:View')
     },
+    vehicle_accident_record: {
+      routeName: 'VehicleAccidentDetail',
+      ...permitted('VehicleAccident:View'),
+      routeParams: (record) => ({ id: record.targetId })
+    },
+    vehicle_routine_inspection_record: {
+      routeName: 'VehicleRoutineInspectionDetail',
+      ...permitted('VehicleRoutineInspection:View'),
+      routeParams: (record) => ({ id: record.targetId })
+    },
+    vehicle_inspection: {
+      routeName: 'VehicleInspectionDetail',
+      ...permitted('VehicleInspection:View'),
+      routeParams: (record) => ({ id: record.targetId })
+    },
+    vehicle_insurance: {
+      routeName: 'VehicleInsuranceDetail',
+      ...permitted('VehicleInsurance:View'),
+      routeParams: (record) => ({ id: record.targetId })
+    },
+    tms_driver_blacklist: {
+      routeName: 'TmsDriverBlacklist',
+      ...permitted('TmsDriverBlacklist:View')
+    },
+    tms_electronic_contract: {
+      routeName: 'TmsElectronicContract',
+      ...permitted('TmsElectronicContract:View'),
+      routeQuery: (record) => ({ contractId: record.targetId })
+    },
+    tms_service_case: { routeName: 'TmsServiceCase', ...permitted('TmsServiceCase:View') },
+    tms_transport_agreement: {
+      routeName: 'TmsTransportAgreement',
+      ...permitted('TmsTransportAgreement:View')
+    },
     vms_part_stock: {
       routeName: 'VehiclePartsManage',
       applicationCode: 'vms',
@@ -351,6 +385,61 @@ export function createRecordReferenceNavigation(
       routeName: 'MdmMaterialArchive',
       canNavigate: () => hasAuth('MdmMaterialArchive:View')
     },
+    mdm_material_category: {
+      routeName: 'MdmMaterialCategory',
+      ...permitted('MdmMaterialCategory:View')
+    },
+    mdm_unit_of_measure: { routeName: 'MdmUnitOfMeasure', ...permitted('MdmUnitOfMeasure:View') },
+    mdm_material_type: { routeName: 'MdmMaterialType', ...permitted('MdmMaterialType:View') },
+    mdm_material_attribute_group: {
+      routeName: 'MdmMaterialAttributeGroup',
+      ...permitted('MdmMaterialAttributeGroup:View')
+    },
+    mdm_material_code_rule: {
+      routeName: 'MdmMaterialCodeRule',
+      ...permitted('MdmMaterialCodeRule:View')
+    },
+    mdm_warehouse: {
+      routeName: 'MdmWarehouseDefinition',
+      ...permitted('MdmWarehouseDefinition:View')
+    },
+    mdm_warehouse_zone: { routeName: 'MdmWarehouseZone', ...permitted('MdmWarehouseZone:View') },
+    mdm_production_equipment: {
+      routeName: 'MdmProductionEquipment',
+      ...permitted('MdmProductionEquipment:View')
+    },
+    mdm_esop_document: { routeName: 'MdmEsop', ...permitted('MdmEsop:View') },
+    mdm_component_type: { routeName: 'MdmComponentType', ...permitted('MdmComponentType:View') },
+    mdm_operation_template: {
+      routeName: 'MdmOperationTemplate',
+      ...permitted('MdmOperationTemplate:View')
+    },
+    mdm_production_department: {
+      routeName: 'MdmProductionDepartment',
+      ...permitted('MdmProductionDepartment:View')
+    },
+    mdm_production_personnel: {
+      routeName: 'MdmProductionPersonnel',
+      ...permitted('MdmProductionPersonnel:View')
+    },
+    mdm_personnel_common_work_center: {
+      routeName: 'MdmPersonnelWorkCenter',
+      ...permitted('MdmPersonnelWorkCenter:View')
+    },
+    mdm_shift_schedule: {
+      routeName: 'MdmShiftScheduling',
+      ...permitted('MdmShiftScheduling:View')
+    },
+    mdm_production_shift_pattern: {
+      routeName: 'MdmFactoryCalendar',
+      ...permitted('MdmFactoryCalendar:View')
+    },
+    smis_statutory_holiday: {
+      routeName: 'MdmStatutoryHoliday',
+      ...permitted('MdmStatutoryHoliday:View')
+    },
+    mdm_work_center: { routeName: 'MdmWorkCenter', ...permitted('MdmWorkCenter:View') },
+    mdm_process_route: { routeName: 'MdmProcessRoute', ...permitted('MdmProcessRoute:View') },
     mdm_equipment: {
       routeName: 'SmisEquipmentLedgerDetail',
       routeParams: (record) => ({ id: record.targetId }),

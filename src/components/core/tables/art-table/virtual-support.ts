@@ -13,6 +13,7 @@ export function resolveTableRenderMode(options: {
   hasNativeColumns: boolean
   lazy?: boolean
   treeChildren?: string
+  hasTreeProps?: boolean
   spanMethod?: unknown
   showSummary?: boolean
   maxHeight?: unknown
@@ -25,6 +26,7 @@ export function resolveTableRenderMode(options: {
 }): TableRenderMode {
   const config = options.virtualScroll
   const requested = Boolean(config && (typeof config === 'boolean' || config.enabled !== false))
+  const flatData = typeof config === 'object' && config.flatData === true
   const fallback = (reason: string): TableRenderMode => ({
     requested,
     virtual: false,
@@ -54,12 +56,14 @@ export function resolveTableRenderMode(options: {
     return fallback('百分比列宽保留原表格渲染')
   if (
     options.lazy ||
-    options.rows.some(
-      (row) =>
-        (Array.isArray(row[options.treeChildren || 'children']) &&
-          (row[options.treeChildren || 'children'] as unknown[]).length > 0) ||
-        row.hasChildren
-    )
+    (flatData && (options.hasTreeProps || options.treeChildren)) ||
+    (!flatData &&
+      options.rows.some(
+        (row) =>
+          (Array.isArray(row[options.treeChildren || 'children']) &&
+            (row[options.treeChildren || 'children'] as unknown[]).length > 0) ||
+          row.hasChildren
+      ))
   )
     return fallback('树形与懒加载行保留原表格渲染')
   if (options.spanMethod || options.showSummary)

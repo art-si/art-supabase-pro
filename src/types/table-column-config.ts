@@ -11,6 +11,8 @@ export interface TableColumnSetting {
   showOverflowTooltip?: boolean
   filterType?: TableColumnFilterType
   locked?: boolean
+  /** Permission-dependent source column; omitted columns do not reduce main-list coverage. */
+  optional?: boolean
   /** Static membership of keyed variants rendered by one menu's list component. */
   groups?: string[]
   parentKey?: string

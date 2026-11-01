@@ -63,3 +63,52 @@ for (const theme of ['light', 'dark']) {
     })
   }
 }
+
+test('识别详情原文分类在窄暗可见，切页保留字段且重开复位', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  await page.route('**/rest/v1/ai_artifact_review?**', (route) =>
+    route.fulfill({
+      json: {
+        id: 'recognition-test',
+        feature: 'invoice_ocr',
+        status: 'applied',
+        confidence: 0.9,
+        proposed_payload: { invoiceNo: 'QA-INVOICE-001', totalAmount: 100 },
+        raw_ocr_text: '验收发票原文\n发票号码 QA-INVOICE-001\n价税合计 100.00 元',
+        metadata: {},
+        warnings: ['验收复核提示'],
+        run: { model: '测试模型', latency_ms: 123 }
+      }
+    })
+  )
+  for (const [theme, width] of [
+    ['light', 1440],
+    ['dark', 390]
+  ] as const) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`/tests/e2e/fixtures/recognition-detail-reuse.html?theme=${theme}`)
+    await page.getByRole('button', { name: '查看测试识别', exact: true }).click()
+    const root = page.locator('.art-drawer:visible')
+    await expect(root.getByRole('tab')).toHaveCount(2)
+    await root.getByRole('tab', { name: '原始票据与文本', exact: true }).click()
+    await expect(root.getByRole('textbox', { name: '识别结果原文', exact: true })).toHaveValue(
+      /验收发票原文/
+    )
+    await expect(root.getByText('暂无原始票据', { exact: true })).toBeVisible()
+    await root.locator('.ocr-original-text').scrollIntoViewIfNeeded()
+    expect(await root.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
+    await root.screenshot({ path: info.outputPath(`recognition-sources-${theme}.png`) })
+    await root.getByRole('tab', { name: '识别结果与进度', exact: true }).click()
+    await expect(
+      root
+        .getByRole('tabpanel', { name: '识别结果与进度' })
+        .getByText('QA-INVOICE-001', { exact: true })
+    ).toBeVisible()
+    await root.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.getByRole('button', { name: '查看测试识别', exact: true }).click()
+    await expect(root.getByRole('tab', { name: '识别结果与进度', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+  }
+})

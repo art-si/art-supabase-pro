@@ -341,11 +341,13 @@ dialogRef.value?.handleOpen(user, {
 
 支持 `open`、`opened`、`close`、`closed`、`open-auto-focus`、 `close-auto-focus` 等 `ElDialog` 生命周期事件，另外提供：
 
-| 事件      | 参数      | 说明                 |
-| --------- | --------- | -------------------- |
-| `confirm` | 当前数据  | 开始执行确认流程     |
-| `reset`   | 无        | 数据重置完成         |
-| `error`   | `unknown` | `onConfirm` 抛出异常 |
+| 事件      | 参数        | 说明                 |
+| --------- | ----------- | -------------------- |
+| `confirm` | `data, api` | 开始执行确认流程     |
+| `reset`   | `api`       | 数据重置完成         |
+| `error`   | `unknown`   | `onConfirm` 抛出异常 |
+
+`open`、`close`、`confirm` 的监听函数统一接收 `(data, api)`，`reset` 接收 `(api)`，与命令式配置的同名回调保持一致；只接收 `data` 或不接收参数的现有监听仍可使用。声明式 `@open`、`@close`、`@confirm`、`@reset` 作为默认业务回调使用，同一次流程不会再次调用同一监听；`@close` 与 `@confirm` 返回 `false` 可阻止关闭。
 
 ## ElDialog API 透传
 
@@ -424,9 +426,9 @@ dialogRef.value?.handleOpen(data, {
 
 | 事件               | 说明                                       |
 | ------------------ | ------------------------------------------ |
-| `open`             | Dialog 打开动画开始；事件参数为当前 `data` |
+| `open`             | 打开流程；参数为当前 `data, api`           |
 | `opened`           | Dialog 打开动画结束；事件参数为当前 `data` |
-| `close`            | Dialog 关闭动画开始；事件参数为当前 `data` |
+| `close`            | 关闭流程；参数为当前 `data, api`           |
 | `closed`           | Dialog 关闭动画结束                        |
 | `open-auto-focus`  | 内容获得焦点时触发                         |
 | `close-auto-focus` | 内容失去焦点时触发                         |
@@ -434,6 +436,8 @@ dialogRef.value?.handleOpen(data, {
 `update:model-value` 不对业务开放；请使用 `ref.handleOpen()` 和 `ref.handleClose()`。
 
 ## 使用建议
+
+没有底部操作区的滚动正文始终保留 16px 底部可视留白，滚动条轨道、滚动高度和当前位置不变；末尾 padding 与 scroll-padding 保留末项和键盘聚焦的可达性。地图等自带底部区域的贴边工作区可设置 `--art-scroll-viewport-inset: 0px`。有底部操作区、原生滚动条及关闭公共滚动的弹窗沿用原布局。
 
 - 列表页面只维护业务弹窗 Ref，不直接组合 `ArtDialog` 和业务表单
 - 表单校验失败时让 `onConfirm` 返回 `false`

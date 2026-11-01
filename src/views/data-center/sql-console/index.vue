@@ -22,13 +22,13 @@
         <div class="flex shrink-0 items-center gap-1">
           <EditorTools
             :sql="sqlCode"
-            :scope="scopeKey"
+            :scope="editorActionScope"
+            :import-sql="openSqlInNewTab"
             v-model:view="editorView"
             @replace="editorRef?.replace()"
             @comment="editorRef?.comment()"
             @format="editorRef?.format()"
             @goto="editorRef?.goToLine($event)"
-            @load-file="openSqlInNewTab"
           />
           <ArtTooltip content="撤销（Ctrl/⌘ + Z）"
             ><ArtIconButton
@@ -125,6 +125,21 @@
         <ElButton size="small" @click="connectionManagerRef?.open()"
           ><ArtSvgIcon icon="ri:plug-line" />连接管理</ElButton
         >
+        <ElButton size="small" @click="openQueryApis()"
+          ><ArtSvgIcon icon="ri:code-box-line" />查询 API</ElButton
+        >
+        <ArtTooltip
+          v-if="userStore.isPlatformSuper && !external"
+          content="将当前语句发布为带参数的只读查询 API"
+        >
+          <ArtIconButton
+            size="small"
+            icon="ri:share-box-line"
+            label="发布为查询 API"
+            :disabled="executing || !sqlCode.trim()"
+            @click="openQueryApis(true)"
+          />
+        </ArtTooltip>
       </div>
       <div class="sql-target-context" :title="connectionLabel"
         ><span class="art-icon-label truncate"
@@ -184,6 +199,9 @@
             :error="metadataError"
             :dialect="dialect"
             :ensure-schema="ensureSchema"
+            :ensure-table="ensureTable"
+            :ensure-functions="ensureFunctions"
+            :search-metadata="external ? undefined : searchMetadata"
             :statement-preference="statementGroupOpen"
             :pins="pinnedObjects"
             :queries="savedQueries"
@@ -208,9 +226,21 @@
             :min="compactResults ? '15%' : undefined"
           >
             <div class="sql-editor-section">
-              <div v-if="metadataError" class="sql-editor-section__metadata-alert" role="status">
-                <span>{{ metadataError }}。关键字提示可用；表字段补全和 AI SQL 需重试加载。</span>
-                <el-button link type="primary" :loading="metadataLoading" @click="preloadMetadata">
+              <div
+                v-if="metadataError || completionError"
+                class="sql-editor-section__metadata-alert"
+                role="status"
+              >
+                <span
+                  >{{ metadataError || completionError }}。关键字提示可用；表字段补全和 AI SQL
+                  需重试加载。</span
+                >
+                <el-button
+                  link
+                  type="primary"
+                  :loading="metadataLoading"
+                  @click="retryCompletionMetadata"
+                >
                   重试加载
                 </el-button>
               </div>
@@ -252,17 +282,6 @@
                   {{ draftStatus }}
                 </div>
                 <div class="tabs-actions">
-                  <div class="execution-info" aria-live="polite">
-                    <span v-if="executing">执行中…</span>
-                    <template v-else-if="result">
-                      <span :class="result.status === 'error' ? 'text-danger' : 'text-success'">{{
-                        result.status === 'error' ? '执行失败' : resultSummary
-                      }}</span>
-                      <span v-if="result.durationMs !== undefined">
-                        · {{ result.durationMs }} ms</span
-                      >
-                    </template>
-                  </div>
                   <ArtTooltip content="数据库结构" placement="top"
                     ><ArtIconButton
                       size="small"
@@ -277,6 +296,13 @@
                       label="查询历史"
                       @click="workbenchDrawerRef?.open('history')"
                   /></ArtTooltip>
+                  <ResultComparisonControls
+                    ref="comparisonControlsRef"
+                    compact
+                    :result="resultSnapshotInput"
+                    :owner="resultOwnerKey"
+                    :disabled="executing"
+                  />
                   <span class="toolbar-divider" aria-hidden="true" />
                   <ArtTooltip content="AI 写 SQL (Ctrl/Cmd + I)" placement="top" :offset="8">
                     <ArtIconButton
@@ -311,12 +337,26 @@
                       ></template>
                     </ArtIconButton>
                   </ArtTooltip>
-                  <ArtTooltip v-else content="执行中" placement="top" :offset="8">
-                    <ArtIconButton size="small" disabled label="执行中" :loading="executing">
-                      <template #icon
-                        ><ElIcon aria-hidden="true"><Loading /></ElIcon
-                      ></template>
-                    </ArtIconButton>
+                  <ArtTooltip
+                    v-else
+                    :content="
+                      dialect === 'dm' && external
+                        ? '当前达梦驱动仅支持查询超时，请等待查询结束'
+                        : cancelRequested
+                          ? '取消请求已发送，正在等待数据库结束'
+                          : '取消正在执行的查询'
+                    "
+                    placement="top"
+                    :offset="8"
+                  >
+                    <ArtIconButton
+                      size="small"
+                      icon="ri:stop-circle-line"
+                      label="取消查询"
+                      :loading="cancelling"
+                      :disabled="cancelRequested || (external && dialect === 'dm')"
+                      @click="handleCancel"
+                    />
                   </ArtTooltip>
                   <ArtTooltip
                     :content="
@@ -385,19 +425,12 @@
                       >
                     </div>
                   </ElPopover>
-                  <ArtTooltip
-                    content="导出本次原始查询结果（Excel，含全部已加载页）"
-                    placement="top"
-                  >
-                    <ArtIconButton
-                      size="small"
-                      icon="ri:download-2-line"
-                      label="导出查询结果"
-                      :disabled="executing || !result?.rows?.length"
-                      :loading="exporting"
-                      @click="handleExport"
-                    />
-                  </ArtTooltip>
+                  <ResultExportControls
+                    compact
+                    :result="resultSnapshotInput"
+                    :owner="resultOwnerKey"
+                    :disabled="executing"
+                  />
                   <ArtTooltip
                     content="格式化 SQL (Ctrl/Cmd + Shift + F)"
                     placement="top"
@@ -426,13 +459,64 @@
                   }}</p></ElScrollbar
                 >
               </details>
+              <div
+                v-if="executing || result"
+                class="execution-info flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-g-200 px-4 py-1 text-xs leading-4 text-g-700 tabular-nums"
+              >
+                <span
+                  aria-live="polite"
+                  :class="
+                    result && !executing
+                      ? queryCancelled
+                        ? 'text-g-700'
+                        : result.status === 'error'
+                          ? 'text-danger'
+                          : 'text-success'
+                      : ''
+                  "
+                  >{{
+                    executing
+                      ? cancelRequested
+                        ? '等待数据库结束…'
+                        : '执行中…'
+                      : queryCancelled
+                        ? '已取消'
+                        : result?.status === 'error'
+                          ? '执行失败'
+                          : resultSummary
+                  }}</span
+                >
+                <template v-if="executing && executionWaitMs !== null">
+                  <span class="sql-execution-wait" aria-live="off"
+                    >已等待 {{ Math.floor(executionWaitMs / 1000) }} 秒</span
+                  >
+                  <span v-if="executionTimeoutMs !== null" aria-live="off"
+                    >本次时限 {{ formatDurationMs(executionTimeoutMs) }}</span
+                  >
+                </template>
+                <template v-else-if="result">
+                  <span v-if="validExecutionDuration" :title="`${result.durationMs} ms`"
+                    >执行端 {{ formatDurationMs(result.durationMs) }}</span
+                  >
+                  <span
+                    v-if="executionWaitMs !== null"
+                    aria-live="off"
+                    title="从发送请求到响应整理完成，包含身份验证、网络与客户端处理；不等同于数据库执行耗时。"
+                    >浏览器总等待 {{ formatDurationMs(executionWaitMs) }}</span
+                  >
+                </template>
+              </div>
               <ArtOverlayLoading
                 v-if="executing && !result"
                 loading
-                overlay
-                text="正在执行 SQL…"
-                description="正在查询数据库并整理结果，请稍候"
-                class="result-section__loading"
+                :min-height="0"
+                :text="cancelRequested ? '正在取消查询…' : '正在执行 SQL…'"
+                :description="
+                  cancelRequested
+                    ? '已请求数据库停止执行，正在等待事务结束'
+                    : '正在查询数据库并整理结果，请稍候'
+                "
+                class="min-h-0 flex-1"
               />
               <div v-if="result?.truncated" class="sql-result-limit" role="status"
                 >已达到返回上限，仅展示前 {{ result.maxRows ?? maxRows }} 行。可增加上限或使用 WHERE
@@ -446,9 +530,17 @@
                   ref="resultTableRef"
                   :loading="executing"
                   :data="result.rows"
+                  :owner="historyActionScope"
+                  :truncated="result.truncated"
                   :columns="result.columns"
                   :query="result.queryText || ''"
                   :metadata="databaseMetadata"
+                  :ensure-metadata="
+                    () =>
+                      ensureQueryMetadata(querySchema || undefined, result?.queryText).then(
+                        () => undefined
+                      )
+                  "
                   :dialect="dialect"
                   :default-schema="
                     dialect === 'dm'
@@ -459,7 +551,7 @@
                   "
                 />
               </div>
-              <ElScrollbar v-else class="tabs-content">
+              <ElScrollbar v-else-if="!executing" class="tabs-content">
                 <div class="tabs-content__inner">
                   <div v-if="!result" class="empty-state">
                     <ArtEmptyState
@@ -474,6 +566,13 @@
                       :visual-size="76"
                     />
                   </div>
+                  <ArtEmptyState
+                    v-else-if="queryCancelled"
+                    title="查询已取消"
+                    description="数据库已结束本次执行，可以修改 SQL 后重新查询。"
+                    size="compact"
+                    :visual-size="76"
+                  />
                   <div v-else-if="result.status === 'error'" class="error-panel">
                     <div class="error-toolbar">
                       <el-tag type="danger" effect="light" round>执行失败</el-tag>
@@ -507,25 +606,37 @@
     <WorkbenchDrawer
       ref="workbenchDrawerRef"
       :metadata="databaseMetadata"
+      :ensure-table="ensureTable"
+      :search-metadata="external ? undefined : searchMetadata"
       :dialect="dialect"
       :loading="metadataLoading"
       :error="metadataError"
       :history="history"
+      :owner="historyActionScope"
+      :history-actions-disabled-reason="historyActionsDisabledReason"
+      :history-new-tab-disabled-reason="historyNewTabDisabledReason"
       @refresh="refreshMetadata"
-      @insert="editorRef?.insertSql($event)"
-      @restore="loadSql"
+      @insert="insertWorkbenchSql"
+      @restore="restoreWorkbenchSql"
+      @restore-history="restoreHistorySql"
+      @open-query="openWorkbenchQuery"
     />
 
     <ExecutionPlanDrawer
       ref="planDrawerRef"
       :query="planQuery"
       :loading="planLoading"
+      :cancelling="planCancelling"
+      :cancel-requested="planCancelRequested"
+      :cancelled="planCancelled"
       :error="planError"
       :data="planData"
       :dialect="dialect"
       @retry="handleExplain(true)"
+      @cancel="handleCancelPlan"
       @locate-table="openPlanTable"
     />
+    <component :is="queryApiComponent" v-if="queryApiComponent" ref="queryApiManagerRef" />
     <ArtDrawer
       ref="outlineDrawerRef"
       :drawer-props="{ class: 'sql-resource-drawer' }"
@@ -545,6 +656,9 @@
         :error="metadataError"
         :dialect="dialect"
         :ensure-schema="ensureSchema"
+        :ensure-table="ensureTable"
+        :ensure-functions="ensureFunctions"
+        :search-metadata="external ? undefined : searchMetadata"
         :statement-preference="statementGroupOpen"
         :pins="pinnedObjects"
         :queries="savedQueries"
@@ -574,6 +688,7 @@
       <div class="ai-panel">
         <el-segmented
           v-model="aiDialog.mode"
+          :disabled="aiBusy || Boolean(aiApplying)"
           :options="[
             { label: '生成 SQL', value: 'generate' },
             { label: '修复 SQL', value: 'fix' }
@@ -581,32 +696,58 @@
         />
         <el-input
           v-model="aiDialog.prompt"
+          :disabled="aiBusy || Boolean(aiApplying)"
           type="textarea"
           :rows="8"
           resize="none"
           placeholder="例如：查出最近 30 天注册且已启用的用户，按创建时间倒序"
         />
-        <div v-if="aiDialog.summary" class="ai-summary">{{ aiDialog.summary }}</div>
+        <AiSqlResult
+          v-if="aiProposal"
+          :sql="aiProposal.sql"
+          :summary="aiProposal.summary"
+          :warnings="aiProposal.warnings"
+          :model="aiProposal.model"
+          :source-changed="aiSourceChanged"
+          :disabled-reason="aiLoadDisabledReason"
+          :new-tab-disabled-reason="historyNewTabDisabledReason"
+          :applying="aiApplying"
+          @open-query="applyAiSql('new')"
+          @apply-current="applyAiSql('current')"
+        />
       </div>
     </ArtDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-  import { computed, inject, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
+  import {
+    computed,
+    inject,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    shallowRef,
+    watch
+  } from 'vue'
   import { matchedRouteKey, onBeforeRouteLeave } from 'vue-router'
-  import { Close, Cpu, Loading, MagicStick, VideoPlay } from '@element-plus/icons-vue'
+  import { Close, Cpu, MagicStick, VideoPlay } from '@element-plus/icons-vue'
   import { ElMessage } from 'element-plus'
-  import { useElementSize, useMediaQuery } from '@vueuse/core'
+  import { useElementSize, useIntervalFn, useMediaQuery } from '@vueuse/core'
+  import { formatDurationMs } from '@/utils/ui/format'
+  import { useLazyComponent } from '@/hooks/core/useLazyComponent'
+  import type QueryApiManager from './modules/query-api-manager.vue'
   import ArtWorkspaceSplitter from '@/components/core/layouts/art-workspace-splitter/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ResourcePanel from './modules/resource-panel.vue'
   import ConnectionManager from './modules/connection-manager.vue'
   import EditorTools from './modules/editor-tools.vue'
+  import AiSqlResult from './modules/ai-sql-result.vue'
   import { useSqlTools } from './modules/use-sql-tools'
   import { useSqlConnections } from './modules/use-sql-connections'
-  import { executeSqlConnection, fetchSqlConnectionMetadata } from '@/api/sql-connections'
+  import { cancelSqlConnection, executeSqlConnection } from '@/api/sql-connections'
   import type { SqlConnection } from '@/types/sql-connections'
   import {
     normalizeExternalPlan,
@@ -617,13 +758,17 @@
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
-  import { executeSql, explainSql, fetchDatabaseMetadata, generateSqlByAi } from '@/api/data-center'
+  import { cancelSql, executeSql, explainSql, generateSqlByAi } from '@/api/data-center'
   import { useUserStore } from '@/store/modules/user'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
-  import { registerSqlMetadata } from '@/utils/monaco-sql-setup'
+  import { registerSqlMetadata, registerSqlMetadataLoader } from '@/utils/monaco-sql-setup'
+  import { useSqlMetadata } from './modules/use-sql-metadata'
   import Editor from './modules/editor.vue'
   import ResultTable from './modules/result-table.vue'
+  import ResultComparisonControls from './modules/result-comparison-controls.vue'
+  import ResultExportControls from './modules/result-export-controls.vue'
+  import type { SqlResultSnapshotInput } from './modules/result-compare'
   import WorkbenchDrawer from './modules/workbench-drawer.vue'
   import ExecutionPlanDrawer from './modules/execution-plan-drawer.vue'
   import {
@@ -631,7 +776,6 @@
     SQL_NAVIGATOR_MIN_WIDTH,
     SQL_NAVIGATOR_MAX_WIDTH
   } from './modules/use-sql-workspace'
-  import { exportExcel } from '@/utils/file'
   import {
     buildCaretDiagnostic,
     getSqlStatements,
@@ -657,6 +801,7 @@
     goToLine: (line: number) => void
     focus: () => void
     clearErrorMarkers: () => void
+    getContentRevision: () => number
     applyErrorMarker: (
       location: SqlErrorLocation | null,
       message: string,
@@ -667,17 +812,44 @@
   interface SqlConsoleError {
     message?: string
     durationMs?: number
+    code?: string
+    position?: unknown
+    query?: unknown
+    hasPosition: boolean
+    hasQuery: boolean
   }
 
   const normalizeSqlConsoleError = (error: unknown): SqlConsoleError => {
-    if (!error || typeof error !== 'object') return {}
+    if (!error || typeof error !== 'object') return { hasPosition: false, hasQuery: false }
     const record = error as Record<string, unknown>
     return {
-      message: typeof record.message === 'string' ? record.message : undefined,
-      durationMs: typeof record.durationMs === 'number' ? record.durationMs : undefined
+      message:
+        typeof record.errorMessage === 'string'
+          ? record.errorMessage
+          : typeof record.message === 'string'
+            ? record.message
+            : undefined,
+      code:
+        typeof record.errorCode === 'string'
+          ? record.errorCode
+          : typeof record.code === 'string'
+            ? record.code
+            : undefined,
+      durationMs:
+        typeof record.durationMs === 'number' &&
+        Number.isFinite(record.durationMs) &&
+        record.durationMs >= 0
+          ? record.durationMs
+          : undefined,
+      position: record.errorPosition,
+      query: record.errorQuery,
+      hasPosition: Object.hasOwn(record, 'errorPosition'),
+      hasQuery: Object.hasOwn(record, 'errorQuery')
     }
   }
 
+  const userStore = useUserStore()
+  const tenantScope = useTenantScopeStore()
   const {
     identityScope,
     gatewayBase,
@@ -697,10 +869,19 @@
     closeTab: closeTabUnchecked
   } = useSqlConnections()
   const resultTableRef = ref<InstanceType<typeof ResultTable>>()
+  const workspaceActionRevision = ref(0)
+  const querySchemaRevision = ref(0)
+  let workspaceActionAlive = true
   const allowReplaceResult = async () => {
     if (!result.value?.rows?.length) return true
     const owner = scopeKey.value
-    return ((await resultTableRef.value?.confirmLeave()) ?? true) && owner === scopeKey.value
+    const revision = workspaceActionRevision.value
+    return (
+      ((await resultTableRef.value?.confirmLeave()) ?? true) &&
+      workspaceActionAlive &&
+      revision === workspaceActionRevision.value &&
+      owner === scopeKey.value
+    )
   }
   const matchedRoute = inject(matchedRouteKey, undefined)
   if (matchedRoute?.value) onBeforeRouteLeave(allowReplaceResult)
@@ -725,20 +906,76 @@
       ElMessage.success('脚本已收藏')
     else ElMessage.warning('请输入收藏名称；脚本须非空且不超过 100000 字符')
   }
-  const openSqlInNewTab = async (sql: string, schema = querySchema.value) => {
-    if (!(await allowReplaceResult())) return
+  const openSqlInNewTab = async (
+    sql: string,
+    schema = querySchema.value,
+    acceptSource?: () => boolean
+  ): Promise<boolean> => {
+    if (!workspaceActionAlive || acceptSource?.() === false) return false
+    if (executing.value) {
+      ElMessage.info('查询仍在执行，请先等待完成或取消查询')
+      return false
+    }
+    if (external.value && !connection.value) {
+      ElMessage.info('当前数据库连接未就绪，请先重新连接执行端')
+      return false
+    }
+    if (queryTabs.value.tabs.length >= 8) {
+      ElMessage.info('最多同时打开 8 个查询页签')
+      return false
+    }
+    const origin = scopeKey.value
+    const revision = workspaceActionRevision.value
+    const schemaRevision = querySchemaRevision.value
+    const allowed = await allowReplaceResult()
+    if (
+      !allowed ||
+      acceptSource?.() === false ||
+      executing.value ||
+      (external.value && !connection.value) ||
+      !workspaceActionAlive ||
+      revision !== workspaceActionRevision.value ||
+      schemaRevision !== querySchemaRevision.value ||
+      origin !== scopeKey.value
+    )
+      return false
     if (!newTab()) {
       ElMessage.info('最多同时打开 8 个查询页签')
-      return
+      return false
     }
     const owner = scopeKey.value
+    const targetRevision = workspaceActionRevision.value
+    // The target storage loads during this tick, including its own default schema reset.
     await nextTick()
-    if (owner === scopeKey.value) {
-      querySchema.value = schema
-      sqlCode.value = sql
-    }
+    if (
+      !workspaceActionAlive ||
+      executing.value ||
+      (external.value && !connection.value) ||
+      targetRevision !== workspaceActionRevision.value ||
+      owner !== scopeKey.value
+    )
+      return false
+    querySchema.value = schema
+    sqlCode.value = sql
+    return true
   }
   const connectionManagerRef = ref<InstanceType<typeof ConnectionManager>>()
+  const queryApiManagerRef = ref<InstanceType<typeof QueryApiManager>>()
+  const { component: queryApiComponent, load: loadQueryApis } = useLazyComponent(
+    () => import('./modules/query-api-manager.vue')
+  )
+  const openQueryApis = async (publish = false) => {
+    if (publish && (!userStore.isPlatformSuper || external.value)) return
+    const owner = identityScope.value
+    const query = publish ? editorRef.value?.getExecutionTarget().sql : undefined
+    try {
+      await loadQueryApis()
+      if (owner === identityScope.value)
+        await queryApiManagerRef.value?.open(query ? { sql: query } : undefined)
+    } catch (error) {
+      ElMessage.warning(getFriendlySupabaseErrorMessage(error, '查询 API 面板加载失败，请稍后重试'))
+    }
+  }
   const selectExternalConnection = async (target: SqlConnection) => {
     if (!(await allowReplaceResult())) return
     if (!useConnection(target)) ElMessage.info('最多同时打开 8 个查询页签')
@@ -796,11 +1033,42 @@
         : 'SELECT 1 AS connection_ok;'
       : 'SELECT * FROM sys_user LIMIT 10;'
   )
+  const workspaceOwnerScope = computed(() =>
+    JSON.stringify([scopeKey.value, userStore.isPlatformSuper, connection.value?.updatedAt])
+  )
+  const editorActionScope = computed(() =>
+    JSON.stringify([workspaceOwnerScope.value, workspaceActionRevision.value])
+  )
+  const historyActionScope = computed(() =>
+    JSON.stringify([editorActionScope.value, querySchema.value, querySchemaRevision.value])
+  )
+  const captureWorkspaceActionGuard = (): (() => boolean) => {
+    const owner = scopeKey.value
+    const revision = workspaceActionRevision.value
+    const schemaRevision = querySchemaRevision.value
+    return () =>
+      workspaceActionAlive &&
+      owner === scopeKey.value &&
+      revision === workspaceActionRevision.value &&
+      schemaRevision === querySchemaRevision.value
+  }
+  const historyActionsDisabledReason = computed(() =>
+    executing.value
+      ? '查询正在执行，完成或取消后可载入历史。'
+      : external.value && !connection.value
+        ? '当前数据库连接未就绪，请先重新连接执行端；仍可预览历史。'
+        : ''
+  )
+  const historyNewTabDisabledReason = computed(() =>
+    queryTabs.value.tabs.length >= 8 ? '最多同时打开 8 个查询页签，请先关闭不用的页签。' : ''
+  )
   const workspaceElement = ref<HTMLElement>()
-  const { width: workspaceWidth } = useElementSize(workspaceElement)
+  const { width: workspaceWidth, height: workspaceHeight } = useElementSize(workspaceElement)
   const compactViewport = useMediaQuery('(max-width: 640px)')
-  const compactResults = computed(() =>
-    workspaceWidth.value > 0 ? workspaceWidth.value <= 640 : compactViewport.value
+  const compactResults = computed(
+    () =>
+      (workspaceWidth.value > 0 ? workspaceWidth.value <= 640 : compactViewport.value) ||
+      (workspaceHeight.value > 0 && workspaceHeight.value <= 720)
   )
   const viewportNarrow = useMediaQuery('(max-width: 900px)')
   const isNarrow = computed(() =>
@@ -885,8 +1153,15 @@
     if (dialect.value === 'dm' && schema !== undefined) {
       querySchema.value = schema
       const owner = scopeKey.value
+      const revision = workspaceActionRevision.value
+      const schemaRevision = querySchemaRevision.value
       void ensureQueryMetadata(schema).catch((error) => {
-        if (owner === scopeKey.value)
+        if (
+          workspaceActionAlive &&
+          owner === scopeKey.value &&
+          revision === workspaceActionRevision.value &&
+          schemaRevision === querySchemaRevision.value
+        )
           ElMessage.warning(
             getFriendlySupabaseErrorMessage(error, '当前 schema 结构加载失败，请刷新后重试')
           )
@@ -896,13 +1171,65 @@
     editorRef.value?.clearErrorMarkers()
     ElMessage.success('SQL 已载入编辑器，可用 Ctrl/⌘ + Z 撤销')
   }
+  const insertWorkbenchSql = (sql: string, owner: string): void => {
+    if (workspaceActionAlive && owner === historyActionScope.value) editorRef.value?.insertSql(sql)
+  }
+  const openWorkbenchQuery = (
+    sql: string,
+    schema: string | undefined,
+    owner: string
+  ): Promise<boolean> =>
+    owner === historyActionScope.value ? openSqlInNewTab(sql, schema) : Promise.resolve(false)
+  const restoreWorkbenchSql = (sql: string, schema: string | undefined, owner: string): void => {
+    if (workspaceActionAlive && owner === historyActionScope.value) loadSql(sql, schema)
+  }
+  const restoreHistorySql = async (
+    sql: string,
+    schema: string | undefined,
+    owner: string
+  ): Promise<void> => {
+    if (
+      !workspaceActionAlive ||
+      historyActionsDisabledReason.value ||
+      owner !== historyActionScope.value
+    )
+      return
+    const sourceEditor = editorRef.value
+    if (!sourceEditor) {
+      ElMessage.info('编辑器尚未就绪，请稍后重试')
+      return
+    }
+    const revision = sourceEditor.getContentRevision()
+    if (
+      !(await allowReplaceResult()) ||
+      !workspaceActionAlive ||
+      Boolean(historyActionsDisabledReason.value) ||
+      owner !== historyActionScope.value ||
+      sourceEditor !== editorRef.value ||
+      revision !== sourceEditor.getContentRevision()
+    )
+      return
+    result.value = null
+    loadSql(sql, schema)
+  }
   const openPlanTable = async (schema: string | undefined, name: string) => {
-    const owner = scopeKey.value
+    const isCurrent = captureWorkspaceActionGuard()
     try {
       await ensureQueryMetadata(schema)
-      if (owner !== scopeKey.value) return
+      if (!isCurrent()) return
+      const metadata = await getMetadata()
+      if (!isCurrent()) return
+      const candidates = metadata.tables.filter(
+        (table) => table.tableName === name && (!schema || schema === table.tableSchema)
+      )
+      const target =
+        candidates.length === 1
+          ? candidates[0]
+          : candidates.find((table) => table.tableSchema === 'public')
+      if (target) await ensureTable(target.tableSchema, target.tableName)
+      if (!isCurrent()) return
     } catch (cause) {
-      if (owner === scopeKey.value)
+      if (isCurrent())
         ElMessage.warning(getFriendlySupabaseErrorMessage(cause, '对象结构加载失败，请刷新后重试'))
       return
     }
@@ -915,25 +1242,223 @@
       name
     })
   }
-  const userStore = useUserStore()
-  const tenantScope = useTenantScopeStore()
   const canExecute = computed(() =>
     external.value ? Boolean(connection.value?.enabled) : userStore.isPlatformSuper
   )
   const planDrawerRef = ref<InstanceType<typeof ExecutionPlanDrawer>>()
   const planLoading = ref(false)
+  const planCancelling = ref(false)
+  const planCancelRequested = ref(false)
+  const planCancelled = ref(false)
+  let cancelPlan: (() => Promise<void>) | null = null
+  let planIsCurrent: (() => boolean) | null = null
   const planQuery = ref('')
   const planError = ref<string | null>(null)
   const planData = shallowRef<Api.DataCenter.SqlConsole.SqlExplainResponse | null>(null)
   let planSequence = 0
   let executionSequence = 0
+  const resetPlanState = (): void => {
+    planSequence++
+    planLoading.value = false
+    planCancelling.value = false
+    planCancelRequested.value = false
+    planCancelled.value = false
+    cancelPlan = null
+    planIsCurrent = null
+    planQuery.value = ''
+    planError.value = null
+    planData.value = null
+    planDrawerRef.value?.reset()
+  }
+  const createQueryCancel = (requestId: string): (() => Promise<void>) => {
+    const target = connection.value
+    const base = gatewayBase.value
+    const tenant = tenantScopeValue()
+    return external.value && target
+      ? () => cancelSqlConnection(base, tenant, target.id, requestId)
+      : () => cancelSql(requestId)
+  }
+  const handleCancelPlan = async () => {
+    const isCurrent = planIsCurrent
+    if (
+      !planLoading.value ||
+      !cancelPlan ||
+      planCancelling.value ||
+      planCancelRequested.value ||
+      !isCurrent?.()
+    )
+      return
+    const cancel = cancelPlan
+    planCancelling.value = true
+    try {
+      await cancel()
+      if (isCurrent() && planLoading.value) planCancelRequested.value = true
+    } catch (error) {
+      if (isCurrent() && planLoading.value)
+        ElMessage.warning(
+          getFriendlySupabaseErrorMessage(error, '取消分析失败，请重试或等待分析结束')
+        )
+    } finally {
+      if (isCurrent()) planCancelling.value = false
+    }
+  }
   let aiSequence = 0
+  const editorRef = ref<EditorInstance | null>(null)
+  const aiDialogRef = ref<ArtDialogExpose>()
+  const aiDialog = ref({ mode: 'generate' as 'generate' | 'fix', prompt: '' })
+  const aiBusy = ref(false)
+  const aiApplying = ref<'current' | 'new' | null>(null)
+  interface AiSqlProposal {
+    sql: string
+    summary?: string
+    warnings: string[]
+    model?: string
+    querySchema: string
+    sourceSql: string
+    sourceEditor: EditorInstance | null
+    sourceRevision?: number
+    isCurrent: () => boolean
+  }
+  const aiProposal = shallowRef<AiSqlProposal | null>(null)
+  const aiSourceChanged = computed(() => {
+    const proposal = aiProposal.value
+    const currentSql = sqlCode.value
+    return Boolean(
+      proposal &&
+      (proposal.sourceSql !== currentSql ||
+        proposal.sourceEditor !== editorRef.value ||
+        proposal.sourceRevision !== editorRef.value?.getContentRevision())
+    )
+  })
+  const aiLoadDisabledReason = computed(() =>
+    executing.value
+      ? '查询正在执行，完成或取消后可载入 AI SQL。'
+      : external.value && !connection.value
+        ? '当前数据库连接未就绪，请先重新连接执行端。'
+        : ''
+  )
+  const resetAiState = (): void => {
+    aiSequence++
+    aiBusy.value = false
+    aiApplying.value = null
+    aiProposal.value = null
+    aiDialog.value.prompt = ''
+  }
+  watch(
+    aiApplying,
+    (target) => aiDialogRef.value?.setOptions({ confirmDisabled: Boolean(target) }),
+    { flush: 'sync' }
+  )
+  const closeAiWorkspace = (): void => {
+    resetAiState()
+    void aiDialogRef.value?.handleClose(true)
+  }
+  watch(
+    [() => aiDialog.value.prompt, () => aiDialog.value.mode],
+    () => {
+      if (!aiBusy.value && !aiApplying.value) {
+        aiSequence++
+        aiProposal.value = null
+        aiDialogRef.value?.setOptions({
+          confirmText: aiDialog.value.mode === 'fix' ? '修复 SQL' : '生成 SQL'
+        })
+      }
+    },
+    { flush: 'sync' }
+  )
   const executionSource = ref<SqlExecutionTarget['source']>('statement')
-  const exporting = ref(false)
   const workbenchDrawerRef = ref<InstanceType<typeof WorkbenchDrawer>>()
-  const databaseMetadata = shallowRef<Api.DataCenter.SqlConsole.DatabaseMetadata | null>(null)
   const executing = ref(false)
+  const cancelling = ref(false)
+  const cancelRequested = ref(false)
+  let cancelExecution: (() => Promise<void>) | null = null
+  const executionWaitMs = ref<number | null>(null)
+  const executionTimeoutMs = ref<number | null>(null)
+  let executionStartedAt: number | null = null
+  let executionIsCurrent: (() => boolean) | null = null
+  const sampleExecutionWait = (): void => {
+    if (executionStartedAt !== null && executionIsCurrent?.())
+      executionWaitMs.value = Math.max(0, performance.now() - executionStartedAt)
+  }
+  const { pause: pauseExecutionClock, resume: resumeExecutionClock } = useIntervalFn(
+    sampleExecutionWait,
+    1000,
+    { immediate: false }
+  )
+  const resetExecutionState = (): void => {
+    executionSequence++
+    executing.value = false
+    cancelling.value = false
+    cancelRequested.value = false
+    cancelExecution = null
+    pauseExecutionClock()
+    executionStartedAt = null
+    executionIsCurrent = null
+    executionWaitMs.value = null
+    executionTimeoutMs.value = null
+  }
+  watch(
+    workspaceOwnerScope,
+    () => {
+      workspaceActionRevision.value++
+      resetExecutionState()
+      resetPlanState()
+      closeAiWorkspace()
+    },
+    { flush: 'sync' }
+  )
   const result = ref<Api.DataCenter.SqlConsole.SqlExecuteResponse | null>(null)
+  const validExecutionDuration = computed(
+    () =>
+      typeof result.value?.durationMs === 'number' &&
+      Number.isFinite(result.value.durationMs) &&
+      result.value.durationMs >= 0
+  )
+  const comparisonControlsRef = ref<InstanceType<typeof ResultComparisonControls>>()
+  const resultOwnerKey = computed(() =>
+    JSON.stringify([
+      databaseScope.value,
+      connection.value?.updatedAt,
+      dialect.value,
+      querySchema.value
+    ])
+  )
+  const resultSnapshotInput = computed<SqlResultSnapshotInput | null>(() =>
+    result.value?.status === 'ok' && isQueryResult.value
+      ? {
+          rows: result.value.rows || [],
+          columns: result.value.columns || [],
+          query: result.value.queryText || '',
+          label: connectionLabel.value,
+          truncated: Boolean(result.value.truncated)
+        }
+      : null
+  )
+  const queryCancelled = computed(() => result.value?.errorCode === 'SQL_QUERY_CANCELLED')
+  const handleCancel = async () => {
+    const isCurrent = executionIsCurrent
+    if (
+      !executing.value ||
+      !cancelExecution ||
+      cancelling.value ||
+      cancelRequested.value ||
+      !isCurrent?.()
+    )
+      return
+    const cancel = cancelExecution
+    cancelling.value = true
+    try {
+      await cancel()
+      if (isCurrent() && executing.value) cancelRequested.value = true
+    } catch (error) {
+      if (isCurrent() && executing.value)
+        ElMessage.warning(
+          getFriendlySupabaseErrorMessage(error, '取消查询失败，请重试或等待查询结束')
+        )
+    } finally {
+      if (isCurrent()) cancelling.value = false
+    }
+  }
   const editorPaneSize = ref<string | number>('50%')
   watch(
     compactResults,
@@ -942,60 +1467,34 @@
     },
     { immediate: true }
   )
-  const editorRef = ref<EditorInstance | null>(null)
-  const aiDialogRef = ref<ArtDialogExpose>()
-  const metadataLoading = ref(false)
-  const metadataError = ref<string | null>(null)
-  let metadataPromise: Promise<Api.DataCenter.SqlConsole.DatabaseMetadata> | null = null
-  let metadataSequence = 0
-  const loadedSchemas = new Set<string>()
-  const schemaPromises = new Map<string, Promise<void>>()
-  const ensureSchema = (schema: string): Promise<void> => {
-    if (!external.value || loadedSchemas.has(schema)) return Promise.resolve()
-    const previous = schemaPromises.get(schema)
-    if (previous) return previous
-    const target = connection.value
-    if (!target) return Promise.reject(new Error('连接未就绪，请打开连接管理重新连接执行端'))
-    const owner = scopeKey.value
-    const sequence = metadataSequence
-    const pending = fetchSqlConnectionMetadata(
-      gatewayBase.value,
-      tenantScopeValue(),
-      target.id,
-      schema
-    )
-      .then((value) => {
-        if (owner !== scopeKey.value || sequence !== metadataSequence) return
-        const metadata = databaseMetadata.value
-        if (!metadata) return
-        databaseMetadata.value = {
-          schemas: value.schemas,
-          tables: [
-            ...metadata.tables.filter((table) => table.tableSchema !== schema),
-            ...value.tables
-          ],
-          columns: [
-            ...metadata.columns.filter((column) => column.tableSchema !== schema),
-            ...value.columns
-          ],
-          functions: [
-            ...metadata.functions.filter((fn) => fn.routineSchema !== schema),
-            ...value.functions
-          ],
-          foreignKeys: [
-            ...metadata.foreignKeys.filter((key) => key.sourceSchema !== schema),
-            ...value.foreignKeys
-          ]
-        }
-        loadedSchemas.add(schema)
-        registerSqlMetadata(databaseMetadata.value)
-      })
-      .finally(() => {
-        if (owner === scopeKey.value && sequence === metadataSequence) schemaPromises.delete(schema)
-      })
-    schemaPromises.set(schema, pending)
-    return pending
-  }
+  const {
+    databaseMetadata,
+    metadataLoading,
+    metadataError,
+    getMetadata,
+    ensureSchema,
+    ensureTable,
+    ensureFunctions,
+    searchMetadata,
+    ensureQueryMetadata,
+    ensureAiMetadata,
+    resetMetadata,
+    preloadMetadata,
+    refreshMetadata
+  } = useSqlMetadata({
+    owner: () => scopeKey.value,
+    external: () => external.value,
+    connection: () => connection.value,
+    base: () => gatewayBase.value,
+    tenant: () => tenantScopeValue(),
+    dialect: () => dialect.value,
+    querySchema: () => querySchema.value,
+    publish: registerSqlMetadata
+  })
+  const tenantScopeValue = () =>
+    userStore.isPlatformSuper
+      ? (userStore.getUserInfo.userId && tenantScope.effectiveTenantId) || 'all'
+      : 'all'
   const selectQuerySchema = async (schema: string) => {
     if (executing.value) {
       ElMessage.info('查询执行中，请结束后再切换 schema')
@@ -1006,88 +1505,55 @@
     querySchema.value = schema
     try {
       await ensureQueryMetadata(schema)
-    } catch (error) {
+    } catch (cause) {
       if (owner === scopeKey.value)
         ElMessage.warning(
-          getFriendlySupabaseErrorMessage(error, 'schema 结构加载失败，请刷新后重试')
+          getFriendlySupabaseErrorMessage(cause, 'schema 结构加载失败，请刷新后重试')
         )
     }
   }
-  const tenantScopeValue = () =>
-    userStore.isPlatformSuper
-      ? (userStore.getUserInfo.userId && tenantScope.effectiveTenantId) || 'all'
-      : 'all'
-  const getMetadata = (): Promise<Api.DataCenter.SqlConsole.DatabaseMetadata> => {
-    if (metadataPromise) return metadataPromise
-    const sequence = ++metadataSequence
-    metadataLoading.value = true
-    metadataPromise = (
-      external.value
-        ? connection.value
-          ? fetchSqlConnectionMetadata(gatewayBase.value, tenantScopeValue(), connection.value.id)
-          : Promise.reject(new Error('连接未就绪，请打开连接管理重新连接执行端'))
-        : fetchDatabaseMetadata()
-    )
-      .then((metadata) => {
-        if (sequence !== metadataSequence) throw new Error('数据库结构加载已更新，请重试')
-        registerSqlMetadata(metadata)
-        databaseMetadata.value = metadata
-        metadataError.value = null
-        return metadata
-      })
-      .catch((error: unknown) => {
-        if (sequence !== metadataSequence) throw error
-        metadataPromise = null
-        metadataError.value = getFriendlySupabaseErrorMessage(
-          error,
-          '数据库结构加载失败，请稍后重试'
+  const completionError = ref<string | null>(null)
+  const loadCompletionMetadata = async (query: string, functions: boolean) => {
+    if (metadataError.value) return
+    const owner = scopeKey.value
+    try {
+      await ensureQueryMetadata(querySchema.value || undefined, query)
+      if (functions)
+        await ensureFunctions(
+          querySchema.value ||
+            (dialect.value === 'postgres' ? 'public' : connection.value?.database) ||
+            'public'
         )
-        throw error
-      })
-      .finally(() => {
-        if (sequence === metadataSequence) metadataLoading.value = false
-      })
-    return metadataPromise
+      if (owner === scopeKey.value) completionError.value = null
+    } catch (cause) {
+      if (owner === scopeKey.value)
+        completionError.value = getFriendlySupabaseErrorMessage(cause, '字段补全加载失败，请重试')
+      throw cause
+    }
   }
-  const ensureQueryMetadata = async (schema?: string) => {
-    const owner = scopeKey.value
-    const metadata = await getMetadata()
-    if (owner !== scopeKey.value) throw new Error('数据库连接已切换，请重新载入结构')
-    if (schema) await ensureSchema(schema)
-    if (owner !== scopeKey.value) throw new Error('数据库连接已切换，请重新载入结构')
-    return databaseMetadata.value || metadata
-  }
-  const preloadMetadata = (): void => {
-    const owner = scopeKey.value
-    void getMetadata()
-      .then(async () => {
-        const schema = querySchema.value || connection.value?.database
-        if (owner === scopeKey.value && dialect.value === 'dm' && schema) {
-          try {
-            await ensureQueryMetadata(schema)
-          } catch (error) {
-            if (owner === scopeKey.value)
-              ElMessage.warning(
-                getFriendlySupabaseErrorMessage(error, '当前 schema 结构加载失败，请重新选择或刷新')
-              )
-          }
+  const retryCompletionMetadata = () => {
+    if (metadataError.value) preloadMetadata()
+    else
+      void loadCompletionMetadata(editorRef.value?.getExecutionTarget().sql || '', true).catch(
+        () => {
+          /* Inline retry feedback owns this failure. */
         }
-      })
-      .catch(() => {
-        // 错误保留在可重试提示中，SQL 编辑与执行仍可继续。
-      })
+      )
   }
-  const refreshMetadata = (): void => {
-    if (metadataLoading.value) return
-    metadataPromise = null
-    loadedSchemas.clear()
-    schemaPromises.clear()
-    metadataSequence += 1
-    preloadMetadata()
+  let releaseMetadataLoader: (() => void) | undefined
+  const bindMetadataLoader = () => {
+    releaseMetadataLoader?.()
+    releaseMetadataLoader = registerSqlMetadataLoader(loadCompletionMetadata)
   }
-  onMounted(() => {
-    registerSqlMetadata({ schemas: [], tables: [], columns: [], functions: [], foreignKeys: [] })
-    preloadMetadata()
+  onMounted(bindMetadataLoader)
+  onBeforeUnmount(() => {
+    workspaceActionAlive = false
+    workspaceActionRevision.value++
+    resetExecutionState()
+    resetPlanState()
+    closeAiWorkspace()
+    releaseMetadataLoader?.()
+    resetMetadata()
   })
   const sqlErrorLocation = ref<SqlErrorLocation | null>(null)
   const isQueryResult = computed(
@@ -1113,42 +1579,23 @@
     pendingResource = null
     outlineDrawerRef.value?.handleClose()
     activeOffset.value = 0
-    executionSequence += 1
-    executing.value = false
-    aiSequence += 1
-    aiDialogRef.value?.handleClose()
-    aiDialog.value.prompt = ''
-    aiDialog.value.summary = ''
-    planSequence += 1
-    planLoading.value = false
-    planData.value = null
-    planQuery.value = ''
-    planError.value = null
-    planDrawerRef.value?.reset()
+    resetExecutionState()
     workbenchDrawerRef.value?.reset()
     result.value = null
     editorRef.value?.clearErrorMarkers()
-    metadataSequence += 1
-    metadataPromise = null
-    loadedSchemas.clear()
-    schemaPromises.clear()
-    databaseMetadata.value = null
-    metadataError.value = null
-    registerSqlMetadata({ schemas: [], tables: [], columns: [], functions: [], foreignKeys: [] })
+    resetMetadata()
+    completionError.value = null
+    bindMetadataLoader()
     preloadMetadata()
   })
   watch(
     querySchema,
     () => {
-      executionSequence++
-      executing.value = false
+      querySchemaRevision.value++
+      resetExecutionState()
       result.value = null
-      planSequence++
-      planLoading.value = false
-      planData.value = null
-      planDrawerRef.value?.reset()
-      aiSequence++
-      aiDialogRef.value?.handleClose()
+      resetPlanState()
+      closeAiWorkspace()
       editorRef.value?.clearErrorMarkers()
     },
     { flush: 'sync' }
@@ -1159,15 +1606,9 @@
     list: [{ name: 'result', label: '结果' }]
   })
 
-  const aiDialog = ref({
-    mode: 'generate' as 'generate' | 'fix',
-    prompt: '',
-    summary: ''
-  })
+  const aiErrorContext = computed(() => result.value?.status === 'error' && !queryCancelled.value)
 
-  const aiErrorContext = computed(() => result.value?.status === 'error')
-
-  // 把后端错误里的 LINE / ^ 信息整理成可读预览，方便在结果面板快速判断问题。
+  // 位置基于本次实际执行的语句；预览保留其行列和有界源码片段。
   const errorCaretPreview = computed(() => {
     if (!result.value?.queryText || !sqlErrorLocation.value) return ''
     return buildCaretDiagnostic(result.value.queryText, sqlErrorLocation.value)
@@ -1175,13 +1616,20 @@
 
   // 执行逻辑同时负责清空旧标记，并在失败时把错误位置重新画回 Monaco。
   const handleExecute = async () => {
-    if (executing.value) return
-    if (!(await allowReplaceResult()) || executing.value) return
+    if (!workspaceActionAlive || executing.value) return
+    const ownerKey = scopeKey.value
+    const sourceIsCurrent = captureWorkspaceActionGuard()
+    if (!(await allowReplaceResult()) || !sourceIsCurrent() || executing.value) return
     if (!canExecute.value) {
       ElMessage.warning('数据库管理操作仅限平台超级管理员，可继续浏览结构或使用 AI 生成 SQL')
       return
     }
-    const target = editorRef.value?.getExecutionTarget()
+    if (external.value && !connection.value) {
+      ElMessage.warning('当前数据库连接未就绪，请先重新连接执行端')
+      return
+    }
+    const sourceEditor = editorRef.value
+    const target = sourceEditor?.getExecutionTarget()
     const sqlToExecute = target?.sql || ''
 
     if (!sqlToExecute || !sqlToExecute.trim()) {
@@ -1190,20 +1638,78 @@
     }
 
     executing.value = true
+    cancelling.value = false
+    cancelRequested.value = false
     const sequence = ++executionSequence
-    const ownerKey = scopeKey.value
+    const isCurrent = (): boolean => sourceIsCurrent() && sequence === executionSequence
+    const requestId = crypto.randomUUID()
+    cancelExecution = createQueryCancel(requestId)
     const sourceSql = sqlCode.value
+    const sourceRevision = sourceEditor?.getContentRevision()
+    const externalQuery = external.value
     const schemaToExecute = dialect.value === 'dm' ? querySchema.value : undefined
     result.value = null
     sqlErrorLocation.value = null
     editorRef.value?.clearErrorMarkers()
 
+    const reportFailure = (cause: unknown, message: string): void => {
+      const failure = normalizeSqlConsoleError(cause)
+      const cancelled = failure.code === 'SQL_QUERY_CANCELLED'
+      let location: SqlErrorLocation | null = null
+      if (!cancelled && !externalQuery) {
+        if (failure.hasPosition) {
+          if (
+            failure.hasQuery &&
+            failure.query === sqlToExecute &&
+            (typeof failure.position === 'number' || typeof failure.position === 'string')
+          )
+            location = parseSqlErrorLocation(failure.message || '', {
+              query: sqlToExecute,
+              position: failure.position
+            })
+        } else if (!failure.hasQuery || failure.query === sqlToExecute) {
+          location = parseSqlErrorLocation(failure.message || '', { query: sqlToExecute })
+        }
+      }
+      // 外接执行端会重新排版 SQL，当前没有可验证的原文坐标，不推测位置。
+      sqlErrorLocation.value = location
+      if (
+        sourceEditor &&
+        sourceEditor === editorRef.value &&
+        sourceSql === sqlCode.value &&
+        sourceRevision === sourceEditor.getContentRevision()
+      )
+        sourceEditor.applyErrorMarker(location, message, target?.startOffset)
+      result.value = {
+        status: 'error',
+        errorCode: failure.code,
+        errorMessage: message,
+        durationMs: failure.durationMs,
+        queryText: sqlToExecute
+      }
+      recordExecution(
+        {
+          sql: sqlToExecute,
+          status: cancelled ? 'cancelled' : 'error',
+          durationMs: failure.durationMs,
+          schema: schemaToExecute
+        },
+        ownerKey
+      )
+    }
+
     try {
       const request = {
+        requestId,
         query: sqlToExecute,
         maxRows: maxRows.value,
         timeoutMs: timeoutMs.value
       }
+      executionIsCurrent = isCurrent
+      executionStartedAt = performance.now()
+      executionWaitMs.value = 0
+      executionTimeoutMs.value = request.timeoutMs
+      resumeExecutionClock()
       const { data, error } =
         external.value && connection.value
           ? {
@@ -1220,29 +1726,10 @@
               error: null
             }
           : await executeSql(request)
-      if (ownerKey !== scopeKey.value || sequence !== executionSequence) return
-      if (error) {
-        const sqlError = normalizeSqlConsoleError(error)
-        const errorMessage = sqlError.message || '执行 SQL 时发生错误'
-        const location = parseSqlErrorLocation(errorMessage)
-        sqlErrorLocation.value = location
-        if (sourceSql === sqlCode.value)
-          editorRef.value?.applyErrorMarker(location, errorMessage, target?.startOffset)
-        result.value = {
-          status: 'error',
-          errorMessage,
-          durationMs: sqlError.durationMs,
-          queryText: sqlToExecute
-        }
-        recordExecution(
-          {
-            sql: sqlToExecute,
-            status: 'error',
-            durationMs: sqlError.durationMs,
-            schema: schemaToExecute
-          },
-          ownerKey
-        )
+      if (!isCurrent()) return
+      if (error || data?.status === 'error') {
+        const failure = error || data
+        reportFailure(failure, normalizeSqlConsoleError(failure).message || '执行 SQL 时发生错误')
         return
       }
 
@@ -1251,7 +1738,10 @@
         recordExecution(
           {
             sql: sqlToExecute,
-            status: data.status,
+            status:
+              normalizeSqlConsoleError(data).code === 'SQL_QUERY_CANCELLED'
+                ? 'cancelled'
+                : data.status,
             durationMs: data.durationMs,
             rowCount: data.rowCount,
             schema: schemaToExecute
@@ -1261,16 +1751,25 @@
       sqlErrorLocation.value = null
       editorRef.value?.clearErrorMarkers()
     } catch (error: unknown) {
-      if (ownerKey !== scopeKey.value || sequence !== executionSequence) return
+      if (!isCurrent()) return
       const errorMessage = getFriendlySupabaseErrorMessage(error, 'SQL 执行失败，请稍后重试')
-      result.value = { status: 'error', errorMessage, queryText: sqlToExecute }
-      recordExecution({ sql: sqlToExecute, status: 'error', schema: schemaToExecute }, ownerKey)
+      reportFailure(error, errorMessage)
     } finally {
-      if (sequence === executionSequence) executing.value = false
+      if (isCurrent()) {
+        sampleExecutionWait()
+        pauseExecutionClock()
+        executionStartedAt = null
+        executionIsCurrent = null
+        executing.value = false
+        cancelling.value = false
+        cancelRequested.value = false
+        cancelExecution = null
+      }
     }
   }
 
   const handleExplain = async (retry = false) => {
+    if (!workspaceActionAlive) return
     if (dialect.value === 'dm') return
     if (planLoading.value || executing.value || !canExecute.value) return
     const query = retry ? planQuery.value : editorRef.value?.getExecutionTarget().sql || ''
@@ -1279,7 +1778,15 @@
       return
     }
     const sequence = ++planSequence
-    const ownerKey = scopeKey.value
+    const targetDialect = dialect.value
+    const workspaceIsCurrent = captureWorkspaceActionGuard()
+    const isCurrent = (): boolean => workspaceIsCurrent() && sequence === planSequence
+    planIsCurrent = isCurrent
+    const requestId = crypto.randomUUID()
+    cancelPlan = createQueryCancel(requestId)
+    planCancelled.value = false
+    planCancelling.value = false
+    planCancelRequested.value = false
     planQuery.value = query
     planData.value = null
     planError.value = null
@@ -1294,15 +1801,23 @@
                   gatewayBase.value,
                   tenantScopeValue(),
                   connection.value.id,
-                  { query, timeoutMs: timeoutMs.value, maxRows: maxRows.value, action: 'explain' }
+                  {
+                    query,
+                    requestId,
+                    timeoutMs: timeoutMs.value,
+                    maxRows: maxRows.value,
+                    action: 'explain'
+                  }
                 ),
-                dialect.value
+                targetDialect
               ),
               error: null
             }
-          : await explainSql({ query, timeoutMs: timeoutMs.value })
-      if (sequence !== planSequence || ownerKey !== scopeKey.value) return
+          : await explainSql({ query, requestId, timeoutMs: timeoutMs.value })
+      if (!isCurrent()) return
       if (error || data?.status === 'error') {
+        planCancelled.value =
+          (data?.errorCode || normalizeSqlConsoleError(error).code) === 'SQL_QUERY_CANCELLED'
         planError.value =
           data?.errorMessage ||
           normalizeSqlConsoleError(error).message ||
@@ -1311,44 +1826,18 @@
         planData.value = data
       }
     } catch (error: unknown) {
-      if (sequence === planSequence && ownerKey === scopeKey.value)
+      if (isCurrent()) {
+        planCancelled.value = normalizeSqlConsoleError(error).code === 'SQL_QUERY_CANCELLED'
         planError.value = getFriendlySupabaseErrorMessage(error, '执行计划加载失败，请重试')
+      }
     } finally {
-      if (sequence === planSequence) planLoading.value = false
-    }
-  }
-
-  const handleExport = async () => {
-    if (exporting.value || executing.value || !result.value?.rows?.length) return
-    const ownerKey = scopeKey.value
-    exporting.value = true
-    try {
-      await exportExcel({
-        data: result.value.rows,
-        columns: (result.value.columns?.length
-          ? result.value.columns
-          : Object.keys(result.value.rows[0]).map((name) => ({ name }))
-        ).map((column) => ({
-          key: column.name,
-          title: column.name,
-          formatter: (value: unknown) =>
-            value === null
-              ? 'NULL'
-              : typeof value === 'object'
-                ? JSON.stringify(value)
-                : String(value ?? '')
-        })),
-        filename: 'SQL查询结果',
-        filenameSuffix: 'datetime',
-        assertCanDownload: () => {
-          if (scopeKey.value !== ownerKey) throw new Error('账号或租户已切换，请重新查询后导出')
-        }
-      })
-      ElMessage.success('查询结果已导出')
-    } catch (error: unknown) {
-      ElMessage.error(getFriendlySupabaseErrorMessage(error, '导出失败，请重试'))
-    } finally {
-      exporting.value = false
+      if (isCurrent()) {
+        planLoading.value = false
+        planCancelling.value = false
+        planCancelRequested.value = false
+        cancelPlan = null
+        planIsCurrent = null
+      }
     }
   }
 
@@ -1362,13 +1851,15 @@
     editorRef.value?.clearErrorMarkers()
     sqlErrorLocation.value = null
     result.value = null
+    comparisonControlsRef.value?.reset()
   }
 
   const openAiDialog = (mode: 'generate' | 'fix' = 'generate') => {
+    if (!workspaceActionAlive) return
+    resetAiState()
     // 用户填写提示词时并行预取 schema，生成按钮不再额外串行等待元数据。
     preloadMetadata()
     aiDialog.value.mode = mode
-    aiDialog.value.summary = ''
 
     if (mode === 'fix') {
       aiDialog.value.prompt = result.value?.errorMessage
@@ -1388,68 +1879,133 @@
       size: 'md',
       contentMaxHeight: '60vh',
       confirmText: mode === 'fix' ? '修复 SQL' : '生成 SQL',
+      autoClose: false,
+      onClose: () => {
+        resetAiState()
+        return true
+      },
       onConfirm: handleAiGenerate
     })
 
   // AI 生成会带上当前 schema 摘要，避免模型在表名和关联关系上瞎猜。
   const handleAiGenerate = async (): Promise<boolean> => {
+    if (!workspaceActionAlive || aiBusy.value || aiApplying.value) return false
     if (!aiDialog.value.prompt.trim()) {
       ElMessage.warning('请输入需求描述')
       return false
     }
 
-    const ownerKey = scopeKey.value
-    const sequence = ++aiSequence
-    try {
-      const schema =
+    if (external.value && !connection.value) {
+      ElMessage.warning('当前数据库连接未就绪，请先重新连接执行端')
+      return false
+    }
+    const request: Api.DataCenter.SqlConsole.SqlAiGenerateRequest = {
+      prompt: aiDialog.value.prompt,
+      mode: aiDialog.value.mode,
+      currentSql: sqlCode.value,
+      dialect: dialect.value,
+      schema:
         dialect.value === 'dm'
           ? querySchema.value || connection.value?.database || undefined
-          : undefined
-      const metadata = await ensureQueryMetadata(schema)
-      if (ownerKey !== scopeKey.value || sequence !== aiSequence) return false
+          : undefined,
+      connectionKind: external.value ? 'external' : 'builtin'
+    }
+    const sourceEditor = editorRef.value
+    const sourceRevision = sourceEditor?.getContentRevision()
+    const sourceSchema = querySchema.value
+    const sequence = ++aiSequence
+    const workspaceIsCurrent = captureWorkspaceActionGuard()
+    const isCurrent = (): boolean => workspaceIsCurrent() && sequence === aiSequence
+    aiBusy.value = true
+    aiProposal.value = null
+    try {
+      const metadata = await ensureAiMetadata(
+        request.prompt,
+        request.currentSql || '',
+        request.schema
+      )
+      if (!isCurrent()) return false
       const aiResponse = await generateSqlByAi({
-        prompt: aiDialog.value.prompt,
-        dialect: dialect.value,
-        schema,
-        connectionKind: external.value ? 'external' : 'builtin',
-        mode: aiDialog.value.mode,
-        currentSql: sqlCode.value,
+        ...request,
         metadata
       })
       const { data, error } = aiResponse
-      if (ownerKey !== scopeKey.value || sequence !== aiSequence) return false
+      if (!isCurrent()) return false
 
-      if (error || !data?.sql) {
-        const aiError = normalizeSqlConsoleError(error)
+      if (error || typeof data?.sql !== 'string' || !data.sql.trim()) {
         ElMessage.error(
-          aiError.message || 'AI SQL 功能未配置。请在 Supabase Edge Function 中配置模型密钥。'
+          getFriendlySupabaseErrorMessage(
+            error || data,
+            'AI SQL 暂不可用，请稍后重试或联系管理员检查 AI 配置。'
+          )
         )
         return false
       }
 
-      editorRef.value?.setSql(data.sql)
-      editorRef.value?.clearErrorMarkers()
-      sqlErrorLocation.value = null
-      aiDialog.value.summary = data.summary || ''
-      const warnings = (data.warnings ?? []).filter(Boolean)
-      if (warnings.length) {
-        ElMessage.warning({
-          message: `AI SQL 已写入编辑器，请确认：${warnings.join('；')}`,
-          duration: 6000,
-          showClose: true
-        })
-      } else {
-        ElMessage.success(
-          data.model ? `AI SQL 已写入编辑器（${data.model}）` : 'AI SQL 已写入编辑器'
-        )
+      aiProposal.value = {
+        sql: data.sql,
+        summary: typeof data.summary === 'string' ? data.summary : undefined,
+        warnings: Array.isArray(data.warnings)
+          ? data.warnings.filter((warning) => typeof warning === 'string' && warning.trim())
+          : [],
+        model: typeof data.model === 'string' ? data.model : undefined,
+        querySchema: sourceSchema,
+        sourceSql: request.currentSql || '',
+        sourceEditor,
+        sourceRevision,
+        isCurrent
       }
       return true
     } catch (error) {
-      if (ownerKey !== scopeKey.value || sequence !== aiSequence) return false
-      ElMessage.error(
-        metadataError.value || getFriendlySupabaseErrorMessage(error, 'AI SQL 生成失败，请稍后重试')
-      )
+      if (!isCurrent()) return false
+      ElMessage.error(getFriendlySupabaseErrorMessage(error, 'AI SQL 生成失败，请稍后重试'))
       return false
+    } finally {
+      if (isCurrent()) aiBusy.value = false
+    }
+  }
+
+  const applyAiSql = async (target: 'current' | 'new'): Promise<void> => {
+    const proposal = aiProposal.value
+    if (
+      !proposal ||
+      aiBusy.value ||
+      aiApplying.value ||
+      aiLoadDisabledReason.value ||
+      !proposal.isCurrent()
+    )
+      return
+    if (target === 'new' && historyNewTabDisabledReason.value) return
+    aiApplying.value = target
+    try {
+      if (target === 'new') {
+        await openSqlInNewTab(
+          proposal.sql,
+          proposal.querySchema,
+          () => proposal.isCurrent() && aiProposal.value === proposal
+        )
+        return
+      }
+      const sourceEditor = editorRef.value
+      if (!sourceEditor) {
+        ElMessage.info('编辑器尚未就绪，请稍后重试')
+        return
+      }
+      const revision = sourceEditor.getContentRevision()
+      if (
+        !(await allowReplaceResult()) ||
+        !proposal.isCurrent() ||
+        aiProposal.value !== proposal ||
+        aiLoadDisabledReason.value ||
+        sourceEditor !== editorRef.value ||
+        revision !== sourceEditor.getContentRevision()
+      )
+        return
+      result.value = null
+      loadSql(proposal.sql, proposal.querySchema)
+      void aiDialogRef.value?.handleClose()
+    } finally {
+      if (proposal.isCurrent() && aiProposal.value === proposal) aiApplying.value = null
     }
   }
 </script>
@@ -1645,12 +2201,6 @@
         display: flex;
         gap: 8px;
         align-items: center;
-
-        .execution-info {
-          font-size: 12px;
-          color: var(--el-text-color-secondary);
-          white-space: nowrap;
-        }
       }
 
       .workbench-status {
@@ -1696,11 +2246,6 @@
         overflow-wrap: anywhere;
         white-space: pre-wrap;
       }
-    }
-
-    > .result-section__loading {
-      top: 40px;
-      height: auto;
     }
 
     > .tabs-content {
@@ -1839,10 +2384,6 @@
       gap: 4px !important;
     }
 
-    .execution-info {
-      display: none;
-    }
-
     .result-tabs {
       min-width: 64px;
     }
@@ -1857,10 +2398,6 @@
 
       .tabs-actions {
         gap: 4px;
-      }
-
-      .execution-info {
-        display: none;
       }
 
       .result-tabs {
@@ -1882,13 +2419,5 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-
-    .ai-summary {
-      padding: 12px 14px;
-      line-height: 1.6;
-      color: var(--el-text-color-secondary);
-      background: var(--el-fill-color-light);
-      border-radius: var(--el-border-radius-base);
-    }
   }
 </style>

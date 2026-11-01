@@ -111,87 +111,108 @@
             size="compact"
             @retry="refresh"
           >
-            <ElScrollbar v-if="keyword.trim()" class="min-h-0 flex-1"
-              ><div class="flex flex-col gap-1 px-2 pb-2">
-                <p class="m-0 px-1 text-xs leading-5 text-g-600"
-                  >已加载对象中的匹配 · {{ matches.length + functionMatches.length }} 项</p
-                >
-                <div
-                  v-for="node in searchNodes"
-                  :key="node.key"
-                  class="sql-resource-panel__match-row"
-                  @contextmenu.prevent.stop="contextMenu($event, node)"
-                  @keydown="nodeKeydown($event, node)"
-                >
-                  <button
-                    type="button"
-                    class="sql-resource-panel__match min-w-0 flex-1"
-                    :aria-label="
-                      node.kind === 'table'
-                        ? `查看对象 ${node.schema}.${node.name}`
-                        : `插入函数 ${node.schema}.${node.name}`
-                    "
-                    :title="`${node.schema}.${node.name}`"
-                    @click="
-                      node.kind === 'table' ? emit('table', node.schema, node.name!) : insert(node)
-                    "
+            <ArtAsyncState
+              v-if="keyword.trim()"
+              class="min-h-0 flex-1"
+              :loading="metadataSearch.state.loading"
+              :error="metadataSearch.state.error"
+              :min-height="120"
+              error-title="数据库目录搜索失败"
+              @retry="metadataSearch.execute"
+            >
+              <ElScrollbar class="min-h-0 flex-1"
+                ><div class="flex flex-col gap-1 px-2 pb-2">
+                  <p class="m-0 px-1 text-xs leading-5 text-g-600"
+                    >{{ searchMetadata ? '数据库目录搜索' : '已加载对象中的匹配' }} ·
+                    {{ matches.length + functionMatches.length }} 项</p
                   >
-                    <span class="art-icon-label min-w-0 text-xs"
-                      ><ArtSvgIcon :icon="node.icon" /><span class="truncate">{{
-                        node.label
-                      }}</span></span
+                  <div
+                    v-for="node in searchNodes"
+                    :key="node.key"
+                    class="sql-resource-panel__match-row"
+                    @contextmenu.prevent.stop="contextMenu($event, node)"
+                    @keydown="nodeKeydown($event, node)"
+                  >
+                    <button
+                      type="button"
+                      class="sql-resource-panel__match min-w-0 flex-1"
+                      :aria-label="
+                        node.kind === 'table'
+                          ? `查看对象 ${node.schema}.${node.name}`
+                          : `插入函数 ${node.schema}.${node.name}`
+                      "
+                      :title="`${node.schema}.${node.name}`"
+                      @click="
+                        node.kind === 'table'
+                          ? emit('table', node.schema, node.name!)
+                          : insert(node)
+                      "
                     >
-                    <span class="w-full truncate text-xs text-g-600"
-                      >{{ node.schema }} · {{ node.description }}</span
-                    >
-                    <span
-                      v-if="node.table && matchedColumns(node.table)"
-                      class="w-full truncate text-xs text-primary"
-                      >{{ matchedColumns(node.table) }}</span
-                    >
-                  </button>
-                  <div class="flex shrink-0 items-center gap-1 pr-1">
-                    <ArtIconButton
-                      v-if="node.kind === 'table'"
-                      size="small"
-                      :icon="isPinned(node) ? 'ri:star-fill' : 'ri:star-line'"
-                      :label="`${isPinned(node) ? '取消收藏' : '收藏'}对象 ${node.name}`"
-                      @click="emit('pin', { schema: node.schema, name: node.name! })"
-                    />
-                    <ArtIconButton
-                      v-if="node.kind === 'table'"
-                      size="small"
-                      icon="ri:file-add-line"
-                      :label="`新页签查询 ${node.name}`"
-                      @click="openTableQuery(node)"
-                    />
-                    <ArtIconButton
-                      v-else
-                      size="small"
-                      icon="ri:corner-down-left-line"
-                      :label="`插入 ${node.label}`"
-                      @click="insert(node)"
-                    />
-                    <ArtIconButton
-                      size="small"
-                      icon="ri:more-2-fill"
-                      :label="`更多操作 ${node.label}`"
-                      @click="contextMenu($event, node)"
-                    />
+                      <span class="art-icon-label min-w-0 text-xs"
+                        ><ArtSvgIcon :icon="node.icon" /><span class="truncate">{{
+                          node.label
+                        }}</span></span
+                      >
+                      <span class="w-full truncate text-xs text-g-600"
+                        >{{ node.schema }} · {{ node.description }}</span
+                      >
+                      <span
+                        v-if="node.table && matchedColumns(node.table)"
+                        class="w-full truncate text-xs text-primary"
+                        >{{ matchedColumns(node.table) }}</span
+                      >
+                    </button>
+                    <div class="flex shrink-0 items-center gap-1 pr-1">
+                      <ArtIconButton
+                        v-if="node.kind === 'table'"
+                        size="small"
+                        :icon="isPinned(node) ? 'ri:star-fill' : 'ri:star-line'"
+                        :label="`${isPinned(node) ? '取消收藏' : '收藏'}对象 ${node.name}`"
+                        @click="emit('pin', { schema: node.schema, name: node.name! })"
+                      />
+                      <ArtIconButton
+                        v-if="node.kind === 'table'"
+                        size="small"
+                        icon="ri:file-add-line"
+                        :loading="loadingKeys.has(node.key)"
+                        :label="`新页签查询 ${node.name}`"
+                        @click="openTableQuery(node)"
+                      />
+                      <ArtIconButton
+                        v-else
+                        size="small"
+                        icon="ri:corner-down-left-line"
+                        :label="`插入 ${node.label}`"
+                        @click="insert(node)"
+                      />
+                      <ArtIconButton
+                        size="small"
+                        icon="ri:more-2-fill"
+                        :loading="loadingKeys.has(node.key)"
+                        :label="`更多操作 ${node.label}`"
+                        @click="contextMenu($event, node)"
+                      />
+                    </div>
                   </div>
-                </div>
-                <p
-                  v-if="matches.length + functionMatches.length > 100"
-                  class="m-0 px-1 text-xs text-g-600"
-                  >仅展示前 100 项，继续输入名称可缩小范围。</p
-                >
-                <ArtEmptyState
-                  v-if="!matches.length && !functionMatches.length"
-                  title="没有匹配的已加载对象"
-                  description="展开 schema 加载更多对象后再搜索"
-                  size="compact"
-                /> </div
-            ></ElScrollbar>
+                  <p
+                    v-if="
+                      matches.length + functionMatches.length > 100 ||
+                      metadataSearch.state.result?.searchTruncated
+                    "
+                    class="m-0 px-1 text-xs text-g-600"
+                    >仅展示前 100 项，继续输入名称可缩小范围。</p
+                  >
+                  <ArtEmptyState
+                    v-if="!matches.length && !functionMatches.length"
+                    :title="searchMetadata ? '没有匹配的数据库对象' : '没有匹配的已加载对象'"
+                    :description="
+                      searchMetadata
+                        ? '请更换表名、字段、函数或注释关键词后重试'
+                        : '展开 schema 加载更多对象后再搜索'
+                    "
+                    size="compact"
+                  /> </div></ElScrollbar
+            ></ArtAsyncState>
             <div v-else class="sql-resource-panel__tree-viewport">
               <ElAutoResizer
                 ><template #default="{ height }">
@@ -331,8 +352,6 @@
                 <ArtForm
                   v-model="savedName"
                   :items="[{ key: 'name', label: '收藏名称', span: 24, props: { maxlength: 80 } }]"
-                  :show-submit="false"
-                  :show-reset="false"
                 />
                 <ElButton
                   size="small"
@@ -435,6 +454,8 @@
   } from '@/utils/sql-workbench'
   import { isHiddenSqlSchema } from '@/utils/sql-connections'
   import { copyTextToClipboard } from '@/utils/file/clipboard'
+  import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
+  import { useSqlMetadataSearch, type SqlMetadataSearch } from './use-sql-metadata-search'
   import type { SqlDialect } from '@/types/sql-connections'
   import type { SqlObjectLocation, SavedSqlQuery } from './use-sql-tools'
   import ArtForm from '@/components/core/forms/art-form/index.vue'
@@ -489,6 +510,9 @@
     activeOffset: number
     dialect: SqlDialect
     ensureSchema: (schema: string) => Promise<void>
+    ensureTable?: (schema: string, name: string) => Promise<void>
+    ensureFunctions?: (schema: string) => Promise<void>
+    searchMetadata?: SqlMetadataSearch
     statementPreference: boolean | null
     pins: SqlObjectLocation[]
     queries: SavedSqlQuery[]
@@ -510,6 +534,7 @@
     'query-schema': [schema: string]
   }>()
   const keyword = ref('')
+  const metadataSearch = useSqlMetadataSearch(keyword, () => props.searchMetadata)
   const savedName = ref({ name: '' })
   const queryPopoverOpen = ref(false)
   const saveNamedQuery = () => {
@@ -534,6 +559,7 @@
   const isPinned = (data: ResourceNode) =>
     props.pins.some((pin) => pin.schema === data.schema && pin.name === data.name)
   const matchedColumns = (table: SqlTableRef) =>
+    table.matchedColumns?.join(' · ') ||
     table.columns
       .filter((column) =>
         `${column.name} ${column.description || ''}`
@@ -676,20 +702,27 @@
     )
   const matches = computed(() => {
     const query = keyword.value.trim().toLowerCase()
-    return (props.metadata?.tables || []).filter(
+    return (
+      (props.searchMetadata ? metadataSearch.state.result : props.metadata)?.tables || []
+    ).filter(
       (table) =>
         (showSystem.value || !isHiddenSqlSchema(table.tableSchema)) &&
-        [
-          table.tableSchema,
-          table.tableName,
-          table.description,
-          ...table.columns.flatMap((column) => [column.name, column.description])
-        ].some((value) => value?.toLowerCase().includes(query))
+        (metadataSearch.state.result?.metadataMode === 'search' ||
+          Boolean(table.matchedColumns?.length) ||
+          [
+            table.tableSchema,
+            table.tableName,
+            table.description,
+            ...table.columns.flatMap((column) => [column.name, column.description]),
+            ...(table.matchedColumns || [])
+          ].some((value) => value?.toLowerCase().includes(query)))
     )
   })
   const functionMatches = computed(() => {
     const query = keyword.value.trim().toLowerCase()
-    return (props.metadata?.functions || []).filter(
+    return (
+      (props.searchMetadata ? metadataSearch.state.result : props.metadata)?.functions || []
+    ).filter(
       (fn) =>
         (showSystem.value || !isHiddenSqlSchema(fn.routineSchema)) &&
         `${fn.routineSchema} ${fn.routineName} ${fn.returnType}`.toLowerCase().includes(query)
@@ -723,7 +756,7 @@
           schema: table.tableSchema,
           name: table.tableName,
           table,
-          description: table.description || `${table.columns.length} 个字段`
+          description: table.description || `${table.columnCount ?? table.columns.length} 个字段`
         }
       )
     ),
@@ -737,7 +770,46 @@
       })
     )
   ])
-  const openTableQuery = (node: ResourceNode) => {
+  const canonicalTables = computed(
+    () =>
+      new Map(
+        (props.metadata?.tables || []).map((table) => [
+          JSON.stringify([table.tableSchema, table.tableName]),
+          table
+        ])
+      )
+  )
+  const currentTable = (data: ResourceNode): ResourceNode => {
+    const table =
+      data.table &&
+      canonicalTables.value.get(JSON.stringify([data.table.tableSchema, data.table.tableName]))
+    return table ? { ...data, table } : data
+  }
+  const ensureNodeTable = async (node: ResourceNode): Promise<ResourceNode> => {
+    let data = currentTable(node)
+    if (data.table?.detailsLoaded === false) {
+      if (!props.ensureTable) throw new Error('对象详情尚未加载，请刷新数据库结构后重试')
+      const revision = treeRevision
+      loadingKeys.add(data.key)
+      try {
+        await props.ensureTable(data.table.tableSchema, data.table.tableName)
+      } finally {
+        if (!disposed && revision === treeRevision) loadingKeys.delete(data.key)
+      }
+      if (disposed || revision !== treeRevision) throw new Error('数据库结构已切换，请重新选择对象')
+      data = currentTable(data)
+      if (data.table?.detailsLoaded === false) throw new Error('对象详情加载失败，请展开该表重试')
+    }
+    return data
+  }
+  const openTableQuery = async (value: ResourceNode) => {
+    let node: ResourceNode
+    try {
+      node = await ensureNodeTable(value)
+    } catch (cause) {
+      ElMessage.warning(getFriendlySupabaseErrorMessage(cause, '对象结构加载失败，请展开该表重试'))
+      return
+    }
     if (!node.table) return
     const sql = buildSqlTableTemplates(node.table, props.dialect).find(
       (item) => item.kind === 'select'
@@ -773,7 +845,8 @@
         )
     }
     if (data.kind === 'functions') {
-      return (props.metadata?.functions || [])
+      await props.ensureFunctions?.(data.schema)
+      const nodes = (props.metadata?.functions || [])
         .filter((fn) => fn.routineSchema === data.schema)
         .map((fn) =>
           make('function', fn.routineName, data, 'ri:function-line', {
@@ -782,8 +855,16 @@
             description: fn.returnType
           })
         )
+      if (props.metadata?.functionsTruncatedSchemas?.includes(data.schema))
+        nodes.push(
+          make('detail', '仅展示前 2000 个函数，请搜索名称缩小范围', data, 'ri:information-line', {
+            leaf: true
+          })
+        )
+      return nodes
     }
     if (data.kind === 'table') {
+      data = await ensureNodeTable(data)
       return [
         make('columns', `字段 · ${data.table?.columns.length || 0}`, data, 'ri:list-check'),
         make('indexes', '索引', data, 'ri:key-2-line'),
@@ -834,8 +915,9 @@
     }
     return []
   }
-  const attachChildren = (data: ResourceNode): ResourceNode =>
-    data.leaf
+  const attachChildren = (value: ResourceNode): ResourceNode => {
+    const data = currentTable(value)
+    return data.leaf
       ? data
       : {
           ...data,
@@ -845,6 +927,7 @@
             ]
           ).map(attachChildren)
         }
+  }
   const resourceNodes = computed(() =>
     (props.metadata?.schemas || [])
       .filter((schema) => showSystem.value || !isHiddenSqlSchema(schema))
@@ -936,21 +1019,31 @@
     if (data.kind === 'schema' && props.dialect === 'dm') emit('query-schema', data.schema)
     else insert(data)
   }
-  const contextMenu = (event: Event, data: ResourceNode) => {
+  const contextMenu = async (event: Event, value: ResourceNode) => {
     if (!(event instanceof MouseEvent)) return
-    if (!hasMenu(data)) return
+    if (!hasMenu(value)) return
     event.preventDefault()
-    selected.value = data
-    currentKey.value = data.key
     const bounds =
       event.currentTarget instanceof HTMLElement
         ? event.currentTarget.getBoundingClientRect()
         : undefined
-    menuRef.value?.show(
+    const position =
       event.type === 'click' && event.detail === 0 && bounds
         ? new MouseEvent('contextmenu', { clientX: bounds.left, clientY: bounds.bottom })
         : event
-    )
+    const revision = treeRevision
+    try {
+      const data = await ensureNodeTable(value)
+      if (disposed || revision !== treeRevision) return
+      selected.value = data
+      currentKey.value = data.key
+      menuRef.value?.show(position)
+    } catch (cause) {
+      if (!disposed && revision === treeRevision)
+        ElMessage.warning(
+          getFriendlySupabaseErrorMessage(cause, '对象结构加载失败，请展开该表重试')
+        )
+    }
   }
   const hasMenu = (data: ResourceNode) =>
     ['schema', 'table', 'column', 'function', 'index', 'foreign'].includes(data.kind)
@@ -967,7 +1060,9 @@
     )
   }
   const selectMenu = async (item: MenuItemType) => {
-    const data = selected.value
+    const value = selected.value
+    if (!value) return
+    const data = currentTable(value)
     if (!data) return
     if (item.key === 'query-schema') {
       emit('query-schema', data.schema)
@@ -1035,12 +1130,19 @@
   }
   const refresh = () => {
     resetTree()
+    metadataSearch.reset()
     emit('refresh')
   }
   watch(
     () => JSON.stringify(props.metadata?.schemas || []),
     () => {
       resetTree()
+    }
+  )
+  watch(
+    () => props.loading,
+    (loading) => {
+      if (loading) resetTree()
     }
   )
 </script>

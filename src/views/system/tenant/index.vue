@@ -181,6 +181,7 @@
       type: 'delete',
       label: '批量停用',
       permission: 'System:Tenant:Delete',
+      rowAction: false,
       content: ({ selectedCount }: ArtTableQueryHeaderActionContext) =>
         `确定停用选中的 ${selectedCount} 个租户吗？账号将不能继续使用，历史数据仍会保留。`,
       onClick: async ({ selectedRows }) => {
@@ -399,7 +400,7 @@
   }
 
   const handleDelete = async (row: Tenant): Promise<void> => {
-    if (!row.id) return
+    if (!row.id || isSystemTenant(row) || row.status !== '1') return
 
     try {
       await confirmAction(
@@ -426,7 +427,7 @@
   }
 
   const handleEnable = async (row: Tenant): Promise<void> => {
-    if (!row.id) return
+    if (!row.id || isSystemTenant(row) || row.status === '1') return
     try {
       await activateTenant(row.id)
       await tableQueryRef.value?.refreshUpdate()

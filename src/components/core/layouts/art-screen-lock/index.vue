@@ -34,12 +34,9 @@
 
       <ArtForm
         ref="formRef"
-        :model-value="formData"
-        @update:model-value="replaceReactiveModel(formData, $event)"
+        v-model="formData"
         custom-layout
         root-class="lock-screen-form"
-        :show-reset="false"
-        :show-submit="false"
         :rules="rules"
         @submit="handleLock"
       >
@@ -103,12 +100,9 @@
 
             <ArtForm
               ref="unlockFormRef"
-              :model-value="unlockForm"
-              @update:model-value="replaceReactiveModel(unlockForm, $event)"
+              v-model="unlockForm"
               custom-layout
               root-class="lock-screen-form"
-              :show-reset="false"
-              :show-submit="false"
               :rules="rules"
               @submit="handleUnlock"
             >
@@ -147,7 +141,6 @@
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtForm from '@/components/core/forms/art-form/index.vue'
   import { Lock } from '@element-plus/icons-vue'
   import { useEventListener, useScrollLock } from '@vueuse/core'
@@ -193,11 +186,11 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const unlockFormRef = ref<InstanceType<typeof ArtForm>>()
 
-  const formData = reactive({
+  const formData = ref({
     password: ''
   })
 
-  const unlockForm = reactive({
+  const unlockForm = ref({
     password: ''
   })
 
@@ -238,7 +231,7 @@
   }
 
   const handleDialogClosed = () => {
-    formData.password = ''
+    formData.value.password = ''
     formRef.value?.clearValidate()
   }
 
@@ -247,11 +240,11 @@
 
     await formRef.value.validate((valid) => {
       if (valid && componentScope?.active) {
-        const encryptedPassword = AES.encrypt(formData.password, ENCRYPT_KEY).toString()
+        const encryptedPassword = AES.encrypt(formData.value.password, ENCRYPT_KEY).toString()
         userStore.setLockStatus(true)
         userStore.setLockPassword(encryptedPassword)
         visible.value = false
-        formData.password = ''
+        formData.value.password = ''
       }
     })
   }
@@ -261,13 +254,13 @@
 
     await unlockFormRef.value.validate((valid) => {
       if (valid && componentScope?.active) {
-        const isValid = verifyPassword(unlockForm.password, lockPassword.value)
+        const isValid = verifyPassword(unlockForm.value.password, lockPassword.value)
 
         if (isValid) {
           try {
             userStore.setLockStatus(false)
             userStore.setLockPassword('')
-            unlockForm.password = ''
+            unlockForm.value.password = ''
             unlockError.value = ''
             visible.value = false
           } catch (error) {

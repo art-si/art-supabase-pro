@@ -107,8 +107,7 @@ const app = createApp({
         submitText: '提交表单',
         onSubmit: () => {
           submissions.value += 1
-        },
-        showReset: false
+        }
       }),
       h('output', { 'data-testid': 'member' }, model.value.member),
       h('output', { 'data-testid': 'validity' }, validity.value),

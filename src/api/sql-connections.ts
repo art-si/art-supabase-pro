@@ -89,3 +89,21 @@ export async function executeSqlConnection(
   if (!isSqlGatewayResult(value)) throw new Error('查询结果格式无效，请更新执行端后重试')
   return value
 }
+
+/** Cancel by the client's request identity, never by a database process ID. */
+export async function cancelSqlConnection(
+  base: string,
+  scope: string,
+  id: string,
+  requestId: string
+): Promise<void> {
+  const value = object(
+    await requestLocalExecutor(
+      base,
+      `/connections/${encodeURIComponent(id)}/cancel`,
+      { requestId },
+      scope
+    )
+  )
+  if (value.status !== 'ok') throw new Error('取消请求未被执行端接受，请重试或等待查询结束')
+}

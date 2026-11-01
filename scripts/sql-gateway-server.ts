@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto'
 import type { SqlConnection, SqlGatewayUser } from '../src/types/sql-connections'
 import { validateSqlConnection } from '../src/utils/sql-connections'
 import { SqlConnectionVault } from './sql-gateway-vault'
+import { PlatformIdentityError } from './lib/platform-identity'
+import { SqlQueryCancelledError, SqlQueryRegistry } from './sql-gateway-cancellation'
 import {
   inspectSqlConnection,
   querySqlConnection,
@@ -18,7 +20,8 @@ const uuid = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i
 class GatewayError extends Error {
   constructor(
     message: string,
-    readonly status = 400
+    readonly status = 400,
+    readonly code?: string
   ) {
     super(message)
   }
@@ -41,10 +44,12 @@ export function createSqlGateway(options: {
   origins: string[]
   directory: string
   identity: IdentityCall
+  sourceIdentity?: { sourceFingerprint: string; rootFingerprint: string }
 }) {
   const vault = new SqlConnectionVault(options.directory)
   const origins = new Set(options.origins)
   const active = new Map<string, number>()
+  const queries = new SqlQueryRegistry()
   let running = 0
   const audit = (
     actor: GatewayActor,
@@ -62,10 +67,10 @@ export function createSqlGateway(options: {
   }
   const authorize = async (request: IncomingMessage) => {
     const token = request.headers.authorization?.match(/^Bearer ([A-Za-z\d._-]+)$/)?.[1]
-    if (!token) throw new GatewayError('请先登录项目账号', 401)
+    if (!token) throw new GatewayError('请先登录项目账号', 401, 'PLATFORM_AUTH_REQUIRED')
     const identity = record(await options.identity(token, '/auth/v1/user'))
     if (typeof identity.id !== 'string' || !uuid.test(identity.id))
-      throw new GatewayError('登录身份无效，请重新登录', 401)
+      throw new GatewayError('登录身份无效，请重新登录', 401, 'PLATFORM_AUTH_REQUIRED')
     const [superResult, profiles] = await Promise.all([
       options.identity(token, '/rest/v1/rpc/current_is_super', {}),
       options.identity(
@@ -146,7 +151,9 @@ export function createSqlGateway(options: {
         service: 'art-sql-gateway',
         projectRef: 'ckbftoopuyophiebamwy',
         version: 1,
-        pid: process.pid
+        pid: process.pid,
+        activeRequests: running,
+        ...options.sourceIdentity
       })
       return
     }
@@ -154,18 +161,23 @@ export function createSqlGateway(options: {
     let connectionId = ''
     let action = 'request'
     const requestId = randomUUID()
+    let queryKey: string | undefined
     let counted = false
     try {
       const authorized = await authorize(request)
       actor = authorized.actor
       const token = authorized.token
-      if ((active.get(actor.id) || 0) >= 2)
-        throw new GatewayError('已有查询或连接操作正在运行，请稍后重试', 429)
-      if (running >= 8) throw new GatewayError('执行端当前繁忙，请稍后重试', 429)
-      active.set(actor.id, (active.get(actor.id) || 0) + 1)
-      running++
-      counted = true
       const url = new URL(request.url || '/', 'http://localhost')
+      const isCancellation =
+        request.method === 'POST' && /^\/connections\/[a-f\d-]{36}\/cancel$/i.test(url.pathname)
+      if (!isCancellation) {
+        if ((active.get(actor.id) || 0) >= 2)
+          throw new GatewayError('已有查询或连接操作正在运行，请稍后重试', 429)
+        if (running >= 8) throw new GatewayError('执行端当前繁忙，请稍后重试', 429)
+        active.set(actor.id, (active.get(actor.id) || 0) + 1)
+        running++
+        counted = true
+      }
       if (request.method === 'GET' && url.pathname === '/snapshot') {
         const connections = vault
           .list()
@@ -235,7 +247,7 @@ export function createSqlGateway(options: {
         send(200, { ok: true })
         return
       }
-      const match = url.pathname.match(/^\/connections\/([a-f\d-]{36})\/(metadata|query)$/i)
+      const match = url.pathname.match(/^\/connections\/([a-f\d-]{36})\/(metadata|query|cancel)$/i)
       if (!match) throw new GatewayError('请求不存在', 404)
       connectionId = match[1]
       action = match[2]
@@ -243,14 +255,31 @@ export function createSqlGateway(options: {
       const visible = vault.list().find((connection) => connection.id === connectionId)
       if (!visible || !canUseSqlConnection(visible, actor))
         throw new GatewayError('没有此连接的使用权限，或连接已停用', 403)
-      const { connection, password } = vault.get(connectionId)
       const value = record(body)
+      const operationKey = (id: string) =>
+        JSON.stringify([actor!.id, actor!.tenantId, actor!.selectedTenant, connectionId, id])
+      if (action === 'cancel') {
+        if (visible.dialect === 'dm')
+          throw new GatewayError('当前达梦驱动仅支持查询超时，暂不支持主动取消', 400)
+        if (typeof value.requestId !== 'string' || !uuid.test(value.requestId))
+          throw new GatewayError('查询请求编号无效，请重新执行')
+        const state = await queries.cancel(operationKey(value.requestId))
+        audit(actor, connectionId, action, 'ok', requestId)
+        send(200, { status: 'ok', state })
+        return
+      }
+      const { connection, password } = vault.get(connectionId)
       if (
         action === 'metadata' &&
         value.schema !== undefined &&
         (typeof value.schema !== 'string' || value.schema.length > 200)
       )
         throw new GatewayError('schema 参数无效')
+      const query = action === 'query' ? validateGatewayQuery(body) : undefined
+      const cancellation = query?.requestId
+        ? queries.begin(operationKey(query.requestId))
+        : undefined
+      if (query?.requestId) queryKey = operationKey(query.requestId)
       const result =
         action === 'metadata'
           ? await inspectSqlConnection(
@@ -258,7 +287,7 @@ export function createSqlGateway(options: {
               password,
               typeof value.schema === 'string' ? value.schema : undefined
             )
-          : await querySqlConnection(connection, password, validateGatewayQuery(body))
+          : await querySqlConnection(connection, password, query!, cancellation)
       // Do not deliver a result after a connection has been disabled or its grants changed.
       const current = vault.list().find((item) => item.id === connectionId)
       if (
@@ -305,8 +334,17 @@ export function createSqlGateway(options: {
               : ['ER_ACCESS_DENIED_ERROR', '28P01'].includes(String(code))
                 ? '数据库认证失败，请检查账号、密码和访问权限'
                 : '数据库操作失败，请检查地址、网络、TLS 和只读账号权限后重试'
-      send(error instanceof GatewayError ? error.status : 400, { message, requestId })
+      const known =
+        error instanceof GatewayError ||
+        error instanceof PlatformIdentityError ||
+        error instanceof SqlQueryCancelledError
+      send(known ? error.status : 400, {
+        message,
+        ...(known && error.code ? { code: error.code } : {}),
+        requestId
+      })
     } finally {
+      if (queryKey) queries.finish(queryKey)
       if (counted && actor) {
         const remaining = (active.get(actor.id) || 1) - 1
         if (remaining > 0) active.set(actor.id, remaining)

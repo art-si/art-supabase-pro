@@ -20,39 +20,36 @@
         </div>
       </section>
 
-      <ArtSectionCard title="账号与归属" preserve-content-structure>
-        <ArtDescriptions :data="user" :items="accountItems" :columns="2" />
-      </ArtSectionCard>
-
-      <ArtSectionCard
-        title="员工档案关联"
-        subtitle="该关联用于人员配置、班组排班和“我的排班”等个人业务。"
-        preserve-content-structure
-      >
-        <ArtDescriptions :data="user" :items="employeeItems" :columns="2" />
-      </ArtSectionCard>
-
-      <ArtSectionCard title="联系与审计" preserve-content-structure>
-        <ArtDescriptions :data="user" :items="auditItems" :columns="2" />
-      </ArtSectionCard>
+      <ElTabs v-model="activeTab" class="min-w-0">
+        <ElTabPane label="基本身份" name="identitySection" :lazy="false">
+          <ArtDescriptions :data="user" :items="accountItems" :columns="2" :label-width="112" />
+        </ElTabPane>
+        <ElTabPane label="员工档案关联" name="employee" :lazy="false">
+          <p class="mb-4 text-sm text-g-700">用于人员配置、班组排班和“我的排班”等个人业务。</p>
+          <ArtDescriptions :data="user" :items="employeeItems" :columns="2" :label-width="112" />
+        </ElTabPane>
+        <ElTabPane label="登录与联系" name="contactSection" :lazy="false">
+          <ArtDescriptions :data="user" :items="auditItems" :columns="2" :label-width="112" />
+        </ElTabPane>
+      </ElTabs>
     </div>
   </ArtDrawer>
 </template>
 
 <script setup lang="ts">
-  import { ElTag } from 'element-plus'
+  import { ElTag, ElTabs, ElTabPane } from 'element-plus'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
-  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import { formatWithDayjs } from '@/utils/time'
 
   type UserListItem = Api.SystemManage.UserListItem
 
   const drawerRef = ref<ArtDrawerExpose<UserListItem>>()
+  const activeTab = ref('identitySection')
   const user = shallowRef<UserListItem>()
   const { getUserInfo } = storeToRefs(useUserStore())
 
@@ -146,6 +143,7 @@
   ]
 
   async function handleOpen(row: UserListItem): Promise<void> {
+    activeTab.value = 'identitySection'
     user.value = row
     await drawerRef.value?.handleOpen(row, {
       title: '用户详情',

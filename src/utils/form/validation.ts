@@ -7,7 +7,7 @@ export interface ValidatableFormRef {
 }
 
 type FormRef = Ref<ValidatableFormRef | undefined>
-type FormRootRef = Ref<HTMLElement | undefined>
+type FormRootRef = Readonly<Ref<HTMLElement | null | undefined>>
 
 export function clearFormRefsValidation(formRefs: readonly FormRef[]): void {
   formRefs.forEach((formRef) => formRef.value?.clearValidate())

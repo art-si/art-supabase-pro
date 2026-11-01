@@ -42,7 +42,7 @@ test('重复薪酬项目阻止保存，修正后可以继续', async ({ page }) 
   await names.nth(1).fill('基本工资')
   await page.getByRole('button', { name: '保存明细', exact: true }).click()
   await expect(
-    page.getByText('薪酬项目“基本工资”重复，请合并后保存', { exact: true })
+    page.locator('.el-message').getByText('薪酬项目“基本工资”重复，请合并后保存', { exact: true })
   ).toBeVisible()
   expect(submissions).toHaveLength(0)
   await names.nth(1).fill('提成')

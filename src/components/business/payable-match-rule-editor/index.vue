@@ -75,9 +75,30 @@
   const deleteGuardRef = ref<InstanceType<typeof MasterDataDeleteGuard>>()
   const { confirmDelete } = useArtFeedback()
   const columns: ColumnOption<PayableMatchRule>[] = [
-    { prop: 'primaryField', label: '主方单据字段', required: true, minWidth: 205, useSlot: true },
-    { prop: 'operator', label: '匹配关系', required: true, minWidth: 140, useSlot: true },
-    { prop: 'secondaryField', label: '辅方单据字段', required: true, minWidth: 205, useSlot: true },
+    {
+      prop: 'primaryField',
+      label: '主方单据字段',
+      required: true,
+      headerTooltip: '选择主方单据中用于核销匹配的字段。',
+      minWidth: 205,
+      useSlot: true
+    },
+    {
+      prop: 'operator',
+      label: '匹配关系',
+      required: true,
+      headerTooltip: '选择两侧字段允许的比较关系。',
+      minWidth: 140,
+      useSlot: true
+    },
+    {
+      prop: 'secondaryField',
+      label: '辅方单据字段',
+      required: true,
+      headerTooltip: '选择辅方单据中与主方字段比较的字段。',
+      minWidth: 205,
+      useSlot: true
+    },
     { prop: 'emptyMatches', label: '任一为空时匹配', width: 165, useSlot: true },
     { prop: 'operation', label: '操作', width: 80, fixed: 'right', useSlot: true }
   ]
@@ -111,7 +132,10 @@
   }
   async function validate(): Promise<boolean> {
     const result = await tableRef.value?.validate()
-    if (result?.valid === false) return false
+    if (result?.valid === false) {
+      ElMessage.warning(result.firstError?.message || '请完整填写匹配条件')
+      return false
+    }
     const invalid = validatePayableMatchRules(rules.value)
     if (invalid) {
       ElMessage.warning(invalid)
