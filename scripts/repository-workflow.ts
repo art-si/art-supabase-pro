@@ -244,6 +244,14 @@ function commit(repository: Repository, message: string): void {
   if (repository.path === projectRoot) {
     run(process.execPath, ['scripts/cloudbase-modules.mjs', 'write'], projectRoot)
     git(repository, ['add', '--', 'scripts/cloudbase-modules.json'])
+    // 快照包含子仓版本清单，必须在最终 gitlink 和清单落定后生成。
+    console.log('\n[snapshot] 更新主仓 AI 项目快照')
+    runPnpm(rootRepository, ['run', 'snapshot:ai'])
+    git(repository, [
+      'add',
+      '--',
+      'supabase/functions/ai-project-planner/project-snapshot.generated.ts'
+    ])
   }
   const staged = execute('git', ['diff', '--cached', '--quiet'], repository.path)
   if (staged.status === 0) {
@@ -300,8 +308,6 @@ function publish(message: string): void {
 
   for (const repository of changedModules) buildDocs(repository)
   buildDocs(rootRepository)
-  console.log('\n[snapshot] 更新主仓 AI 项目快照')
-  runPnpm(rootRepository, ['run', 'snapshot:ai'])
 
   // 子仓必须先形成新提交，主仓随后才能记录正确的 gitlink。
   for (const repository of changedModules) commit(repository, message)

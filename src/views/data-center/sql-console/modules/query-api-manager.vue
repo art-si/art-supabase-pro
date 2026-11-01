@@ -334,6 +334,7 @@
   <ArtDialog ref="editorDialog" :show-form-focus-button="false">
     <ArtForm
       ref="editorForm"
+      v-model:active-tab="editorActiveTab"
       v-model="form"
       :items="editItems"
       :rules="editRules"
@@ -368,11 +369,13 @@
           />
         </div>
       </template>
+      <template #executionHelp>
+        <p class="m-0 text-xs leading-5 text-g-700"
+          >发布后，只有所属租户内的授权账号可以调用。服务端按调用者权限和 API
+          租户执行只读事务，强制返回上限和超时。停用可立即阻止后续调用。</p
+        >
+      </template>
     </ArtForm>
-    <p class="m-0 text-xs leading-5 text-g-700"
-      >发布后，只有所属租户内的授权账号可以调用。服务端按调用者权限和 API
-      租户执行只读事务，强制返回上限和超时。停用可立即阻止后续调用。</p
-    >
   </ArtDialog>
   <QueryApiPresetDialog ref="presetDialog" />
   <CellContentView ref="presetPreview" />
@@ -459,6 +462,7 @@
   const drawer = ref<ArtDrawerExpose>()
   const editorDialog = ref<ArtDialogExpose>()
   const editorForm = ref<InstanceType<typeof ArtForm>>()
+  const editorActiveTab = ref('query')
   const invokeForm = ref<InstanceType<typeof ArtForm>>()
   const parameterTable = ref<ArtTableExpose<SqlQueryApiParameter>>()
   const resultTable = ref<InstanceType<typeof ResultTable>>()
@@ -1070,6 +1074,7 @@
       label: '参数名',
       minWidth: 150,
       required: true,
+      headerTooltip: '与 SQL 中的 :name 对应；以字母开头，仅支持字母、数字和下划线。',
       rules: {
         validator: ({ value }) =>
           (typeof value === 'string' && /^[A-Za-z][A-Za-z\d_]{0,63}$/.test(value)) ||
@@ -1119,6 +1124,7 @@
       .map((account) => ({ label: account.name, value: account.id }))
   )
   const editItems = computed<FormItem[]>(() => [
+    { key: 'query', label: '查询定义', type: 'tab' },
     {
       key: 'name',
       label: 'API 名称',
@@ -1159,6 +1165,7 @@
       }
     },
     { key: 'parameters', label: '参数定义', span: 24 },
+    { key: 'access', label: '执行与授权', type: 'tab' },
     {
       key: 'tenantId',
       label: '所属租户',
@@ -1207,7 +1214,8 @@
         'aria-label': '查询 API 超时毫秒'
       }
     },
-    { key: 'allowedUserIds', label: '授权调用账号', span: 24 }
+    { key: 'allowedUserIds', label: '授权调用账号', span: 24 },
+    { key: 'executionHelp', label: '', span: 24 }
   ])
   const editRules = {
     name: [{ required: true, message: '请输入 API 名称' }],
@@ -1244,6 +1252,7 @@
             : {})
         }
     parameterCount.value = form.value.parameters.length
+    editorActiveTab.value = 'query'
     const editor = ++editGeneration
     await editorDialog.value?.handleOpen(undefined, {
       title: definition ? '编辑查询 API' : '发布查询 API',
@@ -1255,8 +1264,16 @@
           return false
         try {
           await editorForm.value?.validate()
-          const validation = await parameterTable.value?.validate()
-          if (validation?.valid === false) return false
+          const validation = await parameterTable.value?.validate({ focus: false })
+          if (validation?.valid === false) {
+            editorActiveTab.value = 'query'
+            await nextTick()
+            if (validation.firstError) {
+              await parameterTable.value?.validateField(validation.firstError.prop)
+              ElMessage.warning(validation.firstError.message)
+            }
+            return false
+          }
           if (owner !== identity.value || editor !== editGeneration) return false
           const parameters = parameterTable.value?.getTableData() || []
           if (uniq(parameters.map((parameter) => parameter.name)).length !== parameters.length)

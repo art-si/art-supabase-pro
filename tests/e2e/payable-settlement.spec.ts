@@ -204,25 +204,24 @@ for (const kind of ['application', 'payment'] as const) {
       const save = drawer.getByRole('button', { name: '保存', exact: true })
       await expect(save).toBeEnabled()
       const before = attempts.length
-      if (kind === 'application') {
-        const typeSelect = drawer.locator('.el-select').filter({
-          has: page.getByRole('combobox', { name: /单据类型/ })
-        })
-        await typeSelect.hover()
-        await typeSelect.locator('.el-select__clear').click()
-      }
+      const typeSelect = drawer.locator('.el-select').filter({
+        has: page.getByRole('combobox', { name: /单据类型/ })
+      })
+      await typeSelect.hover()
+      await typeSelect.locator('.el-select__clear').click()
       await drawer.getByRole('tab', { name: '付款明细', exact: true }).click()
       await save.click()
-      if (kind === 'application') {
-        await expect(drawer.getByRole('tab', { name: '基本信息', exact: true })).toHaveAttribute(
-          'aria-selected',
-          'true'
-        )
-        await expect(drawer.getByText('请选择单据类型', { exact: true }).last()).toBeVisible()
-        await drawer.getByRole('combobox', { name: /单据类型/ }).click()
-        await page.getByRole('option', { name: /采购付款申请/ }).click()
-        await save.click()
-      }
+      await expect(drawer.getByRole('tab', { name: '基本信息', exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+      await expect(drawer.getByText('请选择单据类型', { exact: true }).last()).toBeVisible()
+      await expect(drawer.getByRole('combobox', { name: /单据类型/ })).toBeFocused()
+      await drawer.getByRole('combobox', { name: /单据类型/ }).click()
+      await page
+        .getByRole('option', { name: kind === 'application' ? /采购付款申请/ : /采购付款/ })
+        .click()
+      await save.click()
       await expect(page.getByText('请至少添加一行付款明细', { exact: true })).toBeVisible()
       await expect(drawer.getByRole('tab', { name: '付款明细', exact: true })).toHaveAttribute(
         'aria-selected',
@@ -650,6 +649,27 @@ for (const theme of ['light', 'dark']) {
         fullPage: true
       })
       for (const index of [0, 1]) {
+        await rows.nth(index).getByRole('button', { name: '查看', exact: true }).click()
+        const readonly = page.getByRole('dialog')
+        await expect(readonly.getByRole('tab', { name: '基本信息', exact: true })).toHaveAttribute(
+          'aria-selected',
+          'true'
+        )
+        await expect(readonly.getByRole('button', { name: '保存', exact: true })).toHaveCount(0)
+        await readonly.getByRole('tab', { name: '付款明细', exact: true }).click()
+        await expect(readonly.locator('.el-table__body-wrapper tbody tr')).toHaveCount(2)
+        await expect(readonly.getByRole('combobox', { name: '往来单位', exact: true })).toHaveCount(
+          0
+        )
+        await expect(readonly.getByText('示例供应商2', { exact: true }).first()).toBeVisible()
+        await captureBusinessEvidence(readonly, {
+          path: info.outputPath(`${kind}-${theme}-readonly-details-${index + 1}.png`)
+        })
+        await readonly.getByRole('tab', { name: '金额说明', exact: true }).click()
+        await expect(readonly.getByText('¥300.00', { exact: true }).first()).toBeVisible()
+        expect(saved).toBe(index)
+        await page.keyboard.press('Escape')
+        await expect(readonly).not.toBeVisible()
         await rows.nth(index).getByRole('button', { name: '编辑', exact: true }).click()
         const drawer = page.getByRole('dialog')
         await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeVisible()
