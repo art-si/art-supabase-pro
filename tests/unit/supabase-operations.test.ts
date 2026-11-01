@@ -168,7 +168,7 @@ test(
           `${operation.id}: ${field.key} missing from ${operation.script}`
         )
     }
-    assert.equal(SUPABASE_OPERATIONS.length, 12)
+    assert.equal(SUPABASE_OPERATIONS.length, 14)
   }
 )
 

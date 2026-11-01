@@ -1035,7 +1035,6 @@
   .column-config-page {
     display: flex;
     flex-direction: column;
-    gap: 12px;
     min-width: 0;
     height: var(--art-full-height, calc(100dvh - 32px));
     min-height: 0;

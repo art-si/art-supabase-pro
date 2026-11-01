@@ -1,4 +1,4 @@
-import { createApp, defineAsyncComponent, h, ref, type Component } from 'vue'
+import { createApp, defineAsyncComponent, h, reactive, ref, type Component } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { ElButton, ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -78,6 +78,136 @@ type Entry = {
   embedded?: boolean
 }
 const entries: Record<string, Entry> = {
+  'hazard-factor-category': {
+    load: () =>
+      import('@smis/views/dual-control-system/risk-control/hazard-factor-category/modules/hazard-factor-category-dialog.vue'),
+    data: {
+      tenantId,
+      tenantName: '验收租户',
+      row: {
+        id: itemId,
+        tenantId,
+        factorType: 'human',
+        categoryCode: 'HF-TEST',
+        categoryName: '验收危害因素',
+        sort: 10,
+        status: 'enabled',
+        textColor: '#409EFF',
+        tagStyle: 'primary'
+      }
+    }
+  },
+  'risk-map-properties': {
+    load: () =>
+      import('@smis/views/dual-control-system/risk-control/risk-four-color-map/modules/risk-map-property-panel.vue'),
+    data: {},
+    embedded: true,
+    props: {
+      riskColors: ['#409EFF', '#67C23A'],
+      riskPoints: [],
+      modelValue: reactive({
+        id: itemId,
+        label: '验收风险图形',
+        x: 10,
+        y: 10,
+        width: 100,
+        height: 100,
+        fillColor: '#409EFF',
+        fillOpacity: 1,
+        borderColor: '#909399',
+        borderOpacity: 1,
+        borderWidth: 1,
+        rotation: 0
+      })
+    }
+  },
+  'hidden-task-execution': {
+    load: () =>
+      import('@smis/views/dual-control-system/hidden-hazard-governance/hidden-hazard-inspection-task/modules/task-execution-dialog.vue'),
+    data: { row: hiddenTask }
+  },
+  'risk-evaluation': {
+    load: () =>
+      import('@smis/views/dual-control-system/risk-control/risk-evaluation-control/modules/evaluation-dialog.vue'),
+    data: { item: riskItem, tenantId }
+  },
+  'hazard-statistics': {
+    load: () =>
+      import('@smis/views/safety-production/emergency-rescue/hazard-source-ledger/modules/hazard-statistics-dialog.vue'),
+    data: { organizations: [organization] }
+  },
+  'document-register': {
+    load: () =>
+      import('@smis/views/safety-production/document-center/shared/document-register-dialog.vue'),
+    data: {
+      mode: 'edit',
+      kind: 'required_knowledge',
+      categories: [{ id: itemId, categoryName: '验收分类', children: [] }],
+      row: {
+        id: itemId,
+        categoryId: itemId,
+        fileName: '验收文件',
+        documentCode: 'DOCUMENT-TEST',
+        effectiveDate: '2026-10-31',
+        attachmentName: '验收附件.pdf',
+        remark: ''
+      }
+    }
+  },
+  'work-instruction': {
+    load: () =>
+      import('@smis/views/basic-data/position-work-instruction/modules/work-instruction-dialog.vue'),
+    data: {
+      treeData: [
+        {
+          key: 'position:' + itemId,
+          label: '验收岗位',
+          description: 'POSITION-TEST',
+          nodeType: 'position',
+          organizationId: organization.id,
+          positionId: itemId
+        }
+      ],
+      row: {
+        id: itemId,
+        instructionName: '验收指导书',
+        scopes: [{ scopeKey: 'position:' + itemId }],
+        fileNumber: 'WI-TEST',
+        fileType: 'pdf',
+        uploadDate: '2026-10-31',
+        versionNo: 'V1',
+        fileUrl: 'https://example.invalid/original.pdf',
+        originalFileName: '验收附件.pdf'
+      }
+    }
+  },
+  'risk-task-execution': {
+    load: () =>
+      import('@smis/views/dual-control-system/risk-control/risk-inspection-task/modules/task-execution-dialog.vue'),
+    data: { row: { ...riskTask, status: 'in_progress' } }
+  },
+  'risk-task-cancel': {
+    load: () =>
+      import('@smis/views/dual-control-system/risk-control/risk-inspection-task/modules/task-action-dialog.vue'),
+    data: { row: riskTask, mode: 'cancel' }
+  },
+  'permit-void': {
+    load: () =>
+      import('@smis/views/special-operation-management/shared/special-operation-workflow-dialog.vue'),
+    data: { row: permit, action: 'void' }
+  },
+  'permit-approval': {
+    load: () =>
+      import('@smis/views/special-operation-management/shared/special-operation-workflow-dialog.vue'),
+    data: { row: permit, action: 'start' }
+  },
+  'safety-risk': {
+    load: () =>
+      import('@smis/views/dual-control-system/risk-control/safety-risk-list/modules/safety-risk-dialog.vue'),
+    data: {
+      options: { riskPoints: [{ ...riskPoint, siteName: '验收装配区' }], hazardCategories: [] }
+    }
+  },
   'inspection-plan-page': {
     load: () =>
       import('@smis/views/dual-control-system/hidden-hazard-governance/hidden-hazard-inspection-plan/index.vue'),

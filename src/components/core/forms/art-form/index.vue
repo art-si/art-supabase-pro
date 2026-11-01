@@ -27,7 +27,7 @@
       <DefineFields v-slot="{ items, actions }">
         <ElRow class="flex flex-wrap" :gutter="effectiveGutter">
           <ElCol
-            v-for="item in items"
+            v-for="item in items.filter(isRenderedField)"
             :key="item.key"
             :data-art-form-item-key="item.key"
             v-show="!isFormItemCollapsed(item)"
@@ -52,6 +52,7 @@
                   :name="item.key"
                   :item="item"
                   :modelValue="modelValue"
+                  :fields="ReuseFields"
                   :value="getFieldValue(item.key)"
                   :setValue="createSlotSetValue(item)"
                   :clearValue="createSlotClearValue(item)"
@@ -64,7 +65,12 @@
                 <slot :name="`${item.key}Actions`" :item="item" :modelValue="modelValue" />
               </template>
             </ArtSectionTitle>
-            <ElFormItem v-else :prop="item.key" :label-width="getFormItemLabelWidth(item)">
+            <ElFormItem
+              v-else
+              v-bind="item.formItemProps"
+              :prop="item.key"
+              :label-width="getFormItemLabelWidth(item)"
+            >
               <template #label v-if="item.label">
                 <span class="art-form-item__label">
                   <component v-if="typeof item.label !== 'string'" :is="item.label" />
@@ -101,6 +107,7 @@
                   :name="item.key"
                   :item="item"
                   :modelValue="modelValue"
+                  :fields="ReuseFields"
                   :value="getFieldValue(item.key)"
                   :setValue="createSlotSetValue(item)"
                   :clearValue="createSlotClearValue(item)"
@@ -272,7 +279,14 @@
           </ElCol>
         </ElRow>
       </DefineFields>
-      <template v-if="!customLayout">
+      <slot
+        v-if="$slots.layout"
+        name="layout"
+        :fields="ReuseFields"
+        :items="visibleFormItems"
+        :model-value="modelValue"
+      />
+      <template v-else-if="!customLayout">
         <ReuseFields v-if="!hasTabs" :items="visibleFormItems" :actions="true" />
         <template v-else>
           <ReuseFields v-if="commonFormItems.length" :items="commonFormItems" :actions="false" />
@@ -304,6 +318,7 @@
           <ReuseFields v-if="showReset || showSubmit" :items="[]" :actions="true" />
         </template>
       </template>
+      <slot name="footer" :model-value="modelValue" />
     </ElForm>
   </section>
 </template>
@@ -334,6 +349,7 @@
     type FormValidateCallback,
     type FormValidateFailure,
     type FormItemProp,
+    type FormItemProps,
     type FormPropsPublic
   } from 'element-plus'
   import {
@@ -520,6 +536,11 @@
     help?: FormItemContent
     /** 表单项标签的宽度，会覆盖 Form 的 labelWidth */
     labelWidth?: string | number
+    /** Element Plus field validation/display attributes; key and label remain schema-owned. */
+    formItemProps?: Partial<Omit<FormItemProps, 'prop' | 'label' | 'labelWidth'>> & {
+      'data-validation-key'?: string
+      class?: string | string[] | Record<string, boolean>
+    }
     /** 表单项类型，支持预定义的组件类型 */
     type?: TType
     /** 自定义渲染函数或组件，用于渲染自定义组件（优先级高于 type） */
@@ -767,6 +788,7 @@
     'description',
     'help',
     'labelWidth',
+    'formItemProps',
     'key',
     'type',
     'render',
@@ -1234,6 +1256,14 @@
     }
     if (String(item.type) === 'userSelect') {
       componentProps.options = options
+    }
+    if (item.type === 'employeeSelect' && componentProps.multiple === true) {
+      componentProps.modelValues = componentProps.modelValues ?? getFieldValue(item.key)
+      const onUpdate = componentProps['onUpdate:modelValues']
+      componentProps['onUpdate:modelValues'] = (values: string[]) => {
+        setFieldValue(item.key, values, item)
+        if (typeof onUpdate === 'function') onUpdate(values)
+      }
     }
     if (String(item.type) === 'dataSelect') {
       if (item.api && !componentProps.apiFn) {

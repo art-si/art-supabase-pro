@@ -598,7 +598,6 @@
 
 <style scoped lang="scss">
   .number-rule-page {
-    gap: 12px;
     min-width: 0;
     overflow: hidden;
 

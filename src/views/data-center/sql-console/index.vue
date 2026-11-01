@@ -14,6 +14,22 @@
             @click="toggleOutline"
           />
           <span class="sql-editor-tools__title text-sm font-medium">SQL 工作区</span>
+          <ArtTooltip :content="workbenchStatusLabel">
+            <span
+              class="inline-flex size-[26px] shrink-0 items-center justify-center rounded-sm"
+              :class="storageError ? 'text-warning' : 'text-g-700'"
+              tabindex="0"
+              role="status"
+              :aria-label="workbenchStatusLabel"
+              :title="workbenchStatusLabel"
+            >
+              <ArtSvgIcon
+                :icon="storageError ? 'ri:alert-line' : 'ri:save-line'"
+                class="text-base"
+                aria-hidden="true"
+              />
+            </span>
+          </ArtTooltip>
           <span class="sql-editor-tools__context text-xs text-g-600"
             >{{ statements.length }} 条语句 ·
             {{ executionSource === 'selection' ? '执行选中内容' : activeStatementLabel }}</span
@@ -273,13 +289,82 @@
                   />
                 </el-tabs>
                 <div
-                  class="workbench-status"
-                  :class="{ 'is-warning': storageError }"
-                  role="status"
-                  :title="draftStatus"
+                  v-if="executing || result"
+                  class="execution-info flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4 text-g-700 tabular-nums"
                 >
-                  {{ external ? '外接只读' : canExecute ? '数据库范围' : '仅结构与 AI' }} ·
-                  {{ draftStatus }}
+                  <span
+                    class="whitespace-nowrap"
+                    aria-live="polite"
+                    :class="
+                      result && !executing
+                        ? queryCancelled
+                          ? 'text-g-700'
+                          : result.status === 'error'
+                            ? 'text-danger'
+                            : 'text-success'
+                        : ''
+                    "
+                    >{{
+                      executing
+                        ? cancelRequested
+                          ? '等待数据库结束…'
+                          : '执行中…'
+                        : queryCancelled
+                          ? '已取消'
+                          : result?.status === 'error'
+                            ? '执行失败'
+                            : resultSummary
+                    }}</span
+                  >
+                  <template v-if="executing && executionWaitMs !== null">
+                    <span class="sql-execution-wait whitespace-nowrap" aria-live="off"
+                      >已等待 {{ Math.floor(executionWaitMs / 1000) }} 秒</span
+                    >
+                    <span
+                      v-if="executionTimeoutMs !== null"
+                      class="art-icon-label art-icon-label--compact whitespace-nowrap"
+                      aria-live="off"
+                      :title="`本次时限 ${formatDurationMs(executionTimeoutMs)}，以本次请求发送时的设置为准。`"
+                    >
+                      <ArtSvgIcon
+                        icon="ri:timer-line"
+                        class="size-4! text-base!"
+                        aria-hidden="true"
+                      />
+                      <span class="sr-only">本次时限 </span>
+                      <span>{{ formatDurationMs(executionTimeoutMs) }}</span>
+                    </span>
+                  </template>
+                  <template v-else-if="result">
+                    <span
+                      v-if="validExecutionDuration"
+                      class="sql-execution-server art-icon-label art-icon-label--compact whitespace-nowrap"
+                      aria-live="off"
+                      :title="`执行端耗时：${result.durationMs} ms`"
+                    >
+                      <ArtSvgIcon
+                        icon="ri:database-2-line"
+                        class="size-4! text-base!"
+                        aria-hidden="true"
+                      />
+                      <span class="sr-only">执行端 </span>
+                      <span>{{ formatDurationMs(result.durationMs) }}</span>
+                    </span>
+                    <span
+                      v-if="executionWaitMs !== null"
+                      class="sql-execution-browser art-icon-label art-icon-label--compact whitespace-nowrap"
+                      aria-live="off"
+                      :title="`浏览器总等待 ${formatDurationMs(executionWaitMs)}。从发送请求到响应整理完成，包含身份验证、网络与客户端处理；不等同于数据库执行耗时。`"
+                    >
+                      <ArtSvgIcon
+                        icon="ri:time-line"
+                        class="size-4! text-base!"
+                        aria-hidden="true"
+                      />
+                      <span class="sr-only">浏览器总等待 </span>
+                      <span>{{ formatDurationMs(executionWaitMs) }}</span>
+                    </span>
+                  </template>
                 </div>
                 <div class="tabs-actions">
                   <ArtTooltip content="数据库结构" placement="top"
@@ -459,63 +544,13 @@
                   }}</p></ElScrollbar
                 >
               </details>
-              <div
-                v-if="executing || result"
-                class="execution-info flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-g-200 px-4 py-1 text-xs leading-4 text-g-700 tabular-nums"
-              >
-                <span
-                  aria-live="polite"
-                  :class="
-                    result && !executing
-                      ? queryCancelled
-                        ? 'text-g-700'
-                        : result.status === 'error'
-                          ? 'text-danger'
-                          : 'text-success'
-                      : ''
-                  "
-                  >{{
-                    executing
-                      ? cancelRequested
-                        ? '等待数据库结束…'
-                        : '执行中…'
-                      : queryCancelled
-                        ? '已取消'
-                        : result?.status === 'error'
-                          ? '执行失败'
-                          : resultSummary
-                  }}</span
-                >
-                <template v-if="executing && executionWaitMs !== null">
-                  <span class="sql-execution-wait" aria-live="off"
-                    >已等待 {{ Math.floor(executionWaitMs / 1000) }} 秒</span
-                  >
-                  <span v-if="executionTimeoutMs !== null" aria-live="off"
-                    >本次时限 {{ formatDurationMs(executionTimeoutMs) }}</span
-                  >
-                </template>
-                <template v-else-if="result">
-                  <span v-if="validExecutionDuration" :title="`${result.durationMs} ms`"
-                    >执行端 {{ formatDurationMs(result.durationMs) }}</span
-                  >
-                  <span
-                    v-if="executionWaitMs !== null"
-                    aria-live="off"
-                    title="从发送请求到响应整理完成，包含身份验证、网络与客户端处理；不等同于数据库执行耗时。"
-                    >浏览器总等待 {{ formatDurationMs(executionWaitMs) }}</span
-                  >
-                </template>
-              </div>
               <ArtOverlayLoading
                 v-if="executing && !result"
                 loading
+                size="compact"
                 :min-height="0"
                 :text="cancelRequested ? '正在取消查询…' : '正在执行 SQL…'"
-                :description="
-                  cancelRequested
-                    ? '已请求数据库停止执行，正在等待事务结束'
-                    : '正在查询数据库并整理结果，请稍候'
-                "
+                description=""
                 class="min-h-0 flex-1"
               />
               <div v-if="result?.truncated" class="sql-result-limit" role="status"
@@ -1244,6 +1279,10 @@
   }
   const canExecute = computed(() =>
     external.value ? Boolean(connection.value?.enabled) : userStore.isPlatformSuper
+  )
+  const workbenchStatusLabel = computed(
+    () =>
+      `${external.value ? '外接只读' : canExecute.value ? '数据库范围' : '仅结构与 AI'} · ${draftStatus.value}`
   )
   const planDrawerRef = ref<InstanceType<typeof ExecutionPlanDrawer>>()
   const planLoading = ref(false)
@@ -2171,14 +2210,20 @@
     > .tabs-header {
       display: flex;
       flex-shrink: 0;
+      flex-wrap: wrap;
+      gap: 4px 8px;
       align-items: center;
       justify-content: space-between;
-      height: 40px;
+      min-width: 0;
+      min-height: 40px;
       padding-right: 16px;
       border-bottom: 1px solid var(--el-border-color);
 
       .result-tabs {
+        --el-tabs-header-height: 39px;
+
         flex: 1;
+        min-width: 64px;
 
         :deep(.el-tabs__header) {
           margin: 0;
@@ -2199,21 +2244,17 @@
 
       .tabs-actions {
         display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
         gap: 8px;
         align-items: center;
+        min-width: 0;
+        max-width: 100%;
       }
 
-      .workbench-status {
-        margin-right: 16px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-size: 12px;
-        color: var(--el-text-color-secondary);
-        white-space: nowrap;
-
-        &.is-warning {
-          color: var(--el-color-warning);
-        }
+      .execution-info {
+        flex: 0 1 auto;
+        max-width: 100%;
       }
 
       .toolbar-divider {
@@ -2340,12 +2381,6 @@
     }
   }
 
-  @media (width <= 900px) {
-    .result-section > .tabs-header .workbench-status {
-      display: none;
-    }
-  }
-
   @container sql-workspace (width <= 640px) {
     .sql-editor-tools__context {
       display: none;
@@ -2366,42 +2401,22 @@
     }
   }
 
-  @container sql-results (width <= 900px) {
-    .workbench-status {
-      display: none;
-    }
-  }
-
   @container sql-results (width <= 640px) {
     .tabs-header {
-      flex-wrap: wrap;
-      height: auto !important;
-      min-height: 40px;
       padding-right: 8px !important;
     }
 
     .tabs-actions {
       gap: 4px !important;
     }
-
-    .result-tabs {
-      min-width: 64px;
-    }
   }
 
   @media (width <= 640px) {
     .result-section > .tabs-header {
-      flex-wrap: wrap;
-      height: auto;
-      min-height: 40px;
       padding-right: 8px;
 
       .tabs-actions {
         gap: 4px;
-      }
-
-      .result-tabs {
-        min-width: 64px;
       }
     }
   }

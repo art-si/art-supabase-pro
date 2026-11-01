@@ -21,8 +21,14 @@ export const dictionaries: Record<
 > = {
   smisControlLevel: [{ label: '班组级', value: 'team' }],
   smisRiskControlLevel: [{ label: '班组级', value: 'team' }],
-  smisRiskInspectionResult: [{ label: '正常', value: 'normal' }],
-  smisHiddenHazardInspectionResult: [{ label: '正常', value: 'normal' }],
+  smisRiskInspectionResult: [
+    { label: '正常', value: 'normal' },
+    { label: '异常', value: 'abnormal' }
+  ],
+  smisHiddenHazardInspectionResult: [
+    { label: '正常', value: 'normal' },
+    { label: '异常', value: 'abnormal' }
+  ],
   smisCourseCategory: [{ label: '安全生产', value: 'safety_production' }],
   smisCourseType: [{ label: '视频', value: 'video' }],
   smisQuestionType: [

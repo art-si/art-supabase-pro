@@ -287,6 +287,7 @@ for (const { scenario, title, attachmentTitle, nameLabel, nameRequiredMessage } 
       )
       await page.getByRole('button', { name: title }).click()
       const recordDialog = page.getByRole('dialog', { name: title })
+      await recordDialog.getByRole('tab').last().click()
       await recordDialog.getByRole('button', { name: '上传', exact: true }).click()
       const attachmentDialog = page.getByRole('dialog', { name: attachmentTitle })
       const nameInput = attachmentDialog.getByRole('textbox', { name: nameLabel })
@@ -324,8 +325,8 @@ for (const { scenario, title, attachmentTitle, nameLabel, nameRequiredMessage } 
       })
       if (scenario === 'routine' && appearance === 'light-border') {
         await recordDialog
-          .locator('.routine-inspection-dialog__section')
-          .last()
+          .getByRole('tabpanel')
+          .filter({ visible: true })
           .screenshot({
             path: info.outputPath('routine-light-border-attachment-table.png')
           })

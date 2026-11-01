@@ -1,5 +1,11 @@
 export type SqlQueryApiParameterType = 'string' | 'number' | 'boolean' | 'date' | 'uuid'
 
+/** Decimal values stay text; an absent key means the parameter is not provided. */
+export type SqlQueryApiParameterValue = string | boolean | null
+export type SqlQueryApiParameters = Record<string, SqlQueryApiParameterValue>
+export type SqlQueryApiParameterDraft =
+  { kind: 'omit' } | { kind: 'null' } | { kind: 'value'; value: string | boolean }
+
 export interface SqlQueryApiParameter {
   name: string
   type: SqlQueryApiParameterType

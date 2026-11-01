@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./Bi4lE7_B.js";var i=n({name:`MdmOrganizationDirectory`,__name:`index`,setup(n){return(n,i)=>(t(),e(r))}});export{i as default};

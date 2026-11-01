@@ -55,17 +55,12 @@
             </div>
           </template>
 
-          <ArtForm custom-layout v-model="connectForm" label-position="top" form-class="max-w-md">
-            <ElFormItem label="服务器地址">
-              <ElInput v-model="connectForm.url" placeholder="ws://localhost:8080/ws" clearable />
-            </ElFormItem>
-            <ElFormItem label="连接选项">
-              <ElSpace wrap>
-                <ElCheckbox v-model="connectForm.autoReconnect">自动重连</ElCheckbox>
-                <ElCheckbox v-model="connectForm.heartbeat">心跳检测</ElCheckbox>
-              </ElSpace>
-            </ElFormItem>
-            <ElFormItem>
+          <ArtForm
+            v-model="connectForm"
+            :items="connectionItems"
+            :span="24"
+            root-class="max-w-md px-0! pt-0!"
+            ><template #footer>
               <ElSpace wrap>
                 <ElButton
                   type="primary"
@@ -84,8 +79,8 @@
                 </ElButton>
                 <ElButton @click="handleReconnect" :disabled="isConnecting">重连</ElButton>
               </ElSpace>
-            </ElFormItem>
-          </ArtForm>
+            </template></ArtForm
+          >
         </ElCard>
       </ElCol>
 
@@ -96,27 +91,11 @@
           </template>
 
           <ArtForm
-            custom-layout
             v-model="messageForm"
-            label-position="top"
+            :items="messageItems"
+            :span="24"
             @submit="handleSendMessage"
-          >
-            <ElFormItem label="消息类型">
-              <ElSelect v-model="messageForm.type" class="w-full">
-                <ElOption label="文本消息" value="text" />
-                <ElOption label="JSON数据" value="json" />
-                <ElOption label="心跳包" value="ping" />
-              </ElSelect>
-            </ElFormItem>
-            <ElFormItem label="消息内容">
-              <ElInput
-                v-model="messageForm.content"
-                type="textarea"
-                :rows="4"
-                placeholder="请输入要发送的消息内容"
-              />
-            </ElFormItem>
-            <ElFormItem>
+            ><template #footer>
               <ElSpace wrap>
                 <ElButton
                   type="primary"
@@ -127,8 +106,8 @@
                 </ElButton>
                 <ElButton @click="clearMessageForm">清空</ElButton>
               </ElSpace>
-            </ElFormItem>
-          </ArtForm>
+            </template></ArtForm
+          >
         </ElCard>
       </ElCol>
     </ElRow>
@@ -205,6 +184,8 @@
 </template>
 
 <script setup lang="ts">
+  import type { FormItem } from '@/components/core/forms/art-form/index.vue'
+
   import ArtForm from '@/components/core/forms/art-form/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import { useIntervalFn, useWebSocket } from '@vueuse/core'
@@ -475,6 +456,40 @@
   const clearLogs = () => {
     logList.value = []
   }
+  const connectionItems: FormItem[] = [
+    {
+      key: 'url',
+      label: '服务器地址',
+      type: 'input',
+      props: { placeholder: 'ws://localhost:8080/ws', clearable: true }
+    },
+    {
+      key: 'autoReconnect',
+      label: '连接选项',
+      type: 'checkbox',
+      span: 12,
+      props: { label: '自动重连' }
+    },
+    { key: 'heartbeat', label: '', type: 'checkbox', span: 12, props: { label: '心跳检测' } }
+  ]
+  const messageItems: FormItem[] = [
+    {
+      key: 'type',
+      label: '消息类型',
+      type: 'select',
+      options: [
+        { label: '文本消息', value: 'text' },
+        { label: 'JSON数据', value: 'json' },
+        { label: '心跳包', value: 'ping' }
+      ]
+    },
+    {
+      key: 'content',
+      label: '消息内容',
+      type: 'textarea',
+      props: { placeholder: '请输入要发送的消息内容' }
+    }
+  ]
 </script>
 
 <style scoped>

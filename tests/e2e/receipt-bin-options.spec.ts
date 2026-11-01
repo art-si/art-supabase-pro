@@ -118,7 +118,7 @@ test('销售单据类型完整分页且业务菜单只解析一次', async ({ pa
   requests.forEach((url, index) => {
     expect(url.searchParams.get('offset')).toBe(String(index * 500))
     expect(url.searchParams.get('tenant_id')).toBe('eq.tenant-a')
-    expect(url.searchParams.get('menu_id')).toBe('eq.menu-a')
+    expect(url.searchParams.get('menu_ids')).toBe('cs.{menu-a}')
     expect(url.searchParams.get('enabled')).toBe('eq.true')
     expect(url.searchParams.get('order')).toBe('sort_order.asc,id.asc')
   })

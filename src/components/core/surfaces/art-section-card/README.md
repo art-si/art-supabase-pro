@@ -34,6 +34,8 @@ For an established grid or flex card whose direct-child structure is part of its
 
 Scrollable bodies retain a visible bottom inset throughout scrolling, using the section padding. The shared inset clips only the content viewport; the scrollbar track, scroll height, and current position stay unchanged. End padding keeps the last item reachable, and scroll padding keeps keyboard focus above the inset. A deliberately edge-to-edge nested workspace can set `--art-scroll-viewport-inset: 0px` on its owning surface.
 
+Loading, error, and empty bodies retain the same bottom end padding, including naturally sized navigation cards with retry or empty-state actions. In a short stacked pane, also verify that the complete action is visible on first render; removing a minimum height alone does not reduce the state's intrinsic content height.
+
 Use `#toolbar` for filters or navigation controls that remain fixed below the header while the default body scrolls. The card supplies the same inline padding to the header, toolbar, and body; do not add a nested `ElScrollbar` or extra right padding for an ordinary list/tree. Keep `show-scrollbar="false"` only when a table, virtual tree, canvas, or another bounded workspace owns its own scrolling, and preserve content gutters inside that owner.
 
 Use `#footer` for a fixed scope summary or actions below the scrollable body. It shares the card's inline spacing and stays visible while the list scrolls. Keep row-specific information in the body; do not add a fixed footer unless it is useful throughout the workflow.

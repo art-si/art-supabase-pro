@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./D19L_vRv.js";var i=n({name:`OperationsCommand`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{mode:`operations`}))}});export{i as default};

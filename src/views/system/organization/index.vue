@@ -500,7 +500,6 @@
 
 <style scoped lang="scss">
   .organization-page {
-    gap: 12px;
     min-width: 0;
 
     &__overview {

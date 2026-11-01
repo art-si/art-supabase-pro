@@ -39,34 +39,6 @@
         label-width="100px"
         :validate-on-rule-change="false"
       >
-        <template #hrEmployeeId>
-          <div class="user-dialog__employee-link">
-            <ArtEmployeeSelect
-              :model-value="formData.hrEmployeeId || undefined"
-              :selected-data="employeeSelection.selectedRows"
-              :tenant-id="formData.tenantId || undefined"
-              title="从员工花名册选择"
-              :subtitle="employeeSelectorSubtitle"
-              :disabled="!formData.tenantId"
-              :placeholder="formData.tenantId ? '请选择员工档案' : '请先选择所属租户'"
-              search-placeholder="员工工号、姓名、手机、邮箱或岗位"
-              @update:model-value="handleEmployeeValueChange"
-              @update:selected-data="handleEmployeeRowsChange"
-              @confirm="handleEmployeeConfirm"
-              @clear="handleEmployeeClear"
-            />
-            <div v-if="isEdit && !formData.hrEmployeeId" class="user-dialog__employee-guide">
-              <span>花名册中找不到本人？请先完成实名员工建档，再回来关联。</span>
-              <ElButton type="primary" link @click="openEmployeeProfile">
-                去新建员工档案
-                <ArtSvgIcon icon="ri:arrow-right-line" />
-              </ElButton>
-            </div>
-          </div>
-        </template>
-        <template #avatar>
-          <ArtUploadImage v-model="formData.avatar" :resource-tenant-id="formData.tenantId || ''" />
-        </template>
       </ArtForm>
     </div>
   </ArtDialog>
@@ -75,15 +47,14 @@
 <script setup lang="ts">
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
-  import type { FormRules } from 'element-plus'
+  import { h } from 'vue'
+  import { ElButton, type FormRules } from 'element-plus'
   import { useI18n } from 'vue-i18n'
   import { cloneDeep, omit } from 'lodash-es'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm from '@/components/core/forms/art-form/index.vue'
   import type { FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
-  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { useUserStore } from '@/store/modules/user'
@@ -250,9 +221,49 @@
     {
       label: '花名册员工',
       key: 'hrEmployeeId',
+      type: 'employeeSelect',
       span: 24,
       hidden: !isEmployeeAccount.value,
-      description: '必选；选择后自动回填员工身份、组织与联系方式。'
+      props: {
+        modelValue: formData.value.hrEmployeeId || undefined,
+        selectedData: employeeSelection.selectedRows,
+        tenantId: formData.value.tenantId || undefined,
+        title: '从员工花名册选择',
+        subtitle: employeeSelectorSubtitle.value,
+        disabled: !formData.value.tenantId,
+        placeholder: formData.value.tenantId ? '请选择员工档案' : '请先选择所属租户',
+        searchPlaceholder: '员工工号、姓名、手机、邮箱或岗位',
+        'onUpdate:modelValue': handleEmployeeValueChange,
+        'onUpdate:selectedData': handleEmployeeRowsChange,
+        onConfirm: handleEmployeeConfirm,
+        onClear: handleEmployeeClear
+      },
+      description: () =>
+        h('div', { class: 'flex flex-col gap-2' }, [
+          h('p', '必选；选择后自动回填员工身份、组织与联系方式。'),
+          isEdit.value && !formData.value.hrEmployeeId
+            ? h(
+                'div',
+                {
+                  class:
+                    'flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded border border-[var(--el-color-warning-light-8)] bg-[var(--el-color-warning-light-9)] px-3 py-2'
+                },
+                [
+                  h('span', '花名册中找不到本人？请先完成实名员工建档，再回来关联。'),
+                  h(
+                    ElButton,
+                    { type: 'primary', link: true, onClick: openEmployeeProfile },
+                    {
+                      default: () => [
+                        '去新建员工档案',
+                        h(ArtSvgIcon, { icon: 'ri:arrow-right-line' })
+                      ]
+                    }
+                  )
+                ]
+              )
+            : null
+        ])
     },
     {
       label: '所属组织',
@@ -280,7 +291,11 @@
     {
       label: '头像',
       key: 'avatar',
-      span: 24
+      span: 24,
+      type: 'uploadImage',
+      get props() {
+        return { resourceTenantId: formData.value.tenantId || '' }
+      }
     },
     {
       label: '用户名',
@@ -654,38 +669,6 @@
 
       :deep(.el-alert__title) {
         line-height: 1.6;
-      }
-    }
-
-    &__employee-link {
-      display: grid;
-      gap: 8px;
-      min-width: 0;
-    }
-
-    &__employee-guide {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px 12px;
-      align-items: center;
-      justify-content: space-between;
-      padding: 9px 12px;
-      font-size: 12px;
-      line-height: 1.5;
-      color: var(--el-text-color-secondary);
-      background: var(--el-color-warning-light-9);
-      border: 1px solid var(--el-color-warning-light-8);
-      border-radius: var(--el-border-radius-base);
-
-      .el-button {
-        flex: none;
-        margin: 0;
-      }
-    }
-
-    @media (width <= 640px) {
-      &__employee-guide {
-        align-items: flex-start;
       }
     }
   }

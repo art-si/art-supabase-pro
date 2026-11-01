@@ -145,26 +145,6 @@
   }
 </script>
 
-<style lang="scss">
-  .business-workspace-page {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-width: 0;
-
-    > .el-alert {
-      flex: 0 0 auto;
-    }
-
-    > .art-table-query,
-    > .el-tabs,
-    > .business-workspace-content {
-      flex: 1;
-      min-height: 0;
-    }
-  }
-</style>
-
 <style scoped lang="scss">
   .business-workspace-header {
     flex: 0 0 auto;

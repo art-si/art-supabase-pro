@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { reactive } from 'vue'
 import {
+  readSqlQueryApiParameterDraft,
+  SqlQueryApiParameterError,
   sqlQueryApiExamples,
-  sqlQueryApiParameters
+  sqlQueryApiParameters,
+  toSqlQueryApiParameterDraft
 } from '../../src/views/data-center/sql-console/modules/query-api-ui'
+import { bindParameters } from '../../supabase/functions/sql-query-api/policy'
 import type { SqlQueryApiDefinition, SqlQueryApiParameter } from '../../src/types/sql-query-api'
 
 const parameters: SqlQueryApiParameter[] = [
@@ -14,12 +19,12 @@ const parameters: SqlQueryApiParameter[] = [
   { name: 'owner', type: 'uuid', required: false }
 ]
 
-test('API test payload keeps numeric precision, false and user string whitespace while omitting blank optional fields', () => {
+test('API test payload keeps numeric precision, false and user string whitespace while omitting missing optional fields', () => {
   const values = {
     amount: ' 12345678901234567890.1234567890123456789 ',
     enabled: false,
     note: '  user text  ',
-    owner: '',
+    owner: undefined,
     ignored: 'not-declared'
   }
   assert.deepEqual(sqlQueryApiParameters(parameters, values), {
@@ -28,6 +33,105 @@ test('API test payload keeps numeric precision, false and user string whitespace
     note: '  user text  '
   })
   assert.equal(values.amount, ' 12345678901234567890.1234567890123456789 ')
+})
+
+test('string empty values, explicit NULL and missing values follow the server binding contract', () => {
+  for (const required of [true, false]) {
+    const definition: SqlQueryApiParameter = { name: 'note', type: 'string', required }
+    for (const value of ['', '   ', '原始文本']) {
+      const params = sqlQueryApiParameters([definition], { note: value })
+      assert.deepEqual(params, { note: value })
+      assert.deepEqual(bindParameters([definition], ['note'], params), [value])
+    }
+    for (const input of [{}, { note: undefined }, { note: null }]) {
+      if (required) {
+        assert.throws(() => sqlQueryApiParameters([definition], input), SqlQueryApiParameterError)
+        assert.throws(() => bindParameters([definition], ['note'], input), /必填/)
+      } else {
+        const params = sqlQueryApiParameters([definition], input)
+        assert.deepEqual(params, input.note === null ? { note: null } : {})
+        assert.deepEqual(bindParameters([definition], ['note'], params), [null])
+      }
+    }
+  }
+})
+
+test('partial required parameters permit only missing values, never required NULL or invalid filled types', () => {
+  const options = { allowMissingRequired: true }
+  assert.deepEqual(sqlQueryApiParameters(parameters, {}, options), {})
+  assert.deepEqual(sqlQueryApiParameters(parameters, { amount: undefined }, options), {})
+  for (const parameter of parameters.map((parameter) => ({ ...parameter, required: true }))) {
+    assert.throws(
+      () => sqlQueryApiParameters([parameter], { [parameter.name]: null }, options),
+      SqlQueryApiParameterError
+    )
+    if (parameter.type !== 'string') {
+      for (const required of [true, false]) {
+        const definition = { ...parameter, required }
+        assert.throws(
+          () => sqlQueryApiParameters([definition], { [parameter.name]: '' }, options),
+          SqlQueryApiParameterError
+        )
+        assert.throws(() =>
+          bindParameters([definition], [parameter.name], { [parameter.name]: '' })
+        )
+      }
+    }
+  }
+})
+
+test('draft bridge round-trips omit, NULL, empty strings, whitespace, precise text and false', () => {
+  for (const value of [undefined, null, '', '   ', '12345678901234567890.123456789', false, true]) {
+    const draft = toSqlQueryApiParameterDraft(value)
+    assert.equal(readSqlQueryApiParameterDraft(draft), value)
+    assert.equal(readSqlQueryApiParameterDraft(reactive(draft)), value)
+  }
+  assert.deepEqual(toSqlQueryApiParameterDraft(undefined), { kind: 'omit' })
+  assert.deepEqual(toSqlQueryApiParameterDraft(null), { kind: 'null' })
+  assert.deepEqual(toSqlQueryApiParameterDraft(''), { kind: 'value', value: '' })
+  assert.deepEqual(toSqlQueryApiParameterDraft(false), { kind: 'value', value: false })
+  for (const value of [0, 1n, NaN, {}, [], () => undefined, Symbol('value')])
+    assert.throws(() => toSqlQueryApiParameterDraft(value), SqlQueryApiParameterError)
+})
+
+test('draft bridge rejects malformed, inherited and accessor states without reading getters or coercion', () => {
+  let reads = 0
+  const accessor = Object.defineProperty({ kind: 'value' }, 'value', {
+    enumerable: true,
+    get() {
+      reads++
+      throw new Error('must not execute')
+    }
+  })
+  const kindAccessor = Object.defineProperty({}, 'kind', {
+    get() {
+      reads++
+      throw new Error('must not execute')
+    }
+  })
+  for (const draft of [
+    undefined,
+    null,
+    [],
+    {},
+    { kind: 'other' },
+    { kind: 'value' },
+    { kind: 'value', value: null },
+    { kind: 'value', value: 0 },
+    { kind: 'omit', value: '' },
+    { kind: 'null', hidden: 'secret' },
+    { kind: 'value', value: '', [Symbol('hidden')]: true },
+    Object.create({ kind: 'omit' }),
+    Object.setPrototypeOf({ kind: 'omit' }, { hidden: true }),
+    accessor,
+    kindAccessor
+  ])
+    assert.throws(() => readSqlQueryApiParameterDraft(draft), SqlQueryApiParameterError)
+  assert.equal(reads, 0)
+  assert.equal(
+    readSqlQueryApiParameterDraft(Object.assign(Object.create(null), { kind: 'null' })),
+    null
+  )
 })
 
 test('API test parameters reject missing requirements and invalid typed values before network', () => {

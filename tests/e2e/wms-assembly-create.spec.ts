@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { installFixtures, meta, tenantId } from './support/inventory-fixtures'
 import { mockApplicationMenus } from './support/menu-rpc'
 import { prepareAppearance } from './support/appearance'
+import { captureBusinessEvidence } from './support/capture-business-evidence'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -67,6 +68,7 @@ for (const oldOutcome of ['success', 'failure'] as const) {
 for (const entry of ['component', 'menu'] as const) {
   test(`库存组装${entry}两张新增各两批次失败保留并重试`, async ({ page }, testInfo) => {
     test.setTimeout(90_000)
+    const dark = testInfo.project.name.includes('dark') || testInfo.project.name === 'mobile-390'
     const payloads: unknown[] = []
     const savedRecords: Record<string, unknown>[] = []
     let failed = true
@@ -75,7 +77,7 @@ for (const entry of ['component', 'menu'] as const) {
     else {
       await installFixtures(page)
       await prepareAppearance(page, {
-        theme: testInfo.project.name.includes('dark') ? 'dark' : 'light',
+        theme: dark ? 'dark' : 'light',
         boxBorderMode: !testInfo.project.name.includes('shadow')
       })
       await page.route('**/rpc/get_accessible_applications', (route) =>
@@ -208,7 +210,7 @@ for (const entry of ['component', 'menu'] as const) {
     })
     await page.goto(
       entry === 'component'
-        ? '/tests/e2e/fixtures/wms-operation-retry.html'
+        ? `/tests/e2e/fixtures/wms-operation-retry.html?theme=${dark ? 'dark' : 'light'}`
         : '#/wms/adjustment-business/assembly'
     )
     const openButton = page.getByRole('button', {
@@ -226,6 +228,7 @@ for (const entry of ['component', 'menu'] as const) {
     await expect(assembly.getByText('请选择成品物料', { exact: true })).toHaveCount(0)
     expect(payloads).toHaveLength(0)
     async function pickBatch(index: number) {
+      await assembly.getByRole('tab', { name: '来源组件', exact: true }).click()
       await assembly.getByPlaceholder('选择一个库存批次加入组件', { exact: true }).click()
       const picker = page.getByRole('dialog', { name: /添加来源批次/ })
       await picker
@@ -250,7 +253,7 @@ for (const entry of ['component', 'menu'] as const) {
     )
     await pickBatch(1)
     await expect.poll(() => sourceStarted).toBe(true)
-    await assembly.getByRole('button', { name: '关闭此对话框', exact: true }).click()
+    await assembly.getByRole('button', { name: '关闭弹窗', exact: true }).click()
     await expect(assembly).toBeHidden()
     const downstreamRequests: string[] = []
     const trackDownstream = (request: import('@playwright/test').Request) => {
@@ -282,6 +285,7 @@ for (const entry of ['component', 'menu'] as const) {
         await expect(
           assembly.getByRole('spinbutton', { name: /ASSEMBLY-BATCH-.* 用量/ })
         ).toHaveCount(0)
+        await assembly.getByRole('tab', { name: '成品入库', exact: true }).click()
         await expect(assembly.getByRole('textbox', { name: '组装说明', exact: true })).toHaveValue(
           ''
         )
@@ -313,6 +317,12 @@ for (const entry of ['component', 'menu'] as const) {
           assembly.getByRole('spinbutton', { name: `ASSEMBLY-BATCH-${index} 用量`, exact: true })
         ).toBeVisible()
       }
+      await assembly.getByRole('button', { name: '确定', exact: true }).click()
+      await expect(assembly.getByRole('tab', { name: '成品入库', exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+      await expect(assembly.getByText('请选择成品物料', { exact: true })).toBeVisible()
       await assembly.getByPlaceholder('选择成品物料', { exact: true }).click()
       const materialPicker = page.getByRole('dialog', { name: /选择成品物料/ })
       await materialPicker
@@ -323,12 +333,12 @@ for (const entry of ['component', 'menu'] as const) {
       await assembly
         .getByRole('textbox', { name: '组装说明', exact: true })
         .fill(` 测试组装说明${documentIndex} `)
+      await expect(page.locator('.el-message--warning')).toHaveCount(0)
       await assembly.getByRole('button', { name: '确定', exact: true }).click()
       await expect(assembly.getByText('请选择成品库位', { exact: true })).toBeVisible()
       expect(payloads).toHaveLength((documentIndex - 1) * 2)
-      await page.screenshot({
-        path: testInfo.outputPath(`assembly-${documentIndex}-required-bin.png`),
-        animations: 'disabled'
+      await captureBusinessEvidence(assembly, {
+        path: testInfo.outputPath(`assembly-${documentIndex}-required-bin.png`)
       })
       await assembly.getByRole('combobox', { name: /成品库位/ }).click()
       await page.getByRole('option', { name: /ASSEMBLY-BIN/ }).click()
@@ -338,12 +348,17 @@ for (const entry of ['component', 'menu'] as const) {
       await expect(assembly.getByRole('textbox', { name: '组装说明', exact: true })).toHaveValue(
         ` 测试组装说明${documentIndex} `
       )
+      await assembly.getByRole('tab', { name: '来源组件', exact: true }).click()
       await expect(
         assembly.getByRole('spinbutton', { name: /ASSEMBLY-BATCH-.* 用量/ })
       ).toHaveCount(2)
-      await page.screenshot({
-        path: testInfo.outputPath(`assembly-${documentIndex}-save-rejected.png`),
-        animations: 'disabled'
+      for (const index of [1, 2]) {
+        await expect(
+          assembly.getByRole('spinbutton', { name: `ASSEMBLY-BATCH-${index} 用量`, exact: true })
+        ).toHaveValue(`${documentIndex + index}.000`)
+      }
+      await captureBusinessEvidence(assembly, {
+        path: testInfo.outputPath(`assembly-${documentIndex}-save-rejected.png`)
       })
       failed = false
       await assembly.getByRole('button', { name: '确定', exact: true }).click()

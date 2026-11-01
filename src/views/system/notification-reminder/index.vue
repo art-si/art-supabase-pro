@@ -626,7 +626,6 @@
 
 <style scoped lang="scss">
   .notification-reminder-page {
-    gap: 12px;
     min-width: 0;
     overflow: visible;
 

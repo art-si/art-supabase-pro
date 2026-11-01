@@ -1,0 +1,1 @@
+import{Ht as e,_ as t,p as n}from"./1wCw6UuY.js";import{r}from"./BlmiyFRh.js";import{t as i}from"./DMOJW5-i.js";import{r as a}from"./CZ5BkJj7.js";function o(){let o=n(),{isAllTenants:s}=t(i()),{isPlatformSuper:c}=t(r());return{isCrossTenantReadOnly:e(()=>a({isAllTenants:s.value,isPlatformSuper:c.value,routePath:o.path}))}}export{o as t};

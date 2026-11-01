@@ -3,7 +3,11 @@ import { createHash } from 'node:crypto'
 import { isObjectRecord } from '../../src/utils/record'
 
 export const BACKUP_SOURCE_PROJECT = 'ckbftoopuyophiebamwy'
-export type BackupSourceSql = Pick<Sql, 'unsafe'>
+// Backup readers only await queries; keep transport-specific pending-query
+// methods outside this boundary so deadlines can own their cancellation.
+export interface BackupSourceSql {
+  unsafe: (...args: Parameters<Sql['unsafe']>) => PromiseLike<Awaited<ReturnType<Sql['unsafe']>>>
+}
 export interface SourceConnection {
   Host: string
   Port: number

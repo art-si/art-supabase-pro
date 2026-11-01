@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseSfc } from '@vue/compiler-sfc'
 import ts from 'typescript'
+import { findNonSchemaFormFields, shouldAuditFormSchema } from './lib/form-schema-audit'
 
 interface Finding {
   file: string
@@ -328,6 +329,9 @@ function scanFile(file: string, content: string, tooltipOnly = false): Finding[]
       excerpt: excerptAt(content, offset)
     })
   }
+
+  if (shouldAuditFormSchema(relativeFile))
+    findNonSchemaFormFields(file, content).forEach(({ offset, rule }) => addFinding(offset, rule))
 
   if (
     path.extname(file) === '.vue' &&

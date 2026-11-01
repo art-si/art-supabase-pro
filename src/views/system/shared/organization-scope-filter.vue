@@ -1,16 +1,18 @@
 <template>
-  <section class="user-organization-filter" :aria-label="`${scopeCopy.entityLabel}组织范围筛选`">
-    <header class="user-organization-filter__header">
-      <div class="user-organization-filter__heading">
-        <span class="user-organization-filter__brand" aria-hidden="true">
-          <ArtSvgIcon icon="ri:node-tree" />
-        </span>
-        <div>
-          <strong>组织导航</strong>
-          <small>{{ organizationCount }} 个可用节点</small>
-        </div>
-      </div>
-
+  <ArtSectionCard
+    class="user-organization-filter"
+    :aria-label="`${scopeCopy.entityLabel}组织范围筛选`"
+    title="组织导航"
+    :subtitle="`${organizationCount} 个可用节点`"
+    :loading="loading && !data.length"
+    :empty="!loading && !data.length"
+    empty-title="暂无组织结构"
+    :empty-description="emptyDescription"
+    :empty-visual-size="68"
+    :min-height="96"
+    body-class="user-organization-filter__tree-area"
+  >
+    <template #actions>
       <ArtTooltip content="刷新组织结构" placement="top">
         <ArtIconButton
           icon="ri:refresh-line"
@@ -19,147 +21,141 @@
           @click="emit('refresh')"
         />
       </ArtTooltip>
-    </header>
+    </template>
 
-    <div class="user-organization-filter__controls">
-      <ElInput
-        v-model="keyword"
-        clearable
-        placeholder="搜索组织名称或编码"
-        aria-label="搜索组织名称或编码"
-      >
-        <template #prefix>
-          <ArtSvgIcon icon="ri:search-line" />
-        </template>
-      </ElInput>
-    </div>
-
-    <nav class="user-organization-filter__quick" aria-label="常用组织范围">
-      <button
-        type="button"
-        :class="{ 'is-active': selectedKey === ALL_ORGANIZATIONS_KEY }"
-        @click="handleQuickSelect(ALL_ORGANIZATIONS_KEY)"
-      >
-        <span class="user-organization-filter__quick-icon is-all" aria-hidden="true">
-          <ArtSvgIcon icon="ri:group-line" />
-        </span>
-        <span>
-          <strong>{{ scopeCopy.allLabel }}</strong>
-          <small>{{ scopeCopy.allDescription }}</small>
-        </span>
-        <ArtSvgIcon class="user-organization-filter__check" icon="ri:check-line" />
-      </button>
-
-      <button
-        v-if="showUnassigned"
-        type="button"
-        :class="{ 'is-active': selectedKey === UNASSIGNED_ORGANIZATION_KEY }"
-        @click="handleQuickSelect(UNASSIGNED_ORGANIZATION_KEY)"
-      >
-        <span class="user-organization-filter__quick-icon is-warning" aria-hidden="true">
-          <ArtSvgIcon icon="ri:user-unfollow-line" />
-        </span>
-        <span>
-          <strong>{{ scopeCopy.unassignedLabel }}</strong>
-          <small>{{ scopeCopy.unassignedDescription }}</small>
-        </span>
-        <ArtSvgIcon class="user-organization-filter__check" icon="ri:check-line" />
-      </button>
-    </nav>
-
-    <div class="user-organization-filter__section-title">
-      <span>组织结构</span>
-      <small v-if="hasScopeCounts">{{ assignedScopeCount }} {{ scopeCopy.assignedSuffix }}</small>
-    </div>
-
-    <div class="user-organization-filter__tree-area">
-      <ElSkeleton v-if="loading && !data.length" :rows="6" animated />
-
-      <ElScrollbar v-else-if="data.length" always>
-        <ElTree
-          ref="treeRef"
-          :data="data"
-          :props="treeProps"
-          :filter-node-method="filterNode"
-          :default-expanded-keys="defaultExpandedKeys"
-          node-key="id"
-          highlight-current
-          :expand-on-click-node="false"
-          @node-click="handleNodeClick"
-        >
-          <template #default="{ data: node }">
-            <div class="user-organization-filter__node">
-              <span
-                class="user-organization-filter__node-icon"
-                :class="`is-${node.organizationType}`"
-                aria-hidden="true"
-              >
-                <ArtSvgIcon :icon="getOrganizationTypeIcon(node.organizationType)" />
-              </span>
-              <span class="user-organization-filter__node-copy">
-                <strong :title="node.organizationName">{{ node.organizationName }}</strong>
-                <small :title="getOrganizationMeta(node)" translate="no">
-                  {{ getOrganizationMeta(node) }}
-                </small>
-              </span>
-              <span v-if="node.scopeCount" class="user-organization-filter__node-count">
-                {{ node.scopeCount }}
-              </span>
-            </div>
-          </template>
-          <template #empty>
-            <ArtEmptyState
-              title="未找到匹配项"
-              description="请调整关键词或清空筛选条件。"
-              size="compact"
-              :visual-size="64"
-            />
-          </template>
-        </ElTree>
-      </ElScrollbar>
-
-      <ArtEmptyState
-        v-else
-        title="暂无组织结构"
-        :description="emptyDescription"
-        size="compact"
-        :visual-size="68"
-      />
-    </div>
-
-    <footer class="user-organization-filter__footer">
-      <div class="user-organization-filter__cascade">
-        <span>
-          <strong>包含下级组织</strong>
-          <small>汇总所选节点及全部子节点</small>
-        </span>
-        <ElSwitch
-          :model-value="includeDescendants"
-          :disabled="!isOrganizationSelected"
-          aria-label="包含下级组织"
-          @change="handleCascadeChange"
-        />
-      </div>
-
-      <div class="user-organization-filter__selection" aria-live="polite">
-        <span aria-hidden="true"><ArtSvgIcon icon="ri:filter-3-line" /></span>
-        <div>
-          <small>当前范围</small>
-          <strong>{{ selectedLabel }}</strong>
+    <template #toolbar>
+      <div class="user-organization-filter__toolbar">
+        <div class="user-organization-filter__controls">
+          <ElInput
+            v-model="keyword"
+            clearable
+            placeholder="搜索组织名称或编码"
+            aria-label="搜索组织名称或编码"
+          >
+            <template #prefix>
+              <ArtSvgIcon icon="ri:search-line" />
+            </template>
+          </ElInput>
         </div>
-        <ElTag
-          v-if="selectedScopeCount !== null"
-          class="user-organization-filter__count-tag"
-          type="primary"
-          size="small"
-          effect="plain"
-          round
-        >
-          {{ selectedScopeCount }}{{ scopeCopy.countUnit }}
-        </ElTag>
+
+        <nav class="user-organization-filter__quick" aria-label="常用组织范围">
+          <button
+            type="button"
+            :class="{ 'is-active': selectedKey === ALL_ORGANIZATIONS_KEY }"
+            @click="handleQuickSelect(ALL_ORGANIZATIONS_KEY)"
+          >
+            <span class="user-organization-filter__quick-icon is-all" aria-hidden="true">
+              <ArtSvgIcon icon="ri:group-line" />
+            </span>
+            <span>
+              <strong>{{ scopeCopy.allLabel }}</strong>
+              <small>{{ scopeCopy.allDescription }}</small>
+            </span>
+            <ArtSvgIcon class="user-organization-filter__check" icon="ri:check-line" />
+          </button>
+
+          <button
+            v-if="showUnassigned"
+            type="button"
+            :class="{ 'is-active': selectedKey === UNASSIGNED_ORGANIZATION_KEY }"
+            @click="handleQuickSelect(UNASSIGNED_ORGANIZATION_KEY)"
+          >
+            <span class="user-organization-filter__quick-icon is-warning" aria-hidden="true">
+              <ArtSvgIcon icon="ri:user-unfollow-line" />
+            </span>
+            <span>
+              <strong>{{ scopeCopy.unassignedLabel }}</strong>
+              <small>{{ scopeCopy.unassignedDescription }}</small>
+            </span>
+            <ArtSvgIcon class="user-organization-filter__check" icon="ri:check-line" />
+          </button>
+        </nav>
+
+        <div class="user-organization-filter__section-title">
+          <span>组织结构</span>
+          <small v-if="hasScopeCounts"
+            >{{ assignedScopeCount }} {{ scopeCopy.assignedSuffix }}</small
+          >
+        </div>
       </div>
-    </footer>
-  </section>
+    </template>
+
+    <ElTree
+      ref="treeRef"
+      :data="data"
+      :props="treeProps"
+      :filter-node-method="filterNode"
+      :default-expanded-keys="defaultExpandedKeys"
+      node-key="id"
+      highlight-current
+      :expand-on-click-node="false"
+      @node-click="handleNodeClick"
+    >
+      <template #default="{ data: node }">
+        <div class="user-organization-filter__node">
+          <span
+            class="user-organization-filter__node-icon"
+            :class="`is-${node.organizationType}`"
+            aria-hidden="true"
+          >
+            <ArtSvgIcon :icon="getOrganizationTypeIcon(node.organizationType)" />
+          </span>
+          <span class="user-organization-filter__node-copy">
+            <strong :title="node.organizationName">{{ node.organizationName }}</strong>
+            <small :title="getOrganizationMeta(node)" translate="no">
+              {{ getOrganizationMeta(node) }}
+            </small>
+          </span>
+          <span v-if="node.scopeCount" class="user-organization-filter__node-count">
+            {{ node.scopeCount }}
+          </span>
+        </div>
+      </template>
+      <template #empty>
+        <ArtEmptyState
+          title="未找到匹配项"
+          description="请调整关键词或清空筛选条件。"
+          size="compact"
+          :visual-size="64"
+        />
+      </template>
+    </ElTree>
+
+    <template #footer>
+      <div class="user-organization-filter__footer">
+        <div class="user-organization-filter__cascade">
+          <span>
+            <strong>包含下级组织</strong>
+            <small>汇总所选节点及全部子节点</small>
+          </span>
+          <ElSwitch
+            :model-value="includeDescendants"
+            :disabled="!isOrganizationSelected"
+            aria-label="包含下级组织"
+            @change="handleCascadeChange"
+          />
+        </div>
+
+        <div class="user-organization-filter__selection" aria-live="polite">
+          <span aria-hidden="true"><ArtSvgIcon icon="ri:filter-3-line" /></span>
+          <div>
+            <small>当前范围</small>
+            <strong>{{ selectedLabel }}</strong>
+          </div>
+          <ElTag
+            v-if="selectedScopeCount !== null"
+            class="user-organization-filter__count-tag"
+            type="primary"
+            size="small"
+            effect="plain"
+            round
+          >
+            {{ selectedScopeCount }}{{ scopeCopy.countUnit }}
+          </ElTag>
+        </div>
+      </div>
+    </template>
+  </ArtSectionCard>
 </template>
 
 <script setup lang="ts">
@@ -167,6 +163,7 @@
   import type { ElTree, TreeNodeData } from 'element-plus'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
+  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import TreeUtils from '@/utils/tree'
 
@@ -342,18 +339,8 @@
 
 <style scoped lang="scss">
   .user-organization-filter {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
     height: 100%;
-    overflow: hidden;
-    background: var(--el-bg-color);
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: var(--custom-radius);
 
-    &__header,
-    &__heading,
-    &__heading > div,
     &__quick button,
     &__node,
     &__cascade,
@@ -362,65 +349,16 @@
       align-items: center;
     }
 
-    &__header {
-      flex: none;
-      justify-content: space-between;
-      padding: 16px 16px 13px;
-      background: linear-gradient(145deg, var(--el-color-primary-light-9), transparent 74%);
-      border-bottom: 1px solid var(--el-border-color-lighter);
-    }
-
-    &__heading {
-      min-width: 0;
-
-      > div {
-        display: grid;
-        min-width: 0;
-      }
-
-      strong {
-        font-size: 15px;
-        line-height: 22px;
-        color: var(--el-text-color-primary);
-      }
-
-      small {
-        font-size: 11px;
-        color: var(--el-text-color-secondary);
-      }
-    }
-
-    &__brand {
-      display: inline-flex;
-      flex: 0 0 36px;
-      align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      margin-right: 10px;
-      color: var(--el-color-primary);
-      background: color-mix(in srgb, var(--el-color-primary) 12%, var(--el-bg-color));
-      border: 1px solid var(--el-color-primary-light-7);
-      border-radius: var(--custom-radius);
-
-      :deep(svg) {
-        width: 18px;
-        height: 18px;
-      }
-    }
-
-    &__controls {
+    &__toolbar {
       display: grid;
-      flex: none;
-      gap: 10px;
-      padding: 14px 14px 10px;
+      gap: var(--art-space-3);
+      min-width: 0;
     }
 
     &__quick {
       display: grid;
       flex: none;
       gap: 4px;
-      padding: 0 10px 10px;
 
       button {
         position: relative;
@@ -505,10 +443,6 @@
       flex: none;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 14px 8px;
-      background: color-mix(in srgb, var(--el-fill-color-light) 64%, transparent);
-      border-top: 1px solid var(--el-border-color-lighter);
-      border-bottom: 1px solid var(--el-border-color-lighter);
 
       span {
         font-size: 12px;
@@ -522,54 +456,43 @@
       }
     }
 
-    &__tree-area {
+    :deep(.user-organization-filter__tree-area) {
       flex: 1 1 auto;
       min-height: 96px;
-      padding: 9px 8px 10px;
-      overflow: hidden;
-      background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--el-color-primary-light-9) 42%, transparent),
-        transparent 70px
-      );
+    }
 
-      :deep(.el-scrollbar__view) {
-        min-height: 100%;
-      }
+    :deep(.el-tree) {
+      --el-tree-node-hover-bg-color: var(--el-fill-color-light);
 
-      :deep(.el-tree) {
-        --el-tree-node-hover-bg-color: var(--el-fill-color-light);
+      background: transparent;
+    }
 
-        background: transparent;
-      }
+    :deep(.el-tree-node__content) {
+      position: relative;
+      height: 48px;
+      padding-right: 5px;
+      margin-bottom: 2px;
+      border-radius: var(--el-border-radius-base);
+    }
 
-      :deep(.el-tree-node__content) {
-        position: relative;
-        height: 48px;
-        padding-right: 5px;
-        margin-bottom: 2px;
-        border-radius: var(--el-border-radius-base);
-      }
+    :deep(.el-tree-node__children) {
+      position: relative;
+      padding-left: 6px;
+      margin-left: 11px;
+      border-left: 1px dashed var(--el-color-primary-light-7);
+    }
 
-      :deep(.el-tree-node__children) {
-        position: relative;
-        padding-left: 6px;
-        margin-left: 11px;
-        border-left: 1px dashed var(--el-color-primary-light-6);
-      }
+    :deep(.el-tree-node__children > .el-tree-node > .el-tree-node__content::before) {
+      position: absolute;
+      top: 50%;
+      left: -6px;
+      width: 8px;
+      content: '';
+      border-top: 1px dashed var(--el-color-primary-light-7);
+    }
 
-      :deep(.el-tree-node__children > .el-tree-node > .el-tree-node__content::before) {
-        position: absolute;
-        top: 50%;
-        left: -6px;
-        width: 8px;
-        content: '';
-        border-top: 1px dashed var(--el-color-primary-light-6);
-      }
-
-      :deep(.el-tree-node.is-current > .el-tree-node__content) {
-        background: var(--el-color-primary-light-9);
-      }
+    :deep(.el-tree-node.is-current > .el-tree-node__content) {
+      background: var(--el-color-primary-light-9);
     }
 
     &__node {
@@ -642,9 +565,6 @@
       display: grid;
       flex: none;
       gap: 10px;
-      padding: 12px 14px 14px;
-      background: var(--el-fill-color-lighter);
-      border-top: 1px solid var(--el-border-color-lighter);
     }
 
     &__cascade {
@@ -718,6 +638,12 @@
       padding-inline: 8px;
       white-space: nowrap;
       border-radius: 999px;
+    }
+
+    .el-drawer &.art-section-card {
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
     }
   }
 </style>

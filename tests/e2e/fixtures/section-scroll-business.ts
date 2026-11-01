@@ -21,6 +21,8 @@ declare global {
 const params = new URLSearchParams(location.search),
   mode = params.get('mode') || ''
 const pages = {
+  event: () =>
+    import('../../../modules/art-supabase-mes/src/views/production-execution/modules/execution-event-workspace.vue'),
   mold: () =>
     import('../../../modules/art-supabase-mes/src/views/production-execution/modules/mold-detail-ledger.vue'),
   reports: () =>
@@ -58,32 +60,39 @@ const selectedCenter = ref(''),
     open?: (...args: unknown[]) => Promise<void>
   }>()
 const targetProps = () =>
-  mode === 'navigator'
+  mode === 'event'
     ? {
-        style: { width: 'min(100%,360px)', height: '560px' },
-        workshops: [{ id: 'shop-1', code: 'SHOP1', name: '验收车间', path: '验收车间' }],
-        workCenters: Array.from({ length: 35 }, (_, index) => ({
-          id: `center-${index + 1}`,
-          code: `WC${String(index + 1).padStart(2, '0')}`,
-          name: `验收中心${String(index + 1).padStart(2, '0')}`
-        })),
-        selectedWorkshopId: selectedWorkshop.value,
-        selectedWorkCenterId: selectedCenter.value,
-        loading: false,
-        error: '',
-        showAllWorkCenters: true,
-        onSelectWorkCenter: (value: string) => {
-          selectedCenter.value = value
-        },
-        onSelectWorkshop: (value: string) => {
-          selectedWorkshop.value = value
-        }
+        mode: params.get('eventMode') || 'mold',
+        embedded: true,
+        taskId: 'task-1',
+        workCenterId: 'center-1'
       }
-    : mode === 'execution'
-      ? { entry: 'report' }
-      : mode === 'reports'
-        ? { mode: 'detail' }
-        : {}
+    : mode === 'navigator'
+      ? {
+          style: { width: 'min(100%,360px)', height: '560px' },
+          workshops: [{ id: 'shop-1', code: 'SHOP1', name: '验收车间', path: '验收车间' }],
+          workCenters: Array.from({ length: 35 }, (_, index) => ({
+            id: `center-${index + 1}`,
+            code: `WC${String(index + 1).padStart(2, '0')}`,
+            name: `验收中心${String(index + 1).padStart(2, '0')}`
+          })),
+          selectedWorkshopId: selectedWorkshop.value,
+          selectedWorkCenterId: selectedCenter.value,
+          loading: false,
+          error: '',
+          showAllWorkCenters: true,
+          onSelectWorkCenter: (value: string) => {
+            selectedCenter.value = value
+          },
+          onSelectWorkshop: (value: string) => {
+            selectedWorkshop.value = value
+          }
+        }
+      : mode === 'execution'
+        ? { entry: 'report' }
+        : mode === 'reports'
+          ? { mode: 'detail' }
+          : {}
 document.documentElement.style.setProperty('--art-full-height', 'calc(100vh - 32px)')
 const app = createApp({
   render: () =>
@@ -141,6 +150,8 @@ user.setUserInfo({
   platformSuper: false
 })
 user.setDictMap({
+  mesMoldRepairType: [{ label: '常规保养', value: 'repair-1', status: '1', sort: 1 }],
+  mesExecutionEventStatus: [{ label: '待处理', value: 'open', status: '1', sort: 1 }],
   hrEmploymentStatus: [{ label: '在职', value: 'active', status: '1', sort: 1 }],
   fmsAuxiliarySourceType: [{ label: '手工', value: 'manual', status: '1', sort: 1 }],
   vehicleOwnership: Array.from({ length: 35 }, (_, index) => ({
@@ -167,7 +178,22 @@ useMenuStore(store).setButtonList(
     'PmisInspectionDashboard:View',
     'PmisInspectionDashboard:ViewDetail',
     'MesReportDetail:View',
-    'MesMoldDetail:View'
+    'MesMoldDetail:View',
+    ...(mode === 'event'
+      ? [
+          'MesMold',
+          'MesInspection',
+          'MesAndon',
+          'MesException',
+          'MesMiscPiecework',
+          'MesMiscReport',
+          'MesEquipment'
+        ].flatMap((route) =>
+          ['View', 'Add', 'Create', 'Edit', 'Handle', 'Repair', 'Unload'].map(
+            (action) => `${route}:${action}`
+          )
+        )
+      : [])
   ].map((name) => ({ name, path: '', type: 'button' }))
 )
 const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT

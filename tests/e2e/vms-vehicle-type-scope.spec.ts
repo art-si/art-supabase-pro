@@ -98,7 +98,7 @@ async function waitForProfile(page: Page, length: number) {
   })
 }
 
-test('平台全部租户以父表单显式目标加载和保存该租户车型', async ({ page }) => {
+test('平台全部租户以父表单显式目标加载和保存该租户车型', async ({ page }, info) => {
   const unexpected = await isolate(page)
   const reads: string[] = []
   const saves: Array<{ p_id?: string | null; p_payload?: Record<string, unknown> }> = []
@@ -128,6 +128,13 @@ test('平台全部租户以父表单显式目标加载和保存该租户车型',
   await expect(createButton).toBeEnabled()
   await createButton.click()
   await expect.poll(() => saves.length).toBe(1)
+  await page.screenshot({
+    path: info.outputPath('vehicle-profile-fields.png'),
+    animations: 'disabled'
+  })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true
+  )
   expect(saves[0].p_id).toBeFalsy()
   expect(saves[0].p_payload?.tenant_id).toBe(otherTenant)
   expect(unexpected).toEqual([])

@@ -1,11 +1,21 @@
-import postgres from 'postgres'
+import type postgres from 'postgres'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { isObjectRecord } from '../src/utils/record'
 import type { BackupUpdateReport } from '../src/types/supabase-operations'
+import {
+  connectBackupSource,
+  backupUpdateErrorMessage,
+  backupUpdateErrorCode,
+  withBackupSourceDeadline,
+  timedBackupSource,
+  assertBackupSourceActive,
+  backupSourceFailure,
+  abortBackupSource
+} from './lib/backup-update-connection'
 import {
   readCopyInventory,
   listSourceTables,
@@ -21,7 +31,8 @@ import {
   createBackupUpdateWorkspace,
   commitBackupUpdate,
   recoverBackupUpdate,
-  acquireBackupUpdateSession
+  acquireBackupUpdateSession,
+  refreshBackupDirectoryTimestamp
 } from './lib/backup-update-workspace'
 import {
   BACKUP_SOURCE_PROJECT,
@@ -43,6 +54,7 @@ import {
 } from './lib/backup-update-source'
 import {
   UPDATE_REPOSITORY_ROOT,
+  assertExternalUpdateReportPath,
   exists,
   fileHash,
   makeSnapshotManifest,
@@ -92,13 +104,57 @@ interface SavedUpdatePlan {
 const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i
 const COPY_FINGERPRINT_ALGORITHM = 'copy-text-sha256-eight-lane-sum-v1'
 const MAX_SOURCE_DURATION_MS = 15 * 60_000
-const logStage = (message: string) => process.stdout.write(`阶段：${message}\n`)
+const printStage = (message: string): void => {
+  process.stdout.write(`阶段：${message}\n`)
+}
 const objectKey = (item: Pick<StorageObject, 'bucket_id' | 'name'>) =>
   `${item.bucket_id}/${item.name}`
 const storageIdentity = (item: StorageObject) =>
   digestValue([item.id, item.version, item.etag, item.size, item.updated_at])
 const sameFingerprint = (a: TableFingerprint, b: TableFingerprint) =>
   a.rows === b.rows && a.sums.every((value, index) => value === b.sums[index])
+
+// Bound the BEGIN acknowledgement separately from the callback, which may
+// legitimately spend time exporting and verifying local snapshot files.
+async function readSourceTransaction<T>(
+  client: ReturnType<typeof postgres>,
+  mode: string,
+  callback: (transaction: postgres.TransactionSql) => Promise<T>
+) {
+  let entered!: () => void
+  let completed!: () => void
+  let callbackStarted = false
+  const ready = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const callbackDone = new Promise<void>((resolve) => {
+    completed = resolve
+  })
+  const pending = client.begin(mode, async (transaction) => {
+    assertBackupSourceActive(client)
+    callbackStarted = true
+    entered()
+    try {
+      return await callback(transaction)
+    } finally {
+      completed()
+    }
+  })
+  try {
+    await withBackupSourceDeadline(
+      client,
+      Promise.race([ready, pending.then(() => {})]),
+      30_000,
+      'BACKUP_SOURCE_CONNECT_TIMEOUT'
+    )
+    await Promise.race([callbackDone, pending.then(() => {})])
+    return await withBackupSourceDeadline(client, pending, 30_000)
+  } catch (cause) {
+    await abortBackupSource(client, backupSourceFailure(client) || cause)
+    if (callbackStarted) await callbackDone
+    throw backupSourceFailure(client) || cause
+  }
+}
 
 function isUpdateIndex(value: unknown): value is UpdateIndex {
   if (
@@ -226,12 +282,11 @@ function catalogItems(catalog: SourceCatalog, previous?: UpdateIndex): UpdateIte
 
 async function dataActions(
   sql: BackupSourceSql,
-  root: string,
+  inventory: CopyInventory,
   file: string,
-  schemas: string[]
+  schemas: string[],
+  logStage: typeof printStage
 ): Promise<DataActions> {
-  logStage(`读取本地 ${file} 比较基线`)
-  const inventory = await readCopyInventory(path.join(root, 'database', file))
   const sourceTables = (await listSourceTables(sql, schemas)).filter(
     (table) =>
       !['storage.buckets_vectors', 'storage.vector_indexes'].includes(
@@ -354,7 +409,8 @@ async function dumpComponent(
   file: string,
   destination: string,
   password: string,
-  run: UpdateCommand
+  run: UpdateCommand,
+  logStage: typeof printStage
 ): Promise<void> {
   const argumentsByFile: Record<string, string[]> = {
     'schema.sql': ['--keep-comments'],
@@ -453,8 +509,8 @@ async function dumpTable(
 async function readSequenceStatements(sql: BackupSourceSql, schemas: string[]): Promise<string[]> {
   const rows = await sql.unsafe(
     `select n.nspname,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
-    where c.relkind='S' and n.nspname=any($1::text[]) order by n.nspname,c.relname`,
-    [schemas]
+    where c.relkind='S' and n.nspname in (select jsonb_array_elements_text($1::text::jsonb)) order by n.nspname,c.relname`,
+    [JSON.stringify(schemas)]
   )
   const statements: string[] = []
   const identifier = (value: string) => `"${value.replaceAll('"', '""')}"`
@@ -480,7 +536,7 @@ async function readSequenceStatements(sql: BackupSourceSql, schemas: string[]): 
 
 async function readMetadata(sql: BackupSourceSql): Promise<Record<string, unknown>> {
   const buckets = await sql.unsafe(
-    `select id,name,public,file_size_limit,allowed_mime_types,created_at::text,updated_at::text from storage.buckets order by id`
+    `select id,name,public,file_size_limit,to_jsonb(allowed_mime_types) allowed_mime_types,created_at::text,updated_at::text from storage.buckets order by id`
   )
   const counts = await sql.unsafe(
     `select bucket_id,count(*)::text object_count from storage.objects group by bucket_id order by bucket_id`
@@ -498,7 +554,11 @@ async function readMetadata(sql: BackupSourceSql): Promise<Record<string, unknow
 export async function runBackupUpdate(
   input: UpdateInput,
   run: UpdateCommand = runUpdateCommand,
-  connectSource:(connection:SourceConnection,password:string)=>ReturnType<typeof postgres>=(connection,password)=>postgres({host:connection.Host,port:connection.Port,username:connection.User,database:connection.Database,password,ssl:{rejectUnauthorized:true},max:2,prepare:false,connect_timeout:20,idle_timeout:30,onnotice:()=>{}})
+  connectSource: (
+    connection: SourceConnection,
+    password: string,
+    onRetry?: (attempt: number, total: number, code: string) => void
+  ) => ReturnType<typeof postgres> | Promise<ReturnType<typeof postgres>> = connectBackupSource
 ): Promise<BackupUpdateReport> {
   const root = path.resolve(input.UpdateBackupPath),
     planId = input.PlanId || randomUUID(),
@@ -529,15 +589,24 @@ export async function runBackupUpdate(
   }
   let database: ReturnType<typeof postgres> | undefined
   let releaseSession: (() => Promise<void>) | undefined
+  let stage = '准备更新'
+  const logStage = (message: string) => {
+    stage = message
+    printStage(message)
+  }
   try {
     releaseSession = await acquireBackupUpdateSession(root)
     logStage('检查上次更新状态')
-    const recovered=await recoverBackupUpdate(root)
-    if(recovered)report.warnings.unshift('已先恢复上次未完成文件提交的原快照。')
+    const recovered = await recoverBackupUpdate(root)
+    if (recovered) report.warnings.unshift('已先恢复上次未完成文件提交的原快照。')
     if (input.RecoverUpdate) {
       report.baseManifestSha256 = await fileHash(path.join(root, 'manifest.json'))
       report.status = 'unchanged'
-      report.warnings = [recovered?'已恢复上次未完成的文件提交，原完整快照可继续使用。':'未发现待恢复的文件提交，当前备份未改动。']
+      report.warnings = [
+        recovered
+          ? '已恢复上次未完成的文件提交，原完整快照可继续使用。'
+          : '未发现待恢复的文件提交，当前备份未改动。'
+      ]
       return report
     }
     logStage('校验已有完整备份')
@@ -569,14 +638,30 @@ export async function runBackupUpdate(
         storedValue.backupPath !== root)
     )
       throw new Error('更新计划对应的本地备份已经变化，请重新检查远端变化。')
-    database = connectSource(connection,input.DbPassword)
-    const sourceSql = database
+    // Parse/hash local baselines before opening a remote snapshot. Large local
+    // dumps must not consume the source transaction's idle timeout, and invalid
+    // local data must fail before any network work begins.
+    logStage('读取本地 data.sql 比较基线')
+    const firstInventory = await readCopyInventory(path.join(root, 'database/data.sql'))
+    logStage('读取本地 migration-history-data.sql 比较基线')
+    const migrationInventory = await readCopyInventory(
+      path.join(root, 'database/migration-history-data.sql')
+    )
+    logStage('读取来源函数清单')
     const originalFunctions = parseSourceFunctions(
       parseCliArray(await readFile(path.join(root, 'metadata/functions.json'), 'utf8'))
     )
     const latestFunctions = await cliFunctions(run)
-    await sourceSql.begin('isolation level repeatable read read only', async (transaction) => {
-      const sql: BackupSourceSql = transaction
+    logStage('连接来源数据库（1/3）')
+    database = await connectSource(connection, input.DbPassword, (attempt, total, code) => {
+      logStage(`连接来源数据库（${attempt}/${total}），上次连接失败（${code}），正在重试`)
+    })
+    const sourceSql = database
+    logStage('建立来源只读快照')
+    let commitPreparedUpdate: (() => Promise<void>) | undefined
+    const snapshotMode = 'isolation level repeatable read read only'
+    await readSourceTransaction(sourceSql, snapshotMode, async (transaction) => {
+      const sql = timedBackupSource(sourceSql, transaction)
       await sql.unsafe(
         "set local timezone='UTC'; set local datestyle='ISO, MDY'; set local intervalstyle='postgres'; set local extra_float_digits=3; set local bytea_output=hex; set local search_path=''; set local row_security=off; set local statement_timeout='120s'; set local idle_in_transaction_session_timeout='15min'"
       )
@@ -590,14 +675,17 @@ export async function runBackupUpdate(
       if (version >= 170000) await sql.unsafe("set local transaction_timeout='15min'")
       logStage('读取来源结构与策略指纹')
       const catalog = await readSourceCatalog(sql)
-      const firstInventory = await readCopyInventory(path.join(root, 'database/data.sql'))
       const schemas = await readDataSchemas(sql, [
         ...new Set(firstInventory.tables.map((table) => table.schema))
       ])
-      const mainData = await dataActions(sql, root, 'data.sql', schemas)
-      const migrationData = await dataActions(sql, root, 'migration-history-data.sql', [
-        'supabase_migrations'
-      ])
+      const mainData = await dataActions(sql, firstInventory, 'data.sql', schemas, logStage)
+      const migrationData = await dataActions(
+        sql,
+        migrationInventory,
+        'migration-history-data.sql',
+        ['supabase_migrations'],
+        logStage
+      )
       const data = [mainData, migrationData]
       for (const part of data) {
         part.sequences = await readSequenceStatements(
@@ -680,7 +768,7 @@ export async function runBackupUpdate(
           item.status !== 'unchanged'
       )) {
         const temp = path.join(workspace.root, `new-${component.key}`)
-        await dumpComponent(component.key, temp, input.DbPassword, run)
+        await dumpComponent(component.key, temp, input.DbPassword, run, logStage)
         const old = await readFile(path.join(root, 'database', component.key), 'utf8')
         const fresh = await readFile(temp, 'utf8')
         if (normalizedDump(old) === normalizedDump(fresh)) component.status = 'unchanged'
@@ -865,11 +953,15 @@ export async function runBackupUpdate(
         digestValue(latestFunctions.functions.map(functionIdentity).sort())
       )
         throw new Error('下载期间函数部署发生变化，原备份保留，请重新检查变化。')
-      const fresh = await sourceSql.begin('read only', async (check) => {
+      const fresh = await readSourceTransaction(sourceSql, 'read only', async (transaction) => {
+        const check = timedBackupSource(sourceSql, transaction)
         await check.unsafe(
           "set local timezone='UTC'; set local datestyle='ISO, MDY'; set local search_path=''"
         )
-        return { catalog: await readSourceCatalog(check), storage: await readStorageObjects(check) }
+        return {
+          catalog: await readSourceCatalog(check),
+          storage: await readStorageObjects(check)
+        }
       })
       if (
         digestValue(fresh.catalog) !== digestValue(catalog) ||
@@ -886,39 +978,75 @@ export async function runBackupUpdate(
         path.join(workspace.root, `verify-stage-${randomUUID()}.json`),
         run
       )
-      logStage('归档旧文件并提交更新，完成清单最后替换')
-      const committed = await commitBackupUpdate(root, stage, report.baseManifestSha256)
-      report.historyPath = committed.historyPath
-      report.resultManifestSha256 = await fileHash(path.join(root, 'manifest.json'))
-      const storageIndex: UpdateIndex['storage'] = []
-      for (const object of storage)
-        storageIndex.push({
-          key: objectKey(object),
-          identity: storageIdentity(object),
-          sha256: await fileHash(path.join(root, 'storage', ...objectKey(object).split('/')))
-        })
-      await writeJson(path.join(cacheRoot, 'index.json'), {
-        formatVersion: 1,
-        algorithm: COPY_FINGERPRINT_ALGORITHM,
-        manifestSha256: report.resultManifestSha256,
-        catalog,
-        storage: storageIndex
-      } satisfies UpdateIndex)
-      report.summary = summarize(report.items)
-      report.status = committed.changedFiles + committed.removedFiles > 0 ? 'updated' : 'unchanged'
+      // Only expose local commit after both source transactions completed.
+      // A disconnected driver's callback must never replace the original.
+      commitPreparedUpdate = async () => {
+        logStage('归档旧文件并提交更新，完成清单最后替换')
+        assertBackupSourceActive(sourceSql)
+        const committed = await commitBackupUpdate(root, stage, report.baseManifestSha256)
+        report.historyPath = committed.historyPath
+        report.resultManifestSha256 = await fileHash(path.join(root, 'manifest.json'))
+        const storageIndex: UpdateIndex['storage'] = []
+        for (const object of storage)
+          storageIndex.push({
+            key: objectKey(object),
+            identity: storageIdentity(object),
+            sha256: await fileHash(path.join(root, 'storage', ...objectKey(object).split('/')))
+          })
+        await writeJson(path.join(cacheRoot, 'index.json'), {
+          formatVersion: 1,
+          algorithm: COPY_FINGERPRINT_ALGORITHM,
+          manifestSha256: report.resultManifestSha256,
+          catalog,
+          storage: storageIndex
+        } satisfies UpdateIndex)
+        report.summary = summarize(report.items)
+        report.status =
+          committed.changedFiles + committed.removedFiles > 0 ? 'updated' : 'unchanged'
+      }
     })
+    assertBackupSourceActive(sourceSql)
+    await commitPreparedUpdate?.()
+    if (input.ApplyUpdate) {
+      logStage('校验完成，刷新备份目录时间')
+      const refreshed = await refreshBackupDirectoryTimestamp(
+        root,
+        report.resultManifestSha256 || report.baseManifestSha256
+      )
+      report.backupPath = refreshed.backupPath
+      report.warnings.push(...refreshed.warnings)
+      if (report.backupPath !== root) {
+        const nextCacheRoot = path.join(
+          path.dirname(cacheRoot),
+          digestValue(report.backupPath.toLowerCase())
+        )
+        try {
+          if (await exists(path.join(cacheRoot, 'index.json'))) {
+            await mkdir(nextCacheRoot, { recursive: true })
+            const temporaryIndex = path.join(nextCacheRoot, `index-${randomUUID()}.tmp`)
+            await copyFile(path.join(cacheRoot, 'index.json'), temporaryIndex)
+            await rename(temporaryIndex, path.join(nextCacheRoot, 'index.json'))
+          }
+        } catch {
+          report.warnings.push('备份目录时间已更新；比较缓存未同步，下次更新会重新核对指纹。')
+        }
+        logStage(`实际备份目录：${report.backupPath}`)
+      }
+      if (await exists(root + '.zip'))
+        report.warnings.push('原 ZIP 分发包仍保留旧快照；请使用最新备份目录重新制作分发包。')
+    }
     return report
   } catch (cause) {
+    const failure = (database && backupSourceFailure(database)) || cause
+    if (database) await abortBackupSource(database, failure)
     report.status = 'failed'
-    report.error =
-      cause instanceof Error &&
-      /[\u4e00-\u9fff]/.test(cause.message) &&
-      !/password|postgres:\/\/|postgresql:\/\//i.test(cause.message)
-        ? cause.message
-        : '来源数据库连接或网络异常，请检查来源密码、5432 端口和证书设置后重试。'
+    report.error = backupUpdateErrorMessage(failure)
+    report.errorCode = backupUpdateErrorCode(failure)
+    report.errorStage = stage
     return report
   } finally {
-    await database?.end({ timeout: 5 }).catch(() => {})
+    if (database && !backupSourceFailure(database))
+      await database.end({ timeout: 5 }).catch(() => {})
     await releaseSession?.()
     input.DbPassword = ''
     report.completedAt = new Date().toISOString()
@@ -933,8 +1061,9 @@ async function main(): Promise<void> {
     if (text.length > 32768) throw new Error('更新输入过大。')
   }
   const input = parseBackupUpdateInput(JSON.parse(text))
-  const report = await runBackupUpdate(input)
   const requested = process.env.SUPABASE_OPS_UPDATE_REPORT_PATH
+  if (requested) assertExternalUpdateReportPath(requested, input.UpdateBackupPath)
+  const report = await runBackupUpdate(input)
   const destination =
     requested ||
     path.join(
@@ -942,8 +1071,7 @@ async function main(): Promise<void> {
       '.artifacts/supabase-operations',
       `${report.planId}.update-cli.json`
     )
-  if (path.resolve(destination).startsWith(path.resolve(input.UpdateBackupPath) + path.sep))
-    throw new Error('更新报告不能写入备份目录。')
+  assertExternalUpdateReportPath(destination, report.backupPath)
   await writeJson(destination, report)
   process.stdout.write(`更新报告：${destination}\n`)
   process.stdout.write(

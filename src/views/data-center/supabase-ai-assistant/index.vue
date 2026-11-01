@@ -477,7 +477,6 @@
   .project-assistant {
     display: flex;
     flex-direction: column;
-    gap: 12px;
     min-height: 0;
     overflow: hidden;
     background: var(--default-box-color);

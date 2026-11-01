@@ -190,6 +190,7 @@ for (const profile of [
           quantity = dialog.getByRole('spinbutton', { name: /良品数量/ }),
           confirm = dialog.locator('.el-dialog__footer button').last()
         await expect(dialog.getByRole('tab')).toHaveCount(2)
+        await expect(quantity).toBeVisible()
         if (mode === 'create')
           await expect(dialog.getByText('白班 08:00—18:00', { exact: true })).toBeVisible()
         await dialog.getByRole('tab', { name: '工时与附件', exact: true }).click()

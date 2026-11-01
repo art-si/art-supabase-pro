@@ -50,6 +50,16 @@ Do not grant newly introduced business buttons to roles that lack the parent pag
 
 ## Choose Project Components First
 
+### Schema-first forms
+
+- Configure ordinary fields through `ArtForm :items` and the existing preset `type`, including employee/user selectors and uploads. Do not replace supported presets with field slots or `render` wrappers, and do not handwrite `ElFormItem` in business pages.
+- Keep labels, descriptions, help, options, rules, `formItemProps` (required/error attributes), hidden state, disabled state, spans and control events in the field configuration. Use control-level `slots` for prefixes, suffixes and choice labels when possible.
+- A logical record uses one form. Permissions for compensation or other sensitive fields belong on those fields; do not create a second form just for one amount. Preserve server permissions and output sanitization when consolidating.
+- Use named field slots only for missing control types or genuine composite editors/tables. Their internal search, navigation and editor tools may remain native controls; do not wrap them in nested forms. Extend a shared preset when the same missing ordinary control is needed repeatedly.
+- Static field definitions must use getters or computed configuration for changing options, selected data and disabled state. Preserve secondary model events and business side effects; do not capture initial values during a slot migration.
+- The existing login, registration and password-recovery pages under `src/views/auth/**` retain their special layout and styling by explicit user instruction. This exception does not apply to ordinary business or System Management forms.
+- `pnpm ui:audit` enforces schema ownership and rejects raw form items, ordinary custom layouts and direct preset-control field slots outside that exception and core rendering infrastructure.
+
 For query forms, express each ordinary control through its `SearchFormItem` type and options. Use an existing `ArtForm` control such as `radioGroup` before writing a `#search-*` slot. If a generally useful Element Plus form control is missing, extend `ArtForm` and its item types, then use that shared type in business pages. Reserve search slots for interactions that the metadata contract cannot express. Do not add a placeholder `type: 'text'` item solely to mount a standard control in a slot. Persisted or reusable option sets, including list display modes, must come from the appropriate `sys_dictionary` through `useDictionaryOptions`; keep their labels and order configurable instead of duplicating literal options across pages.
 
 Use these components before assembling equivalent Element Plus plumbing:
@@ -80,6 +90,10 @@ When a project wrapper already exists, use it before raw Element Plus primitives
 Group table-row actions with `BusinessTableRowActions`. It owns the project-wide 8px spacing and clears the legacy `ArtButtonTable` margin. `ArtTable` automatically applies it to columns whose `prop` is `operation`; use it explicitly for row-like action groups outside `ArtTable`. Do not add page-local row-action gap or button-margin overrides.
 
 Business landing pages, list workspaces, operational workbenches, and module home pages must use `BusinessWorkspaceHeader` for the page identity, eyebrow, description, feature tags, overview metrics, and header actions. Do not hand-build page-local hero/overview headers or create domain-specific copies of the workspace header. If a reusable header capability is missing, extend `src/components/business/business-workspace-header/index.vue` and consume the extension everywhere. Use `ArtPageHeader` instead for create, edit, detail, or configuration workflow pages that need back navigation; detail pages must present read-only values through `ArtDescriptions` or purpose-built display components rather than disabled form controls.
+
+Use `business-workspace-page` on the common parent of a workspace header, query panel, and main content. Its global layout owns the `--art-page-gap` between direct children; do not stack `space-y-*` or direct-child vertical margins on that gap. `art-full-height` owns height only. `ArtTableQuery` owns search-to-table spacing and the query card surface, including hiding that gap when search is hidden; do not override its card margin or add another card around the search panel.
+
+Navigation cards should let `ArtSectionCard` own the header, fixed toolbar/footer, and ordinary scrollable body. Keep the scrollbar viewport at the card edge and place content gutters inside it. Preserve independent tab, virtual-tree, or editor scroll owners when needed. For a short stacked pane, verify retry and empty-state actions are fully visible before any automatic scrolling; use the existing `ArtWorkspaceSplitter.stackedPrimarySize` with `auto` for page-owned error/empty states when their content does not fit the normal fixed size.
 
 Use raw `ElDialog` or `ElDrawer` only when the wrapper cannot support a documented platform requirement. Extend the core wrapper instead when the missing behavior is broadly reusable.
 

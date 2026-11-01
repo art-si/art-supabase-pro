@@ -138,7 +138,7 @@
                   >
                   <ArtForm
                     ref="invokeForm"
-                    v-model="test.values"
+                    v-model="invokeValues"
                     :items="invokeItems"
                     :rules="invokeRules"
                     :disabled="test.loading || !selected.enabled"
@@ -193,6 +193,19 @@
                       @refresh="presetStore.refresh"
                       @reset="resetPresets"
                     />
+                    <ArtTooltip
+                      content="查看本次实际调用参数与可复用请求示例"
+                      :trigger="['hover', 'focus']"
+                      :trigger-keys="[]"
+                    >
+                      <ArtIconButton
+                        size="small"
+                        icon="ri:code-s-slash-line"
+                        label="查看本次请求"
+                        :disabled="!requestSnapshot"
+                        @click="requestPreview?.open()"
+                      />
+                    </ArtTooltip>
                     <ResultComparisonControls
                       :result="resultSnapshotInput"
                       :owner="resultOwnerKey"
@@ -340,13 +353,6 @@
       :rules="editRules"
       label-position="top"
     >
-      <template #allowedUserIds
-        ><ArtUserSelect
-          v-model="form.allowedUserIds"
-          multiple
-          :options="userOptions"
-          placeholder="默认仅平台超级管理员可调用"
-      /></template>
       <template #parameters>
         <div class="w-full min-w-0">
           <div class="mb-2 flex flex-wrap items-center justify-between gap-2"
@@ -379,6 +385,7 @@
   </ArtDialog>
   <QueryApiPresetDialog ref="presetDialog" />
   <CellContentView ref="presetPreview" />
+  <QueryApiRequestPreview ref="requestPreview" :request="requestSnapshot" />
 </template>
 
 <script setup lang="ts">
@@ -392,15 +399,15 @@
     reactive,
     ref,
     shallowRef,
+    unref,
     watch
   } from 'vue'
   import { useIntervalFn, useTimeoutPoll } from '@vueuse/core'
-  import { ElButton, ElMessage } from 'element-plus'
+  import { ElButton, ElMessage, type FormRules } from 'element-plus'
   import { cloneDeep, uniq } from 'lodash-es'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtUserSelect from '@/components/core/forms/art-user-select/index.vue'
   import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -425,7 +432,18 @@
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
   import { formatDurationMs } from '@/utils/ui/format'
   import { copyTextToClipboard } from '@/utils/file/clipboard'
+  import { getOwnRecordValue } from '@/utils/record'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import QueryApiRequestPreview, {
+    type QueryApiRequestPreviewExpose
+  } from './query-api-request-preview.vue'
+  import QueryApiParameterInput from './query-api-parameter-input.vue'
+  import {
+    createSqlQueryApiRequestSnapshot,
+    type SqlQueryApiRequestSnapshot
+  } from './query-api-request'
   import ResultTable from './result-table.vue'
   import ResultComparisonControls from './result-comparison-controls.vue'
   import ResultExportControls from './result-export-controls.vue'
@@ -451,7 +469,10 @@
   import {
     sqlQueryApiExampleValues,
     sqlQueryApiExamples,
-    sqlQueryApiParameters
+    sqlQueryApiParameters,
+    toSqlQueryApiParameterDraft,
+    readSqlQueryApiParameterDraft,
+    SqlQueryApiParameterError
   } from './query-api-ui'
   import {
     getSqlQueryApiSample,
@@ -470,6 +491,8 @@
   const presetPicker = ref<QueryApiParameterPresetsExpose>()
   const presetDialog = ref<QueryApiPresetDialogExpose>()
   const presetPreview = ref<CellContentViewExpose>()
+  const requestPreview = ref<QueryApiRequestPreviewExpose>()
+  const requestSnapshot = shallowRef<SqlQueryApiRequestSnapshot | null>(null)
   const openApiControls = ref<QueryApiOpenApiControlsExpose>()
   const requestCodePreview = ref<PlanCodePreviewExpose>()
   const curlCodePreview = ref<PlanCodePreviewExpose>()
@@ -492,7 +515,6 @@
   const test = reactive<{
     loading: boolean
     activeTab: string
-    values: Record<string, unknown>
     error: string
     exampleHint: string
     result: SqlQueryApiResult | null
@@ -505,7 +527,6 @@
   }>({
     loading: false,
     activeTab: 'test',
-    values: {},
     error: '',
     exampleHint: '',
     result: null,
@@ -530,6 +551,31 @@
   const selected = computed(() =>
     list.snapshot?.definitions.find((definition) => definition.id === list.selectedId)
   )
+  // ArtForm mutates its model in place; keep that stable model as the only input state.
+  const invokeValues = ref<Record<string, unknown>>({})
+  // ArtForm keys also name Vue slots and lodash paths; API names are literal payload keys.
+  const invokeFieldKey = (name: string): string => `queryApiParameter_${name}`
+  const parameterValues = computed<Record<string, unknown>>(() =>
+    Object.fromEntries(
+      (selected.value?.parameters || []).map((parameter) => {
+        const draft = getOwnRecordValue(invokeValues.value, invokeFieldKey(parameter.name))
+        return [
+          parameter.name,
+          readSqlQueryApiParameterDraft(
+            draft === undefined ? toSqlQueryApiParameterDraft(undefined) : draft
+          )
+        ]
+      })
+    )
+  )
+  const fillInvokeValues = (values: Readonly<Record<string, unknown>>): void => {
+    invokeValues.value = Object.fromEntries(
+      (selected.value?.parameters || []).map((parameter) => [
+        invokeFieldKey(parameter.name),
+        toSqlQueryApiParameterDraft(getOwnRecordValue(values, parameter.name))
+      ])
+    )
+  }
   const presetStore = useQueryApiParameterPresets({
     scope: () => (user.getUserInfo.userId ? identity.value : null),
     definition: selected
@@ -563,12 +609,14 @@
   )
   let generation = 0
   let invocation = 0
-  let editGeneration = 0
   let selectionAction = 0
   let guideAction = 0
   let drawerSession = 0
   let alive = true
   let active = true
+  const editorSession = useArtOverlaySession(
+    () => alive && active && canManage.value && Boolean(unref(editorDialog.value?.visible))
+  )
   let invokeAction = 0
   let callStartedAt: number | null = null
   let callIsCurrent: (() => boolean) | null = null
@@ -689,7 +737,7 @@
       // Snapshot explicit fields when opening the dialog; later input changes do not alter this save.
       const values = normalizeQueryApiPresetValues(
         action.context.definition.parameters,
-        test.values
+        parameterValues.value
       )
       await presetDialog.value?.open({
         onSave: (name) => {
@@ -710,7 +758,7 @@
     try {
       const values = presetStore.apply(preset, action.context)
       if (!action.current()) return
-      test.values = values
+      fillInvokeValues(values)
       test.error = ''
       test.activeTab = 'test'
       test.exampleHint = `已填入方案“${preset.name}”，尚未调用；请核对参数后点击“调用 API”。${preset.definitionVersion !== action.context.definition.updatedAt ? 'API 已更新，请检查参数。' : ''}${test.result ? '已有结果不会自动更新。' : ''}`
@@ -725,7 +773,7 @@
     try {
       const values = normalizeQueryApiPresetValues(
         action.context.definition.parameters,
-        test.values
+        parameterValues.value
       )
       presetStore.update(preset, values, action.context)
       if (action.current()) ElMessage.success('已用当前参数更新本机方案')
@@ -795,15 +843,20 @@
   watch([presetRevision, () => test.loading || list.loading], resetCallOverlays, {
     flush: 'sync'
   })
+  const resetRequestSnapshot = (): void => {
+    requestPreview.value?.reset()
+    requestSnapshot.value = null
+  }
   const clearTest = () => {
     invocation++
     invokeAction++
+    resetRequestSnapshot()
     resetCallControls()
     resetCallOverlays()
+    fillInvokeValues({})
     Object.assign(test, {
       loading: false,
       activeTab: 'test',
-      values: {},
       error: '',
       exampleHint: '',
       result: null,
@@ -867,38 +920,44 @@
   }
   const invokeItems = computed<FormItem[]>(() =>
     (selected.value?.parameters || []).map((parameter) => ({
-      key: parameter.name,
+      key: invokeFieldKey(parameter.name),
       label: `${parameter.name}${parameter.required ? '（必填）' : '（可选）'}`,
       span: 12,
-      type: parameter.type === 'boolean' ? 'select' : parameter.type === 'date' ? 'date' : 'input',
-      placeholder:
-        parameter.type === 'number'
-          ? '保留十进制文本，不自动舍入'
-          : parameter.type === 'uuid'
-            ? '输入 UUID'
-            : `输入 ${parameter.name}`,
-      options:
-        parameter.type === 'boolean'
-          ? [
-              { label: 'true', value: true },
-              { label: 'false', value: false }
-            ]
-          : undefined,
+      type: 'queryApiParameter',
+      render: QueryApiParameterInput,
       props: {
-        clearable: !parameter.required,
-        'aria-label': `API 参数 ${parameter.name}`,
-        ...(parameter.type === 'date' ? { type: 'date', valueFormat: 'YYYY-MM-DD' } : {})
+        parameter,
+        disabled: test.loading || list.loading || !selected.value?.enabled
       }
     }))
   )
-  const invokeRules = computed(() =>
+  const invokeRules = computed<FormRules>(() =>
     Object.fromEntries(
-      (selected.value?.parameters || [])
-        .filter((parameter) => parameter.required)
-        .map((parameter) => [
-          parameter.name,
-          [{ required: true, message: `请填写参数 ${parameter.name}` }]
-        ])
+      (selected.value?.parameters || []).map((parameter) => [
+        invokeFieldKey(parameter.name),
+        [
+          {
+            required: parameter.required,
+            validator: (_rule: unknown, draft: unknown, callback: (error?: Error) => void) => {
+              try {
+                const value = readSqlQueryApiParameterDraft(
+                  draft === undefined ? toSqlQueryApiParameterDraft(undefined) : draft
+                )
+                sqlQueryApiParameters([parameter], Object.fromEntries([[parameter.name, value]]))
+                callback()
+              } catch (cause) {
+                callback(
+                  new Error(
+                    cause instanceof SqlQueryApiParameterError
+                      ? cause.message
+                      : '参数校验失败，请检查输入后重试'
+                  )
+                )
+              }
+            }
+          }
+        ]
+      ])
     )
   )
   const invoke = async () => {
@@ -928,6 +987,7 @@
       version === generation &&
       session === drawerSession &&
       selected.value === definition
+    resetRequestSnapshot()
     resetCallControls()
     test.loading = true
     test.error = ''
@@ -942,8 +1002,17 @@
     try {
       await invokeForm.value?.validate()
       if (!isCurrent()) return
-      const params = sqlQueryApiParameters(definition.parameters, test.values)
+      const params = sqlQueryApiParameters(definition.parameters, parameterValues.value)
       const requestId = crypto.randomUUID()
+      requestSnapshot.value = createSqlQueryApiRequestSnapshot(
+        {
+          name: definition.name,
+          url: getSqlQueryApiUrl(definition.slug),
+          sentAt: new Date().toISOString(),
+          definitionVersion: definition.updatedAt
+        },
+        params
+      )
       cancelTarget.value = { requestId, definitionId: definition.id, isCurrent, pending: false }
       callIsCurrent = isCurrent
       callStartedAt = performance.now()
@@ -974,7 +1043,7 @@
     }
   }
   const fillExampleValues = (definition: SqlQueryApiDefinition): void => {
-    test.values = sqlQueryApiExampleValues(definition)
+    fillInvokeValues(sqlQueryApiExampleValues(definition))
     test.error = ''
     test.activeTab = 'test'
     test.exampleHint = `已填入示例参数，尚未调用；请点击“调用 API”运行。${test.result ? '已有结果不会自动更新。' : ''}`
@@ -1214,7 +1283,19 @@
         'aria-label': '查询 API 超时毫秒'
       }
     },
-    { key: 'allowedUserIds', label: '授权调用账号', span: 24 },
+    {
+      key: 'allowedUserIds',
+      label: '授权调用账号',
+      span: 24,
+      type: 'userSelect',
+      get props() {
+        return {
+          multiple: true,
+          options: userOptions.value,
+          placeholder: '默认仅平台超级管理员可调用'
+        }
+      }
+    },
     { key: 'executionHelp', label: '', span: 24 }
   ])
   const editRules = {
@@ -1231,11 +1312,12 @@
     sql = '',
     sample?: SqlQueryApiSample
   ) => {
-    if (!alive || !canManage.value) return
+    if (!alive || !active || !canManage.value) return
     const owner = identity.value
     const version = generation
     if (!((await resultTable.value?.confirmLeave()) ?? true)) return
-    if (!alive || owner !== identity.value || version !== generation || !canManage.value) return
+    if (!alive || !active || owner !== identity.value || version !== generation || !canManage.value)
+      return
     form.value = definition
       ? cloneDeep(definition)
       : {
@@ -1253,29 +1335,32 @@
         }
     parameterCount.value = form.value.parameters.length
     editorActiveTab.value = 'query'
-    const editor = ++editGeneration
+    const editor = editorSession.invalidate()
+    const isCurrent = (): boolean => owner === identity.value && editorSession.isCurrent(editor)
     await editorDialog.value?.handleOpen(undefined, {
       title: definition ? '编辑查询 API' : '发布查询 API',
       subtitle: '固定 SQL、类型化参数、租户与账号授权',
       width: 880,
       confirmText: definition ? '保存 API' : '发布 API',
       onConfirm: async () => {
-        if (!alive || owner !== identity.value || editor !== editGeneration || !canManage.value)
-          return false
+        if (!isCurrent()) return false
         try {
-          await editorForm.value?.validate()
-          const validation = await parameterTable.value?.validate({ focus: false })
-          if (validation?.valid === false) {
+          if (!(await validateArtFormForSubmit(editorForm.value)) || !isCurrent()) return false
+          const table = parameterTable.value
+          if (!table) return false
+          const validation = await table.validate({ focus: false })
+          if (!isCurrent()) return false
+          if (!validation.valid) {
             editorActiveTab.value = 'query'
             await nextTick()
+            if (!isCurrent()) return false
             if (validation.firstError) {
-              await parameterTable.value?.validateField(validation.firstError.prop)
-              ElMessage.warning(validation.firstError.message)
+              await table.validateField(validation.firstError.prop)
+              if (isCurrent()) ElMessage.warning(validation.firstError.message)
             }
             return false
           }
-          if (owner !== identity.value || editor !== editGeneration) return false
-          const parameters = parameterTable.value?.getTableData() || []
+          const parameters = table.getTableData()
           if (uniq(parameters.map((parameter) => parameter.name)).length !== parameters.length)
             throw new Error('参数名不能重复')
           const input = {
@@ -1287,7 +1372,7 @@
             parameters
           }
           const saved = await saveSqlQueryApi(input)
-          if (owner !== identity.value || editor !== editGeneration) return false
+          if (!isCurrent()) return false
           if (list.snapshot)
             list.snapshot = {
               ...list.snapshot,
@@ -1302,18 +1387,12 @@
           ElMessage.success(definition ? '查询 API 已保存' : '查询 API 已发布')
           return true
         } catch (cause) {
-          if (
-            alive &&
-            owner === identity.value &&
-            editor === editGeneration &&
-            cause instanceof Error
-          )
-            ElMessage.warning(friendly(cause))
+          if (isCurrent() && cause instanceof Error) ElMessage.warning(friendly(cause))
           return false
         }
       },
       onClose: () => {
-        editGeneration++
+        editorSession.invalidate()
       }
     })
   }
@@ -1334,10 +1413,20 @@
     }
   )
   watch(
+    canManage,
+    (allowed) => {
+      if (!allowed) {
+        editorSession.invalidate()
+        void editorDialog.value?.handleClose(true)
+      }
+    },
+    { flush: 'sync' }
+  )
+  watch(
     identity,
     () => {
       generation++
-      editGeneration++
+      editorSession.invalidate()
       selectionAction++
       guideAction++
       drawerSession++
@@ -1352,9 +1441,10 @@
   )
   onBeforeUnmount(() => {
     alive = false
+    resetRequestSnapshot()
     generation++
     invocation++
-    editGeneration++
+    editorSession.invalidate()
     selectionAction++
     guideAction++
     drawerSession++
@@ -1366,10 +1456,12 @@
   })
   onDeactivated(() => {
     active = false
+    editorSession.invalidate()
     generation++
     drawerSession++
     list.loading = false
     clearTest()
+    void editorDialog.value?.handleClose(true)
   })
   defineExpose({
     open: async (options?: { sql?: string }) => {

@@ -746,7 +746,6 @@
 
 <style scoped lang="scss">
   .user-page {
-    gap: 12px;
     min-width: 0;
 
     &__overview {

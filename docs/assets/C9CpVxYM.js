@@ -1,1 +1,0 @@
-var e=(e=!0)=>e&&typeof window<`u`&&typeof window.matchMedia==`function`&&!window.matchMedia(`(prefers-reduced-motion: reduce)`).matches?`smooth`:`auto`;export{e as t};

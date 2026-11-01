@@ -41,7 +41,18 @@ const validateForm = async (callback: boolean): Promise<void> => {
   }
 }
 const items: FormItem[] = [
-  { key: 'name', label: '名称', type: 'input' },
+  {
+    key: 'name',
+    label: '名称',
+    type: 'input',
+    formItemProps: params.has('field-state')
+      ? {
+          required: true,
+          error: '外部字段校验提示',
+          'data-validation-key': 'profile.name'
+        }
+      : undefined
+  },
   { key: 'period', label: '日期范围', type: 'daterange' },
   { key: 'acknowledged', label: '业务确认', type: 'checkbox', props: { label: '确认业务值' } }
 ]
@@ -95,7 +106,22 @@ const app = createApp({
               })
             }
           },
-          { default: () => h('p', { 'data-testid': 'custom-layout-content' }, '自定义表单内容') }
+          {
+            default: () => h('p', { 'data-testid': 'custom-layout-content' }, '自定义表单内容'),
+            footer: () =>
+              params.has('field-state')
+                ? h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: () => {
+                        validation.value = '尾部操作已执行'
+                      }
+                    },
+                    '配置式表单尾部操作'
+                  )
+                : null
+          }
         ),
         h('output', { 'data-testid': 'form-output' }, output.value)
       ])

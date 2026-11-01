@@ -52,12 +52,20 @@ export function readOperationUpdateReport(
     const value: unknown = JSON.parse(
       new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(file)).replace(/^\uFEFF/, '')
     )
-    if (
-      !isBackupUpdateReport(value) ||
-      path.win32.resolve(value.backupPath).toLowerCase() !==
-        path.win32.resolve(expectedBackupPath).toLowerCase()
-    )
-      return
+    if (!isBackupUpdateReport(value)) return
+    const reported = path.win32.resolve(value.backupPath).toLowerCase()
+    const expected = path.win32.resolve(expectedBackupPath).toLowerCase()
+    if (reported !== expected) {
+      // Successful updates may rename only this backup to a timestamped sibling.
+      if (
+        value.mode !== 'apply' ||
+        !['updated', 'unchanged'].includes(value.status) ||
+        !path.win32.isAbsolute(value.backupPath) ||
+        path.win32.dirname(reported) !== path.win32.dirname(expected) ||
+        !/^\d{8}-\d{6}(?:-\d+)?$/.test(path.win32.basename(reported))
+      )
+        return
+    }
     return value
   } catch {
     return
@@ -307,6 +315,21 @@ export class OperationsRunner {
         if (report) {
           run.updateReport = report
           run.artifacts ||= []
+          if (
+            operation.id === 'updateBackup' &&
+            report.mode === 'apply' &&
+            ['updated', 'unchanged'].includes(report.status)
+          ) {
+            const previousPath = path.win32
+              .resolve(String(parameters.UpdateBackupPath || ''))
+              .toLowerCase()
+            run.parameters.UpdateBackupPath = report.backupPath
+            run.artifacts = run.artifacts.filter(
+              (artifact) =>
+                artifact.kind !== 'path' ||
+                path.win32.resolve(artifact.value).toLowerCase() !== previousPath
+            )
+          }
           run.artifacts.push({ label: '备份更新报告', value: updatePath, kind: 'path' })
         }
       }

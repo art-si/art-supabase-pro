@@ -1,36 +1,6 @@
 <template>
-  <ArtDrawer
-    ref="drawer"
-    :size="960"
-    :show-confirm-button="false"
-    :show-form-focus-button="false"
-    cancel-text="返回结果表"
-    @opened="startProfile"
-    @close="reset"
-  >
-    <div class="sql-result-profile flex min-w-0 flex-col gap-4">
-      <div
-        class="flex flex-wrap items-center justify-between gap-2 text-xs leading-5 text-g-700"
-        role="status"
-      >
-        <span>本次已加载 {{ rows.length }} 行 · {{ columns.length }} 列</span>
-        <span>涵盖全部本地分页，不受结果筛选和编辑副本影响</span>
-      </div>
-      <ElAlert
-        v-if="truncated"
-        type="warning"
-        title="查询已达到返回上限，统计仅覆盖本次已加载的数据，不能代表数据库全量。"
-        :closable="false"
-        show-icon
-      />
-      <ArtForm
-        v-if="columns.length"
-        v-model="selection"
-        :items="formItems"
-        label-position="left"
-        :label-width="76"
-        class="px-0! pt-0!"
-      />
+  <DefineOverview>
+    <div class="flex min-w-0 flex-col gap-4">
       <ArtSectionCard
         title="字段概览"
         :subtitle="
@@ -94,27 +64,6 @@
           <p class="m-0 mt-3 text-xs leading-5 text-g-700">{{ numericCoverage }}</p>
         </ArtSectionCard>
         <ArtSectionCard
-          title="常见值 Top 10"
-          :subtitle="
-            summary.profile.topValuesComplete
-              ? '按出现次数降序；次数相同保留首次出现顺序。比例以全部已加载行数为分母，不含 NULL。'
-              : '仅覆盖可归类的非 NULL 值；部分值未参与排名。比例以全部已加载行数为分母。'
-          "
-          :empty="!summary.profile.topValues.length"
-          empty-title="没有可归类的非 NULL 值"
-          empty-description="NULL 不参与常见值排名；复杂对象或超出安全统计范围的值会另行提示。"
-          :show-scrollbar="false"
-        >
-          <ArtTable
-            :data="summary.profile.topValues"
-            :columns="topColumns"
-            :show-table-header="false"
-            :show-header="true"
-            :max-height="440"
-            border
-          />
-        </ArtSectionCard>
-        <ArtSectionCard
           v-if="summary.profile.text.count"
           title="文本长度"
           subtitle="仅统计文本值，包含空字符串；长度按 Unicode 字符（码点）计算，组合表情可能包含多个码点。"
@@ -132,6 +81,76 @@
             {{ summary.profile.text.limitedCount }} 行超出文本统计范围，未计入长度汇总。
           </p>
         </ArtSectionCard>
+      </template>
+    </div>
+  </DefineOverview>
+  <DefineDistribution>
+    <ArtSectionCard
+      v-if="summary.profile && !summary.loading && !summary.error"
+      title="常见值 Top 10"
+      :subtitle="
+        summary.profile.topValuesComplete
+          ? '按出现次数降序；次数相同保留首次出现顺序。比例以全部已加载行数为分母，不含 NULL。'
+          : '仅覆盖可归类的非 NULL 值；部分值未参与排名。比例以全部已加载行数为分母。'
+      "
+      :empty="!summary.profile.topValues.length"
+      empty-title="没有可归类的非 NULL 值"
+      empty-description="NULL 不参与常见值排名；复杂对象或超出安全统计范围的值会另行提示。"
+      :show-scrollbar="false"
+    >
+      <ArtTable
+        :data="summary.profile.topValues"
+        :columns="topColumns"
+        :show-table-header="false"
+        :show-header="true"
+        :max-height="440"
+        border
+      />
+    </ArtSectionCard>
+  </DefineDistribution>
+  <ArtDrawer
+    ref="drawer"
+    :size="960"
+    :show-confirm-button="false"
+    :show-form-focus-button="false"
+    cancel-text="返回结果表"
+    @opened="startProfile"
+    @close="reset"
+  >
+    <div class="sql-result-profile flex min-w-0 flex-col gap-4">
+      <div
+        class="flex flex-wrap items-center justify-between gap-2 text-xs leading-5 text-g-700"
+        role="status"
+      >
+        <span>本次已加载 {{ rows.length }} 行 · {{ columns.length }} 列</span>
+        <span>涵盖全部本地分页，不受结果筛选和编辑副本影响</span>
+      </div>
+      <ElAlert
+        v-if="truncated"
+        type="warning"
+        title="查询已达到返回上限，统计仅覆盖本次已加载的数据，不能代表数据库全量。"
+        :closable="false"
+        show-icon
+      />
+      <ArtForm
+        v-if="columns.length"
+        v-model="selection"
+        :items="formItems"
+        label-position="left"
+        :label-width="76"
+        class="px-0! pt-0!"
+      />
+      <ElTabs v-if="showProfileTabs" v-model="profileTab">
+        <ElTabPane label="统计概览" name="overview" :lazy="false">
+          <ReuseOverview />
+        </ElTabPane>
+        <ElTabPane label="值分布" name="distribution" :lazy="false">
+          <ReuseDistribution />
+        </ElTabPane>
+      </ElTabs>
+      <template v-else>
+        <ReuseOverview />
+        <ReuseDistribution />
       </template>
     </div>
     <template #footer>
@@ -152,6 +171,7 @@
 <script setup lang="ts">
   import { computed, h, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
   import { ElButton, ElMessage } from 'element-plus'
+  import { createReusableTemplate } from '@vueuse/core'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
@@ -185,6 +205,9 @@
   const drawer = ref<ArtDrawerExpose>()
   const cellView = ref<CellContentViewExpose>()
   const selection = ref({ field: '' })
+  const profileTab = ref('overview')
+  const [DefineOverview, ReuseOverview] = createReusableTemplate()
+  const [DefineDistribution, ReuseDistribution] = createReusableTemplate()
   const summary = reactive<SummaryState>({
     active: false,
     opened: false,
@@ -192,6 +215,16 @@
     error: '',
     profile: null
   })
+  const showProfileTabs = computed(
+    () =>
+      !summary.loading &&
+      !summary.error &&
+      Boolean(
+        summary.profile &&
+        summary.profile.topValues.length >= 4 &&
+        (summary.profile.numeric?.count || summary.profile.text.count)
+      )
+  )
   const controller = shallowRef<AbortController>()
   const selectedColumn = computed(() =>
     selection.value.field === '' ? undefined : props.columns[Number(selection.value.field)]
@@ -343,6 +376,7 @@
     await cellView.value?.handleOpen({ content: String(value), columnName: column.name })
   }
   const reset = (): void => {
+    profileTab.value = 'overview'
     controller.value?.abort()
     controller.value = undefined
     cellView.value?.reset()
@@ -356,6 +390,7 @@
     selection.value = { field: '' }
   }
   const calculate = async (): Promise<void> => {
+    profileTab.value = 'overview'
     controller.value?.abort()
     const column = selectedColumn.value
     if (!summary.active || !summary.opened) return

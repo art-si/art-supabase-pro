@@ -468,6 +468,11 @@
   )
 
   watch(
+    () => props.confirmDisabled,
+    (confirmDisabled) => setOptions({ confirmDisabled })
+  )
+
+  watch(
     () => route.fullPath,
     (currentPath, previousPath) => {
       if (

@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./C5S41H8-.js";var i=n({name:`MdmSupplyChainCodeRule`,__name:`index`,setup(n){return(n,i)=>(t(),e(r))}});export{i as default};

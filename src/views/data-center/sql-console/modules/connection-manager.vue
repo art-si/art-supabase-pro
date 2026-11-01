@@ -94,14 +94,6 @@
   <ArtDialog ref="formDialogRef">
     <div class="flex flex-col gap-3">
       <ArtForm ref="formRef" v-model="form" :items="formItems" :rules="rules" label-position="top">
-        <template #allowedUserIds>
-          <ArtUserSelect
-            v-model="form.allowedUserIds"
-            multiple
-            :options="userOptions"
-            placeholder="默认仅平台超级管理员可用"
-          />
-        </template>
       </ArtForm>
       <p class="m-0 text-xs leading-5 text-g-600"
         >请使用数据库只读账号。授权用户可以读取此数据库账号可见的数据；连接仅向所属租户内的授权账号开放。</p
@@ -125,7 +117,6 @@
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtUserSelect from '@/components/core/forms/art-user-select/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import { fetchTenantList } from '@/api/system-manage/tenant'
@@ -263,7 +254,19 @@
       description: form.value.dialect === 'dm' ? '当前达梦驱动支持内网直连' : undefined
     },
     { key: 'enabled', label: '启用连接', type: 'switch', span: 12 },
-    { key: 'allowedUserIds', label: '授权只读账号', span: 24 }
+    {
+      key: 'allowedUserIds',
+      label: '授权只读账号',
+      span: 24,
+      type: 'userSelect',
+      get props() {
+        return {
+          multiple: true,
+          options: userOptions.value,
+          placeholder: '默认仅平台超级管理员可用'
+        }
+      }
+    }
   ])
   const rules = computed(() => ({
     name: [{ required: true, message: '请输入连接名称' }],

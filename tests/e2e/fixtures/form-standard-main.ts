@@ -29,6 +29,7 @@ const mode = params.get('mode') || 'edit'
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const recordId = '22222222-2222-4222-8222-222222222222'
 const components: Record<string, () => Promise<{ default: Component }>> = {
+  website: () => import('@/views/system/website-config/index.vue'),
   user: () => import('@/views/system/user/modules/user-dialog.vue'),
   tenant: () => import('@/views/system/tenant/modules/tenant-dialog.vue'),
   role: () => import('@/views/system/role/modules/role-edit-dialog.vue'),

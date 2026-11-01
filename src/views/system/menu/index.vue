@@ -605,7 +605,6 @@
 
 <style scoped lang="scss">
   .menu-page {
-    gap: 12px;
     min-width: 0;
 
     &__overview {

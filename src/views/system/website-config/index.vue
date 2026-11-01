@@ -29,17 +29,21 @@
     <ArtForm
       ref="formRef"
       v-model="form"
-      :items="[]"
-      class="website-config-page__form"
+      :items="allFormItems"
       :rules="rules"
       :disabled="isReadOnly"
-      label-position="top"
-      custom-layout
+      root-class="px-0! pt-0!"
+      :span="8"
+      :gutter="14"
     >
-      <div class="website-config-page__body">
-        <aside class="website-config-page__nav-panel art-card-xs">
-          <div class="website-config-page__nav-title">配置分组</div>
-          <ElScrollbar class="website-config-page__nav-scrollbar">
+      <template #layout="{ fields: Fields }">
+        <div class="website-config-page__body">
+          <ArtSectionCard
+            class="website-config-page__nav-panel"
+            role="navigation"
+            aria-label="网站配置分组"
+            title="配置分组"
+          >
             <div class="website-config-page__nav-items">
               <button
                 v-for="item in navigationItems"
@@ -53,367 +57,127 @@
                 <span>{{ item.label }}</span>
               </button>
             </div>
-          </ElScrollbar>
-
-          <div class="website-config-page__publish-tip">
-            <strong>发布影响</strong>
-            <p>配置保存后会立即同步到登录页、公共配置缓存和系统品牌展示。</p>
-          </div>
-        </aside>
-
-        <div class="website-config-page__content">
-          <section id="overview" class="website-config-page__summary" aria-label="状态概览">
-            <div
-              v-for="item in summaryCards"
-              :key="item.label"
-              class="website-config-page__summary-card art-card-xs"
-            >
-              <div>
-                <span>{{ item.label }}</span>
-                <strong>{{ item.value }}</strong>
-                <p>{{ item.description }}</p>
+            <template #footer>
+              <div class="website-config-page__publish-tip">
+                <strong>发布影响</strong>
+                <p>配置保存后会立即同步到登录页、公共配置缓存和系统品牌展示。</p>
               </div>
-              <ArtSvgIcon :icon="item.icon" />
-            </div>
-          </section>
-
-          <ArtSectionCard
-            v-for="section in formSections"
-            :id="section.key"
-            :key="section.key"
-            :title="section.title"
-            :subtitle="section.description"
-            class="website-config-page__section"
-          >
-            <template #actions>
-              <ArtSvgIcon :icon="section.icon" />
             </template>
-
-            <div class="website-config-page__section-body">
-              <template v-if="section.key === 'identity'">
-                <ElFormItem label="系统名称" prop="siteName">
-                  <ElInput v-model.trim="form.siteName" maxlength="60" show-word-limit />
-                  <p>用于登录页、顶部栏、侧边栏、页面标题和系统品牌展示。</p>
-                </ElFormItem>
-                <ElFormItem label="系统简称" prop="siteShortName">
-                  <ElInput v-model.trim="form.siteShortName" maxlength="40" />
-                  <p>用于空间受限的紧凑场景；菜单品牌文字和 AI 字图均以系统名称为准。</p>
-                </ElFormItem>
-                <ElFormItem label="水印内容" prop="watermarkContentType">
-                  <ElSelect v-model="form.watermarkContentType">
-                    <ElOption
-                      v-for="option in watermarkOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </ElSelect>
-                  <p>默认使用当前登录用户名，也可切换为站点名称或自定义文本。</p>
-                </ElFormItem>
-                <ElFormItem
-                  v-if="form.watermarkContentType === 'custom'"
-                  label="自定义水印"
-                  prop="watermarkCustomText"
-                >
-                  <ElInput v-model.trim="form.watermarkCustomText" maxlength="80" />
-                </ElFormItem>
-                <ElFormItem label="站点简介" prop="siteDescription" class="is-wide">
-                  <ElInput
-                    v-model="form.siteDescription"
-                    type="textarea"
-                    resize="none"
-                    maxlength="255"
-                    show-word-limit
-                    :rows="3"
-                  />
-                </ElFormItem>
-                <ElFormItem label="菜单品牌字图" prop="wordmarkImageEnabled" class="is-wide">
-                  <WebsiteWordmarkSettings
-                    :enabled="form.wordmarkImageEnabled"
-                    :resource-tenant-id="platformTenantId"
-                    :light-url="form.wordmarkLightUrl"
-                    :dark-url="form.wordmarkDarkUrl"
-                    :site-name="form.siteName"
-                    :disabled="isReadOnly"
-                    @update:enabled="form.wordmarkImageEnabled = $event"
-                    @update:light-url="form.wordmarkLightUrl = $event"
-                    @update:dark-url="form.wordmarkDarkUrl = $event"
-                  />
-                </ElFormItem>
-                <ElFormItem label="启用水印" prop="watermarkEnabled" class="is-wide">
-                  <div class="website-config-page__switch-row">
-                    <div>
-                      <strong>启用水印</strong>
-                      <p>保存后作为站点级水印配置生效；用户仍可在个性化设置中临时隐藏。</p>
-                    </div>
-                    <ElSwitch v-model="form.watermarkEnabled" />
-                  </div>
-                </ElFormItem>
-              </template>
-
-              <template v-else-if="section.key === 'login'">
-                <ElFormItem label="登录欢迎标题" prop="loginTitle">
-                  <ElInput v-model.trim="form.loginTitle" maxlength="80" />
-                </ElFormItem>
-                <ElFormItem label="备用默认语言" prop="defaultLanguage">
-                  <ElSelect v-model="form.defaultLanguage">
-                    <ElOption
-                      v-for="option in languageOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </ElSelect>
-                  <span class="text-xs text-(--el-text-color-secondary)">
-                    用户语言偏好优先；参数设置中的“登录页默认语言”停用或不可用时使用此值。
-                  </span>
-                </ElFormItem>
-                <ElFormItem label="登录欢迎描述" prop="loginDescription" class="is-wide">
-                  <ElInput
-                    v-model="form.loginDescription"
-                    type="textarea"
-                    resize="vertical"
-                    maxlength="255"
-                    show-word-limit
-                    :rows="4"
-                  />
-                </ElFormItem>
-                <ElFormItem label="登录验证" prop="captchaEnabled">
-                  <div class="website-config-page__switch-row">
-                    <div>
-                      <strong>登录验证</strong>
-                      <p>开启后显示 Turnstile，并由 Supabase Auth 校验验证结果。</p>
-                    </div>
-                    <ElSwitch v-model="form.captchaEnabled" />
-                  </div>
-                </ElFormItem>
-                <ElFormItem label="开放注册" prop="registerEnabled">
-                  <div class="website-config-page__switch-row">
-                    <div>
-                      <strong>开放注册</strong>
-                      <p>关闭后，登录页和注册入口不再提供公开注册入口。</p>
-                    </div>
-                    <ElSwitch v-model="form.registerEnabled" />
-                  </div>
-                </ElFormItem>
-                <ElFormItem label="维护模式" prop="maintenanceEnabled">
-                  <div class="website-config-page__switch-row">
-                    <div>
-                      <strong>维护模式</strong>
-                      <p>开启后，登录页展示维护公告，用于版本升级或临时停服窗口。</p>
-                    </div>
-                    <ElSwitch v-model="form.maintenanceEnabled" />
-                  </div>
-                </ElFormItem>
-
-                <template v-if="form.captchaEnabled">
-                  <ElFormItem label="验证码类型" prop="captchaType">
-                    <ElSelect v-model="form.captchaType">
-                      <ElOption
-                        v-for="option in captchaOptions"
-                        :key="option.value"
-                        :label="option.label"
-                        :value="option.value"
-                      />
-                    </ElSelect>
-                    <p>Turnstile 用于拦截机器人登录请求。</p>
-                  </ElFormItem>
-                  <ElFormItem label="Turnstile Site Key" prop="turnstileSiteKey">
-                    <ElInput
-                      v-model.trim="form.turnstileSiteKey"
-                      maxlength="120"
-                      placeholder="请输入 Turnstile Site Key"
-                    />
-                    <p>Secret Key 仅配置在 Supabase Auth 后台，请勿填写在此处。</p>
-                  </ElFormItem>
-                  <ElFormItem label="组件尺寸">
-                    <ElSelect v-model="form.turnstileSize">
-                      <ElOption
-                        v-for="option in turnstileSizeOptions"
-                        :key="option.value"
-                        :label="option.label"
-                        :value="option.value"
-                      />
-                    </ElSelect>
-                  </ElFormItem>
-                  <ElFormItem label="显示主题">
-                    <ElSelect v-model="form.turnstileTheme">
-                      <ElOption
-                        v-for="option in turnstileThemeOptions"
-                        :key="option.value"
-                        :label="option.label"
-                        :value="option.value"
-                      />
-                    </ElSelect>
-                  </ElFormItem>
-                  <ElFormItem label="最大失败次数" prop="captchaMaxAttempts">
-                    <ElInputNumber
-                      v-model="form.captchaMaxAttempts"
-                      :min="0"
-                      :max="20"
-                      controls-position="right"
-                    />
-                    <p>设置为 0 表示不限制。</p>
-                  </ElFormItem>
-                  <ElFormItem label="锁定时间（分钟）" prop="captchaLockMinutes">
-                    <ElInputNumber
-                      v-model="form.captchaLockMinutes"
-                      :min="0"
-                      :max="1440"
-                      controls-position="right"
-                    />
-                  </ElFormItem>
-                </template>
-
-                <ElFormItem
-                  v-if="form.maintenanceEnabled"
-                  label="维护提示文案"
-                  prop="maintenanceMessage"
-                  class="is-wide"
-                  :class="{ 'is-error-lite': !form.maintenanceMessage }"
-                >
-                  <ElInput
-                    v-model.trim="form.maintenanceMessage"
-                    maxlength="160"
-                    placeholder="维护模式开启时建议填写，例如：系统今晚 23:00-24:00 升级维护"
-                  />
-                  <p v-if="!form.maintenanceMessage">开启维护模式后，请填写维护提示文案</p>
-                </ElFormItem>
-              </template>
-
-              <template v-else-if="section.key === 'auth'">
-                <AuthChannelSettings v-model="form.authChannels" :disabled="isReadOnly" />
-              </template>
-
-              <template v-else-if="section.key === 'seo'">
-                <ElFormItem label="SEO 标题" prop="seoTitle">
-                  <ElInput v-model.trim="form.seoTitle" maxlength="80" />
-                </ElFormItem>
-                <ElFormItem label="SEO 关键字" prop="seoKeywords">
-                  <ElInput v-model.trim="form.seoKeywords" maxlength="160" />
-                </ElFormItem>
-                <ElFormItem label="SEO 描述" prop="seoDescription">
-                  <ElInput
-                    v-model="form.seoDescription"
-                    type="textarea"
-                    resize="vertical"
-                    maxlength="500"
-                    show-word-limit
-                    :rows="4"
-                  />
-                </ElFormItem>
-                <ElFormItem label="Logo" prop="logoUrl">
-                  <ArtUploadImage
-                    v-model="form.logoUrl"
-                    :resource-tenant-id="platformTenantId"
-                    title="上传 Logo"
-                    :size="120"
-                    :limit="1"
-                    :readonly="isReadOnly"
-                  />
-                </ElFormItem>
-                <ElFormItem label="Favicon" prop="faviconUrl">
-                  <ArtUploadImage
-                    v-model="form.faviconUrl"
-                    :resource-tenant-id="platformTenantId"
-                    title="上传 Favicon"
-                    :size="120"
-                    :limit="1"
-                    :readonly="isReadOnly"
-                    file-type="image/*,.ico"
-                  />
-                </ElFormItem>
-              </template>
-
-              <template v-else-if="section.key === 'contact'">
-                <ElFormItem label="联系邮箱" prop="contactEmail">
-                  <ElInput v-model.trim="form.contactEmail" placeholder="如：support@example.com" />
-                </ElFormItem>
-                <ElFormItem label="联系电话" prop="contactPhone">
-                  <ElInput v-model.trim="form.contactPhone" placeholder="如：400-800-9000" />
-                </ElFormItem>
-                <ElFormItem label="联系地址" prop="contactAddress" class="is-wide">
-                  <ElInput
-                    v-model.trim="form.contactAddress"
-                    placeholder="如：广东省深圳市南山区科技园"
-                  />
-                </ElFormItem>
-                <ElFormItem label="版权文案" prop="copyrightText" class="is-wide">
-                  <ElInput v-model.trim="form.copyrightText" />
-                </ElFormItem>
-                <ElFormItem label="ICP备案号" prop="icpRecord">
-                  <ElInput
-                    v-model.trim="form.icpRecord"
-                    placeholder="如：粤ICP备 2026000000 号-1"
-                  />
-                </ElFormItem>
-                <ElFormItem label="公安备案号" prop="policeRecord">
-                  <ElInput
-                    v-model.trim="form.policeRecord"
-                    placeholder="如：粤公网安备 44030002000001 号"
-                  />
-                </ElFormItem>
-              </template>
-
-              <template v-else>
-                <div class="website-config-page__preview-grid">
-                  <div>
-                    <span>品牌名称</span>
-                    <strong>{{ form.siteName || '-' }}</strong>
-                  </div>
-                  <div>
-                    <span>备用语言</span>
-                    <strong>{{ defaultLanguageLabel }}</strong>
-                  </div>
-                  <div>
-                    <span>水印内容</span>
-                    <strong>{{ watermarkLabel }}</strong>
-                  </div>
-                  <div>
-                    <span>验证码</span>
-                    <strong>{{ form.captchaEnabled ? captchaLabel : '已关闭' }}</strong>
-                  </div>
-                </div>
-              </template>
-            </div>
           </ArtSectionCard>
 
-          <ArtStickyActionBar
-            class="website-config-page__actions"
-            :class="{
-              'is-readonly': isReadOnly,
-              'is-dirty': hasUnsavedChanges
-            }"
-          >
-            <template #summary>
-              <div class="website-config-page__action-copy">
-                <div class="website-config-page__action-title">
-                  <ArtSvgIcon :icon="publishState.icon" />
-                  <strong>{{ publishState.title }}</strong>
-                </div>
-                <p>{{ publishState.description }}</p>
-              </div>
-            </template>
-            <div v-if="!isReadOnly" class="website-config-page__action-buttons">
-              <ElButton :disabled="!hasUnsavedChanges || page.saving" @click="resetForm">
-                撤销未发布修改
-              </ElButton>
-              <ElButton
-                v-auth="'System:WebsiteConfig:Publish'"
-                type="primary"
-                :disabled="!hasUnsavedChanges"
-                :loading="page.saving"
-                @click="handleSave"
-                >保存并发布配置</ElButton
+          <div class="website-config-page__content">
+            <section id="overview" class="website-config-page__summary" aria-label="状态概览">
+              <div
+                v-for="item in summaryCards"
+                :key="item.label"
+                class="website-config-page__summary-card art-card-xs"
               >
-            </div>
-            <div v-else class="website-config-page__readonly-badge">
-              <ArtSvgIcon icon="ri:lock-2-line" />
-              <span>仅平台超级管理员可发布</span>
-            </div>
-          </ArtStickyActionBar>
+                <div>
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
+                  <p>{{ item.description }}</p>
+                </div>
+                <ArtSvgIcon :icon="item.icon" />
+              </div>
+            </section>
+
+            <ArtSectionCard
+              v-for="section in formSections"
+              :id="section.key"
+              :key="section.key"
+              :title="section.title"
+              :subtitle="section.description"
+              class="website-config-page__section"
+            >
+              <template #actions>
+                <ArtSvgIcon :icon="section.icon" />
+              </template>
+
+              <div class="website-config-page__section-body">
+                <AuthChannelSettings
+                  v-if="section.key === 'auth'"
+                  v-model="form.authChannels"
+                  :disabled="isReadOnly"
+                  :fields-renderer="Fields"
+                />
+                <component
+                  :is="Fields"
+                  v-if="section.key !== 'auth' && section.key !== 'preview'"
+                  :items="sectionFormItems[section.key]"
+                  :actions="false"
+                />
+                <template v-if="section.key === 'preview'">
+                  <div class="website-config-page__preview-grid">
+                    <div>
+                      <span>品牌名称</span>
+                      <strong>{{ form.siteName || '-' }}</strong>
+                    </div>
+                    <div>
+                      <span>备用语言</span>
+                      <strong>{{ defaultLanguageLabel }}</strong>
+                    </div>
+                    <div>
+                      <span>水印内容</span>
+                      <strong>{{ watermarkLabel }}</strong>
+                    </div>
+                    <div>
+                      <span>验证码</span>
+                      <strong>{{ form.captchaEnabled ? captchaLabel : '已关闭' }}</strong>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </ArtSectionCard>
+
+            <ArtStickyActionBar
+              class="website-config-page__actions"
+              :class="{
+                'is-readonly': isReadOnly,
+                'is-dirty': hasUnsavedChanges
+              }"
+            >
+              <template #summary>
+                <div class="website-config-page__action-copy">
+                  <div class="website-config-page__action-title">
+                    <ArtSvgIcon :icon="publishState.icon" />
+                    <strong>{{ publishState.title }}</strong>
+                  </div>
+                  <p>{{ publishState.description }}</p>
+                </div>
+              </template>
+              <div v-if="!isReadOnly" class="website-config-page__action-buttons">
+                <ElButton :disabled="!hasUnsavedChanges || page.saving" @click="resetForm">
+                  撤销未发布修改
+                </ElButton>
+                <ElButton
+                  v-auth="'System:WebsiteConfig:Publish'"
+                  type="primary"
+                  :disabled="!hasUnsavedChanges"
+                  :loading="page.saving"
+                  @click="handleSave"
+                  >保存并发布配置</ElButton
+                >
+              </div>
+              <div v-else class="website-config-page__readonly-badge">
+                <ArtSvgIcon icon="ri:lock-2-line" />
+                <span>仅平台超级管理员可发布</span>
+              </div>
+            </ArtStickyActionBar>
+          </div>
         </div>
-      </div>
+      </template>
+      <template #wordmarkImageEnabled
+        ><WebsiteWordmarkSettings
+          :enabled="form.wordmarkImageEnabled"
+          :resource-tenant-id="platformTenantId"
+          :light-url="form.wordmarkLightUrl"
+          :dark-url="form.wordmarkDarkUrl"
+          :site-name="form.siteName"
+          :disabled="isReadOnly"
+          @update:enabled="form.wordmarkImageEnabled = $event"
+          @update:light-url="form.wordmarkLightUrl = $event"
+          @update:dark-url="form.wordmarkDarkUrl = $event"
+      /></template>
     </ArtForm>
   </ArtPageShell>
 </template>
@@ -431,9 +195,9 @@
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useUserStore } from '@/store/modules/user'
   import { formatWithDayjs } from '@/utils/time'
-  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
-  import ArtForm from '@/components/core/forms/art-form/index.vue'
+  import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import AuthChannelSettings from './modules/auth-channel-settings.vue'
+  import { createAuthChannelFormItems } from './modules/auth-channel-form-items'
   import WebsiteWordmarkSettings from './modules/website-wordmark-settings.vue'
   import { getAuthChannelValidationMessage, normalizeAuthChannels } from '@/utils/supabase'
 
@@ -453,11 +217,6 @@
     description: string
   }
 
-  interface FormExpose {
-    validate: () => Promise<boolean>
-    clearValidate: () => void
-  }
-
   interface PageGroup {
     activeSection: SectionKey
     loading: boolean
@@ -465,7 +224,7 @@
     error: Error | null
   }
 
-  const formRef = ref<FormExpose>()
+  const formRef = ref<InstanceType<typeof ArtForm>>()
   const page = reactive<PageGroup>({
     activeSection: 'identity',
     loading: false,
@@ -480,7 +239,9 @@
   const { isPlatformSuper } = storeToRefs(userStore)
   const platformTenantId = computed(() => userStore.getUserInfo.tenantId || '')
   const isReadOnly = computed(() => !isPlatformSuper.value)
-  const hasUnsavedChanges = computed(() => !isEqual(form.value, originalForm.value))
+  const hasUnsavedChanges = computed(
+    () => !isEqual(normalizePayload(form.value), normalizePayload(originalForm.value))
+  )
   const publishState = computed(() => {
     if (isReadOnly.value) {
       return {
@@ -682,8 +443,8 @@
     })
   }
 
-  const normalizePayload = (): WebsiteConfig => {
-    const payload = omit(cloneDeep(form.value), [
+  const normalizePayload = (config = form.value): WebsiteConfig => {
+    const payload = omit(cloneDeep(config), [
       'tenantId',
       'createBy',
       'createTime',
@@ -841,6 +602,250 @@
   onBeforeUnmount(() => {
     if (activeSectionFrame !== undefined) window.cancelAnimationFrame(activeSectionFrame)
   })
+
+  const sectionFormItems = computed<Record<SectionKey, FormItem[]>>(() => ({
+    overview: [],
+    preview: [],
+    auth: [],
+    identity: [
+      {
+        key: 'siteName',
+        label: '系统名称',
+        type: 'input',
+        description: '用于登录页、顶部栏、侧边栏、页面标题和系统品牌展示。',
+        props: { maxlength: '60', showWordLimit: true, modelModifiers: { trim: true } }
+      },
+      {
+        key: 'siteShortName',
+        label: '系统简称',
+        type: 'input',
+        description: '用于空间受限的紧凑场景；菜单品牌文字和 AI 字图均以系统名称为准。',
+        props: { maxlength: '40', modelModifiers: { trim: true } }
+      },
+      {
+        key: 'watermarkContentType',
+        label: '水印内容',
+        type: 'select',
+        description: '默认使用当前登录用户名，也可切换为站点名称或自定义文本。',
+        options: watermarkOptions
+      },
+      {
+        key: 'watermarkCustomText',
+        label: '自定义水印',
+        type: 'input',
+        hidden: form.value.watermarkContentType !== 'custom',
+        props: { maxlength: '80', modelModifiers: { trim: true } }
+      },
+      {
+        key: 'siteDescription',
+        label: '站点简介',
+        type: 'textarea',
+        span: 24,
+        props: { resize: 'none', maxlength: '255', showWordLimit: true, rows: 3 }
+      },
+      {
+        key: 'wordmarkImageEnabled',
+        label: '菜单品牌字图',
+        type: 'wordmarkSettings',
+        span: 24
+      },
+      {
+        key: 'watermarkEnabled',
+        label: '启用水印',
+        type: 'switch',
+        span: 24,
+        description: '保存后作为站点级水印配置生效；用户仍可在个性化设置中临时隐藏。'
+      }
+    ],
+    login: [
+      {
+        key: 'loginTitle',
+        label: '登录欢迎标题',
+        type: 'input',
+        props: { maxlength: '80', modelModifiers: { trim: true } }
+      },
+      { key: 'defaultLanguage', label: '备用默认语言', type: 'select', options: languageOptions },
+      {
+        key: 'loginDescription',
+        label: '登录欢迎描述',
+        type: 'textarea',
+        span: 24,
+        props: { resize: 'vertical', maxlength: '255', showWordLimit: true, rows: 4 }
+      },
+      {
+        key: 'captchaEnabled',
+        label: '登录验证',
+        type: 'switch',
+        description: '开启后显示 Turnstile，并由 Supabase Auth 校验验证结果。'
+      },
+      {
+        key: 'registerEnabled',
+        label: '开放注册',
+        type: 'switch',
+        description: '关闭后，登录页和注册入口不再提供公开注册入口。'
+      },
+      {
+        key: 'maintenanceEnabled',
+        label: '维护模式',
+        type: 'switch',
+        description: '开启后，登录页展示维护公告，用于版本升级或临时停服窗口。'
+      },
+      {
+        key: 'captchaType',
+        label: '验证码类型',
+        type: 'select',
+        description: 'Turnstile 用于拦截机器人登录请求。',
+        options: captchaOptions.value,
+        hidden: !form.value.captchaEnabled
+      },
+      {
+        key: 'turnstileSiteKey',
+        label: 'Turnstile Site Key',
+        type: 'input',
+        description: 'Secret Key 仅配置在 Supabase Auth 后台，请勿填写在此处。',
+        hidden: !form.value.captchaEnabled,
+        props: {
+          maxlength: '120',
+          placeholder: '请输入 Turnstile Site Key',
+          modelModifiers: { trim: true }
+        }
+      },
+      {
+        key: 'turnstileSize',
+        label: '组件尺寸',
+        type: 'select',
+        options: turnstileSizeOptions,
+        hidden: !form.value.captchaEnabled
+      },
+      {
+        key: 'turnstileTheme',
+        label: '显示主题',
+        type: 'select',
+        options: turnstileThemeOptions,
+        hidden: !form.value.captchaEnabled
+      },
+      {
+        key: 'captchaMaxAttempts',
+        label: '最大失败次数',
+        type: 'number',
+        description: '设置为 0 表示不限制。',
+        hidden: !form.value.captchaEnabled,
+        props: { min: 0, max: 20, controlsPosition: 'right' }
+      },
+      {
+        key: 'captchaLockMinutes',
+        label: '锁定时间（分钟）',
+        type: 'number',
+        hidden: !form.value.captchaEnabled,
+        props: { min: 0, max: 1440, controlsPosition: 'right' }
+      },
+      {
+        key: 'maintenanceMessage',
+        label: '维护提示文案',
+        type: 'input',
+        span: 24,
+        description: '开启维护模式后，请填写维护提示文案',
+        hidden: !form.value.maintenanceEnabled,
+        props: {
+          maxlength: '160',
+          placeholder: '维护模式开启时建议填写，例如：系统今晚 23:00-24:00 升级维护',
+          modelModifiers: { trim: true }
+        }
+      }
+    ],
+    seo: [
+      {
+        key: 'seoTitle',
+        label: 'SEO 标题',
+        type: 'input',
+        props: { maxlength: '80', modelModifiers: { trim: true } }
+      },
+      {
+        key: 'seoKeywords',
+        label: 'SEO 关键字',
+        type: 'input',
+        props: { maxlength: '160', modelModifiers: { trim: true } }
+      },
+      {
+        key: 'seoDescription',
+        label: 'SEO 描述',
+        type: 'textarea',
+        span: 24,
+        props: { resize: 'vertical', maxlength: '500', showWordLimit: true, rows: 4 }
+      },
+      {
+        key: 'logoUrl',
+        label: 'Logo',
+        type: 'uploadImage',
+        props: {
+          resourceTenantId: platformTenantId.value,
+          title: '上传 Logo',
+          size: 120,
+          limit: 1,
+          readonly: isReadOnly.value
+        }
+      },
+      {
+        key: 'faviconUrl',
+        label: 'Favicon',
+        type: 'uploadImage',
+        props: {
+          resourceTenantId: platformTenantId.value,
+          title: '上传 Favicon',
+          size: 120,
+          limit: 1,
+          readonly: isReadOnly.value,
+          fileType: 'image/*,.ico'
+        }
+      }
+    ],
+    contact: [
+      {
+        key: 'contactEmail',
+        label: '联系邮箱',
+        type: 'input',
+        props: { placeholder: '如：support@example.com', modelModifiers: { trim: true } }
+      },
+      {
+        key: 'contactPhone',
+        label: '联系电话',
+        type: 'input',
+        props: { placeholder: '如：400-800-9000', modelModifiers: { trim: true } }
+      },
+      {
+        key: 'contactAddress',
+        label: '联系地址',
+        type: 'input',
+        span: 24,
+        props: { placeholder: '如：广东省深圳市南山区科技园', modelModifiers: { trim: true } }
+      },
+      {
+        key: 'copyrightText',
+        label: '版权文案',
+        type: 'input',
+        span: 24,
+        props: { modelModifiers: { trim: true } }
+      },
+      {
+        key: 'icpRecord',
+        label: 'ICP备案号',
+        type: 'input',
+        props: { placeholder: '如：粤ICP备 2026000000 号-1', modelModifiers: { trim: true } }
+      },
+      {
+        key: 'policeRecord',
+        label: '公安备案号',
+        type: 'input',
+        props: { placeholder: '如：粤公网安备 44030002000001 号', modelModifiers: { trim: true } }
+      }
+    ]
+  }))
+  const allFormItems = computed<FormItem[]>(() => [
+    ...Object.values(sectionFormItems.value).flat(),
+    ...form.value.authChannels.flatMap((_channel, index) =>
+      createAuthChannelFormItems(index, isReadOnly.value)
+    )
+  ])
 </script>
 
 <style scoped lang="scss">
@@ -915,20 +920,7 @@
     &__nav-panel {
       position: sticky;
       top: var(--website-config-sticky-top);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      padding: 14px 12px;
-    }
-
-    &__nav-title {
-      padding: 0 8px 8px;
-      font-size: 13px;
-      color: var(--el-text-color-secondary);
-    }
-
-    &__nav-scrollbar {
-      min-width: 0;
+      max-height: calc(100dvh - var(--website-config-sticky-top) - var(--art-page-padding));
     }
 
     &__nav-items {
@@ -965,7 +957,6 @@
 
     &__publish-tip {
       padding: 12px;
-      margin-top: 10px;
       background: var(--el-fill-color-blank);
       border: 1px solid var(--el-border-color-lighter);
       border-radius: var(--art-control-radius);
@@ -1003,13 +994,11 @@
     }
 
     &__section-body {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 22px 14px;
+      min-width: 0;
 
       :deep(.el-form-item) {
         display: block;
-        margin-bottom: 0;
+        margin-bottom: var(--art-space-4);
 
         &.is-wide {
           grid-column: 1 / -1;
@@ -1182,17 +1171,7 @@
 
       &__nav-panel {
         position: static;
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-      }
-
-      &__nav-title,
-      &__publish-tip {
-        grid-column: 1 / -1;
-      }
-
-      &__nav-scrollbar {
-        grid-column: 1 / -1;
+        max-height: none;
       }
 
       &__nav-items {
@@ -1210,8 +1189,13 @@
         gap: var(--art-space-3);
       }
 
-      &__nav-panel {
-        padding: 6px;
+      &__nav-panel :deep(.art-section-card__header),
+      &__nav-panel :deep(.art-section-card__footer) {
+        display: none;
+      }
+
+      &__nav-panel.art-section-card.is-scrollable :deep(.art-section-card__body) {
+        padding-top: var(--art-space-4);
       }
 
       &__nav-items {
@@ -1219,10 +1203,6 @@
         flex-direction: row;
         gap: var(--art-space-1);
         width: max-content;
-      }
-
-      &__nav-title {
-        display: none;
       }
 
       &__nav-item {

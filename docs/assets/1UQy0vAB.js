@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./DsinYcpK.js";var i=n({name:`MdmMaterialType`,__name:`index`,setup(n){return(n,i)=>(t(),e(r))}});export{i as default};

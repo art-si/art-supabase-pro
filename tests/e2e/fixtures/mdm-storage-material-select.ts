@@ -3,6 +3,9 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import { setupGlobDirectives } from '@/directives'
 import BinDialog from '@mdm/views/inventory/storage/modules/bin-dialog.vue'
 import ReservationDialog from '@mdm/views/inventory/storage/modules/reservation-dialog.vue'
@@ -63,6 +66,24 @@ const app = createApp({
         },
         '生产入库'
       ),
+      ...[
+        ['sales_out', '库存出库'],
+        ['transfer', '库存调拨']
+      ].map(([type, label]) =>
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () =>
+              void movementRef.value?.handleOpen(type, {
+                warehouseId: warehouse.id,
+                tenantId,
+                label: warehouse.warehouseName
+              })
+          },
+          label
+        )
+      ),
       h(BinDialog, { ref: binRef }),
       h(ReservationDialog, { ref: reservationRef }),
       h(SerialDialog, { ref: serialRef }),
@@ -78,6 +99,13 @@ const router = createRouter({
 app.use(router)
 setupGlobDirectives(app)
 useUserStore(store).setUserInfo({ userId: 'storage-material-test', tenantId, platformSuper: false })
+const theme =
+  new URLSearchParams(location.search).get('theme') === 'dark'
+    ? SystemThemeEnum.DARK
+    : SystemThemeEnum.LIGHT
+useSettingStore(store).setGlobalTheme(theme, theme)
+initializeTheme()
+useTheme().switchThemeStyles(theme)
 await router.push('/')
 await router.isReady()
 app.mount('#app')

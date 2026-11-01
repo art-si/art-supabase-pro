@@ -95,6 +95,13 @@ export async function exists(file: string): Promise<boolean> {
   }
 }
 
+export function assertExternalUpdateReportPath(reportPath: string, backupPath: string): void {
+  const destination = path.resolve(reportPath).toLowerCase()
+  const backup = path.resolve(backupPath).toLowerCase()
+  if (destination === backup || destination.startsWith(backup + path.sep))
+    throw new Error('更新报告不能写入备份目录。')
+}
+
 export async function verifyUpdateSnapshot(
   root: string,
   reportFile: string,

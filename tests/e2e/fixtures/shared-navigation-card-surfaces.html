@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>共享导航卡片验收</title>
+    <style>
+      html,
+      body,
+      #navigation-card-fixture {
+        margin: 0;
+        min-height: 100%;
+      }
+      .navigation-card-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px;
+      }
+      .navigation-card-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 24px;
+        max-width: 840px;
+        padding: 12px;
+        margin-inline: auto;
+      }
+      .navigation-card-panel {
+        height: 700px;
+        min-width: 0;
+      }
+      #app-main {
+        height: 100dvh;
+        min-width: 0;
+      }
+      #app-main > .app-main__scrollbar {
+        height: 100%;
+      }
+      .website-fixture-page {
+        padding: 16px;
+      }
+      @media (width <= 640px) {
+        .navigation-card-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="navigation-card-fixture"></div>
+    <script type="module" src="/tests/e2e/fixtures/shared-navigation-card-surfaces.ts"></script>
+  </body>
+</html>

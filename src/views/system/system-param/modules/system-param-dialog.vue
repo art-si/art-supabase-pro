@@ -37,72 +37,14 @@
                 <ArtSvgIcon icon="ri:code-s-slash-line" />
               </button>
             </template>
-            <template #paramValue>
-              <button
-                v-if="formState.model.paramType === 'json'"
+            <template #paramValue v-if="formState.model.paramType === 'json'"
+              ><button
                 type="button"
                 class="system-param-dialog__json-trigger"
                 @click="openJsonEditor('paramValue', '参数值')"
-              >
-                <span>{{ formState.model.paramValue || '点击编辑 JSON 参数值' }}</span>
-                <ArtSvgIcon icon="ri:code-s-slash-line" />
-              </button>
-              <ElSelect
-                v-else-if="isRegistrationRoleParam"
-                v-model="formState.model.paramValue"
-                class="system-param-dialog__full-control"
-                filterable
-                :loading="registrationRoleLoading"
-                placeholder="请选择新用户注册后的默认角色"
-              >
-                <ElOption
-                  v-for="role in registrationRoleOptions"
-                  :key="role.id"
-                  :label="`${role.roleName}（${role.roleCode}）`"
-                  :value="role.id"
-                >
-                  <div class="system-param-dialog__role-option">
-                    <span>{{ role.roleName }}</span>
-                    <small>{{ role.roleCode }}</small>
-                  </div>
-                </ElOption>
-              </ElSelect>
-              <ElInput
-                v-else-if="formState.model.paramType === 'single_text'"
-                v-model="formState.model.paramValue"
-                maxlength="500"
-                show-word-limit
-                placeholder="请输入参数值"
-              />
-              <ElInput
-                v-else-if="formState.model.paramType === 'multi_text'"
-                v-model="formState.model.paramValue"
-                type="textarea"
-                :rows="5"
-                maxlength="5000"
-                show-word-limit
-                placeholder="请输入多行文本内容"
-              />
-              <ElInputNumber
-                v-else-if="formState.model.paramType === 'number'"
-                v-model="numberParamValue"
-                placeholder="请输入数字"
-                class="!w-full"
-              />
-              <ElSelect
-                v-else-if="formState.model.paramType === 'boolean'"
-                v-model="formState.model.paramValue"
-                placeholder="请选择布尔值"
-                class="system-param-dialog__full-control"
-              >
-                <ElOption
-                  v-for="option in booleanOptions"
-                  :key="String(option.value)"
-                  :label="option.label"
-                  :value="String(option.value)"
-                />
-              </ElSelect>
-            </template>
+                ><span>{{ formState.model.paramValue || '点击编辑 JSON 参数值' }}</span
+                ><ArtSvgIcon icon="ri:code-s-slash-line" /></button
+            ></template>
             <template #extendConfigText v-if="formState.model.paramType === 'json'">
               <button
                 type="button"
@@ -376,8 +318,42 @@
       {
         label: '参数值',
         key: 'paramValue',
-        type: 'input',
-        span: 24
+        type:
+          isRegistrationRoleParam.value || formState.model.paramType === 'boolean'
+            ? 'select'
+            : formState.model.paramType === 'number'
+              ? 'number'
+              : formState.model.paramType === 'multi_text'
+                ? 'textarea'
+                : 'input',
+        span: 24,
+        options: isRegistrationRoleParam.value
+          ? registrationRoleOptions.value.map((role) => ({
+              ...role,
+              label: `${role.roleName}（${role.roleCode}）`,
+              value: role.id
+            }))
+          : booleanOptions.value.map((option) => ({ ...option, value: String(option.value) })),
+        props:
+          formState.model.paramType === 'number'
+            ? {
+                modelValue: numberParamValue.value,
+                'onUpdate:modelValue': (value: number | undefined) => {
+                  numberParamValue.value = value
+                },
+                placeholder: '请输入数字'
+              }
+            : {
+                maxlength: formState.model.paramType === 'multi_text' ? 5000 : 500,
+                showWordLimit: !isRegistrationRoleParam.value,
+                filterable: isRegistrationRoleParam.value,
+                loading: registrationRoleLoading.value,
+                placeholder: isRegistrationRoleParam.value
+                  ? '请选择新用户注册后的默认角色'
+                  : formState.model.paramType === 'multi_text'
+                    ? '请输入多行文本内容'
+                    : '请输入参数值'
+              }
       },
       {
         label: '扩展配置',
