@@ -40,6 +40,8 @@ async function mockApi(page: Page) {
     catalogs: [structuredClone(catalog)],
     profiles: [] as TableColumnProfile[],
     runtimeCalls: 0,
+    runtimeFail: false,
+    materialRecords: [] as Record<string, unknown>[],
     fail: false,
     saves: 0,
     syncedCatalogCount: 0,
@@ -106,6 +108,11 @@ async function mockApi(page: Page) {
         }
       ]
     else if (name === 'fms_receivable_workspace_secure') body = { records: [], total: 0 }
+    else if (
+      name &&
+      /^mdm_(unit_of_measure|material_type|material_attribute_group|material_code_rule)$/.test(name)
+    )
+      body = state.materialRecords
     else if (name === 'save_table_column_profile') {
       const config = params.p_config
       const existing = state.profiles.find(
@@ -126,6 +133,12 @@ async function mockApi(page: Page) {
       body = null
     } else if (name === 'get_table_column_runtime') {
       state.runtimeCalls++
+      if (state.runtimeFail)
+        return route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 'PGRST000', message: 'connection unavailable' })
+        })
       const current = state.catalogs.find((c) => c.routePath === params.p_route_path)
       const profiles = state.profiles.filter((p) => p.menuId === current?.menuId)
       const enabled = profiles.at(-1)?.source === 'configured'
@@ -140,7 +153,7 @@ async function mockApi(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      headers: { 'content-range': '0-0/1' },
+      headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' },
       body: JSON.stringify(body)
     })
   })
@@ -432,6 +445,291 @@ for (const [real, routePath] of [
       page.getByRole('columnheader', { name: target.label, exact: false }).first()
     ).toBeVisible({ timeout: 60000 })
   })
+
+const materialLists = [
+  {
+    real: 'unit',
+    path: 'unit-of-measure',
+    identity: 'unitName',
+    moved: 'dimension',
+    name: '计量单位'
+  },
+  {
+    real: 'material-type',
+    path: 'material-type',
+    identity: 'typeName',
+    moved: 'codePrefix',
+    name: '物料类型'
+  },
+  {
+    real: 'attribute-group',
+    path: 'attribute-group',
+    identity: 'groupName',
+    moved: 'attributeCount',
+    name: '属性组'
+  },
+  {
+    real: 'code-rule',
+    path: 'code-rule',
+    identity: 'ruleName',
+    moved: 'strategy',
+    name: '编码规则'
+  }
+] as const
+
+function materialCatalog(path: string): TableColumnCatalog {
+  const catalogs = JSON.parse(
+    readFileSync(
+      new URL('../../src/config/table-column-catalog.generated.json', import.meta.url),
+      'utf8'
+    )
+  ) as TableColumnCatalog[]
+  const selected = catalogs.find((item) => item.routePath === `/mdm/material-master/${path}`)
+  expect(selected, `${path} 主列表应登记到列目录`).toBeTruthy()
+  return structuredClone(selected!)
+}
+
+const materialRecord = {
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  tenant_id: tenantId,
+  sort: 10,
+  status: 'enabled',
+  update_time: '2026-10-23 12:00:00',
+  unit_code: 'UNIT-DEMO',
+  unit_name: '测试计量单位',
+  symbol: 'kg',
+  dimension: '质量',
+  decimal_places: 2,
+  conversion_factor: 1,
+  type_code: 'TYPE-DEMO',
+  type_name: '测试物料类型',
+  code_prefix: 'MAT',
+  tag_type: 'success',
+  group_code: 'GROUP-DEMO',
+  group_name: '测试属性组',
+  attributes: [
+    {
+      attribute_key: 'color',
+      attribute_name: '颜色',
+      required: false,
+      enabled: true,
+      sort: 1,
+      values: [{ attribute_value: '蓝色', sort: 1 }]
+    }
+  ],
+  rule_code: 'RULE-DEMO',
+  rule_name: '测试编码规则',
+  strategy: 'material_type',
+  example_code: 'MAT0001',
+  code_length: 7
+}
+
+test('租户行菜单不会继承批量停用并出现相反状态动作', async ({ page }) => {
+  test.setTimeout(120_000)
+  await mockApi(page)
+  await page.route('**/rest/v1/sys_tenant**', (route) =>
+    route.fulfill({
+      json: [
+        { id: tenantId, tenant_name: '启用租户', tenant_code: 'ENABLED', status: '1' },
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          tenant_name: '停用租户',
+          tenant_code: 'DISABLED',
+          status: '2'
+        }
+      ],
+      headers: { 'content-range': '0-1/2', 'access-control-expose-headers': 'content-range' }
+    })
+  )
+  await page.goto('/tests/e2e/fixtures/table-column-config.html?real=tenant')
+  const rows = page.locator('.tenant-page .el-table__body-wrapper tr')
+  await expect(rows).toHaveCount(2)
+  await rows.first().getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: '停用租户', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '停用', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: '启用租户', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await rows.nth(1).getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: '启用租户', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '停用租户', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: '停用', exact: true })).toHaveCount(0)
+})
+
+test('物料类型恢复固定列宽后仍铺满宽屏，启用与停用按当前行互斥', async ({ page }, info) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 2400, height: 1200 })
+  const state = await mockApi(page)
+  const current = materialCatalog('material-type')
+  state.catalogs = [current]
+  state.materialRecords = [
+    materialRecord,
+    {
+      ...materialRecord,
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      type_name: '停用物料类型',
+      status: 'disabled'
+    }
+  ]
+  state.profiles = [
+    {
+      ...profile(
+        current.columns.map((column) => ({
+          ...column,
+          width: column.width ?? column.minWidth ?? 140
+        }))
+      ),
+      menuId: current.menuId
+    }
+  ]
+  const appearance = `theme=${info.project.name.includes('dark') ? 'dark' : 'light'}&box=${info.project.name.includes('shadow') ? 'shadow' : 'border'}`
+  await page.goto(`/tests/e2e/fixtures/table-column-config.html?real=material-type&${appearance}`)
+  const table = page.locator('.material-reference-page .el-table')
+  await expect(table.locator('.el-table__body-wrapper tr')).toHaveCount(2)
+  await expect(page.locator('.material-reference-page .el-skeleton')).toHaveCount(0)
+  await expect
+    .poll(() =>
+      table.evaluate((element) => {
+        const header = element.querySelector('.el-table__header')!
+        return element.getBoundingClientRect().right - header.getBoundingClientRect().right
+      })
+    )
+    .toBeLessThan(3)
+  const enabled = table.locator('.el-table__body-wrapper tr').first()
+  await enabled.getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: '停用', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '启用', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await table
+    .locator('.el-table__body-wrapper tr')
+    .nth(1)
+    .getByRole('button', { name: '更多操作', exact: true })
+    .click()
+  await expect(page.getByRole('menuitem', { name: '启用', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '停用', exact: true })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath('material-type-full-width.png'), fullPage: true })
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+    .toBeLessThan(2)
+  await page.keyboard.press('Escape')
+  await page.getByRole('switch', { name: '进入专注模式', exact: true }).locator('..').click()
+  await expect(page.locator('.business-workspace-header')).toBeHidden()
+  await expect(table).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.business-workspace-header')).toBeVisible()
+  state.profiles[0].source = 'frontend'
+  await page.reload()
+  await expect(table.locator('.el-table__body-wrapper tr')).toHaveCount(2)
+  await expect
+    .poll(() =>
+      table.evaluate((element) => {
+        const header = element.querySelector('.el-table__header')!
+        return element.getBoundingClientRect().right - header.getBoundingClientRect().right
+      })
+    )
+    .toBeLessThan(3)
+})
+
+for (const list of materialLists)
+  test(`物料主列表列配置可改名、隐藏、重排和恢复：${list.real}`, async ({ page }, info) => {
+    test.setTimeout(120_000)
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    const state = await mockApi(page)
+    const current = materialCatalog(list.path)
+    expect(current.columns.map((column) => column.key)).toEqual(
+      expect.arrayContaining([list.identity, list.moved, 'status', 'updateTime', 'operation'])
+    )
+    state.catalogs = [current]
+    state.materialRecords = [materialRecord]
+    const moved = current.columns.find((column) => column.key === list.moved)!
+    const configured = [
+      ...current.columns.filter((column) => column.key === '__selection__'),
+      moved,
+      ...current.columns.filter(
+        (column) => column.key !== '__selection__' && column.key !== list.moved
+      )
+    ].map((column) => ({
+      ...column,
+      ...(column.locked ? {} : { fixed: false as const }),
+      ...(column.key === list.identity ? { label: `配置${list.name}` } : {}),
+      ...(column.key === 'status' ? { visible: false } : {})
+    }))
+    state.profiles = [{ ...profile(configured), menuId: current.menuId }]
+    const query = `real=${list.real}&theme=${info.project.name.includes('dark') ? 'dark' : 'light'}&box=${info.project.name.includes('shadow') ? 'shadow' : 'border'}`
+    await page.goto(`/tests/e2e/fixtures/table-column-config.html?${query}`)
+    const headers = page.locator('.material-reference-page .el-table__header th .cell')
+    await expect(headers).toHaveText(
+      configured
+        .filter((column) => column.visible)
+        .map((column) => (column.key === '__selection__' ? '' : column.label)),
+      { timeout: 60_000 }
+    )
+    await expect(page.getByText(`测试${list.name}`, { exact: true })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: '状态', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '查询', exact: true })).toBeEnabled()
+    await expect(page.locator('.material-reference-page .el-skeleton')).toHaveCount(0)
+    await page.screenshot({
+      path: `.artifacts/column-config/${info.project.name}-${list.real}-configured.png`,
+      fullPage: true
+    })
+    state.profiles[0].source = 'frontend'
+    await page.reload()
+    // Element Plus places the identity's original fixed-left column before ordinary columns.
+    const frontendColumns = [
+      ...current.columns.filter((column) => column.key === '__selection__'),
+      ...current.columns.filter((column) => column.fixed === 'left'),
+      ...current.columns.filter(
+        (column) => column.key !== '__selection__' && column.fixed !== 'left'
+      )
+    ]
+    await expect(headers).toHaveText(
+      frontendColumns
+        .filter((column) => column.visible)
+        .map((column) => (column.key === '__selection__' ? '' : column.label)),
+      { timeout: 60_000 }
+    )
+    await expect(page.getByRole('columnheader', { name: '状态', exact: true })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: `配置${list.name}` })).toHaveCount(0)
+    expect(errors).toEqual([])
+  })
+
+test('计量单位窄屏读取失败保留前端列，恢复后重新应用配置', async ({ page }, info) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1024, height: 768 })
+  const state = await mockApi(page)
+  const current = materialCatalog('unit-of-measure')
+  state.catalogs = [current]
+  state.materialRecords = [materialRecord]
+  state.profiles = [
+    {
+      ...profile(
+        current.columns.map((column) =>
+          column.key === 'unitName' ? { ...column, label: '配置计量单位' } : column
+        )
+      ),
+      menuId: current.menuId
+    }
+  ]
+  state.runtimeFail = true
+  await page.goto('/tests/e2e/fixtures/table-column-config.html?real=unit')
+  await expect(page.getByText('已使用前端默认列', { exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('columnheader', { name: '计量单位', exact: true })).toBeVisible()
+  await expect(page.getByText('测试计量单位', { exact: true })).toBeVisible()
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
+  ).toBe(true)
+  await page.screenshot({
+    path: `.artifacts/column-config/${info.project.name}-unit-narrow-fallback.png`,
+    fullPage: true
+  })
+  state.runtimeFail = false
+  await page.reload()
+  await expect(page.getByRole('columnheader', { name: '配置计量单位', exact: true })).toBeVisible({
+    timeout: 60_000
+  })
+  await expect(page.getByText('测试计量单位', { exact: true })).toBeVisible()
+})
 
 test('业务列表统一使用配置列或前端列，权限收紧始终生效', async ({ page }) => {
   const state = await mockApi(page)

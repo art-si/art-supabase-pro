@@ -65,6 +65,43 @@ let dbMetadata: Api.DataCenter.SqlConsole.DatabaseMetadata = {
   foreignKeys: []
 }
 
+type SqlMetadataLoader = (sql: string, functions: boolean) => Promise<void>
+let metadataLoader: SqlMetadataLoader | undefined
+let loaderRevision = 0
+
+/** A mounted SQL workspace owns asynchronous hydration, including tenant transitions. */
+export function registerSqlMetadataLoader(loader: SqlMetadataLoader): () => void {
+  metadataLoader = loader
+  const revision = ++loaderRevision
+  return () => {
+    if (revision === loaderRevision) {
+      metadataLoader = undefined
+      loaderRevision++
+    }
+  }
+}
+
+async function hydrateMetadata(
+  model: monaco.editor.ITextModel,
+  sql: string,
+  functions: boolean,
+  token: monaco.CancellationToken
+): Promise<boolean> {
+  const revision = loaderRevision
+  const version = model.getVersionId()
+  try {
+    await metadataLoader?.(sql, functions)
+  } catch {
+    /* The workspace presents retry feedback; keywords remain available. */
+  }
+  return (
+    !token.isCancellationRequested &&
+    !model.isDisposed() &&
+    model.getVersionId() === version &&
+    loaderRevision === revision
+  )
+}
+
 export function registerSqlMetadata(
   metadata: Api.DataCenter.SqlConsole.DatabaseMetadata | Api.DataCenter.SqlConsole.TableMetadata[]
 ) {
@@ -96,10 +133,19 @@ function createRange(model: monaco.editor.ITextModel, position: monaco.Position)
 
 monaco.languages.registerCompletionItemProvider('mysql', {
   triggerCharacters: [' ', '.', '`'],
-  provideCompletionItems(model, position) {
+  async provideCompletionItems(model, position, _context, token) {
     const sql = model.getValue()
     const offset = model.getOffsetAt(position)
     if (getSqlCompletionContext(sql, offset, 'mysql').kind === 'none') return { suggestions: [] }
+    if (
+      !(await hydrateMetadata(
+        model,
+        getSqlCompletionContext(sql, offset, 'mysql').statement,
+        false,
+        token
+      ))
+    )
+      return { suggestions: [] }
     const range = createRange(model, position)
     const prefix = sql.slice(0, offset - model.getWordUntilPosition(position).word.length)
     const qualifier = prefix.match(/(?:`([^`]+)`|([\w$]+))\.$/)
@@ -316,7 +362,12 @@ function buildTemplateCompletionItems(range: monaco.IRange) {
 for (const languageId of [PGSQL_LANGUAGE_ID, 'dm']) {
   monaco.languages.registerCompletionItemProvider(languageId, {
     triggerCharacters: [' ', '.', '('],
-    provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position) {
+    async provideCompletionItems(
+      model: monaco.editor.ITextModel,
+      position: monaco.Position,
+      _context,
+      token
+    ) {
       const range = createRange(model, position)
       const fullSql = model.getValue()
       const completion = getSqlCompletionContext(
@@ -327,6 +378,16 @@ for (const languageId of [PGSQL_LANGUAGE_ID, 'dm']) {
       const items: monaco.languages.CompletionItem[] = []
 
       if (completion.kind === 'none') return { suggestions: [] }
+      if (
+        completion.kind !== 'start' &&
+        !(await hydrateMetadata(
+          model,
+          completion.statement,
+          completion.kind === 'column' && model.getWordUntilPosition(position).word.length >= 2,
+          token
+        ))
+      )
+        return { suggestions: [] }
 
       if (completion.kind === 'qualified' && completion.qualifier) {
         const table = resolveTableRef(
@@ -368,12 +429,13 @@ for (const languageId of [PGSQL_LANGUAGE_ID, 'dm']) {
   })
 
   monaco.languages.registerHoverProvider(languageId, {
-    provideHover(model, position) {
+    async provideHover(model, position, token) {
       const word = model.getWordAtPosition(position)
       if (!word) return null
 
       const completion = getSqlCompletionContext(model.getValue(), model.getOffsetAt(position))
       if (completion.kind === 'none') return null
+      if (!(await hydrateMetadata(model, completion.statement, false, token))) return null
       const statement = completion.statement
       const aliases = extractSqlAliases(statement)
       const linePrefix = model.getLineContent(position.lineNumber).slice(0, word.startColumn - 1)

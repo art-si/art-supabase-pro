@@ -172,6 +172,7 @@ test('领料选单读取工单 BOM 快照，扣除选单占用并恢复可重领
     timeout: 120_000
   })
   await page.getByRole('button', { name: '测试生产单据 edit', exact: true }).click()
+  await page.getByRole('tab', { name: /明细/ }).click()
   const drawer = page.locator('.el-drawer')
   await expect(drawer.getByRole('button', { name: '选单', exact: true })).toBeEnabled()
   await expect.poll(() => materialReads.length).toBeGreaterThan(0)

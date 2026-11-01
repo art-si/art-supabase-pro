@@ -1,5 +1,12 @@
 // 优化 Element Plus 组件库默认样式
 
+// 留白属于可视窗口：仅内收正文的绘制边界，保留滚动条轨道、滚动高度和当前位置。
+// 正文仍保留末尾 padding；scroll-padding 使键盘聚焦和校验定位避开这段留白。
+.art-scroll-viewport-inset > .el-scrollbar__wrap {
+  scroll-padding-bottom: var(--art-scroll-viewport-inset, var(--art-space-4));
+  clip-path: inset(0 0 var(--art-scroll-viewport-inset, var(--art-space-4)));
+}
+
 :root {
   // 系统主色
   --main-color: var(--el-color-primary);

@@ -153,6 +153,16 @@ test('分批转单显示剩余数量并保留失败重试的幂等编号', async
   await expect(dialog.getByText('0.75', { exact: true })).toBeVisible()
   await expect(dialog.getByText(/下达前必须填写/)).toBeVisible()
   await dialog.locator('thead .el-checkbox').check()
+  const quantity = dialog.getByRole('spinbutton', { name: '第10行本次转单数量' })
+  await expect(dialog.locator('thead .art-table__required-marker')).toHaveCount(1)
+  await quantity.fill('0')
+  await quantity.blur()
+  await dialog.getByRole('button', { name: '生成目标单据', exact: true }).click()
+  await expect(dialog.locator('[data-art-edit-field="transferQuantity"]').first()).toHaveClass(
+    /is-validation-error/
+  )
+  await expect(page.getByText(/本次数量须大于零且不超过剩余可转数量/).last()).toBeVisible()
+  expect(submissions).toHaveLength(0)
   await dialog.getByRole('spinbutton', { name: '第10行本次转单数量' }).fill('0.5')
   await dialog.getByRole('spinbutton', { name: '第10行本次转单数量' }).blur()
   await page.screenshot({

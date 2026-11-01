@@ -52,6 +52,7 @@ for (const kind of ['estimated', 'financial'] as const) {
           tax_amount: 13 * n,
           total_amount: 113 * n,
           matched_amount: 20 * n,
+          linked_amount: 20 * n,
           reversed_amount: 30 * n,
           lines: [
             {
@@ -128,6 +129,7 @@ for (const kind of ['estimated', 'financial'] as const) {
             .click()
           const drawer = page.getByRole('dialog')
           await expect(drawer).toContainText(`来源采购入库单：CGRK202610-${n}`)
+          await drawer.getByRole('tab', { name: '应付明细', exact: true }).click()
           await expect(drawer).toContainText(`项目物料${n}`)
           await expect(drawer).toContainText(`项目供应商${n}`)
           await expect(drawer.getByRole('button', { name: '保存', exact: true })).toHaveCount(0)
@@ -137,22 +139,16 @@ for (const kind of ['estimated', 'financial'] as const) {
             path: testInfo.outputPath(`${kind}-detail-${n}.png`),
             fullPage: true
           })
-          await drawer
-            .locator('.art-drawer__scrollbar > .el-scrollbar__wrap')
-            .evaluate((element) => {
-              element.scrollTop = element.scrollHeight
-            })
+          await drawer.getByRole('tab', { name: '关联信息', exact: true }).click()
           const metric = drawer.getByRole('cell', {
-            name: kind === 'estimated' ? '已冲回金额' : '已勾稽金额',
+            name: kind === 'estimated' ? '已冲回金额' : '已关联金额',
             exact: true
           })
           await expect(metric).toBeVisible()
           await expect(metric.locator('xpath=following-sibling::td[1]')).toHaveText(
             `¥${((kind === 'estimated' ? 30 : 20) * n).toFixed(2)}`
           )
-          await expect(
-            drawer.getByText(kind === 'estimated' ? '已勾稽金额' : '已冲回金额', { exact: true })
-          ).toHaveCount(0)
+          await expect(drawer.getByRole('cell', { name: '冻结金额', exact: true })).toBeVisible()
           await captureBusinessEvidence(drawer, {
             path: testInfo.outputPath(`${kind}-associations-${n}.png`)
           })
@@ -162,11 +158,18 @@ for (const kind of ['estimated', 'financial'] as const) {
             `/tests/e2e/fixtures/purchase-payable.html?kind=${kind}&theme=${theme}&box=${box}&recordId=payable-${n}`,
             { waitUntil: 'domcontentloaded' }
           )
+          await expect(rows).toHaveCount(1)
+          await rows.getByRole('button', { name: '查看', exact: true }).click()
           await expect(drawer).toContainText(`来源采购入库单：CGRK202610-${n}`)
+          await drawer.getByRole('tab', { name: '应付明细', exact: true }).click()
           await expect(drawer).toContainText(`项目物料${n}`)
           await expect(drawer).not.toContainText(`项目物料${n === 1 ? 2 : 1}`)
           await page.keyboard.press('Escape')
           await expect(drawer).not.toBeVisible()
+          await page.goto(
+            `/tests/e2e/fixtures/purchase-payable.html?kind=${kind}&theme=${theme}&box=${box}`,
+            { waitUntil: 'domcontentloaded' }
+          )
           await expect(rows).toHaveCount(2)
         }
         fail = true
@@ -297,7 +300,6 @@ for (const theme of ['light', 'dark'] as const) {
     await page.goto(`/tests/e2e/fixtures/purchase-payable.html?kind=financial&theme=${theme}`)
     await page.getByRole('button', { name: '编辑', exact: true }).click()
     const drawer = page.getByRole('dialog')
-    await expect(drawer.getByText('编辑验证物料', { exact: true })).toBeVisible()
     await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeVisible()
     await expect(drawer.getByText('标准采购应付', { exact: true })).toBeVisible()
     await drawer.getByLabel('付款组织', { exact: true }).click()
@@ -308,6 +310,8 @@ for (const theme of ['light', 'dark'] as const) {
       .click()
     await page.getByRole('treeitem', { name: '树形验收公司', exact: true }).click()
     await expect(drawer.getByText('树形验收公司', { exact: true })).toBeVisible()
+    await drawer.getByRole('tab', { name: '应付明细', exact: true }).click()
+    await expect(drawer.getByText('编辑验证物料', { exact: true })).toBeVisible()
     await expect(drawer.getByRole('columnheader').filter({ hasText: '必填' })).toHaveCount(5)
     await captureBusinessEvidence(page, {
       path: testInfo.outputPath('financial-edit-header.png'),
@@ -322,6 +326,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(drawer.getByText(/共 1 行 · (?:立账)?价税合计.*0\.00/)).toBeVisible()
     await gift.locator('..').click()
     await expect(gift).not.toBeChecked()
+    await drawer.getByRole('tab', { name: '付款计划', exact: true }).click()
     await drawer.getByRole('button', { name: '增加付款期次', exact: true }).click()
     await drawer.getByRole('spinbutton', { name: '应付金额', exact: true }).fill('226')
     await drawer.getByRole('spinbutton', { name: '应付金额', exact: true }).blur()

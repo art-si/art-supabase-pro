@@ -7,7 +7,7 @@ export interface SqlHistoryEntry {
   id: string
   sql: string
   executedAt: string
-  status: 'ok' | 'error'
+  status: 'ok' | 'error' | 'cancelled'
   durationMs?: number
   rowCount?: number
   schema?: string
@@ -49,7 +49,7 @@ function isHistoryEntry(value: unknown): value is SqlHistoryEntry {
     typeof entry.sql === 'string' &&
     typeof entry.executedAt === 'string' &&
     Number.isFinite(Date.parse(entry.executedAt)) &&
-    (entry.status === 'ok' || entry.status === 'error') &&
+    (entry.status === 'ok' || entry.status === 'error' || entry.status === 'cancelled') &&
     (entry.durationMs === undefined || typeof entry.durationMs === 'number') &&
     (entry.rowCount === undefined || typeof entry.rowCount === 'number') &&
     (entry.schema === undefined || typeof entry.schema === 'string')

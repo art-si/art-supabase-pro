@@ -197,6 +197,8 @@ for (const kind of ['fuel', 'electric'] as const) {
       const endpoint = new URL(request.url()).pathname.split('/').at(-1)
       const payload =
         request.method() === 'POST' ? (request.postDataJSON() as Record<string, unknown>) : {}
+      if (endpoint === 'get_table_column_runtime')
+        return route.fulfill({ json: { enabled: false, profiles: [] } })
       if (endpoint === cardEndpoint) {
         const selected =
           kind === 'fuel' ? (payload.p_ids as string[] | null)?.[0] : payload.p_card_id

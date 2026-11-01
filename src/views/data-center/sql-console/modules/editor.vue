@@ -16,10 +16,7 @@
       ><span
         >行 {{ cursor.line }}，列 {{ cursor.column
         }}<template v-if="cursor.selected"> · 已选 {{ cursor.selected }} 字符</template></span
-      ><span
-        >{{ SQL_DIALECT_LABELS[activeDialect] }} · {{ modelValue.split('\n').length }} 行 · 2
-        空格</span
-      ></div
+      ><span>{{ SQL_DIALECT_LABELS[activeDialect] }} · {{ lineCount }} 行 · 2 空格</span></div
     >
   </div>
 </template>
@@ -36,6 +33,8 @@
   import { SQL_DIALECT_LABELS } from '@/utils/sql-connections'
   import {
     getSqlExecutionTarget,
+    createSqlScriptIndex,
+    type SqlScriptIndex,
     type SqlErrorLocation,
     type SqlExecutionTarget
   } from '@/utils/sql-workbench'
@@ -70,11 +69,23 @@
     () => props.dialect || (props.language === 'mysql' ? 'mysql' : 'postgres')
   )
   const cursor = ref({ line: 1, column: 1, selected: 0 })
+  const lineCount = computed(() => props.modelValue.split('\n').length)
   let editorInstance: monaco.editor.IStandaloneCodeEditor | null = null
+  let scriptCache:
+    | {
+        model: monaco.editor.ITextModel
+        version: number
+        dialect: SqlDialect
+        index: SqlScriptIndex
+      }
+    | undefined
   let disposed = false
+  let contentRevision = 0
   onBeforeUnmount(() => {
     disposed = true
+    contentRevision++
     editorInstance = null
+    scriptCache = undefined
   })
 
   // Monaco 0.57 validates these history options at runtime but omits them from its
@@ -128,25 +139,41 @@
       const selection = editorInstance.getSelection()
       const model = editorInstance.getModel()
       if (selection && model && !selection.isEmpty()) {
-        return getSqlExecutionTarget(
-          model.getValue(),
-          model.getOffsetAt(selection.getStartPosition()),
-          {
-            start: model.getOffsetAt(selection.getStartPosition()),
-            end: model.getOffsetAt(selection.getEndPosition())
-          },
+        const selected = model.getValueInRange(selection)
+        const target = getSqlExecutionTarget(
+          selected,
+          0,
+          { start: 0, end: selected.length },
           dialect
         )
+        return {
+          ...target,
+          startOffset: model.getOffsetAt(selection.getStartPosition()) + target.startOffset
+        }
       }
       if (model)
-        return getSqlExecutionTarget(
-          model.getValue(),
-          model.getOffsetAt(editorInstance.getPosition() || new monaco.Position(1, 1)),
-          undefined,
-          dialect
+        return getScriptIndex(model).getExecutionTarget(
+          model.getOffsetAt(editorInstance.getPosition() || new monaco.Position(1, 1))
         )
     }
     return getSqlExecutionTarget(props.modelValue, 0, undefined, dialect)
+  }
+
+  const getScriptIndex = (model: monaco.editor.ITextModel): SqlScriptIndex => {
+    const version = model.getVersionId()
+    const dialect = activeDialect.value
+    if (
+      scriptCache?.model !== model ||
+      scriptCache.version !== version ||
+      scriptCache.dialect !== dialect
+    )
+      scriptCache = {
+        model,
+        version,
+        dialect,
+        index: createSqlScriptIndex(model.getValue(), dialect)
+      }
+    return scriptCache.index
   }
 
   const triggerExecute = () => {
@@ -165,23 +192,43 @@
       return
     }
     editorInstance = editor
+    contentRevision++
+    editor.onDidDispose(() => {
+      if (disposed || editorInstance !== editor) return
+      contentRevision++
+      editorInstance = null
+      scriptCache = undefined
+    })
     const reportState = () => {
-      if (disposed) return
+      if (disposed || editorInstance !== editor) return
       const target = getExecutionTarget()
       const position = editor.getPosition()
       const selection = editor.getSelection()
+      const model = editor.getModel()
       cursor.value = {
         line: position?.lineNumber || 1,
         column: position?.column || 1,
-        selected: selection ? editor.getModel()?.getValueInRange(selection).length || 0 : 0
+        selected:
+          selection && model
+            ? model.getOffsetAt(selection.getEndPosition()) -
+              model.getOffsetAt(selection.getStartPosition())
+            : 0
       }
       emit('target-change', target.source)
       emit('cursor-change', target)
-      const model = editor.getModel()
       emit('history-state', { undo: model?.canUndo() ?? false, redo: model?.canRedo() ?? false })
     }
     editor.onDidChangeCursorSelection(reportState)
+    editor.onDidChangeModel(() => {
+      if (disposed || editorInstance !== editor) return
+      contentRevision++
+      scriptCache = undefined
+      clearErrorMarkers()
+      reportState()
+    })
     editor.onDidChangeModelContent(() => {
+      if (disposed || editorInstance !== editor) return
+      contentRevision++
       clearErrorMarkers()
       reportState()
     })
@@ -268,7 +315,7 @@
 
   const clearErrorMarkers = () => {
     const model = editorInstance?.getModel()
-    if (!model) return
+    if (disposed || !model || model.isDisposed()) return
     monaco.editor.setModelMarkers(model, 'sql-console', [])
   }
 
@@ -279,31 +326,51 @@
     startOffset = 0
   ) => {
     const model = editorInstance?.getModel()
-    if (!model) return
-
-    if (!location) {
-      clearErrorMarkers()
+    if (disposed || !model || model.isDisposed()) return
+    clearErrorMarkers()
+    if (
+      !location ||
+      !Number.isSafeInteger(startOffset) ||
+      startOffset < 0 ||
+      startOffset > model.getValueLength() ||
+      ![location.lineNumber, location.startColumn, location.endColumn].every(
+        (value) => Number.isSafeInteger(value) && value >= 1
+      ) ||
+      location.endColumn < location.startColumn
+    )
       return
-    }
 
     const origin = model.getPositionAt(startOffset)
+    if (model.getOffsetAt(origin) !== startOffset) return
+    const isColumnBoundary = (line: string, column: number): boolean =>
+      column === 1 || column === line.length + 1 || (line.codePointAt(column - 2) ?? 0) <= 0xffff
+    if (!isColumnBoundary(model.getLineContent(origin.lineNumber), origin.column)) return
     const lineNumber = origin.lineNumber + location.lineNumber - 1
+    if (!Number.isSafeInteger(lineNumber) || lineNumber > model.getLineCount()) return
     const columnOffset = location.lineNumber === 1 ? origin.column - 1 : 0
+    const startColumn = location.startColumn + columnOffset
+    const endColumn = location.endColumn + columnOffset
+    const line = model.getLineContent(lineNumber)
+    if (
+      !Number.isSafeInteger(startColumn) ||
+      !Number.isSafeInteger(endColumn) ||
+      endColumn > model.getLineMaxColumn(lineNumber) ||
+      !isColumnBoundary(line, startColumn) ||
+      !isColumnBoundary(line, endColumn)
+    )
+      return
+    const range = new monaco.Range(lineNumber, startColumn, lineNumber, endColumn)
+    const validated = model.validateRange(range)
+    if (!range.equalsRange(validated)) return
     monaco.editor.setModelMarkers(model, 'sql-console', [
       {
         severity: monaco.MarkerSeverity.Error,
         message,
-        startLineNumber: lineNumber,
-        endLineNumber: lineNumber,
-        startColumn: location.startColumn + columnOffset,
-        endColumn: Math.max(location.endColumn, location.startColumn + 1) + columnOffset
+        ...validated
       }
     ])
 
-    editorInstance?.revealPositionInCenter({
-      lineNumber,
-      column: location.startColumn + columnOffset
-    })
+    editorInstance?.revealPositionInCenter(validated.getStartPosition())
   }
 
   const setSql = (value: string) => {
@@ -353,11 +420,8 @@
   const selectStatement = () => {
     const model = editorInstance?.getModel()
     if (!model || !editorInstance) return
-    const target = getSqlExecutionTarget(
-      model.getValue(),
-      model.getOffsetAt(editorInstance.getPosition() || new monaco.Position(1, 1)),
-      undefined,
-      activeDialect.value
+    const target = getScriptIndex(model).getExecutionTarget(
+      model.getOffsetAt(editorInstance.getPosition() || new monaco.Position(1, 1))
     )
     if (target.sql)
       revealStatement(target.startOffset, target.startOffset + target.sql.length, true)
@@ -378,6 +442,7 @@
     format: handleFormat,
     clear: handleClear,
     getExecutionTarget,
+    getContentRevision: () => contentRevision,
     setSql,
     insertSql,
     revealStatement,

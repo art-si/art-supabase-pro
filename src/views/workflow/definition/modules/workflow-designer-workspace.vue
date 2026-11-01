@@ -106,8 +106,6 @@
               :span="12"
               :gutter="22"
               label-position="top"
-              :show-reset="false"
-              :show-submit="false"
             />
           </ArtSectionCard>
 
@@ -282,8 +280,6 @@
                   :items="settingItems"
                   :span="24"
                   label-position="top"
-                  :show-reset="false"
-                  :show-submit="false"
                 />
 
                 <div class="workflow-designer-page__version-policy">

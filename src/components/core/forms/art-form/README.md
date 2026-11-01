@@ -14,6 +14,8 @@
     :items="formItems"
     :rules="rules"
     :span="12"
+    show-reset
+    show-submit
     validate-on-rule-change
     @submit="handleSubmit"
     @reset="handleReset"
@@ -66,21 +68,85 @@
 </script>
 ```
 
+## 横向页签
+
+长表单可以把分区标记改为 `type: 'tab'`。每个标记后的字段归属于该页签，直到下一个 `tab` 标记；第一个页签前的公共字段始终可见。普通 `divider` 仍可用于页签内部的小分区，不使用 `tab` 的表单保持原有栅格与展开行为。
+
+```vue
+<ArtForm
+  ref="formRef"
+  v-model="form"
+  v-model:active-tab="activeTab"
+  :items="items"
+  :rules="rules"
+/>
+```
+
+```ts
+const activeTab = ref('basic')
+const formRef = useTemplateRef<InstanceType<typeof ArtForm>>('formRef')
+const items: FormItem[] = [
+  { key: 'documentNo', label: '单据编号', type: 'input', span: 24 },
+  { key: 'basic', label: '基本信息', type: 'tab', description: '维护单据归属与业务对象。' },
+  { key: 'name', label: '名称', type: 'input', span: 12 },
+  { key: 'plan', label: '计划信息', type: 'tab' },
+  { key: 'plannedEnd', label: '计划结束', type: 'date', span: 12 },
+  { key: 'extra', label: '专用参数', type: 'tab', hidden: hideExtra },
+  { key: 'remark', label: '备注', type: 'textarea' }
+]
+```
+
+- `v-model:active-tab` 使用标记的 `key`。默认选择第一个未禁用的可见页签；当前页签被隐藏或删除时自动选择可用页签。重置回到首个可用页签，业务弹窗复用同一表单时也可在 `handleOpen` 中重设该值。
+- 页签支持 `description`、`hidden` 和 `props.disabled`。隐藏标记会连同其所属字段一起隐藏、停止校验并从提交输出清理；不会把字段并入前一个页签。禁用仅阻止用户点击导航，不删除模型值或跳过校验；外部 `activeTab` 赋值与校验错误定位仍可进入禁用页签，初始默认及重置跳过禁用页签。
+- 普通切换通过 Element Plus 页签保留非活动面板的挂载状态，字段值、插槽、异步选项与校验保持有效。`validate()` 校验所有未被 `hidden` 隐藏的页签，包括非当前页签；失败后按字段元数据顺序切至首个错误、滚动并聚焦控件。`validateField()` 同样定位并聚焦首个错误。`scrollToField()` 揭示对应页签与折叠分区后滚动，`focusField()` 还会聚焦字段内第一个可用控件。普通失焦校验不会抢焦点或滚动页面。
+- 异步选项在非活动页签中仍按 `immediate` 加载；加载中或失败的字段会按原协议阻止提交，并切到所在页签给出反馈。隐藏页签不触发选项请求。
+- `tab` 是布局标记，不是业务字段，不请求输入控件、不参与空值归一化。复杂内容使用所属页签内的普通字段插槽，无需嵌套 `ElForm` 或 `ArtForm`。
+- 页签使用横向导航，窄容器由 Element Plus 提供导航滚动。页签模式展示各面板内完整字段，`enableExpand` 的单行查询折叠仅适用于无页签的查询表单；`customLayout` 模式继续由默认插槽接管布局。
+
+确认保存时调用公开 `validate()`，一次校验所有未隐藏页签，无需逐个切换；Promise 与 Element Plus 回调形式均可使用：
+
+```ts
+async function handleConfirm() {
+  const instance = formRef.value
+  if (!instance) return
+  try {
+    await instance.validate()
+  } catch {
+    // 已切至首个错误页签、展开分区并滚动聚焦，保留表单供用户修改。
+    return
+  }
+  await save(instance.getOutput())
+}
+
+// 回调形式同样返回 boolean，失败时不抛字段错误。
+await formRef.value?.validate(async (isValid) => {
+  if (isValid) await save(formRef.value?.getOutput())
+})
+
+// 业务逻辑可直接切页，或定位具体字段。
+activeTab.value = 'plan'
+await formRef.value?.scrollToField('plannedEnd')
+await formRef.value?.focusField('plannedEnd')
+```
+
 ## Props
+
+自定义布局也可接入相同的跨页签校验：在 `ArtForm` 和内部 `ElTabs` 上同时绑定 `v-model:active-tab` / `v-model` 为同一个页签状态，并在每个 `ElTabPane` 上配置 `data-art-form-tab="对应页签 name"`。全部面板保持挂载，`validate()`、`validateField()` 与 `focusField(prop)` 会根据实际字段的位置切换并聚焦。插槽控件内部注册的校验字段也会自动归属外层元数据分区，无需在业务页复制错误 DOM 查询或手动映射每个子字段。
 
 `ArtForm` 自有 Props：
 
 | 属性 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `v-model` | `Record<string, any>` | `{}` | 表单数据；字段变化只更新当前路径，未变化的嵌套对象和数组保持引用稳定 |
+| `v-model:active-tab` | `string` | 首个可用页签 | 当前页签 marker 的 `key`；可读写切换页签 |
 | `items` | `FormItem[]` | `[]` | 表单项元数据 |
 | `span` | `number` | `6` | 默认列宽，基于 24 栅格 |
 | `gutter` | `number` | `12` | 栅格间距 |
 | `labelPosition` | `'left' \| 'right' \| 'top'` | `'top'` | 标签位置；业务录入默认使用顶部标签 |
 | `labelWidth` | `string \| number` | `'70px'` | 默认标签宽度，字段可用 `item.labelWidth` 覆盖 |
 | `buttonLeftLimit` | `number` | `2` | 可见字段数量小于等于该值时，按钮组左对齐；设为 `0` 可始终右对齐 |
-| `showReset` | `boolean` | `true` | 是否显示重置按钮 |
-| `showSubmit` | `boolean` | `true` | 是否显示提交按钮 |
+| `showReset` | `boolean` | `false` | 是否显示重置按钮；独立提交表单按需开启 |
+| `showSubmit` | `boolean` | `false` | 是否显示提交按钮；独立提交表单按需开启 |
 | `disabledSubmit` | `boolean` | `false` | 是否禁用提交按钮 |
 | `rootClass` | `string` | `''` | 根节点附加 class |
 | `formClass` | `string` | `''` | 内部 `ElForm` 附加 class，适用于自定义布局 |
@@ -190,6 +256,7 @@
 | `validateField(...args)` | `FormInstance['validateField']` | 校验指定字段 |
 | `clearValidate(...args)` | `FormInstance['clearValidate']` | 清除校验状态 |
 | `scrollToField(...args)` | `FormInstance['scrollToField']` | 滚动定位到指定字段，适用于长表单或跨页签校验 |
+| `focusField(prop)` | `(prop: FormItemProp) => Promise<void>` | 切换页签、展开字段所在分区并滚动聚焦可用控件；支持点分路径和路径数组 |
 | `reset()` | `() => void` | 执行组件重置逻辑并触发 `reset` |
 | `fetchOptions(item)` | `(item: FormItem) => Promise<Record<string, any>[]>` | 加载单个字段的异步选项 |
 | `reloadOptions(key?)` | `(key?: string) => Promise<unknown>` | 重新加载指定字段或全部异步选项 |
@@ -357,16 +424,16 @@ const items: FormItem[] = [
 
 ## 提交输出清洗
 
-默认清洗策略偏接口友好：
+业务表单默认保留清空值，确保编辑时可以清除已保存的数据；`ArtSearchBar` 在查询边界开启空值清洗：
 
-| 策略                  | 默认值 | 说明                 |
-| --------------------- | ------ | -------------------- |
-| `removeEmptyString`   | `true` | 移除空字符串         |
-| `removeEmptyArray`    | `true` | 移除空数组           |
-| `removeEmptyObject`   | `true` | 移除清洗后为空的对象 |
-| `removeEmptyRichText` | `true` | 移除空富文本占位内容 |
-| `keepZero`            | `true` | 保留数字 `0`         |
-| `keepFalse`           | `true` | 保留布尔 `false`     |
+| 策略                  | 默认值  | 说明                 |
+| --------------------- | ------- | -------------------- |
+| `removeEmptyString`   | `false` | 移除空字符串         |
+| `removeEmptyArray`    | `false` | 移除空数组           |
+| `removeEmptyObject`   | `false` | 移除清洗后为空的对象 |
+| `removeEmptyRichText` | `false` | 移除空富文本占位内容 |
+| `keepZero`            | `true`  | 保留数字 `0`         |
+| `keepFalse`           | `true`  | 保留布尔 `false`     |
 
 ```vue
 <ArtForm
@@ -380,8 +447,9 @@ const items: FormItem[] = [
 ## 使用建议
 
 - 标准栅格布局会在 `ArtForm` 根节点约束横向溢出，用于吸收 `ElRow gutter` 产生的负 margin，避免放入 `ArtDialog`、`ArtDrawer` 或其他滚动容器后出现无意义的横向滚动条。`customLayout` 模式不应用该约束，自定义内容需要自行管理横向滚动区域。
-- 父组件可使用 `ref` 或 `reactive` 承接 `v-model`；组件会在现有表单对象上更新当前字段，避免无关的复杂控件因引用变化而重建。
+- 独立模型使用 `const form = ref<FormModel>(createInitialForm())` 搭配 `v-model="form"`；分组状态使用 `reactive({ data: createInitialForm(), ... })` 搭配 `v-model="form.data"`。不要直接将 `const form = reactive(...)` 整体绑定到 `v-model`，也无需在每个调用方手写 `model-value` 和更新事件。
+- 组件在现有表单对象上更新字段与重置值，避免无关的复杂控件因引用变化而重建；业务代码主动替换 `form.value` 时，计算属性、校验器和监听应读取最新模型，字段别名也应使用可写 `computed`，避免持有旧对象。
 - 普通字段优先用 `items` 描述；复杂字段用同名插槽。
 - 已有复杂布局可使用 `custom-layout` 和默认插槽复用表单校验；此模式下 `items` 可省略，原有表单样式类通过 `form-class` 传给内部 `ElForm`。
-- 业务弹窗中配合 `ArtDialog` 使用时，通常设置 `show-reset=false`、`show-submit=false`，把提交交给弹窗 Footer。
+- 默认隐藏重置和提交按钮，业务弹窗由 `ArtDialog` / `ArtDrawer` 的 Footer 统一提交，无需重复传入 `false`。独立提交表单按需配置 `show-reset` / `show-submit`；表格查询使用 `ArtSearchBar` / `ArtTableQuery`，搜索边界默认开启搜索和重置。
 - Element Plus 字段组件的所有 Props 和事件都写到 `item.props`，例如 `maxlength`、`showWordLimit`、`onChange`。

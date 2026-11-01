@@ -8,13 +8,10 @@
     />
     <ArtForm
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model="form"
       :items="items"
       :rules="rules"
       :span="24"
-      :show-submit="false"
-      :show-reset="false"
       label-position="top"
     />
     <ElButton v-if="failed" link type="primary" @click="loadOptions">重新加载账套与类别</ElButton>
@@ -26,7 +23,7 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import { replaceReactiveModel } from '@/utils/form/model'
+
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import {
@@ -38,7 +35,7 @@
   const emit = defineEmits<{ success: [ids: string[]] }>()
   const dialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
-  const form = reactive({ accountSetId: '', categoryId: '', date: dayjs().format('YYYY-MM-DD') })
+  const form = ref({ accountSetId: '', categoryId: '', date: dayjs().format('YYYY-MM-DD') })
   const tenantId = ref('')
   const selections = ref<WmsAssetSelection[]>([])
   const accountSets = ref<Array<{ label: string; value: string }>>([])
@@ -58,7 +55,7 @@
       key: 'categoryId',
       label: '资产类别',
       type: 'select',
-      props: { options: categories.value, disabled: busy.value || !form.accountSetId }
+      props: { options: categories.value, disabled: busy.value || !form.value.accountSetId }
     },
     { key: 'date', label: '取得日期', type: 'date', props: { valueFormat: 'YYYY-MM-DD' } }
   ])
@@ -70,10 +67,10 @@
   async function loadCategories(): Promise<void> {
     const current = ++request
     categories.value = []
-    form.categoryId = ''
-    if (!form.accountSetId) return
+    form.value.categoryId = ''
+    if (!form.value.accountSetId) return
     try {
-      const result = await fetchWmsAssetCategories(form.accountSetId)
+      const result = await fetchWmsAssetCategories(form.value.accountSetId)
       if (current !== request) return
       categories.value = result
     } catch (error) {
@@ -86,7 +83,7 @@
     busy.value = true
     try {
       accountSets.value = await fetchWmsAssetAccountSets(tenantId.value)
-      form.accountSetId = accountSets.value[0]?.value || ''
+      form.value.accountSetId = accountSets.value[0]?.value || ''
       await loadCategories()
     } catch (error) {
       failed.value = true
@@ -98,7 +95,7 @@
   async function open(targetTenantId: string, rows: WmsAssetSelection[]): Promise<void> {
     tenantId.value = targetTenantId
     selections.value = rows
-    form.date = dayjs().format('YYYY-MM-DD')
+    form.value.date = dayjs().format('YYYY-MM-DD')
     await dialogRef.value?.handleOpen(undefined, { onConfirm: submit, confirmText: '生成资产草稿' })
     await loadOptions()
   }
@@ -106,7 +103,7 @@
     if (busy.value || failed.value || !(await validateArtFormForSubmit(formRef.value))) return false
     busy.value = true
     try {
-      const ids = await pushWmsOtherAssets({ ...form, selections: selections.value })
+      const ids = await pushWmsOtherAssets({ ...form.value, selections: selections.value })
       ElMessage.success(`已生成 ${ids.length} 张资产草稿`)
       emit('success', ids)
       return true

@@ -41,185 +41,209 @@
           </div>
         </section>
 
-        <section class="ai-run-detail__diagnosis-entry">
-          <div class="ai-run-detail__diagnosis-icon">
-            <ArtSvgIcon icon="ri:stethoscope-line" />
-          </div>
-          <div>
-            <strong>AI 智能诊断</strong>
-            <span>结合错误、耗时、工具调用和运行上下文，生成分级排查建议。</span>
-          </div>
-          <ElButton
-            type="primary"
-            plain
-            :loading="diagnosis.loading"
-            :disabled="!canDiagnose"
-            @click="runDiagnosis"
-          >
-            <ArtSvgIcon v-if="!diagnosis.loading" icon="ri:sparkling-2-line" />
-            {{ diagnosisActionLabel }}
-          </ElButton>
-        </section>
+        <ElTabs v-model="activeTab" class="min-w-0">
+          <ElTabPane name="overview" label="运行概览" :lazy="false"
+            ><div class="grid min-w-0 gap-4">
+              <ArtSectionTitle title="运行信息" />
+              <ArtDescriptions
+                :data="detail"
+                :items="runInfoItems"
+                :columns="2"
+                class="ai-run-detail__descriptions"
+              />
 
-        <template v-if="diagnosis.data">
-          <ArtSectionTitle title="智能诊断结果" />
-          <section class="ai-run-detail__diagnosis-result">
-            <header>
-              <div>
-                <ElTag :type="severityTagType" effect="dark" round>
-                  {{ severityLabel }}
-                </ElTag>
-                <ElTag effect="plain" round>{{ categoryLabel }}</ElTag>
-              </div>
-              <span>置信度 {{ diagnosis.data.confidence }}%</span>
-            </header>
-            <p>{{ diagnosis.data.summary }}</p>
-            <small>
-              诊断服务 {{ diagnosis.provider }} · 模型 {{ diagnosis.model }} · Prompt
-              {{ diagnosis.promptVersion }} ·
-              {{ formatDurationMs(diagnosis.durationMs) }}
-            </small>
-          </section>
-
-          <div v-if="diagnosis.data.rootCauses.length" class="ai-run-detail__diagnosis-section">
-            <h3>可能根因</h3>
-            <article
-              v-for="(cause, index) in diagnosis.data.rootCauses"
-              :key="`${index}-${cause.title}`"
-            >
-              <header>
-                <strong>{{ cause.title }}</strong>
-                <span>{{ cause.confidence }}%</span>
-              </header>
-              <p>{{ cause.evidence || '当前证据有限，建议结合服务商日志进一步确认。' }}</p>
-            </article>
-          </div>
-
-          <div v-if="diagnosis.data.actions.length" class="ai-run-detail__diagnosis-section">
-            <h3>处理建议</h3>
-            <article
-              v-for="(action, index) in diagnosis.data.actions"
-              :key="`${index}-${action.title}`"
-              class="is-action"
-            >
-              <header>
-                <div>
-                  <ElTag :type="priorityTagType(action.priority)" size="small" effect="light">
-                    {{ action.priority }}
-                  </ElTag>
-                  <strong>{{ action.title }}</strong>
-                </div>
-                <span>{{ ownerLabel(action.owner) }}</span>
-              </header>
-              <ol v-if="action.steps.length">
-                <li v-for="step in action.steps" :key="step">{{ step }}</li>
-              </ol>
-            </article>
-          </div>
-
-          <div
-            v-if="diagnosis.data.prevention.length || diagnosis.data.observations.length"
-            class="ai-run-detail__diagnosis-notes"
-          >
-            <div v-if="diagnosis.data.prevention.length">
-              <strong>预防措施</strong>
-              <ul
-                ><li v-for="item in diagnosis.data.prevention" :key="item">{{ item }}</li></ul
-              >
-            </div>
-            <div v-if="diagnosis.data.observations.length">
-              <strong>补充观察</strong>
-              <ul
-                ><li v-for="item in diagnosis.data.observations" :key="item">{{ item }}</li></ul
-              >
-            </div>
-          </div>
-        </template>
-
-        <ArtSectionTitle title="运行信息" />
-        <ArtDescriptions
-          :data="detail"
-          :items="runInfoItems"
-          :columns="2"
-          class="ai-run-detail__descriptions"
-        />
-
-        <template v-if="detail.errorCode || detail.errorMessage">
-          <ArtSectionTitle title="失败诊断" />
-          <div class="ai-run-detail__error">
-            <div>
-              <ArtSvgIcon icon="ri:error-warning-line" />
-              <strong>{{ detail.errorCode || 'server_error' }}</strong>
-            </div>
-            <p>{{ detail.errorMessage || '未记录错误详情' }}</p>
-          </div>
-        </template>
-
-        <template v-if="detail.toolCallDetails.length">
-          <ArtSectionTitle title="工具调用" />
-          <div class="ai-run-detail__tools">
-            <article v-for="tool in detail.toolCallDetails" :key="tool.id">
-              <header>
-                <div>
-                  <ArtSvgIcon icon="ri:function-line" />
-                  <strong>{{ tool.toolName }}</strong>
-                </div>
-                <div>
-                  <span>{{ formatDurationMs(tool.latencyMs) }}</span>
-                  <ElTag :type="tool.status === 'succeeded' ? 'success' : 'danger'" size="small">
-                    {{ tool.status === 'succeeded' ? '成功' : '失败' }}
-                  </ElTag>
-                </div>
-              </header>
-              <ElCollapse>
-                <ElCollapseItem title="查看调用参数与结果摘要">
-                  <div class="ai-run-detail__json-grid">
-                    <div
-                      ><span>调用参数</span><pre>{{ formatJson(tool.arguments) }}</pre>
-                    </div>
-                    <div
-                      ><span>结果摘要</span><pre>{{ formatJson(tool.resultSummary) }}</pre>
-                    </div>
+              <template v-if="detail.errorCode || detail.errorMessage">
+                <ArtSectionTitle title="失败诊断" />
+                <div class="ai-run-detail__error">
+                  <div>
+                    <ArtSvgIcon icon="ri:error-warning-line" />
+                    <strong>{{ detail.errorCode || 'server_error' }}</strong>
                   </div>
+                  <p>{{ detail.errorMessage || '未记录错误详情' }}</p>
+                </div>
+              </template>
+
+              <ArtSectionTitle title="上下文与元数据" />
+              <ElCollapse class="ai-run-detail__metadata">
+                <ElCollapseItem title="页面上下文">
+                  <pre>{{ formatJson(detail.conversation?.context ?? {}) }}</pre>
+                </ElCollapseItem>
+                <ElCollapseItem title="运行元数据">
+                  <pre>{{ formatJson(detail.metadata) }}</pre>
                 </ElCollapseItem>
               </ElCollapse>
-            </article>
-          </div>
-        </template>
+            </div></ElTabPane
+          >
+          <ElTabPane
+            name="calls"
+            label="调用与对话"
+            :lazy="false"
+            v-if="detail.toolCallDetails.length || detail.messages.length"
+            ><div class="grid min-w-0 gap-4">
+              <template v-if="detail.toolCallDetails.length">
+                <ArtSectionTitle title="工具调用" />
+                <div class="ai-run-detail__tools">
+                  <article v-for="tool in detail.toolCallDetails" :key="tool.id">
+                    <header>
+                      <div>
+                        <ArtSvgIcon icon="ri:function-line" />
+                        <strong>{{ tool.toolName }}</strong>
+                      </div>
+                      <div>
+                        <span>{{ formatDurationMs(tool.latencyMs) }}</span>
+                        <ElTag
+                          :type="tool.status === 'succeeded' ? 'success' : 'danger'"
+                          size="small"
+                        >
+                          {{ tool.status === 'succeeded' ? '成功' : '失败' }}
+                        </ElTag>
+                      </div>
+                    </header>
+                    <ElCollapse>
+                      <ElCollapseItem title="查看调用参数与结果摘要">
+                        <div class="ai-run-detail__json-grid">
+                          <div
+                            ><span>调用参数</span><pre>{{ formatJson(tool.arguments) }}</pre>
+                          </div>
+                          <div
+                            ><span>结果摘要</span><pre>{{ formatJson(tool.resultSummary) }}</pre>
+                          </div>
+                        </div>
+                      </ElCollapseItem>
+                    </ElCollapse>
+                  </article>
+                </div>
+              </template>
 
-        <template v-if="detail.messages.length">
-          <ArtSectionTitle title="对话记录" />
-          <div class="ai-run-detail__messages">
-            <article
-              v-for="message in detail.messages"
-              :key="message.id"
-              :class="{ 'is-user': message.role === 'user' }"
-            >
-              <div class="ai-run-detail__message-avatar">
-                <ArtSvgIcon
-                  :icon="message.role === 'user' ? 'ri:user-3-line' : 'ri:sparkling-2-fill'"
-                />
-              </div>
-              <div>
-                <header>
-                  <strong>{{ message.role === 'user' ? '用户' : 'AI 助手' }}</strong>
-                  <time>{{ formatDateTime(message.createTime) }}</time>
-                </header>
-                <p>{{ message.content }}</p>
-              </div>
-            </article>
-          </div>
-        </template>
+              <template v-if="detail.messages.length">
+                <ArtSectionTitle title="对话记录" />
+                <div class="ai-run-detail__messages">
+                  <article
+                    v-for="message in detail.messages"
+                    :key="message.id"
+                    :class="{ 'is-user': message.role === 'user' }"
+                  >
+                    <div class="ai-run-detail__message-avatar">
+                      <ArtSvgIcon
+                        :icon="message.role === 'user' ? 'ri:user-3-line' : 'ri:sparkling-2-fill'"
+                      />
+                    </div>
+                    <div>
+                      <header>
+                        <strong>{{ message.role === 'user' ? '用户' : 'AI 助手' }}</strong>
+                        <time>{{ formatDateTime(message.createTime) }}</time>
+                      </header>
+                      <p>{{ message.content }}</p>
+                    </div>
+                  </article>
+                </div>
+              </template>
+            </div></ElTabPane
+          >
+          <ElTabPane name="diagnosis" label="智能诊断" :lazy="false"
+            ><div class="grid min-w-0 gap-4">
+              <section class="ai-run-detail__diagnosis-entry">
+                <div class="ai-run-detail__diagnosis-icon">
+                  <ArtSvgIcon icon="ri:stethoscope-line" />
+                </div>
+                <div>
+                  <strong>AI 智能诊断</strong>
+                  <span>结合错误、耗时、工具调用和运行上下文，生成分级排查建议。</span>
+                </div>
+                <ElButton
+                  type="primary"
+                  plain
+                  :loading="diagnosis.loading"
+                  :disabled="!canDiagnose"
+                  @click="runDiagnosis"
+                >
+                  <ArtSvgIcon v-if="!diagnosis.loading" icon="ri:sparkling-2-line" />
+                  {{ diagnosisActionLabel }}
+                </ElButton>
+              </section>
 
-        <ArtSectionTitle title="上下文与元数据" />
-        <ElCollapse class="ai-run-detail__metadata">
-          <ElCollapseItem title="页面上下文">
-            <pre>{{ formatJson(detail.conversation?.context ?? {}) }}</pre>
-          </ElCollapseItem>
-          <ElCollapseItem title="运行元数据">
-            <pre>{{ formatJson(detail.metadata) }}</pre>
-          </ElCollapseItem>
-        </ElCollapse>
+              <template v-if="diagnosis.data">
+                <ArtSectionTitle title="智能诊断结果" />
+                <section class="ai-run-detail__diagnosis-result">
+                  <header>
+                    <div>
+                      <ElTag :type="severityTagType" effect="dark" round>
+                        {{ severityLabel }}
+                      </ElTag>
+                      <ElTag effect="plain" round>{{ categoryLabel }}</ElTag>
+                    </div>
+                    <span>置信度 {{ diagnosis.data.confidence }}%</span>
+                  </header>
+                  <p>{{ diagnosis.data.summary }}</p>
+                  <small>
+                    诊断服务 {{ diagnosis.provider }} · 模型 {{ diagnosis.model }} · Prompt
+                    {{ diagnosis.promptVersion }} ·
+                    {{ formatDurationMs(diagnosis.durationMs) }}
+                  </small>
+                </section>
+
+                <div
+                  v-if="diagnosis.data.rootCauses.length"
+                  class="ai-run-detail__diagnosis-section"
+                >
+                  <h3>可能根因</h3>
+                  <article
+                    v-for="(cause, index) in diagnosis.data.rootCauses"
+                    :key="`${index}-${cause.title}`"
+                  >
+                    <header>
+                      <strong>{{ cause.title }}</strong>
+                      <span>{{ cause.confidence }}%</span>
+                    </header>
+                    <p>{{ cause.evidence || '当前证据有限，建议结合服务商日志进一步确认。' }}</p>
+                  </article>
+                </div>
+
+                <div v-if="diagnosis.data.actions.length" class="ai-run-detail__diagnosis-section">
+                  <h3>处理建议</h3>
+                  <article
+                    v-for="(action, index) in diagnosis.data.actions"
+                    :key="`${index}-${action.title}`"
+                    class="is-action"
+                  >
+                    <header>
+                      <div>
+                        <ElTag :type="priorityTagType(action.priority)" size="small" effect="light">
+                          {{ action.priority }}
+                        </ElTag>
+                        <strong>{{ action.title }}</strong>
+                      </div>
+                      <span>{{ ownerLabel(action.owner) }}</span>
+                    </header>
+                    <ol v-if="action.steps.length">
+                      <li v-for="step in action.steps" :key="step">{{ step }}</li>
+                    </ol>
+                  </article>
+                </div>
+
+                <div
+                  v-if="diagnosis.data.prevention.length || diagnosis.data.observations.length"
+                  class="ai-run-detail__diagnosis-notes"
+                >
+                  <div v-if="diagnosis.data.prevention.length">
+                    <strong>预防措施</strong>
+                    <ul
+                      ><li v-for="item in diagnosis.data.prevention" :key="item">{{ item }}</li></ul
+                    >
+                  </div>
+                  <div v-if="diagnosis.data.observations.length">
+                    <strong>补充观察</strong>
+                    <ul
+                      ><li v-for="item in diagnosis.data.observations" :key="item">{{
+                        item
+                      }}</li></ul
+                    >
+                  </div>
+                </div>
+              </template>
+            </div></ElTabPane
+          >
+        </ElTabs>
       </div>
     </ArtAsyncState>
   </ArtDrawer>
@@ -228,7 +252,7 @@
 <script setup lang="ts">
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
   import { formatDurationMs, formatNumberValue, createDateTimeFormatter } from '@/utils/ui/format'
-  import { ElMessage } from 'element-plus'
+  import { ElMessage, ElTabs, ElTabPane } from 'element-plus'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
@@ -263,6 +287,7 @@
 
   const emit = defineEmits<{ diagnosed: [] }>()
 
+  const activeTab = ref('overview')
   const drawerRef = ref<ArtDrawerExpose<OpenData>>()
   const detail = shallowRef<AiRunDetail>()
   const loading = ref(false)
@@ -358,6 +383,7 @@
   })
 
   async function handleOpen(data: OpenData): Promise<void> {
+    activeTab.value = 'overview'
     detail.value = undefined
     currentId.value = data.id
     loadError.value = null
@@ -458,8 +484,8 @@
       gap: 14px;
       align-items: center;
       padding: 18px;
-      background: linear-gradient(135deg, var(--el-color-primary-light-9), var(--el-bg-color));
-      border: 1px solid var(--el-color-primary-light-8);
+      background: color-mix(in srgb, var(--theme-color) 4%, var(--default-box-color));
+      border: 1px solid var(--art-card-border);
       border-radius: var(--el-border-radius-base);
     }
 
@@ -475,9 +501,8 @@
       height: 48px;
       font-size: 23px;
       color: var(--el-color-white);
-      background: linear-gradient(145deg, var(--el-color-primary), #7259e7);
+      background: var(--theme-color);
       border-radius: var(--el-border-radius-base);
-      box-shadow: 0 10px 24px rgb(64 116 255 / 22%);
     }
 
     &__hero-copy {
@@ -535,8 +560,8 @@
       gap: 12px;
       align-items: center;
       padding: 15px 16px;
-      background: linear-gradient(135deg, var(--el-color-primary-light-9), var(--el-bg-color));
-      border: 1px solid var(--el-color-primary-light-7);
+      background: color-mix(in srgb, var(--theme-color) 4%, var(--default-box-color));
+      border: 1px solid var(--art-card-border);
       border-radius: var(--el-border-radius-base);
 
       > div:nth-child(2) {
@@ -781,8 +806,8 @@
     &__message-avatar {
       width: 30px;
       height: 30px;
-      color: #7259e7;
-      background: color-mix(in srgb, #7259e7 10%, var(--el-bg-color));
+      color: var(--theme-color);
+      background: color-mix(in srgb, var(--theme-color) 10%, var(--default-box-color));
       border-radius: var(--el-border-radius-small);
     }
 

@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./B32ya2OJ.js";var i=n({name:`WmsInventoryLedger`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`movement`}))}});export{i as default};

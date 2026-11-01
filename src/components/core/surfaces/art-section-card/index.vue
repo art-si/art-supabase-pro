@@ -6,6 +6,7 @@
       {
         'is-scrollable': hasScrollBody,
         'has-header': hasScrollBody && hasCardHeader,
+        'has-toolbar': hasScrollBody && Boolean($slots.toolbar),
         'has-replacement-state': hasScrollBody && hasReplacementState
       }
     ]"
@@ -22,10 +23,14 @@
       </div>
     </header>
 
+    <div v-if="$slots.toolbar" class="art-section-card__toolbar">
+      <slot name="toolbar" />
+    </div>
+
     <slot v-if="preserveContentStructure && !hasActiveState" />
     <ElScrollbar
       v-else-if="hasScrollBody"
-      class="art-section-card__scrollbar"
+      class="art-section-card__scrollbar art-scroll-viewport-inset"
       :max-height="scrollMaxHeight"
       :always="scrollbarAlways"
     >
@@ -70,6 +75,10 @@
         <slot name="error-action" />
       </template>
     </ArtAsyncState>
+
+    <footer v-if="$slots.footer" class="art-section-card__footer">
+      <slot name="footer" />
+    </footer>
   </section>
 </template>
 
@@ -206,7 +215,21 @@
       min-width: 0;
     }
 
+    &__toolbar {
+      flex: none;
+      min-width: 0;
+      margin-bottom: var(--art-space-4);
+    }
+
+    &__footer {
+      flex: none;
+      min-width: 0;
+      padding-top: var(--art-space-3);
+    }
+
     &__scrollbar {
+      --art-scroll-viewport-inset: var(--art-section-padding);
+
       flex: 1 1 auto;
       width: 100%;
       min-height: 0;
@@ -228,6 +251,18 @@
         padding: var(--art-section-padding) var(--art-section-padding) 0;
       }
 
+      .art-section-card__toolbar {
+        padding-inline: var(--art-section-padding);
+      }
+
+      .art-section-card__footer {
+        padding: var(--art-space-3) var(--art-section-padding) var(--art-section-padding);
+      }
+
+      &:not(.has-header) .art-section-card__toolbar {
+        padding-top: var(--art-section-padding);
+      }
+
       .art-section-card__body {
         box-sizing: border-box;
         flex: 1 1 auto;
@@ -235,7 +270,7 @@
         padding: 0 var(--art-section-padding) var(--art-section-padding);
       }
 
-      &:not(.has-header) .art-section-card__body {
+      &:not(.has-header, .has-toolbar) .art-section-card__body {
         padding-top: var(--art-section-padding);
       }
 
@@ -254,13 +289,31 @@
           padding: var(--art-space-4) var(--art-space-4) 0;
         }
 
+        .art-section-card__toolbar {
+          padding-inline: var(--art-space-4);
+        }
+
+        .art-section-card__footer {
+          padding-right: var(--art-space-4);
+          padding-bottom: var(--art-space-4);
+          padding-left: var(--art-space-4);
+        }
+
+        &:not(.has-header) .art-section-card__toolbar {
+          padding-top: var(--art-space-4);
+        }
+
         .art-section-card__body {
           padding-right: var(--art-space-4);
           padding-bottom: var(--art-space-4);
           padding-left: var(--art-space-4);
         }
 
-        &:not(.has-header) .art-section-card__body {
+        .art-section-card__scrollbar {
+          --art-scroll-viewport-inset: var(--art-space-4);
+        }
+
+        &:not(.has-header, .has-toolbar) .art-section-card__body {
           padding-top: var(--art-space-4);
         }
 

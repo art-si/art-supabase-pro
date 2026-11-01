@@ -612,6 +612,7 @@ test('编辑保存只发送业务字段并包含稳定请求标识', async ({ pa
   await page.goto('/tests/e2e/fixtures/receivable-workspace.html?kind=estimate')
   await page.getByRole('button', { name: '编辑', exact: true }).click()
   await expect(page.getByRole('button', { name: '保存应收单' })).toBeVisible()
+  await page.getByRole('dialog').getByRole('tab', { name: '应收明细', exact: true }).click()
   await page.getByRole('spinbutton', { name: '数量 第10行', exact: true }).scrollIntoViewIfNeeded()
   await page.screenshot({
     path: '.artifacts/receivable-visual/estimate-editor-detail.png',
@@ -737,6 +738,7 @@ for (const [kind, mode] of [
         await page.getByRole('button', { name: '复制', exact: true }).click()
       }
       const dialog = page.getByRole('dialog')
+      await dialog.getByRole('tab', { name: '应收明细', exact: true }).click()
       const department = dialog.getByRole('combobox', { name: '费用承担部门 第10行', exact: true })
       await department.click()
       await expect(page.getByRole('treeitem', { name: '验收集团' })).toHaveAttribute(

@@ -6,6 +6,7 @@ import path from 'node:path'
 import { SqlConnectionVault } from '../../scripts/sql-gateway-vault'
 import { canUseSqlConnection, createSqlGateway } from '../../scripts/sql-gateway-server'
 import { prepareReadOnlyQuery, validateGatewayQuery } from '../../scripts/sql-gateway-driver'
+import { PlatformIdentityError } from '../../scripts/lib/platform-identity'
 import {
   isSqlConnectionMetadata,
   normalizeExternalPlan,
@@ -252,6 +253,50 @@ test('gateway rejects missing authentication, foreign origins, ordinary manageme
       connections: unknown[]
     }
     assert.equal(outside.connections.length, 0)
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    temporary.cleanup()
+  }
+})
+
+test('gateway returns actionable identity codes before executing a connection mutation', async () => {
+  const temporary = temporaryDirectory()
+  const origin = 'http://localhost:3006'
+  const server = createSqlGateway({
+    directory: temporary.directory,
+    origins: [origin],
+    identity: async (token) => {
+      throw token === 'expired'
+        ? new PlatformIdentityError(
+            '平台登录已失效，请重新登录后重试',
+            401,
+            'PLATFORM_AUTH_REQUIRED'
+          )
+        : new PlatformIdentityError(
+            '无法连接平台身份服务，请检查执行端网络和代理后重试',
+            503,
+            'PLATFORM_IDENTITY_UNAVAILABLE'
+          )
+    }
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  try {
+    for (const [token, status, code] of [
+      ['expired', 401, 'PLATFORM_AUTH_REQUIRED'],
+      ['network', 503, 'PLATFORM_IDENTITY_UNAVAILABLE']
+    ] as const) {
+      const response = await fetch(`http://127.0.0.1:${address.port}/connections/save`, {
+        method: 'POST',
+        headers: { Origin: origin, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input)
+      })
+      assert.equal(response.status, status)
+      assert.equal((await response.json()).code, code)
+      assert.deepEqual(new SqlConnectionVault(temporary.directory).list(), [])
+    }
   } finally {
     server.closeAllConnections()
     await new Promise<void>((resolve) => server.close(() => resolve()))

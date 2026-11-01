@@ -32,8 +32,6 @@
         :span="24"
         :gutter="20"
         label-width="96px"
-        :show-reset="false"
-        :show-submit="false"
       />
     </div>
   </ArtDialog>

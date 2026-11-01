@@ -121,6 +121,7 @@ for (const kind of ['estimated', 'financial']) {
       await save.click()
       await expect(page.getByText('请至少选择一行物料明细', { exact: true })).toBeVisible()
       expect(attempts).toHaveLength(before)
+      await drawer.getByRole('tab', { name: '基本信息', exact: true }).click()
       await drawer.getByLabel('付款组织', { exact: true }).click()
       await page
         .getByRole('treeitem', { name: '新增应付集团', exact: true })
@@ -135,6 +136,7 @@ for (const kind of ['estimated', 'financial']) {
       if (index === 2)
         await page.getByRole('tree').screenshot({ path: info.outputPath('organization-tree.png') })
       await page.getByRole('treeitem', { name: `新增应付部门${index}`, exact: true }).click()
+      await drawer.getByRole('tab', { name: '应付明细', exact: true }).click()
       await drawer.getByRole('button', { name: '选择物料', exact: true }).click()
       const picker = page.getByRole('dialog', { name: '数据来源物料编码', exact: true })
       await picker

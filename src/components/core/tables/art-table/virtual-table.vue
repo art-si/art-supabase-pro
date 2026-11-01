@@ -29,6 +29,7 @@
           :row-class="rowClass"
           :cell-props="cellProps"
           :header-cell-props="headerCellProps"
+          :header-props="{ onClick: handleHeaderRowClick }"
           @column-sort="columnSort"
           @scroll="scrollLeft = $event.scrollLeft"
         >
@@ -62,9 +63,9 @@
   } from 'element-plus'
   import { ElAutoResizer } from 'element-plus/es/components/table-v2/index.mjs'
   import { useEventListener } from '@vueuse/core'
-  import { get, orderBy } from 'lodash-es'
+  import { get, isEqual, orderBy } from 'lodash-es'
   import { toObjectRecord } from '@/utils/record'
-  import type { ColumnOption, TableVirtualScrollConfig } from '@/types'
+  import type { ColumnOption, TableColumnLayout, TableVirtualScrollConfig } from '@/types'
   type Row = Record<string, unknown>
   interface Entry {
     key: string
@@ -110,7 +111,7 @@
     return typeof value === 'string' ? value : 'var(--el-bg-color)'
   })
   const viewportWidth = ref(0)
-  const widths = ref<Record<string, number>>({})
+  const widths = shallowRef(new Map<string, number>())
   const sortBy = ref<SortBy>({ key: '', order: TableV2SortOrder.ASC })
   const selected = shallowRef(new Map<string, Row>())
   const current = shallowRef<Row>()
@@ -236,7 +237,7 @@
       props.emitEvent('onRowContextmenu', item.row, compatibilityColumn(column, columnIndex), event)
   }
   const columnWidth = (column: ColumnOption<Row>) =>
-    widths.value[String(column.prop || column.type)] ||
+    widths.value.get(String(column.prop || column.type)) ??
     Math.max(
       Number.parseFloat(String(column.minWidth || 0)) || 0,
       Number.parseFloat(String(column.width || 0)) ||
@@ -250,7 +251,7 @@
     const base = props.columns.map(columnWidth),
       sum = base.reduce((a, b) => a + b, 0)
     const flexible = props.columns.filter(
-      (column) => !column.width && !widths.value[String(column.prop || column.type)]
+      (column) => !column.width && !widths.value.has(String(column.prop || column.type))
     ).length
     const grow = flexible && viewportWidth.value > sum ? (viewportWidth.value - sum) / flexible : 0
     return props.columns.map((column, columnIndex) => ({
@@ -261,7 +262,7 @@
       flexShrink: 0,
       width:
         base[columnIndex] +
-        (!column.width && !widths.value[String(column.prop || column.type)] ? grow : 0),
+        (!column.width && !widths.value.has(String(column.prop || column.type)) ? grow : 0),
       fixed:
         column.fixed === true || column.fixed === 'left'
           ? TableV2FixedDir.LEFT
@@ -335,6 +336,31 @@
         ])
     }))
   })
+  const columnLayout = computed<TableColumnLayout>(() => ({
+    viewportWidth: viewportWidth.value,
+    columns: v2Columns.value.map((column) => ({ key: String(column.key), width: column.width }))
+  }))
+  let measuredLayout = false
+  watch(
+    columnLayout,
+    (layout, previous) => {
+      if (!measuredLayout && layout.viewportWidth <= 0) return
+      if (layout.viewportWidth > 0) measuredLayout = true
+      if (!isEqual(layout, previous)) props.emitEvent('onColumnLayout', layout)
+    },
+    { immediate: true, flush: 'post' }
+  )
+  // Table V2 reorders its main columns and numbers each fixed pane from zero.
+  // Keep callbacks tied to the generated key and original renderer column/index.
+  const originalColumnsByKey = computed(
+    () =>
+      new Map(
+        v2Columns.value.map((column, index) => [
+          column.key,
+          { column: props.columns[index], index }
+        ])
+      )
+  )
   const columnSort = (params: { key: string | number | symbol; order: 'asc' | 'desc' }) => {
     sortBy.value = {
       key: params.key,
@@ -376,46 +402,53 @@
       rowIndex: entry(scope.rowData).index
     })
   })
-  const cellProps = (scope: { rowData: unknown; rowIndex: number; columnIndex: number }) => {
+  const cellProps = (scope: { rowData: unknown; column: Column<unknown> }) => {
+    const source = originalColumnsByKey.value.get(scope.column.key)
+    if (!source) return {}
     const item = entry(scope.rowData),
-      column = props.columns[scope.columnIndex]
+      { column, index } = source
     return {
       class: [
         'el-table__cell',
         column.className,
-        props.cellClass(item.row, column, item.index, scope.columnIndex)
+        props.cellClass(item.row, column, item.index, index)
       ]
         .filter(Boolean)
         .join(' '),
       style: resolveStyle(props.cellStyle, {
         row: item.row,
-        column: compatibilityColumn(column, scope.columnIndex),
+        column: compatibilityColumn(column, index),
         rowIndex: item.index,
-        columnIndex: scope.columnIndex
+        columnIndex: index
       }),
       onMousedown: (event: MouseEvent) => beginSelectionDrag(item.index, event)
     }
   }
-  const headerCellProps = (scope: { columnIndex: number }) => ({
-    class: 'el-table__cell',
-    style: resolveStyle(props.headerStyle, {
-      column: compatibilityColumn(props.columns[scope.columnIndex], scope.columnIndex),
-      columnIndex: scope.columnIndex,
-      rowIndex: 0
-    }),
-    onClick: (event: MouseEvent) =>
-      props.emitEvent(
-        'onHeaderClick',
-        compatibilityColumn(props.columns[scope.columnIndex], scope.columnIndex),
-        event
-      ),
-    onContextmenu: (event: MouseEvent) =>
-      props.emitEvent(
-        'onHeaderContextmenu',
-        compatibilityColumn(props.columns[scope.columnIndex], scope.columnIndex),
-        event
-      )
-  })
+  const headerCellProps = (scope: { column: Column<unknown> }) => {
+    const source = originalColumnsByKey.value.get(scope.column.key)
+    if (!source) return {}
+    const { column, index } = source
+    return {
+      class: 'el-table__cell',
+      style: resolveStyle(props.headerStyle, {
+        column: compatibilityColumn(column, index),
+        columnIndex: index,
+        rowIndex: 0
+      }),
+      onContextmenu: (event: MouseEvent) =>
+        props.emitEvent('onHeaderContextmenu', compatibilityColumn(column, index), event)
+    }
+  }
+  const handleHeaderRowClick = (event: MouseEvent) => {
+    if (!(event.target instanceof Element) || !(event.currentTarget instanceof HTMLElement)) return
+    const header = event.target.closest<HTMLElement>('[role="columnheader"][data-key]')
+    if (!header || !event.currentTarget.contains(header)) return
+    const key = header.dataset.key
+    if (key === undefined) return
+    const source = originalColumnsByKey.value.get(key)
+    if (source)
+      props.emitEvent('onHeaderClick', compatibilityColumn(source.column, source.index), event)
+  }
   const resizing = shallowRef<{
     column: ColumnOption<Row>
     index: number
@@ -428,13 +461,10 @@
     resizing.value = { column, index, start: event.clientX, before: v2Columns.value[index].width }
   }
   const setWidth = (column: ColumnOption<Row>, value: number) => {
-    widths.value = {
-      ...widths.value,
-      [String(column.prop || column.type)]: Math.max(
-        Number.parseFloat(String(column.minWidth)) || 64,
-        Math.min(2000, value)
-      )
-    }
+    widths.value = new Map(widths.value).set(
+      String(column.prop || column.type),
+      Math.max(Number.parseFloat(String(column.minWidth)) || 64, Math.min(2000, value))
+    )
   }
   const finishResize = (event: Event) => {
     const value = resizing.value
@@ -585,7 +615,7 @@
   .art-table-v2 :deep(.art-table-v2__resize) {
     position: absolute;
     top: -8px;
-    right: -10px;
+    right: 0;
     bottom: -8px;
     z-index: 1;
     width: 12px;

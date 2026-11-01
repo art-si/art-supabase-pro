@@ -43,8 +43,6 @@
           v-model="form"
           :items="items"
           :rules="rules"
-          :show-submit="false"
-          :show-reset="false"
           :span="12"
           label-position="top"
         />

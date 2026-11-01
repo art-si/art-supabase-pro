@@ -12,7 +12,14 @@
         >预估执行路径与数据量，保留当前查询结果。成本为优化器估算值，实际耗时以查询结果为准。</p
       >
       <PlanCodePreview title="本次分析的 SQL" language="sql" :code="query" />
+      <ArtEmptyState
+        v-if="cancelled"
+        title="分析已取消"
+        description="数据库已结束本次分析，可调整 SQL 后重新分析。"
+        size="compact"
+      />
       <ArtAsyncState
+        v-else
         :loading="loading"
         :error="error"
         :empty="!steps.length"
@@ -89,7 +96,14 @@
       ><div class="flex w-full items-center justify-between gap-3"
         ><ElButton :disabled="loading || !steps.length" @click="copyPlan">复制计划</ElButton
         ><div class="flex items-center gap-2"
-          ><ElButton :loading="loading" @click="emit('retry')">重新分析</ElButton
+          ><ElButton
+            v-if="loading"
+            :loading="cancelling"
+            :disabled="cancelRequested"
+            @click="emit('cancel')"
+            >{{ cancelRequested ? '等待数据库结束…' : '取消分析' }}</ElButton
+          >
+          <ElButton v-else @click="emit('retry')">重新分析</ElButton
           ><ElButton @click="drawerRef?.handleClose()">关闭</ElButton></div
         ></div
       ></template
@@ -105,17 +119,22 @@
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
+  import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import { flattenSqlPlan } from '@/utils/sql-workbench'
 
   const props = defineProps<{
     query: string
     loading: boolean
+    cancelling?: boolean
+    cancelRequested?: boolean
+    cancelled?: boolean
     error: string | null
     data: Api.DataCenter.SqlConsole.SqlExplainResponse | null
     dialect?: 'postgres' | 'mysql' | 'dm'
   }>()
   const emit = defineEmits<{
     retry: []
+    cancel: []
     'locate-table': [schema: string | undefined, name: string]
   }>()
   let pendingTable: { schema?: string; name: string } | null = null

@@ -190,6 +190,8 @@ if (query.get('twoLines') === 'true') {
   initialStockDocument.lines.push({ ...initialStockDocument.lines[0], lineNo: 2 })
 }
 if (query.get('validSave') === 'true') {
+  if (['purchase_return', 'entrusted_processing_return'].includes(purchaseKind))
+    purchaseDocument.warehouseId = 'warehouse-test'
   for (const lines of [document.lines, purchaseDocument.lines]) {
     lines.forEach((line, index) => {
       line.warehouseId = 'warehouse-test'

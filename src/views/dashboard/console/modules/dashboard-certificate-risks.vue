@@ -1,8 +1,6 @@
 <template>
   <ArtSectionCard
     class="dashboard-certificate-risks"
-    title="车辆与司机证件"
-    subtitle="集中跟进到期风险，旧台账补录证件后纳入责任人闭环。"
     :loading="loading"
     :error="error"
     :empty="!loading && !error && records.length === 0"
@@ -12,12 +10,27 @@
     :scroll-max-height="328"
     @retry="emit('retry')"
   >
-    <template #actions>
-      <div class="dashboard-certificate-risks__actions">
-        <span class="dashboard-certificate-risks__count is-expired">已过期 {{ expired }}</span>
-        <span class="dashboard-certificate-risks__count is-due">即将到期 {{ dueSoon }}</span>
-        <ElButton text type="primary" @click="emit('view-all')">查看全部</ElButton>
-      </div>
+    <template #header>
+      <header class="flex min-w-0 flex-wrap items-center justify-between gap-4 px-6 pt-6 pb-4">
+        <div class="min-w-0 flex-1 basis-80">
+          <p
+            class="mb-[5px] text-[11px] font-bold tracking-[0.8px] text-[var(--el-color-warning-dark-2)]"
+          >
+            证件风险
+          </p>
+          <ArtSectionTitle class="m-0! text-lg!" :show-line="false" :show-marker="false">
+            <h2 class="m-0 text-lg leading-normal font-normal">车辆与司机证件</h2>
+          </ArtSectionTitle>
+          <p class="mt-1 text-xs leading-5 text-g-700">
+            集中跟进到期风险，旧台账补录证件后纳入责任人闭环。
+          </p>
+        </div>
+        <div class="dashboard-certificate-risks__actions ml-auto">
+          <span class="dashboard-certificate-risks__count is-expired">已过期 {{ expired }}</span>
+          <span class="dashboard-certificate-risks__count is-due">即将到期 {{ dueSoon }}</span>
+          <ElButton text type="primary" @click="emit('view-all')">查看全部</ElButton>
+        </div>
+      </header>
     </template>
 
     <div class="dashboard-certificate-risks__list">
@@ -73,6 +86,7 @@
 <script setup lang="ts">
   import dayjs from 'dayjs'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import type { DashboardCertificateRisk, DashboardCertificateRiskStatus } from '@/api/dashboard'
 
   defineProps<{

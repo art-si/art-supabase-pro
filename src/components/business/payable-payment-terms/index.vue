@@ -43,8 +43,6 @@
             code: [{ required: true, message: '请填写编号' }],
             name: [{ required: true, message: '请填写名称' }]
           }"
-          :show-submit="false"
-          :show-reset="false"
           :span="12"
           label-position="top"
         />

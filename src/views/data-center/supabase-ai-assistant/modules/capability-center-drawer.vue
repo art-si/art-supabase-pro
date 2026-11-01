@@ -43,104 +43,116 @@
         </div>
       </section>
 
-      <section>
-        <ArtSectionTitle :show-line="false">Supabase 产品能力</ArtSectionTitle>
-        <div class="capability-center__grid">
-          <article
-            v-for="card in capabilityCards"
-            :key="card.key"
-            :class="{ 'is-disabled': !card.enabled }"
-          >
-            <header>
-              <span class="capability-center__card-icon"><ArtSvgIcon :icon="card.icon" /></span>
-              <div>
-                <strong>{{ card.title }}</strong>
-                <small>{{ card.subtitle }}</small>
-              </div>
-              <ElTag
-                class="capability-center__status-tag"
-                :type="card.tagType"
-                size="small"
-                effect="light"
-                round
+      <ElTabs v-model="activeTab" class="min-w-0">
+        <ElTabPane name="products" label="产品能力" :lazy="false">
+          <section>
+            <ArtSectionTitle :show-line="false">Supabase 产品能力</ArtSectionTitle>
+            <div class="capability-center__grid">
+              <article
+                v-for="card in capabilityCards"
+                :key="card.key"
+                :class="{ 'is-disabled': !card.enabled }"
               >
-                {{ card.statusLabel }}
-              </ElTag>
-            </header>
-            <div class="capability-center__metrics">
-              <span v-for="metric in card.metrics" :key="metric.label">
-                <strong>{{ metric.value }}</strong>
-                <small>{{ metric.label }}</small>
-              </span>
+                <header>
+                  <span class="capability-center__card-icon"><ArtSvgIcon :icon="card.icon" /></span>
+                  <div>
+                    <strong>{{ card.title }}</strong>
+                    <small>{{ card.subtitle }}</small>
+                  </div>
+                  <ElTag
+                    class="capability-center__status-tag"
+                    :type="card.tagType"
+                    size="small"
+                    effect="light"
+                    round
+                  >
+                    {{ card.statusLabel }}
+                  </ElTag>
+                </header>
+                <div class="capability-center__metrics">
+                  <span v-for="metric in card.metrics" :key="metric.label">
+                    <strong>{{ metric.value }}</strong>
+                    <small>{{ metric.label }}</small>
+                  </span>
+                </div>
+                <footer>
+                  <span>{{ card.description }}</span>
+                  <ElButton text type="primary" @click="analyze(card)">
+                    AI 专项分析 <ArtSvgIcon icon="ri:arrow-right-up-line" />
+                  </ElButton>
+                </footer>
+              </article>
             </div>
-            <footer>
-              <span>{{ card.description }}</span>
-              <ElButton text type="primary" @click="analyze(card)">
-                AI 专项分析 <ArtSvgIcon icon="ri:arrow-right-up-line" />
-              </ElButton>
-            </footer>
-          </article>
-        </div>
-      </section>
-
-      <section class="capability-center__governance">
-        <ArtSectionTitle :show-line="false">治理信号</ArtSectionTitle>
-        <div class="capability-center__governance-grid">
-          <article>
-            <span class="is-success"><ArtSvgIcon icon="ri:shield-check-line" /></span>
-            <div>
-              <strong>RLS 租户隔离</strong>
-              <small>
-                {{ snapshot.security.rlsEnabledTables }} / {{ snapshot.security.publicTables }} 张
-                public 表已启用 RLS
-              </small>
-            </div>
-          </article>
-          <article>
-            <span :class="snapshot.security.invalidIndexes ? 'is-warning' : 'is-success'">
-              <ArtSvgIcon
-                :icon="snapshot.security.invalidIndexes ? 'ri:error-warning-line' : 'ri:check-line'"
-              />
-            </span>
-            <div>
-              <strong>索引有效性</strong>
-              <small>{{ snapshot.security.invalidIndexes }} 个无效或未就绪索引</small>
-            </div>
-          </article>
-          <article>
-            <span :class="snapshot.security.unindexedForeignKeys ? 'is-warning' : 'is-success'">
-              <ArtSvgIcon icon="ri:git-branch-line" />
-            </span>
-            <div>
-              <strong>外键索引覆盖</strong>
-              <small>{{ snapshot.security.unindexedForeignKeys }} 条外键需要评估索引</small>
-            </div>
-          </article>
-          <article>
-            <span :class="snapshot.storage.publicBuckets ? 'is-info' : 'is-success'">
-              <ArtSvgIcon icon="ri:folder-shield-2-line" />
-            </span>
-            <div>
-              <strong>Storage 公开边界</strong>
-              <small>{{ snapshot.storage.publicBuckets }} 个公开桶，建议定期复核访问策略</small>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="capability-center__extensions">
-        <ArtSectionTitle :show-line="false">Postgres 扩展</ArtSectionTitle>
-        <div class="capability-center__extension-list">
-          <ElTag
-            v-for="extension in snapshot.extensions.installed"
-            :key="extension.name"
-            effect="plain"
-            round
-          >
-            {{ extension.name }} · {{ extension.version }}
-          </ElTag>
-        </div>
-      </section>
+          </section>
+        </ElTabPane>
+        <ElTabPane name="governance" label="治理与扩展" :lazy="false">
+          <div class="capability-center__governance-pane">
+            <section class="capability-center__governance">
+              <ArtSectionTitle :show-line="false">治理信号</ArtSectionTitle>
+              <div class="capability-center__governance-grid">
+                <article>
+                  <span class="is-success"><ArtSvgIcon icon="ri:shield-check-line" /></span>
+                  <div>
+                    <strong>RLS 租户隔离</strong>
+                    <small>
+                      {{ snapshot.security.rlsEnabledTables }} /
+                      {{ snapshot.security.publicTables }} 张 public 表已启用 RLS
+                    </small>
+                  </div>
+                </article>
+                <article>
+                  <span :class="snapshot.security.invalidIndexes ? 'is-warning' : 'is-success'">
+                    <ArtSvgIcon
+                      :icon="
+                        snapshot.security.invalidIndexes ? 'ri:error-warning-line' : 'ri:check-line'
+                      "
+                    />
+                  </span>
+                  <div>
+                    <strong>索引有效性</strong>
+                    <small>{{ snapshot.security.invalidIndexes }} 个无效或未就绪索引</small>
+                  </div>
+                </article>
+                <article>
+                  <span
+                    :class="snapshot.security.unindexedForeignKeys ? 'is-warning' : 'is-success'"
+                  >
+                    <ArtSvgIcon icon="ri:git-branch-line" />
+                  </span>
+                  <div>
+                    <strong>外键索引覆盖</strong>
+                    <small>{{ snapshot.security.unindexedForeignKeys }} 条外键需要评估索引</small>
+                  </div>
+                </article>
+                <article>
+                  <span :class="snapshot.storage.publicBuckets ? 'is-info' : 'is-success'">
+                    <ArtSvgIcon icon="ri:folder-shield-2-line" />
+                  </span>
+                  <div>
+                    <strong>Storage 公开边界</strong>
+                    <small
+                      >{{ snapshot.storage.publicBuckets }} 个公开桶，建议定期复核访问策略</small
+                    >
+                  </div>
+                </article>
+              </div>
+            </section>
+            <section class="capability-center__extensions">
+              <ArtSectionTitle :show-line="false">Postgres 扩展</ArtSectionTitle>
+              <div class="capability-center__extension-list">
+                <ElTag
+                  v-for="extension in snapshot.extensions.installed"
+                  :key="extension.name"
+                  effect="plain"
+                  round
+                >
+                  {{ extension.name }} · {{ extension.version }}
+                </ElTag>
+              </div>
+            </section>
+          </div>
+        </ElTabPane>
+      </ElTabs>
     </div>
   </ArtDrawer>
 </template>
@@ -148,7 +160,7 @@
 <script setup lang="ts">
   import { formatSize } from '@/utils/file/format-size'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
-  import { ElMessage } from 'element-plus'
+  import { ElMessage, ElTabs, ElTabPane } from 'element-plus'
   import { fetchProjectCatalog } from '@/api/supabase-ai-assistant'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
@@ -187,6 +199,7 @@
   const snapshot = ref<ProjectCapabilitySnapshot | null>(null)
   const edgeFunctions = ref<ProjectEdgeFunctionResult | null>(null)
   const loading = ref(false)
+  const activeTab = ref('products')
 
   const capabilityCards = computed<CapabilityCard[]>(() => {
     if (!snapshot.value) return []
@@ -382,6 +395,7 @@
   }
 
   async function handleOpen(data: OpenData): Promise<void> {
+    activeTab.value = 'products'
     edgeFunctions.value = data.edgeFunctions
     await drawerRef.value?.handleOpen(data, {
       title: 'Supabase 全域能力中心',
@@ -407,6 +421,12 @@
     display: flex;
     flex-direction: column;
     gap: 22px;
+
+    &__governance-pane {
+      display: grid;
+      gap: 22px;
+      min-width: 0;
+    }
 
     &__header {
       display: flex;

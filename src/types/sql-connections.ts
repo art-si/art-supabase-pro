@@ -30,6 +30,7 @@ export interface SqlGatewaySnapshot {
   canManage: boolean
 }
 export interface SqlGatewayQuery {
+  requestId?: string
   query: string
   schema?: string
   maxRows: number

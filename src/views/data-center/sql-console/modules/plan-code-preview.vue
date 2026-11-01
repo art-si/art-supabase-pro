@@ -3,10 +3,11 @@
     ref="previewRef"
     class="sql-plan-code"
     :open="expanded"
+    @toggle="handleDetailsToggle"
     @keydown.ctrl.f.prevent.stop="openFind"
     @keydown.meta.f.prevent.stop="openFind"
   >
-    <summary class="sql-plan-code__summary">
+    <summary class="sql-plan-code__summary" @click="handleSummaryClick">
       <span class="art-icon-label min-w-0">
         <ArtSvgIcon
           :icon="language === 'sql' ? 'ri:code-s-slash-line' : 'ri:braces-line'"
@@ -46,13 +47,15 @@
             />
           </ArtTooltip>
           <ArtTooltip
-            :content="copied ? '已复制' : `复制 ${language.toUpperCase()}`"
+            :content="copying ? '正在复制…' : copied ? '已复制' : `复制 ${language.toUpperCase()}`"
             placement="top"
           >
             <ArtIconButton
               size="small"
               :icon="copied ? 'ri:check-line' : 'ri:file-copy-line'"
               :label="`复制 ${language.toUpperCase()}`"
+              :loading="copying"
+              :disabled="copying"
               @click="copyCode"
             />
           </ArtTooltip>
@@ -107,12 +110,26 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+  import {
+    computed,
+    inject,
+    nextTick,
+    onActivated,
+    onBeforeUnmount,
+    onDeactivated,
+    ref,
+    watch
+  } from 'vue'
   import { ElMessage, type InputInstance, type ScrollbarInstance } from 'element-plus'
   import { escapeRegExp } from 'lodash-es'
   import { useTimeoutFn } from '@vueuse/core'
   import { codeHighlightDirective as vCodeHighlight } from '@/directives/business/code-highlight'
   import { copyTextToClipboard } from '@/utils/file/clipboard'
+  import { artOverlayRequestScopeKey } from '@/hooks/core/useArtOverlay'
+
+  export interface PlanCodePreviewExpose {
+    invalidateCopy: () => void
+  }
 
   const props = withDefaults(
     defineProps<{
@@ -124,12 +141,14 @@
     }>(),
     { expanded: false, maxHeight: '320px' }
   )
+  const overlayScope = inject(artOverlayRequestScopeKey, undefined)
   const lineCount = computed(() => (props.code ? props.code.split('\n').length : 0))
   const languageLabel = computed(() =>
     props.language === 'plaintext' ? 'TEXT' : props.language.toUpperCase()
   )
   const wrapped = ref(false)
   const copied = ref(false)
+  const copying = ref(false)
   const findVisible = ref(false)
   const previewRef = ref<HTMLDetailsElement>()
   const keyword = ref('')
@@ -217,32 +236,96 @@
     void revealMatch()
   })
   onBeforeUnmount(clearMatch)
+  let copyRevision = 0
+  let completedRevision = -1
+  let pendingCopy: AbortController | undefined
+  let alive = true
+  let active = true
+  const copyScopeAvailable = (): boolean =>
+    alive &&
+    active &&
+    Boolean(previewRef.value?.open) &&
+    (!overlayScope || overlayScope.visible.value)
   const { start: resetCopied, stop: stopReset } = useTimeoutFn(
     () => {
-      copied.value = false
+      if (completedRevision === copyRevision && copyScopeAvailable()) copied.value = false
     },
     1800,
     { immediate: false }
   )
+  const invalidateCopy = (): void => {
+    copyRevision++
+    completedRevision = -1
+    pendingCopy?.abort()
+    pendingCopy = undefined
+    copying.value = false
+    copied.value = false
+    stopReset()
+  }
+  const handleSummaryClick = (): void => {
+    // Abort before the native collapse action, not its later queued toggle event.
+    if (previewRef.value?.open) invalidateCopy()
+  }
+  const handleDetailsToggle = (event: Event): void => {
+    if (event.currentTarget instanceof HTMLDetailsElement && !event.currentTarget.open)
+      invalidateCopy()
+  }
   watch(
-    () => props.code,
-    () => {
-      copied.value = false
-      stopReset()
-    }
+    [() => props.code, () => props.title, () => props.language, () => props.expanded],
+    invalidateCopy,
+    { flush: 'sync' }
   )
-  const copyCode = async () => {
+  watch([() => overlayScope?.visible.value, () => overlayScope?.version.value], invalidateCopy, {
+    flush: 'sync'
+  })
+  const copyCode = async (): Promise<void> => {
+    if (copying.value || !copyScopeAvailable()) return
+    invalidateCopy()
+    const version = copyRevision
     const source = props.code
+    const title = props.title
+    const language = props.language
+    const overlayVersion = overlayScope?.version.value
+    const controller = new AbortController()
+    pendingCopy = controller
+    copying.value = true
+    const isCurrent = (): boolean =>
+      copyScopeAvailable() &&
+      version === copyRevision &&
+      pendingCopy === controller &&
+      !controller.signal.aborted &&
+      props.code === source &&
+      props.title === title &&
+      props.language === language &&
+      (!overlayScope || overlayScope.version.value === overlayVersion)
     try {
-      await copyTextToClipboard(source, { legacyFallback: true })
-      if (props.code !== source) return
+      await copyTextToClipboard(source, { legacyFallback: true, signal: controller.signal })
+      if (!isCurrent()) return
+      completedRevision = version
       copied.value = true
       resetCopied()
-      ElMessage.success(`${props.language.toUpperCase()} 已复制`)
+      ElMessage.success(`${language.toUpperCase()} 已复制`)
     } catch {
-      ElMessage.error('复制失败，请选择代码后手动复制')
+      if (isCurrent()) ElMessage.error('复制失败，请选择代码后手动复制')
+    } finally {
+      if (isCurrent()) {
+        copying.value = false
+        pendingCopy = undefined
+      }
     }
   }
+  onActivated(() => {
+    active = true
+  })
+  onDeactivated(() => {
+    active = false
+    invalidateCopy()
+  })
+  onBeforeUnmount(() => {
+    alive = false
+    invalidateCopy()
+  })
+  defineExpose<PlanCodePreviewExpose>({ invalidateCopy })
 </script>
 
 <style scoped lang="scss">

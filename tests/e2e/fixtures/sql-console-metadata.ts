@@ -1,4 +1,4 @@
-import { createApp, h } from 'vue'
+import { createApp, h, KeepAlive, ref } from 'vue'
 import { ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -12,9 +12,23 @@ import SqlConsole from '@/views/data-center/sql-console/index.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
-const app = createApp({ render: () => h(ElConfigProvider, { locale: zhCn }, () => h(SqlConsole)) })
-app.use(store)
 const previewParams = new URLSearchParams(location.search)
+const cachedPreview = previewParams.get('keepalive') === '1'
+const previewActive = ref(true)
+if (cachedPreview)
+  window.addEventListener('sql-preview-active', (event) => {
+    if (event instanceof CustomEvent && typeof event.detail === 'boolean')
+      previewActive.value = event.detail
+  })
+const app = createApp({
+  render: () =>
+    h(ElConfigProvider, { locale: zhCn }, () =>
+      cachedPreview
+        ? h(KeepAlive, null, { default: () => (previewActive.value ? h(SqlConsole) : null) })
+        : h(SqlConsole)
+    )
+})
+app.use(store)
 const previewActor = previewParams.get('actor')
 if (previewActor) {
   useUserStore().setUserInfo({

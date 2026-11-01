@@ -65,6 +65,8 @@ const app = createApp({
           modelValue: model.value,
           items,
           span: 24,
+          showReset: true,
+          showSubmit: true,
           submitText: '提交验收',
           resetText: '重置验收',
           'onUpdate:modelValue': (value: Record<string, unknown>) => (model.value = value),

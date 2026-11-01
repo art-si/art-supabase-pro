@@ -82,6 +82,28 @@ test('disposal before the open tick prevents starting its business callback', as
   assert.equal(overlay.visible.value, false)
 })
 
+test('opening waits for initialization and ignores its returned value', async () => {
+  const overlay = createOverlay()
+  let finish!: (value: string) => void
+  let completed = false
+  const opening = overlay
+    .handleOpen(
+      { id: 'draft' },
+      { onOpen: () => new Promise<string>((resolve) => (finish = resolve)) }
+    )
+    .then((result) => {
+      assert.equal(result, undefined)
+      completed = true
+    })
+  await Promise.resolve()
+  assert.equal(completed, false)
+  finish('initialization result is not a close decision')
+  await opening
+  assert.equal(completed, true)
+  assert.equal(overlay.visible.value, true)
+  assert.equal(overlay.getData().id, 'draft')
+})
+
 test('a successful submission after disposal cannot invoke business close or reset', async () => {
   const scope = effectScope()
   const overlay = scope.run(() => createOverlay())!

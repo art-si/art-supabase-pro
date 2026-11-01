@@ -96,7 +96,7 @@
 
 <script setup lang="ts">
   import { ROLE_BUILTIN_TYPES } from '@/config/builtin-roles'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useMediaQuery } from '@vueuse/core'
   import { ButtonMoreItem } from '@/components/core/forms/art-button-more/index.vue'
   import { useTable } from '@/hooks/core/useTable'
@@ -128,14 +128,11 @@
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import TreeUtils from '@/utils/tree'
   import OrganizationScopeFilter from '../shared/organization-scope-filter.vue'
-  import MasterDataDeleteGuard, {
-    type MasterDataDeleteGuardOpenOptions
-  } from '@/components/business/master-data-delete-guard/index.vue'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import MasterDeleteProcessingNotice from '@/components/business/master-delete-processing-notice/index.vue'
 
   defineOptions({ name: 'Role' })
 
-  const { confirmAction } = useArtFeedback()
   const route = useRoute()
   const tableQueryRef = ref<ArtTableQueryExpose>()
 
@@ -143,10 +140,6 @@
   type OrganizationFilterItem = Api.SystemManage.OrganizationScopeFilterItem
   type RoleSearchParams = Api.SystemManage.RoleSearchParams & {
     daterange?: [string, string] | null
-  }
-
-  interface MasterDataDeleteGuardExpose {
-    inspect: (options: MasterDataDeleteGuardOpenOptions) => Promise<boolean>
   }
 
   const searchForm = ref({
@@ -168,7 +161,7 @@
     childrenKey: 'children'
   })
   const organizationDrawerRef = ref<ArtDrawerExpose<Record<string, never>>>()
-  const deleteGuardRef = ref<MasterDataDeleteGuardExpose>()
+  const { deleteGuardRef, deleteRecord, deleteBusy } = useRecordDeleteGuard('sys_role', '角色')
   const isDesktopOrganizationLayout = useMediaQuery('(min-width: 1201px)')
   const organizationTree = ref<OrganizationFilterItem[]>([])
   const organizationFilterLoading = ref(false)
@@ -316,7 +309,8 @@
         label: '删除角色',
         icon: 'ri:delete-bin-4-line',
         color: 'var(--el-color-danger)',
-        auth: 'System:Role:Delete'
+        auth: 'System:Role:Delete',
+        disabled: deleteBusy.value
       }
     ]
 
@@ -527,29 +521,15 @@
 
   const handleDeleteRole = async (row: RoleListItem): Promise<void> => {
     if (!row.id || row.builtinType) return
-    try {
-      const blocked = await deleteGuardRef.value?.inspect({
-        resourceType: 'role',
-        resourceLabel: '角色',
-        resources: [{ id: row.id, label: row.roleName }]
-      })
-      if (blocked) return
-
-      await confirmAction(
-        `删除后，已关联该角色的用户将失去对应菜单权限。确认删除「${row.roleName}」吗？`,
-        '删除角色',
-        {
-          confirmButtonText: '确认删除',
-          cancelButtonText: '取消',
-          type: 'warning',
-          confirmButtonType: 'danger'
-        }
-      )
-      await deleteRole(row)
-      await refreshData()
-    } catch {
-      // 用户取消删除时无需额外提示。
-    }
+    await deleteRecord({
+      resourceType: 'role',
+      resource: { id: row.id, label: row.roleName },
+      permission: 'System:Role:Delete',
+      confirmMessage: `删除后，已关联该角色的用户将失去对应菜单权限。确认删除「${row.roleName}」吗？`,
+      remove: () => deleteRole(row),
+      successMessage: '角色已删除',
+      onDeleted: refreshData
+    })
   }
 
   const handleGetRoleList = async () => {
@@ -805,6 +785,7 @@
 
   :global(.role-organization-filter-drawer__body) {
     --art-drawer-content-padding: 0;
+    --art-scroll-viewport-inset: 0px;
 
     padding: 0 !important;
     overflow: hidden !important;

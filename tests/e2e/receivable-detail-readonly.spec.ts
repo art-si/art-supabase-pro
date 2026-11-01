@@ -98,15 +98,23 @@ for (const [kind, menu] of [
       await expect(detail).not.toContainText('undefined')
       await expect(detail).toContainText(`QA-DETAIL-${index}`)
       await expect(detail).not.toContainText(`QA-DETAIL-${index === 1 ? 2 : 1}`)
-      if (kind === 'estimate' || kind === 'financial')
+      if (kind === 'estimate' || kind === 'financial') {
+        await expect(detail.getByRole('tab')).toHaveCount(2)
+        await detail.getByRole('tab', { name: '应收明细', exact: true }).click()
         await expect(detail.getByText(/价税合计：/)).toContainText(`${index}00.00`)
+      }
       await expect(
         detail.getByRole('button', { name: /保存|新增|添加|删除|提交|审核|确认收款|确认付款/ })
       ).toHaveCount(0)
       await expect(detail.getByRole('spinbutton')).toHaveCount(0)
       await expect(detail.getByRole('textbox')).toHaveCount(0)
       if (index === 2) await detail.screenshot({ path: info.outputPath('readonly-detail.png') })
-      await detail.getByRole('button', { name: '关闭此对话框', exact: true }).click()
+      await detail
+        .getByRole('button', {
+          name: kind === 'estimate' || kind === 'financial' ? '关闭抽屉' : '关闭此对话框',
+          exact: true
+        })
+        .click()
       await expect(detail).not.toBeVisible()
     }
     expect(mutations).toEqual([])

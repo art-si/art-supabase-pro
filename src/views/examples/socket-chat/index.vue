@@ -55,14 +55,7 @@
             </div>
           </template>
 
-          <ArtForm
-            custom-layout
-            :show-reset="false"
-            :show-submit="false"
-            v-model="connectForm"
-            label-position="top"
-            form-class="max-w-md"
-          >
+          <ArtForm custom-layout v-model="connectForm" label-position="top" form-class="max-w-md">
             <ElFormItem label="服务器地址">
               <ElInput v-model="connectForm.url" placeholder="ws://localhost:8080/ws" clearable />
             </ElFormItem>
@@ -104,8 +97,6 @@
 
           <ArtForm
             custom-layout
-            :show-reset="false"
-            :show-submit="false"
             v-model="messageForm"
             label-position="top"
             @submit="handleSendMessage"

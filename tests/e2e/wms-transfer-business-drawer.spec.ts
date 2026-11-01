@@ -192,14 +192,30 @@ for (const kind of ['直接', '分步'] as const) {
     const drawer = page.getByRole('dialog', { name: `新增${kind}调拨单`, exact: true })
     await expect(drawer.getByText('单据表头', { exact: true })).toBeVisible()
     await expect(drawer.getByLabel('PDA 扫码录入')).toBeVisible()
+    await drawer.getByRole('tab', { name: '调拨明细', exact: true }).click()
     await drawer.getByRole('button', { name: '添加物料', exact: true }).click()
     const picker = page.getByRole('dialog', { name: '选择调拨库存', exact: true })
     await expect(picker.getByText('MAT-01', { exact: true })).toBeVisible()
     await picker.locator('.el-table__body tr').first().locator('.el-checkbox').click()
     await picker.getByRole('button', { name: '确定', exact: true }).click()
     await expect(drawer.getByText('测试调拨物料描述', { exact: true })).toBeVisible()
+    const tableScroll = drawer.locator(
+      '.transfer-business-lines .el-table__body-wrapper .el-scrollbar__wrap'
+    )
+    await expect(tableScroll).toBeVisible()
+    expect(await tableScroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+      true
+    )
+    await tableScroll.evaluate((element) => {
+      element.scrollLeft = 180
+    })
+    expect(await tableScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+    await tableScroll.evaluate((element) => {
+      element.scrollLeft = 0
+    })
     await drawer.getByRole('button', { name: '编辑', exact: true }).click()
     const lineDialog = page.getByRole('dialog', { name: '编辑调拨明细', exact: true })
+    await lineDialog.getByRole('tab', { name: '仓储与归属', exact: true }).click()
     await expect(lineDialog.getByText('货主类型', { exact: true })).toBeVisible()
     if (kind === '直接') {
       await lineDialog.getByRole('button', { name: '确定', exact: true }).click()
@@ -207,6 +223,7 @@ for (const kind of ['直接', '分步'] as const) {
         page.getByText('调出仓库和调入仓库相同时，调出仓位和调入仓位必须不同')
       ).toBeVisible()
       await expect(lineDialog).toBeVisible()
+      await lineDialog.getByRole('tab', { name: '仓储与归属', exact: true }).click()
     } else {
       await lineDialog
         .locator('.el-form-item')
@@ -219,6 +236,7 @@ for (const kind of ['直接', '分步'] as const) {
       await expect(lineDialog).toBeHidden()
       await drawer.getByRole('button', { name: '编辑', exact: true }).click()
       await expect(lineDialog).toBeVisible()
+      await lineDialog.getByRole('tab', { name: '仓储与归属', exact: true }).click()
     }
     await lineDialog
       .locator('.el-form-item')
@@ -366,6 +384,7 @@ test('直接调拨选单带入来源批次并锁定申请数量和单位', async
   })
   await page.getByRole('button', { name: '测试直接调拨单创建', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: '新增直接调拨单', exact: true })
+  await drawer.getByRole('tab', { name: '调拨明细', exact: true }).click()
   await drawer.getByRole('button', { name: '选单', exact: true }).click()
   const picker = page.getByRole('dialog', { name: '选单', exact: true })
   await expect(picker.getByText('DBSQ202610-001', { exact: true })).toBeVisible()
@@ -375,15 +394,18 @@ test('直接调拨选单带入来源批次并锁定申请数量和单位', async
   await expect(drawer.getByText('来源库存物料', { exact: true })).toBeVisible()
   await drawer.getByRole('button', { name: '编辑', exact: true }).click()
   const line = page.getByRole('dialog', { name: '编辑调拨明细', exact: true })
+  await line.getByRole('tab', { name: '仓储与归属', exact: true }).click()
   await expect(line.getByText('自有', { exact: true })).toBeVisible()
   await expect(line.getByText('普通', { exact: true })).toBeVisible()
   await expect(line.getByText('可用', { exact: true })).toBeVisible()
+  await line.getByRole('tab', { name: '物料与数量', exact: true }).click()
   await expect(
     line.locator('.el-form-item').filter({ hasText: '库存单位' }).getByRole('combobox')
   ).toBeDisabled()
   await expect(
     line.locator('.el-form-item').filter({ hasText: '数量' }).locator('input').first()
   ).toBeDisabled()
+  await line.getByRole('tab', { name: '仓储与归属', exact: true }).click()
   await line.getByText('库存类型', { exact: true }).scrollIntoViewIfNeeded()
   await page.screenshot({
     path: testInfo.outputPath('request-line-source-attributes.png'),
@@ -464,9 +486,11 @@ for (const kind of ['直接', '分步'] as const) {
     const drawer = page.getByRole('dialog', { name: `查看${kind}调拨单`, exact: true })
     await expect(drawer.locator('.art-descriptions')).toBeVisible()
     await expect(drawer.locator('.el-form')).toHaveCount(0)
+    await drawer.getByRole('tab', { name: '调拨明细', exact: true }).click()
     await drawer.getByRole('button', { name: '查看', exact: true }).click()
     const line = page.getByRole('dialog', { name: '查看调拨明细', exact: true })
-    await expect(line.locator('.art-descriptions')).toBeVisible()
+    await line.getByRole('tab', { name: '仓储与归属', exact: true }).click()
+    await expect(line.locator('.art-descriptions:visible')).toBeVisible()
     await expect(line.locator('.el-form')).toHaveCount(0)
     await expect(line.getByText('受托加工', { exact: true })).toBeVisible()
     await expect(line.getByText('entrusted_processing', { exact: true })).toHaveCount(0)
@@ -582,6 +606,7 @@ test('分步收货单仅允许编辑日期、备注和目标仓位', async ({ pa
   await expect(
     drawer.locator('.el-form-item').filter({ hasText: '业务日期' }).locator('input').first()
   ).toBeEnabled()
+  await drawer.getByRole('tab', { name: '调拨明细', exact: true }).click()
   await drawer.getByRole('combobox', { name: '调入仓位' }).click()
   await page.getByRole('option', { name: 'T-01 · 目标库位' }).click()
   await page.screenshot({

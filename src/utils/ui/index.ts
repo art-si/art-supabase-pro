@@ -6,7 +6,6 @@
 
 export * from './colors'
 export * from './loading'
-export * from './tabs'
 export * from './format'
 export * from './wheel-scroll'
 export * from './scroll'

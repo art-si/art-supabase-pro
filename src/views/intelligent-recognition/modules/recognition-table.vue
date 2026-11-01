@@ -4,8 +4,7 @@
     class="recognition-table"
     :class="{ 'is-motion-ready': motionReady }"
     focusable
-    :model-value="searchQuery"
-    @update:model-value="replaceReactiveModel(searchQuery, $event)"
+    v-model="searchQuery"
     :search-items="searchItems"
     :api-fn="fetchTableData"
     :columns-factory="columnsFactory"
@@ -43,7 +42,6 @@
 </template>
 
 <script setup lang="tsx">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { ElButton, ElProgress, ElTag } from 'element-plus'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
@@ -90,7 +88,7 @@
   const getDictItemByValue = userStore.getDictItemByValue
   const tableRef = ref<ArtTableQueryExpose>()
   const motionReady = ref(false)
-  const searchQuery = reactive<Search>({
+  const searchQuery = ref<Search>({
     creator: '',
     feature: '',
     status: props.mode === 'review' ? 'pending' : '',
@@ -345,7 +343,7 @@
   }
 
   function applyQuickFilter(value: Search['confidenceLevel']): void {
-    searchQuery.confidenceLevel = value
+    searchQuery.value.confidenceLevel = value
     void tableRef.value?.getData()
   }
 

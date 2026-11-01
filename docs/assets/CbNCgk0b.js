@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./DCsDOn8E.js";var i=n({name:`MdmPositionDirectory`,__name:`index`,setup(n){return(n,i)=>(t(),e(r))}});export{i as default};

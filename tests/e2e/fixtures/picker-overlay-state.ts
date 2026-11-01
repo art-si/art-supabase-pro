@@ -19,10 +19,15 @@ const app = createApp({
   setup() {
     const visible = ref(false)
     const address = ref<InstanceType<typeof ArtAddressPicker>>()
+    const addressMounted = ref(true)
     const dataSelect = ref<ArtDataSelectExpose>()
     const catalog = ref<InstanceType<typeof WorkflowCatalog>>()
     const iconPicker = ref<InstanceType<typeof ArtIconPicker>>()
     const compact = mode === 'compact'
+    const seedAddressCoordinate = new URLSearchParams(location.search).has('seedCoordinate')
+    const addressDetail = ref(seedAddressCoordinate ? '已保存的合成业务地址' : '')
+    const longitude = ref<number | string | null | undefined>(seedAddressCoordinate ? 121.5 : null)
+    const latitude = ref<number | string | null | undefined>(seedAddressCoordinate ? 31.2 : null)
     const rows = Array.from({ length: compact ? 3 : 48 }, (_, index) => ({
       id: `pack-${index + 1}`,
       name: `PK-${String(index + 1).padStart(4, '0')}`,
@@ -33,6 +38,13 @@ const app = createApp({
     })
     return () =>
       h('main', { class: 'art-page-view min-h-screen p-4' }, [
+        mode === 'address'
+          ? h(
+              'button',
+              { type: 'button', onClick: () => (addressMounted.value = false) },
+              '卸载地址选择器'
+            )
+          : null,
         h(
           'button',
           {
@@ -78,10 +90,19 @@ const app = createApp({
                       }
                 })
               : mode === 'address'
-                ? h(ArtAddressPicker, {
+                ? addressMounted.value &&
+                  h(ArtAddressPicker, {
                     ref: address,
                     amapKey: 'sdk-test-key',
-                    hideRegionSelector: true
+                    hideRegionSelector: true,
+                    addressDetail: addressDetail.value,
+                    'onUpdate:addressDetail': (value: string) => (addressDetail.value = value),
+                    longitude: longitude.value,
+                    'onUpdate:longitude': (value: number | string | null | undefined) =>
+                      (longitude.value = value),
+                    latitude: latitude.value,
+                    'onUpdate:latitude': (value: number | string | null | undefined) =>
+                      (latitude.value = value)
                   })
                 : h(ArtResourcePicker, {
                     visible: visible.value,
@@ -89,7 +110,18 @@ const app = createApp({
                       visible.value = value
                     }
                   }),
-        h('output', { 'aria-label': '外部显示状态' }, String(visible.value))
+        h('output', { 'aria-label': '外部显示状态' }, String(visible.value)),
+        mode === 'address'
+          ? h(
+              'output',
+              { 'aria-label': '已保存地址数据' },
+              JSON.stringify({
+                address: addressDetail.value,
+                longitude: longitude.value,
+                latitude: latitude.value
+              })
+            )
+          : null
       ])
   }
 })

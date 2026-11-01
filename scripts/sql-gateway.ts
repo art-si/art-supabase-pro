@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { loadEnv } from 'vite'
 import { createSqlGateway } from './sql-gateway-server'
 import { callPlatformIdentity } from './lib/platform-identity'
-import { sqlGatewayApplicationOrigins } from './sql-gateway-process'
+import { sqlGatewayApplicationOrigins, sqlGatewaySourceIdentity } from './sql-gateway-process'
 
 const root = path.resolve(import.meta.dirname, '..')
 const env = { ...loadEnv('development', root, ''), ...process.env }
@@ -13,6 +13,7 @@ if (env.VITE_SUPABASE_URL?.replace(/\/$/, '') !== base || !env.VITE_SUPABASE_KEY
 const port = Number(env.SQL_GATEWAY_PORT || 4319)
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('SQL 执行端端口无效')
 const server = createSqlGateway({
+  sourceIdentity: sqlGatewaySourceIdentity(root),
   directory:
     env.SQL_GATEWAY_STATE_DIR || path.join(homedir(), '.art-sql-workbench', 'ckbftoopuyophiebamwy'),
   origins: sqlGatewayApplicationOrigins(Number(env.VITE_PORT || 3006), [

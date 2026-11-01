@@ -1,4 +1,15 @@
 import { supabase } from '@/plugins/supabase'
+import { refreshSupabaseSessionOnce } from '@/utils/supabase/session'
+
+export class LocalExecutorError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string
+  ) {
+    super(message)
+  }
+}
 
 async function loopbackPermissionDenied(): Promise<boolean> {
   if (!navigator.permissions) return false
@@ -21,7 +32,12 @@ export async function requestLocalExecutor(
   body?: unknown,
   tenantScope?: string
 ): Promise<unknown> {
-  const endpoint = new URL(base)
+  let endpoint: URL
+  try {
+    endpoint = new URL(base)
+  } catch (cause) {
+    throw new Error('请输入完整的执行端地址，例如 http://127.0.0.1:4319', { cause })
+  }
   const local = ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname)
   if (
     endpoint.username ||
@@ -44,30 +60,52 @@ export async function requestLocalExecutor(
     throw new Error('远程执行端未列入应用可信地址，请由管理员配置 VITE_SQL_GATEWAY_ORIGINS 后重试')
   const { data, error } = await supabase.auth.getSession()
   if (error || !data.session) throw new Error('请先登录项目账号，再连接执行端')
-  let response: Response
-  try {
-    const request: RequestInit & { targetAddressSpace?: 'loopback' } = {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        Authorization: `Bearer ${data.session.access_token}`,
-        'Content-Type': 'application/json',
-        ...(tenantScope ? { 'x-art-tenant-scope': tenantScope } : {})
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(45000)
+  const send = async (token: string): Promise<Response> => {
+    try {
+      const request: RequestInit & { targetAddressSpace?: 'loopback' } = {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...(tenantScope ? { 'x-art-tenant-scope': tenantScope } : {})
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(45000)
+      }
+      if (local) request.targetAddressSpace = 'loopback'
+      return await fetch(`${endpoint.origin}${route}`, request)
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'TimeoutError')
+        throw new Error('执行端响应超时，请确认服务仍在运行后重试', { cause })
+      if (await loopbackPermissionDenied())
+        throw new Error(
+          '浏览器已阻止本机网络访问，请在地址栏的站点设置中允许“本地网络访问”后重试',
+          {
+            cause
+          }
+        )
+      throw new Error('无法连接执行端，请检查服务是否启动、地址及网络设置后重试', { cause })
     }
-    if (local) request.targetAddressSpace = 'loopback'
-    response = await fetch(`${endpoint.origin}${route}`, request)
-  } catch (cause) {
-    if (cause instanceof DOMException && cause.name === 'TimeoutError')
-      throw new Error('执行端响应超时，请确认服务仍在运行后重试', { cause })
-    if (await loopbackPermissionDenied())
-      throw new Error('浏览器已阻止本机网络访问，请在地址栏的站点设置中允许“本地网络访问”后重试', {
-        cause
-      })
-    throw new Error('无法连接执行端，请检查服务是否启动、地址及网络设置后重试', { cause })
   }
-  const result: unknown = await response.json().catch(() => null)
+  let response = await send(data.session.access_token)
+  let result: unknown = await response.json().catch(() => null)
+  // This code is issued only before an executor operation starts. Never replay
+  // a query or a save after an ambiguous network failure or a general HTTP 401.
+  if (
+    response.status === 401 &&
+    result &&
+    typeof result === 'object' &&
+    'code' in result &&
+    result.code === 'PLATFORM_AUTH_REQUIRED'
+  ) {
+    const session = await refreshSupabaseSessionOnce()
+    if (session && session.user.id === data.session.user.id) {
+      response = await send(session.access_token)
+      result = await response.json().catch(() => null)
+    } else {
+      throw new Error('登录状态未能恢复，请检查网络后重试或重新登录')
+    }
+  }
   if (!response.ok) {
     const message =
       result &&
@@ -77,7 +115,11 @@ export async function requestLocalExecutor(
       /[\u4e00-\u9fff]/.test(result.message)
         ? result.message
         : '执行端请求失败，请检查服务后重试'
-    throw new Error(message)
+    const code =
+      result && typeof result === 'object' && 'code' in result && typeof result.code === 'string'
+        ? result.code
+        : undefined
+    throw new LocalExecutorError(message, response.status, code)
   }
   return result
 }

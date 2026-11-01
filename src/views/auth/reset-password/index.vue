@@ -13,15 +13,7 @@
           </div>
           <h3 class="title">{{ $t('resetPassword.title') }}</h3>
           <p class="sub-title">{{ $t('resetPassword.subTitle') }}</p>
-          <ArtForm
-            custom-layout
-            :show-reset="false"
-            :show-submit="false"
-            form-class="mt-7.5"
-            ref="formRef"
-            v-model="form"
-            :rules="rules"
-          >
+          <ArtForm custom-layout form-class="mt-7.5" ref="formRef" v-model="form" :rules="rules">
             <ElFormItem prop="password">
               <ElInput
                 class="custom-height"

@@ -1,5 +1,10 @@
 import type { FunctionInvokeOptions } from '@supabase/supabase-js'
 import { supabase } from '@/plugins/supabase'
+import {
+  readPlatformTenantScopeActive,
+  readTenantScopeId,
+  TENANT_SCOPE_HEADER
+} from '@/utils/tenant-scope-context'
 import { isSupabaseSessionFailure, isSupabaseUnauthorizedResponse } from './error'
 import {
   isSupabaseSessionConfirmedExpired,
@@ -20,8 +25,14 @@ export async function invokeSupabaseFunctionWithSessionRecovery<T>(
   functionName: string,
   options: FunctionInvokeOptions = {}
 ): Promise<SupabaseFunctionResponse<T>> {
+  // Capture the selected scope once, including across a token-refresh retry.
+  // The REST fetch adapter does not attach tenant headers to Edge Function URLs.
+  const scope = readPlatformTenantScopeActive() ? readTenantScopeId() : null
+  const scopedOptions: FunctionInvokeOptions = scope
+    ? { ...options, headers: { [TENANT_SCOPE_HEADER]: scope, ...options.headers } }
+    : options
   const invoke = (): Promise<SupabaseFunctionResponse<T>> =>
-    supabase.functions.invoke<T>(functionName, options)
+    supabase.functions.invoke<T>(functionName, scopedOptions)
 
   let response = await invoke()
   if (

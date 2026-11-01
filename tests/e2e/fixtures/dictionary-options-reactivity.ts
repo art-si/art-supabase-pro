@@ -54,8 +54,6 @@ const app = createApp({
                   { key: 'value', label: '字典选项', type: 'select', options },
                   { key: 'enabled', label: '布尔选项', type: 'segment', options: booleans }
                 ],
-                showReset: false,
-                showSubmit: false,
                 span: 24
               }),
               h('div', { class: 'flex flex-wrap gap-3' }, [

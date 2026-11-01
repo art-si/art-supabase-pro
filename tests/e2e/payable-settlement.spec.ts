@@ -204,9 +204,32 @@ for (const kind of ['application', 'payment'] as const) {
       const save = drawer.getByRole('button', { name: '保存', exact: true })
       await expect(save).toBeEnabled()
       const before = attempts.length
+      if (kind === 'application') {
+        const typeSelect = drawer.locator('.el-select').filter({
+          has: page.getByRole('combobox', { name: /单据类型/ })
+        })
+        await typeSelect.hover()
+        await typeSelect.locator('.el-select__clear').click()
+      }
+      await drawer.getByRole('tab', { name: '付款明细', exact: true }).click()
       await save.click()
+      if (kind === 'application') {
+        await expect(drawer.getByRole('tab', { name: '基本信息', exact: true })).toHaveAttribute(
+          'aria-selected',
+          'true'
+        )
+        await expect(drawer.getByText('请选择单据类型', { exact: true }).last()).toBeVisible()
+        await drawer.getByRole('combobox', { name: /单据类型/ }).click()
+        await page.getByRole('option', { name: /采购付款申请/ }).click()
+        await save.click()
+      }
       await expect(page.getByText('请至少添加一行付款明细', { exact: true })).toBeVisible()
+      await expect(drawer.getByRole('tab', { name: '付款明细', exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
       expect(attempts).toHaveLength(before)
+      await drawer.getByRole('tab', { name: '基本信息', exact: true }).click()
       await drawer.getByLabel('付款组织', { exact: true }).click()
       await page
         .getByRole('treeitem', { name: '新增验收集团', exact: true })
@@ -228,6 +251,7 @@ for (const kind of ['application', 'payment'] as const) {
       await drawer
         .getByRole('textbox', { name: kind === 'application' ? '请款事由' : '摘要', exact: true })
         .fill(`独立新增事由${index}`)
+      await drawer.getByRole('tab', { name: '付款明细', exact: true }).click()
       await drawer.getByRole('button', { name: '新增明细', exact: true }).click()
       const row = drawer.locator('.el-table__body-wrapper tbody tr').first()
       await row.getByRole('combobox', { name: '往来单位', exact: true }).click()
@@ -631,6 +655,7 @@ for (const theme of ['light', 'dark']) {
         await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeVisible()
         if (kind === 'payment')
           await expect(drawer.getByText('主动付款', { exact: true })).toBeVisible()
+        await drawer.getByRole('tab', { name: '付款明细', exact: true }).click()
         await expect(drawer.locator('.el-table__body-wrapper tbody tr')).toHaveCount(2)
         await expect(
           drawer.getByRole('combobox', { name: '往来单位', exact: true }).first()
@@ -638,7 +663,7 @@ for (const theme of ['light', 'dark']) {
         await captureBusinessEvidence(drawer, {
           path: info.outputPath(`${kind}-${theme}-editor-${index + 1}.png`)
         })
-        await drawer.getByText('金额与付款说明', { exact: true }).scrollIntoViewIfNeeded()
+        await drawer.getByRole('tab', { name: '基本信息', exact: true }).click()
         await drawer
           .getByRole('textbox', { name: kind === 'application' ? '请款事由' : '摘要', exact: true })
           .fill(`两单编辑复核${index + 1}`)
@@ -1137,6 +1162,8 @@ test('付款申请明细新增复制删除与多往来保存', async ({ page }, 
   await expect(page.locator('.art-table-query .el-table__body-wrapper tbody tr')).toHaveCount(2)
   await page.getByRole('button', { name: '新增', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: '新增付款申请单', exact: true })
+  await expect(drawer.getByText('采购付款申请', { exact: true })).toBeVisible()
+  await drawer.getByRole('tab', { name: '付款明细', exact: true }).click()
   await drawer.getByRole('button', { name: '新增明细', exact: true }).click()
   const rows = drawer.locator('.el-table__body-wrapper tbody tr')
   await rows.first().getByRole('combobox', { name: '往来单位', exact: true }).click()

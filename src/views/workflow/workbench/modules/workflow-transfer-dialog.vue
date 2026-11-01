@@ -35,8 +35,6 @@
         v-model="form.data"
         :items="form.items"
         :rules="form.rules"
-        :show-reset="false"
-        :show-submit="false"
         label-position="top"
       />
 

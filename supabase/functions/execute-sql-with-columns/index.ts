@@ -2,17 +2,28 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import postgres from "npm:postgres@3.4.3";
 import { prepareSqlInput } from "./sql-input.ts";
+import { createQueryCancellation, SqlQueryCancelledError, type CancellableSqlQuery } from "../_shared/query-cancellation.ts";
+import { metadataRpcInput } from "./metadata-input.ts";
+import { mapSqlErrorPosition, type SqlErrorLocation } from "./error-position.ts";
 
 interface SqlExecuteRequest {
-  action?: "execute" | "metadata" | "explain";
+  action?: "execute" | "metadata" | "explain" | "cancel";
+  requestId?: string;
   query?: string;
   maxRows?: number;
   timeoutMs?: number;
+  mode?: "catalog" | "tables" | "functions" | "search";
+  tables?: Array<{ schema: string; name: string }>;
+  schema?: string;
+  keyword?: string;
 }
 
 interface SqlExecuteResponse {
   status: "ok" | "error";
   message?: string;
+  errorCode?: string;
+  errorPosition?: number;
+  errorQuery?: string;
   rows?: Array<Record<string, unknown>>;
   columns?: Array<{
     name: string;
@@ -54,18 +65,6 @@ function boundedInteger(value: unknown, fallback: number, maximum: number): numb
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function formatErrorPosition(error: unknown, queryText: string, prefixLength: number): string {
-  if (!isRecord(error)) return "";
-  const position = Number(error.position);
-  const queryPosition = position - prefixLength;
-  if (!Number.isInteger(queryPosition) || queryPosition < 1 || queryPosition > queryText.length) return "";
-  const before = queryText.slice(0, queryPosition - 1);
-  const line = before.split("\n").length;
-  const column = before.length - before.lastIndexOf("\n");
-  const lineText = queryText.split("\n")[line - 1] ?? "";
-  return `\nLINE ${line}: ${lineText}\n${" ".repeat(6 + String(line).length + column)}^`;
 }
 
 function corsHeaders(req: Request): Record<string, string> {
@@ -222,11 +221,31 @@ Deno.serve(async (req: Request) => {
 
     const body: SqlExecuteRequest = await req.json();
     if (body?.action === "metadata") {
-      const { data, error } = await userClient.rpc("get_sql_console_metadata");
+      let metadataInput: ReturnType<typeof metadataRpcInput>;
+      try {
+        metadataInput = metadataRpcInput(body);
+      } catch (cause) {
+        return json({ status: "error", message: cause instanceof Error ? cause.message : "数据库结构参数无效" } satisfies SqlExecuteResponse, 400);
+      }
+      const { data, error } = metadataInput
+        ? await userClient.rpc("get_sql_console_metadata_scoped", metadataInput)
+        : await userClient.rpc("get_sql_console_metadata");
       if (error) {
+        if (error.code === "22023") return json({ status: "error", message: "数据库对象范围过大或参数无效，请缩小范围后重试" } satisfies SqlExecuteResponse, 400);
         return json({ status: "error", message: "数据库结构加载失败，请稍后重试" } satisfies SqlExecuteResponse, 500);
       }
       return json(data);
+    }
+
+    const requestId = body?.requestId;
+    if (requestId !== undefined && (typeof requestId !== "string" || !/^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(requestId))) {
+      return json({ status: "error", message: "查询请求编号无效" } satisfies SqlExecuteResponse, 400);
+    }
+    if (body?.action === "cancel") {
+      if (!isSuper || !requestId) return json({ status: "error", message: "当前账号无权取消此查询" } satisfies SqlExecuteResponse, 403);
+      const { data, error } = await userClient.rpc("sql_console_request_control", { p_action: "cancel", p_request_id: requestId });
+      if (error || !isRecord(data) || typeof data.state !== "string") return json({ status: "error", message: "取消请求未能送达，请重试" } satisfies SqlExecuteResponse, 503);
+      return json({ status: "ok", state: data.state });
     }
 
     if (body?.action !== undefined && body.action !== "execute" && body.action !== "explain") {
@@ -301,7 +320,17 @@ Deno.serve(async (req: Request) => {
     const explainPrefix = "EXPLAIN (FORMAT JSON, ANALYZE FALSE) ";
     const selectPrefix = "SELECT * FROM (";
     const mutationPrefix = "WITH _sql_console_mutation AS (";
-    const errorPrefixLength = body.action === "explain" ? explainPrefix.length : canWrap ? selectPrefix.length : returningMutation ? mutationPrefix.length : 0;
+    const prefix = body.action === "explain" ? explainPrefix : canWrap ? selectPrefix : returningMutation ? mutationPrefix : "";
+    const suffix = body.action === "explain" ? "" : canWrap
+      ? `\n) AS _sql_console_result LIMIT ${maxRows + 1}`
+      : returningMutation
+        ? `\n)
+                SELECT
+                  (SELECT count(*) FROM _sql_console_mutation) AS affected_rows,
+                  (SELECT coalesce(jsonb_agg(to_jsonb(_shown)), '[]'::jsonb)
+                     FROM (SELECT * FROM _sql_console_mutation LIMIT ${maxRows + 1}) AS _shown) AS displayed_rows`
+        : "";
+    const executedQuery = prefix + queryText + suffix;
 
     // Transaction-pool compatible. The timeout must be set in a separate SQL
     // statement before the user statement; changing it inside an RPC is too late.
@@ -318,25 +347,69 @@ Deno.serve(async (req: Request) => {
         else notices.push(message);
       },
     });
+    const leaseId = requestId ? crypto.randomUUID() : undefined;
+    const control = async (action: "begin" | "status" | "finish", finalState?: string): Promise<string> => {
+      const { data, error } = await userClient.rpc("sql_console_request_control", {
+        p_action: action, p_request_id: requestId, p_lease_id: leaseId,
+        ...(finalState ? { p_final_state: finalState } : {}),
+      });
+      if (error || !isRecord(data) || typeof data.state !== "string") throw new Error("查询状态服务暂不可用，请稍后重试");
+      return data.state;
+    };
+    // The owning transaction is kept open until the cancel dispatch is acknowledged.
+    // No browser/RPC accepts a PID, and no future transaction shares this client.
+    const cancelDb = requestId ? postgres(connectionString, { prepare: false, max: 1, connect_timeout: 5 }) : undefined;
+    let backend: { pid: number; backendStart: string; transactionStart: string } | undefined;
+    const applicationName = requestId ? `art-sql-console:${requestId}` : "art-sql-console";
+    const cancellation = requestId ? createQueryCancellation(() => control("status"), async () => {
+      if (!backend || !cancelDb) return;
+      await cancelDb`SELECT pg_catalog.pg_cancel_backend(pid) FROM pg_catalog.pg_stat_activity
+        WHERE pid = ${backend.pid} AND backend_start = ${backend.backendStart}::text::timestamptz
+          AND xact_start = ${backend.transactionStart}::text::timestamptz`;
+    }) : undefined;
+    let registered = false;
+    let finalState = "failed";
+    let userQueryFailure: { error: unknown; location: SqlErrorLocation | undefined } | undefined;
     try {
+      if (requestId) {
+        const state = await control("begin");
+        if (state === "conflict") return json({ status: "error", message: "此查询请求已执行，请重新运行生成新请求" } satisfies SqlExecuteResponse, 409);
+        if (state !== "running" && state !== "cancel_requested") throw new Error("查询请求范围已改变，请重新执行");
+        registered = true;
+        if (state === "cancel_requested") throw new SqlQueryCancelledError();
+      }
       const result = await db.begin(async (tx) => {
+        const run = <T>(query: () => CancellableSqlQuery<T>): PromiseLike<T> => cancellation ? cancellation.run(query) : query();
         await tx`SELECT set_config('statement_timeout', ${String(timeoutMs)}, true)`;
+        if (requestId) {
+          await tx`SELECT set_config('application_name', ${applicationName}, true)`;
+          const identity = await tx`SELECT pid, backend_start::text AS backend_start, xact_start::text AS transaction_start
+            FROM pg_catalog.pg_stat_activity WHERE pid = pg_backend_pid()`;
+          const row = identity[0];
+          if (!row || typeof row.pid !== "number" || typeof row.backend_start !== "string" || typeof row.transaction_start !== "string") throw new Error("无法识别查询会话，请重试");
+          backend = { pid: row.pid, backendStart: row.backend_start, transactionStart: row.transaction_start };
+        }
         if (canWrap) await tx`SELECT set_config('transaction_read_only', 'on', true)`;
+        // Capture only the actual user statement. Session setup, metadata,
+        // transaction completion, and cancellation control use different SQL.
+        const executeUserQuery = () => run(async () => {
+          try {
+            return await tx.unsafe(executedQuery);
+          } catch (error) {
+            userQueryFailure = {
+              error,
+              location: mapSqlErrorPosition(error, { rawQuery, queryText, executedQuery, prefix, suffix }),
+            };
+            throw error;
+          }
+        });
         if (body.action === "explain") {
-          const explained = await tx.unsafe(`${explainPrefix}${queryText}`);
+          const explained = await executeUserQuery();
           const plan: unknown = explained[0]?.["QUERY PLAN"] ?? null;
           return { mode: "explain" as const, plan };
         }
 
-        const executed = canWrap
-          ? await tx.unsafe(`${selectPrefix}${queryText}\n) AS _sql_console_result LIMIT ${maxRows + 1}`)
-          : returningMutation
-            ? await tx.unsafe(`${mutationPrefix}${queryText}\n)
-                SELECT
-                  (SELECT count(*) FROM _sql_console_mutation) AS affected_rows,
-                  (SELECT coalesce(jsonb_agg(to_jsonb(_shown)), '[]'::jsonb)
-                     FROM (SELECT * FROM _sql_console_mutation LIMIT ${maxRows + 1}) AS _shown) AS displayed_rows`)
-            : await tx.unsafe(queryText);
+        const executed = await executeUserQuery();
         const mutationResult = returningMutation && isRecord(executed[0]) ? executed[0] : null;
         const returnedRows = mutationResult && Array.isArray(mutationResult.displayed_rows) ? mutationResult.displayed_rows : executed;
         const rows = Array.from(returnedRows, (row) => isRecord(row) ? { ...row } : {});
@@ -347,8 +420,8 @@ Deno.serve(async (req: Request) => {
           .map((column) => column.type)
           .filter((oid): oid is number => typeof oid === "number" && Number.isInteger(oid) && oid > 0);
         const typeRows = oidList.length > 0
-          ? await tx.unsafe(`SELECT oid::int AS oid, pg_catalog.format_type(oid, NULL) AS full_type
-              FROM pg_catalog.pg_type WHERE oid IN (${[...new Set(oidList)].join(",")})`)
+          ? await run(() => tx.unsafe(`SELECT oid::int AS oid, pg_catalog.format_type(oid, NULL) AS full_type
+              FROM pg_catalog.pg_type WHERE oid IN (${[...new Set(oidList)].join(",")})`))
           : [];
         const typeByOid = new Map(typeRows.map((row) => [Number(row.oid), String(row.full_type)]));
         const columns = returningMutation
@@ -363,6 +436,8 @@ Deno.serve(async (req: Request) => {
           truncated,
         };
       });
+
+      finalState = "finished";
 
       const durationMs = Date.now() - startTime;
       await writeAudit({
@@ -410,8 +485,12 @@ Deno.serve(async (req: Request) => {
         query_text: queryText,
       } satisfies SqlExecuteResponse);
     } catch (error) {
+      if (error instanceof SqlQueryCancelledError) finalState = "cancelled";
       const durationMs = Date.now() - startTime;
       const pgMessage = error instanceof Error ? error.message : "SQL execution failed";
+      const location = userQueryFailure && userQueryFailure.error === error && !(error instanceof SqlQueryCancelledError) && !pgMessage.includes("statement timeout")
+        ? userQueryFailure.location
+        : undefined;
       await writeAudit({
         auth_user_id: user.id,
         auth_email: user.email ?? null,
@@ -423,16 +502,20 @@ Deno.serve(async (req: Request) => {
       });
       return json({
         status: "error",
-        message: pgMessage.includes("statement timeout") ? "SQL 执行超时，请缩小查询范围后重试" : formatErrorMessage(pgMessage) + formatErrorPosition(error, queryText, errorPrefixLength),
+        message: error instanceof SqlQueryCancelledError ? "查询已取消" : pgMessage.includes("statement timeout") ? "SQL 执行超时，请缩小查询范围后重试" : formatErrorMessage(pgMessage),
+        ...(error instanceof SqlQueryCancelledError ? { errorCode: "SQL_QUERY_CANCELLED" } : {}),
+        ...location,
         duration_ms: durationMs,
         query_text: queryText,
         executionScope: "database",
       } satisfies SqlExecuteResponse, 500);
     } finally {
-      try {
-        await db.end();
-      } catch (closeError) {
-        console.error("Failed to close SQL console database connection:", closeError);
+      await cancellation?.stop();
+      const closed = await Promise.allSettled([db.end(), cancelDb?.end()]);
+      for (const outcome of closed) if (outcome.status === "rejected") console.error("Failed to close SQL console database connection:", outcome.reason);
+      if (registered) {
+        try { await control("finish", finalState); }
+        catch (stateError) { console.error("Failed to finish SQL cancellation registry:", stateError); }
       }
     }
   } catch (error) {

@@ -1,0 +1,1 @@
+import{Gn as e,j as t,un as n}from"./1wCw6UuY.js";function r(r,i){let a=0,o=!1,s=()=>{a+=1,document.body.classList.remove(r),o&&(o=!1,i())};return t(window,`afterprint`,()=>{o&&s()}),e(s),{print:async()=>{let e=++a;if(o=!0,document.body.classList.add(r),await n(),e===a)try{window.print()}catch(e){throw s(),e}}}}export{r as t};

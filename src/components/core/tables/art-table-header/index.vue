@@ -9,6 +9,7 @@
       <ArtIconButton
         v-if="showSearchBar != null"
         class="art-table-header__action"
+        :size="actionSize"
         icon="ri:search-line"
         :variant="showSearchBar ? 'solid' : 'ghost'"
         :label="showSearchBar ? '收起搜索条件' : '展开搜索条件'"
@@ -18,6 +19,7 @@
       <ArtIconButton
         v-if="shouldShow('refresh')"
         class="art-table-header__action"
+        :size="actionSize"
         icon="ri:refresh-line"
         label="刷新表格"
         :loading="loading && isManualRefresh"
@@ -27,6 +29,7 @@
       <ElDropdown v-if="shouldShow('size')" @command="handleTableSizeChange">
         <ArtIconButton
           class="art-table-header__action"
+          :size="actionSize"
           icon="ri:arrow-up-down-fill"
           label="调整表格密度"
         />
@@ -52,6 +55,7 @@
       <ArtIconButton
         v-if="shouldShow('fullscreen')"
         class="art-table-header__action"
+        :size="actionSize"
         :icon="isFullScreen ? 'dashicons:fullscreen-exit-alt' : 'dashicons:fullscreen-alt'"
         :label="isFullScreen ? '退出全屏' : '表格全屏'"
         :aria-pressed="isFullScreen"
@@ -61,20 +65,39 @@
       <!-- 列设置 -->
       <ElPopover
         v-if="shouldShow('columns') && visibleColumnsModel.length"
+        v-model:visible="columnsPopoverVisible"
         placement="bottom"
         trigger="click"
         :width="232"
+        :popper-options="{
+          modifiers: [
+            {
+              name: 'preventOverflow',
+              options: { altAxis: true, tether: false, padding: 8 }
+            }
+          ]
+        }"
       >
         <template #reference>
           <ArtIconButton
             class="art-table-header__action"
+            :size="actionSize"
             icon="ri:align-right"
             label="设置显示列"
+            @keydown="closeColumnsFromTrigger"
           />
         </template>
-        <div>
+        <div @keydown.esc.prevent.stop="closeColumnsPopover">
           <div class="column-presets">
-            <span class="column-presets__label">视图预设</span>
+            <div class="flex items-center justify-between gap-2">
+              <span class="column-presets__label">视图预设</span>
+              <ArtIconButton
+                size="small"
+                icon="ri:close-line"
+                label="关闭列设置"
+                @click="closeColumnsPopover"
+              />
+            </div>
             <div class="column-presets__switch" role="group" aria-label="列显示预设">
               <button
                 type="button"
@@ -98,7 +121,7 @@
               </button>
             </div>
           </div>
-          <ElScrollbar max-height="380px">
+          <ElScrollbar max-height="min(380px, calc(100dvh - 180px))">
             <VueDraggable
               v-model="visibleColumnsModel"
               :disabled="false"
@@ -124,7 +147,9 @@
                 <ElCheckbox
                   :model-value="getColumnVisibility(item)"
                   @update:model-value="(val) => updateColumnVisibility(item, val)"
+                  @keydown="moveColumnWithKeyboard($event, item)"
                   :disabled="item.disabled"
+                  :title="item.label"
                   class="flex-1 min-w-0 [&_.el-checkbox__label]:overflow-hidden [&_.el-checkbox__label]:text-ellipsis [&_.el-checkbox__label]:whitespace-nowrap"
                   >{{
                     item.label || (item.type === 'selection' ? t('table.selection') : '')
@@ -133,6 +158,10 @@
               </div>
             </VueDraggable>
           </ElScrollbar>
+          <p class="mb-0 mt-2 text-xs leading-5 text-g-700">
+            勾选显示列；拖拽或 Alt + ↑/↓ 调整顺序。
+          </p>
+          <span class="sr-only" role="status" aria-live="polite">{{ columnMoveFeedback }}</span>
         </div>
       </ElPopover>
       <!-- 其他设置 -->
@@ -140,6 +169,7 @@
         <template #reference>
           <ArtIconButton
             class="art-table-header__action"
+            :size="actionSize"
             icon="ri:settings-line"
             label="表格显示设置"
           />
@@ -174,7 +204,7 @@
 </template>
 
 <script lang="ts" setup>
-  import { computed, ref, onUnmounted } from 'vue'
+  import { computed, nextTick, ref, onUnmounted } from 'vue'
   import { useEventListener } from '@vueuse/core'
   import { storeToRefs } from 'pinia'
   import { TableSizeEnum } from '@/enums/form-enum'
@@ -206,6 +236,8 @@
     fullClass?: string
     /** 组件布局，子组件名用逗号分隔 */
     layout?: string
+    /** 工具栏图标按钮尺寸；紧凑工作区可选 small，其他页面保持默认尺寸。 */
+    actionSize?: 'default' | 'small'
     /** 加载中 */
     loading?: boolean
     /** 搜索栏显示状态 */
@@ -220,6 +252,7 @@
     showHeaderBackground: true,
     fullClass: 'art-page-view',
     layout: 'search,refresh,size,fullscreen,columns,settings',
+    actionSize: 'default',
     showSearchBar: undefined,
     focusMode: undefined
   })
@@ -270,6 +303,51 @@
     const boolValue = !!value
     col.checked = boolValue
     col.visible = boolValue
+  }
+
+  const columnMoveFeedback = ref('')
+  const columnsPopoverVisible = ref(false)
+  const closeColumnsPopover = async (): Promise<void> => {
+    columnsPopoverVisible.value = false
+    await nextTick()
+    rootRef.value?.querySelector<HTMLButtonElement>('[aria-label="设置显示列"]')?.focus()
+  }
+  const closeColumnsFromTrigger = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape' || !columnsPopoverVisible.value) return
+    event.preventDefault()
+    event.stopPropagation()
+    void closeColumnsPopover()
+  }
+  const moveColumnWithKeyboard = async (
+    event: KeyboardEvent,
+    column: ColumnOption
+  ): Promise<void> => {
+    if (
+      !event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      !['ArrowUp', 'ArrowDown'].includes(event.key)
+    )
+      return
+    event.preventDefault()
+    event.stopPropagation()
+    const current = visibleColumnsModel.value
+    const index = current.indexOf(column)
+    const destination = index + (event.key === 'ArrowUp' ? -1 : 1)
+    const neighbor = current[destination]
+    if (index < 0 || !neighbor) return
+    if (column.fixed || neighbor.fixed) {
+      columnMoveFeedback.value = '固定列的位置不能调整'
+      return
+    }
+    const focused = event.target
+    const reordered = [...current]
+    ;[reordered[index], reordered[destination]] = [neighbor, column]
+    visibleColumnsModel.value = reordered
+    columnMoveFeedback.value = `已将 ${column.label || column.prop || '当前列'}${event.key === 'ArrowUp' ? '上移' : '下移'}`
+    await nextTick()
+    if (focused instanceof HTMLElement && focused.isConnected) focused.focus()
   }
 
   type ColumnPreset = 'compact' | 'all'

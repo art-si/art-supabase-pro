@@ -23,8 +23,8 @@
     :reset-text="t('table.searchBar.reset')"
     :submit-text="t('table.searchBar.search')"
     v-bind="{ ...$attrs }"
-    @submit="handleSearch"
-    @reset="handleReset"
+    @submit="emit('search', $event)"
+    @reset="emit('reset')"
     @keydown.enter="handleEnterSearch"
   >
     <template v-for="slotName in slotNames" :key="slotName" #[slotName]="slotProps">
@@ -101,14 +101,6 @@
     props.items.map((item) => item.key).filter((name) => !!slots[name])
   )
 
-  const handleReset = () => {
-    emit('reset')
-  }
-
-  const handleSearch = (params: SearchBarValue) => {
-    emit('search', params)
-  }
-
   const handleEnterSearch = (event: KeyboardEvent) => {
     if (!props.enableEnterSearch || props.disabledSearch || props.searchLoading) return
 
@@ -131,21 +123,4 @@
     reloadOptions: (key?: string) => searchBarRef.value?.reloadOptions(key),
     getOutput: () => searchBarRef.value?.getOutput()
   })
-
-  const {
-    items,
-    span,
-    gutter,
-    isExpand,
-    defaultExpanded,
-    labelPosition,
-    labelWidth,
-    showExpand,
-    buttonLeftLimit,
-    showReset,
-    resetLoading,
-    showSearch,
-    disabledSearch,
-    sanitizeOutput
-  } = toRefs(props)
 </script>

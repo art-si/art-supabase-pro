@@ -5,7 +5,7 @@
     <section v-if="showPoiSearch" class="art-address-map__panel art-card-xs">
       <div class="art-address-map__search">
         <ElInput
-          v-model.trim="innerSearchKeyword"
+          v-model.trim="searchKeyword"
           placeholder="搜索地点、园区、道路、仓库名称"
           clearable
           @input="handleSearchInput"
@@ -71,7 +71,6 @@
     plugins?: string[]
     showPoiSearch?: boolean
     enableMapPick?: boolean
-    searchKeyword?: string
     searchScope?: string
     cityLimit?: boolean
     regionPath?: string[]
@@ -83,7 +82,7 @@
   }
 
   interface InitOptions {
-    center: [number, number]
+    center?: [number, number]
     zoom?: number
   }
 
@@ -167,7 +166,8 @@
     add: (marker: AMapMarkerInstance) => void
     addControl: (control: unknown) => void
     destroy?: () => void
-    on: (event: 'click', handler: (event: { lnglat: { lng: number; lat: number } }) => void) => void
+    on(event: 'click', handler: (event: { lnglat: { lng: number; lat: number } }) => void): void
+    on(event: 'dragstart' | 'zoomstart', handler: (event: { originEvent?: unknown }) => void): void
     resize?: () => void
     setCenter: (center: [number, number]) => void
     setZoomAndCenter?: (zoom: number, center: [number, number]) => void
@@ -234,7 +234,6 @@
     ],
     showPoiSearch: false,
     enableMapPick: false,
-    searchKeyword: '',
     searchScope: '全国',
     cityLimit: false,
     regionPath: () => [],
@@ -246,14 +245,14 @@
   })
 
   const emit = defineEmits<{
+    (event: 'view-interaction'): void
     (event: 'map-click', payload: { lng: number; lat: number }): void
     (event: 'location-pick', payload: AddressMapPickResult): void
     (event: 'error', message: string): void
-    (event: 'update:searchKeyword', value: string): void
   }>()
 
   const mapRef = ref<HTMLDivElement>()
-  const innerSearchKeyword = ref('')
+  const searchKeyword = defineModel<string>('searchKeyword', { default: '' })
   const poiList = ref<AMapPoi[]>([])
   const selectedPoi = ref<AMapPoi>()
   const poiLoading = ref(false)
@@ -353,9 +352,8 @@
     }
   })
 
-  const syncSearchKeyword = (value: string): void => {
-    innerSearchKeyword.value = value
-    emit('update:searchKeyword', value)
+  const setSearchKeyword = (value: string): void => {
+    searchKeyword.value = value
   }
 
   const emitPick = (payload: AddressMapPickResult, poi?: AMapPoi): void => {
@@ -365,7 +363,7 @@
     const nextPoi = poi ?? createSelectedPoi(payload)
     selectedPoi.value = nextPoi
     poiList.value = props.showPoiSearch ? (poi ? poiList.value : [nextPoi]) : []
-    syncSearchKeyword(payload.address)
+    setSearchKeyword(payload.address)
     setMarker(payload.longitude, payload.latitude)
     emit('location-pick', payload)
   }
@@ -378,7 +376,7 @@
     const nextPoi = createSelectedPoi(payload)
     selectedPoi.value = nextPoi
     poiList.value = props.showPoiSearch ? [nextPoi] : []
-    syncSearchKeyword(payload.address)
+    setSearchKeyword(payload.address)
     setMarker(payload.longitude, payload.latitude)
   }
 
@@ -449,9 +447,11 @@
     })
   }
 
-  const searchPoi = (options: { silent?: boolean; fallbackKeyword?: string } = {}): void => {
+  const searchPoi = (
+    options: { silent?: boolean; keyword?: string; fallbackKeyword?: string } = {}
+  ): void => {
     const currentSequence = ++searchSequence
-    const keyword = trim(innerSearchKeyword.value || options.fallbackKeyword || '')
+    const keyword = trim(options.keyword ?? (searchKeyword.value || options.fallbackKeyword || ''))
     if (!keyword) {
       poiList.value = []
       if (!options.silent) ElMessage.warning('请输入搜索关键词')
@@ -492,26 +492,26 @@
     })
   }
 
-  const debouncedPoiSearch = debounce(() => {
-    searchPoi({ silent: true })
+  const debouncedPoiSearch = debounce((keyword: string) => {
+    searchPoi({ silent: true, keyword })
   }, 350)
 
-  const handleSearchInput = (): void => {
+  const handleSearchInput = (value: string): void => {
+    emit('view-interaction')
     searchSequence += 1
-    emit('update:searchKeyword', innerSearchKeyword.value)
     selectedPoi.value = undefined
-    if (!trim(innerSearchKeyword.value)) {
+    if (!trim(value)) {
       debouncedPoiSearch.cancel()
       handleSearchClear()
       return
     }
-    debouncedPoiSearch()
+    debouncedPoiSearch(value)
   }
 
   const handleSearchClear = (): void => {
     searchSequence += 1
     debouncedPoiSearch.cancel()
-    emit('update:searchKeyword', '')
+    searchKeyword.value = ''
     poiList.value = []
     poiLoading.value = false
   }
@@ -550,6 +550,7 @@
   }
 
   const selectPoi = (poi: AMapPoi): void => {
+    emit('view-interaction')
     const location = getPoiLocation(poi)
     if (!location) {
       geocodePoi(poi)
@@ -624,7 +625,7 @@
       amapNamespace = AMap
       amapInstance = new AMap.Map(element, {
         zoom: options.zoom ?? 11,
-        center: options.center,
+        ...(options.center ? { center: options.center } : {}),
         viewMode: '2D',
         mapStyle: 'amap://styles/normal',
         features: ['bg', 'road', 'building', 'point'],
@@ -632,8 +633,14 @@
       })
       amapInstance.addControl(new AMap.Scale())
       amapInstance.addControl(new AMap.ToolBar({ position: 'RT' }))
+      const handleViewInteraction = (event: { originEvent?: unknown }): void => {
+        if (version === mapVersion && event.originEvent) emit('view-interaction')
+      }
+      amapInstance.on('dragstart', handleViewInteraction)
+      amapInstance.on('zoomstart', handleViewInteraction)
       amapInstance.on('click', (event: { lnglat: { lng: number; lat: number } }) => {
         if (version !== mapVersion) return
+        emit('view-interaction')
         const pair = normalizeCoordinatePair(event.lnglat.lng, event.lnglat.lat)
         if (!pair) return
         emit('map-click', {
@@ -685,10 +692,6 @@
     amapInstance?.resize?.()
   }
 
-  const setSearchKeyword = (value: string): void => {
-    syncSearchKeyword(value)
-  }
-
   const clearPoi = (): void => {
     searchSequence += 1
     poiList.value = []
@@ -716,14 +719,6 @@
     districtSearchInstance = undefined
     mapMessage.value = ''
   }
-
-  watch(
-    () => props.searchKeyword,
-    (value) => {
-      innerSearchKeyword.value = value
-    },
-    { immediate: true }
-  )
 
   watch(
     () => [props.searchScope, props.cityLimit],

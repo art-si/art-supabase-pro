@@ -14,6 +14,11 @@ Keep every change maintainable at repository scale, not merely functional in the
 3. Search with `rg` for existing utilities, dependencies, duplicated patterns, exports, imports, and tests before adding code.
 4. Load additional domain skills required by the task. Supabase work must also use the local Supabase skill; user-facing frontend work must also use the frontend conventions and UI-quality skills.
 
+- Before installing dependencies in a temporary or extracted package, resolve its `node_modules` real path and check whether it belongs to another workspace.
+- Never run install, prune, or dependency-repair commands through a temporary package's `node_modules` symlink/junction to the main repository; they can rewrite the shared installation using the temporary manifest.
+- Give temporary packages independent installations; invoke an existing main-repository CLI by its absolute path when only reusing a tool, without linking dependency directories.
+- After repairing a shared installation, verify direct dependency presence and versions against the owning lockfile, plus the installation metadata's project and virtual-store paths.
+
 ## Keep One Clear Ownership Boundary
 
 - Place code by technology and responsibility. Keep reusable Supabase helpers under `src/utils/supabase/`; do not scatter `supabase-*` utilities across `src/utils`.

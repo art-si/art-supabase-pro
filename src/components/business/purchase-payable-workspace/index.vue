@@ -114,13 +114,7 @@
         @confirm="(_key, rows) => importCarrier(rows)"
       />
       <ArtDialog ref="freezeDialogRef" size="sm" confirm-text="保存冻结状态">
-        <ArtForm
-          v-model="freezeForm"
-          :items="freezeItems"
-          :show-submit="false"
-          :show-reset="false"
-          label-position="top"
-        />
+        <ArtForm v-model="freezeForm" :items="freezeItems" label-position="top" />
       </ArtDialog>
       <FinanceVoucherPreview ref="voucherDialogRef" :result="voucherPreview" />
       <PayableAccrualManager

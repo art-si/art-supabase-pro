@@ -104,6 +104,7 @@ test('生产退料单位换算保留负号和四位基本数量', async ({ page 
   const open = page.getByRole('button', { name: '测试生产单据 edit', exact: true })
   await expect(open).toBeVisible({ timeout: 120_000 })
   await open.click()
+  await page.getByRole('tab', { name: /明细/ }).click()
   const drawer = page.locator('.el-drawer:visible')
   const table = drawer.locator('.art-table.wms-editable-line-table')
   await expect(table).toBeVisible()

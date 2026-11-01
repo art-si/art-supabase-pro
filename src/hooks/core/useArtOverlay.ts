@@ -61,8 +61,8 @@ export interface ArtOverlayOptions<TData, TApi> {
   content?: Component
   /** 传递给动态内容组件的属性 */
   contentProps?: Record<string, unknown>
-  /** 内容挂载完成后的打开回调 */
-  onOpen?: (data: TData, api: TApi) => Awaitable<void>
+  /** 内容挂载完成后的打开回调；等待异步完成，忽略返回值。 */
+  onOpen?: (data: TData, api: TApi) => Awaitable<unknown>
   /** 确认回调；返回 false 阻止自动关闭 */
   onConfirm?: (data: TData, api: TApi) => Awaitable<boolean | void>
   /** 关闭前回调；返回 false 阻止关闭 */

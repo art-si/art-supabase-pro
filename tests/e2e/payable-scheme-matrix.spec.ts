@@ -112,6 +112,17 @@ for (const [theme, box] of [
     await expect(settings.locator('.el-table__body-wrapper tbody tr')).toHaveCount(2)
     await settings.getByRole('button', { name: '编辑方案', exact: true }).first().click()
     const editor = page.getByRole('dialog', { name: '编辑核销方案', exact: true })
+    const name = editor.getByRole('textbox', { name: /^\*?\s*名称$/ })
+    await name.clear()
+    await editor.getByRole('tab', { name: '匹配规则', exact: true }).click()
+    await editor.getByRole('button', { name: '保存配置', exact: true }).click()
+    await expect(editor.getByRole('tab', { name: '方案信息', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    await expect(name).toBeFocused()
+    await name.fill('示例分关系方案1')
+    await editor.getByRole('tab', { name: '匹配规则', exact: true }).click()
     const red = editor
       .locator('.el-table__body-wrapper tbody tr')
       .filter({ hasText: '应付红蓝对冲' })
@@ -141,7 +152,7 @@ for (const [theme, box] of [
       .getByRole('button', { name: '删除', exact: true })
       .click()
     await expect(rules.locator('.el-table__body-wrapper tbody tr')).toHaveCount(1)
-    await rules.getByRole('button', { name: '关闭此对话框', exact: true }).click()
+    await rules.getByRole('button', { name: '关闭弹窗', exact: true }).click()
     await red.getByRole('button', { name: '配置匹配规则', exact: true }).click()
     await expect(rules.locator('.el-table__body-wrapper tbody tr')).toHaveCount(2)
     await captureBusinessEvidence(rules, {
@@ -157,7 +168,7 @@ for (const [theme, box] of [
       page.getByText('数据已被其他操作更新，请刷新后重试', { exact: true })
     ).toBeVisible()
     await captureBusinessEvidence(editor, { path: info.outputPath(`matrix-${theme}-conflict.png`) })
-    await editor.getByRole('button', { name: '关闭此对话框', exact: true }).click()
+    await editor.getByRole('button', { name: '关闭弹窗', exact: true }).click()
     schemes[0].version = 2
     failSave = false
     await settings.getByRole('button', { name: '刷新方案', exact: true }).click()

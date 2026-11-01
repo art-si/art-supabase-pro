@@ -5,6 +5,8 @@
 
     <ElCard class="art-card-xs">
       <ArtForm
+        show-reset
+        show-submit
         ref="formRef"
         v-model="formData"
         :items="formItems"

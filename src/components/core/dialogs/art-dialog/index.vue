@@ -93,6 +93,14 @@
         :always="options.scrollbarAlways"
         :native="options.nativeScrollbar"
         class="art-dialog__scrollbar"
+        :class="{
+          'art-scroll-viewport-inset':
+            !options.nativeScrollbar &&
+            !(
+              options.showFooter &&
+              ($slots.footer || options.showCancelButton || options.showConfirmButton)
+            )
+        }"
         @wheel.capture="handleWheelBoundary"
       >
         <div
@@ -324,10 +332,11 @@
     mergeOptions,
     getApi: () => exposedApi,
     emitConfirm: (data) => {
-      if (!props.onConfirm || options.value.onConfirm !== props.onConfirm) emit('confirm', data)
+      if (!props.onConfirm || options.value.onConfirm !== props.onConfirm)
+        emit('confirm', data, exposedApi)
     },
     emitReset: () => {
-      if (!props.onReset || options.value.onReset !== props.onReset) emit('reset')
+      if (!props.onReset || options.value.onReset !== props.onReset) emit('reset', exposedApi)
     },
     emitError: (error) => emit('error', error),
     onConfirmRejected: () => focusFirstInvalidFormField(contentRef)
@@ -545,11 +554,13 @@
   }
 
   const handleOpenedStart = () => {
-    if (!props.onOpen || options.value.onOpen !== props.onOpen) emit('open', openData.value)
+    if (!props.onOpen || options.value.onOpen !== props.onOpen)
+      emit('open', openData.value, exposedApi)
   }
   const handleOpened = () => emit('opened', openData.value)
   const handleClosedStart = () => {
-    if (!props.onClose || options.value.onClose !== props.onClose) emit('close', openData.value)
+    if (!props.onClose || options.value.onClose !== props.onClose)
+      emit('close', openData.value, exposedApi)
   }
 
   const handleClosed = () => {

@@ -109,3 +109,87 @@ test('history is bounded, redo branches are invalidated and reloading cannot ret
   })
   assert.equal(model.setCellValue(row, 'value', 10), false)
 })
+
+test('own reserved literal fields support edits, history and field or row restoration without prototype writes', () => {
+  const source = Object.fromEntries([
+    ['id', 1],
+    ['__proto__', 'original prototype value'],
+    ['constructor', 'original constructor value'],
+    ['prototype', 'original prototype field'],
+    ['hasOwnProperty', 'original method value']
+  ])
+  const model = new TableEditModel([source])
+  const row = model.rows[0]
+  const prototype = Object.getPrototypeOf(row)
+  for (const key of ['__proto__', 'constructor', 'prototype', 'hasOwnProperty']) {
+    const original: unknown = source[key]
+    const changed = { key, value: 'changed' }
+    assert.equal(model.setCellValue(row, key, changed), true)
+    assert.deepEqual(Object.getOwnPropertyDescriptor(row, key)?.value, changed)
+    assert.equal(model.isUpdateByRow(row, key), true)
+    assert.deepEqual(model.getRecordset().changes[0].fields, [key])
+    assert.equal(Object.getPrototypeOf(row), prototype)
+    model.undo()
+    assert.equal(Object.getOwnPropertyDescriptor(row, key)?.value, original)
+    assert.deepEqual(model.getRecordset().changes, [])
+    model.redo()
+    assert.deepEqual(Object.getOwnPropertyDescriptor(row, key)?.value, changed)
+    model.revertData(row, key)
+    assert.equal(Object.getOwnPropertyDescriptor(row, key)?.value, original)
+    model.undo()
+    assert.deepEqual(Object.getOwnPropertyDescriptor(row, key)?.value, changed)
+    model.revertData(row)
+    assert.deepEqual(row, source)
+    model.undo()
+    assert.deepEqual(Object.getOwnPropertyDescriptor(row, key)?.value, changed)
+    model.revertData()
+    assert.deepEqual(row, source)
+  }
+  assert.equal(Object.getPrototypeOf(row), prototype)
+  assert.equal(Object.hasOwn(Object.prototype, 'key'), false)
+  assert.equal(Object.hasOwn(Object.prototype, 'value'), false)
+  assert.deepEqual(source, {
+    id: 1,
+    ['__proto__']: 'original prototype value',
+    constructor: 'original constructor value',
+    prototype: 'original prototype field',
+    hasOwnProperty: 'original method value'
+  })
+})
+
+test('existing dangerous-looking literal paths stay literal through undo and redo while missing unsafe paths remain blocked', () => {
+  const literalKeys = ['constructor.prototype.sqlModelPollution', '__proto__.sqlModelPollution']
+  const model = new TableEditModel<Record<string, unknown>>([
+    Object.fromEntries([
+      ...literalKeys.map((key) => [key, 'literal original']),
+      ['nested', { value: 'nested original' }]
+    ])
+  ])
+  const row = model.rows[0]
+  const prototype = Object.getPrototypeOf(row)
+  for (const key of literalKeys) {
+    assert.equal(model.setCellValue(row, key, 'literal changed'), true)
+    assert.equal(Object.getOwnPropertyDescriptor(row, key)?.value, 'literal changed')
+    model.undo()
+    assert.equal(Object.getOwnPropertyDescriptor(row, key)?.value, 'literal original')
+    model.redo()
+    assert.equal(Object.getOwnPropertyDescriptor(row, key)?.value, 'literal changed')
+    model.revertData(row, key)
+    assert.equal(Object.getOwnPropertyDescriptor(row, key)?.value, 'literal original')
+  }
+  assert.equal(model.setCellValue(row, 'nested.value', 'nested changed'), true)
+  assert.deepEqual(row.nested, { value: 'nested changed' })
+  model.undo()
+  assert.deepEqual(row.nested, { value: 'nested original' })
+  for (const key of [
+    '__proto__',
+    'constructor',
+    'prototype',
+    'constructor.prototype.otherPollution',
+    'nested[__proto__].sqlModelPollution'
+  ])
+    assert.equal(model.setCellValue(row, key, true), false)
+  assert.equal(Object.getPrototypeOf(row), prototype)
+  assert.equal(Object.hasOwn(Object.prototype, 'sqlModelPollution'), false)
+  assert.equal(Object.hasOwn(Object.prototype, 'otherPollution'), false)
+})

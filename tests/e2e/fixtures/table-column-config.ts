@@ -19,20 +19,33 @@ import '@styles/index.scss'
 
 const parameters = new URLSearchParams(location.search)
 const realPage = parameters.get('real')
-const realPath =
-  realPage === 'dict'
-    ? '/data-center/dict'
-    : realPage === 'receivable'
-      ? '/fms/accounts-receivable/estimated-receivable'
-      : '/system/user'
-const realComponent =
-  realPage === 'dict'
-    ? (await import('@/views/data-center/dict/index.vue')).default
-    : realPage === 'receivable'
-      ? (await import('@fms/views/accounts-receivable/estimated-receivable/index.vue')).default
-      : realPage === 'user'
-        ? (await import('@/views/system/user/index.vue')).default
-        : undefined
+const materialPages: Record<string, string> = {
+  unit: 'unit-of-measure',
+  'material-type': 'material-type',
+  'attribute-group': 'attribute-group',
+  'code-rule': 'code-rule'
+}
+const materialPage = materialPages[realPage ?? '']
+const realPath = materialPage
+  ? `/mdm/material-master/${materialPage}`
+  : realPage === 'tenant'
+    ? '/system/tenant'
+    : realPage === 'dict'
+      ? '/data-center/dict'
+      : realPage === 'receivable'
+        ? '/fms/accounts-receivable/estimated-receivable'
+        : '/system/user'
+const realComponent = materialPage
+  ? (await import('@mdm/views/components/material-reference/index.vue')).default
+  : realPage === 'tenant'
+    ? (await import('@/views/system/tenant/index.vue')).default
+    : realPage === 'dict'
+      ? (await import('@/views/data-center/dict/index.vue')).default
+      : realPage === 'receivable'
+        ? (await import('@fms/views/accounts-receivable/estimated-receivable/index.vue')).default
+        : realPage === 'user'
+          ? (await import('@/views/system/user/index.vue')).default
+          : undefined
 const runtimeRows = parameters.has('filters')
   ? [
       { name: 'Alpha', code: 'A', amount: 0, createTime: '2026-10-23 12:00:00' },

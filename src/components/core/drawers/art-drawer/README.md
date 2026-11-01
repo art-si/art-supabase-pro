@@ -274,11 +274,13 @@ drawerRef.value?.handleOpen(order, {
 
 支持 `open`、`opened`、`close`、`closed`、`open-auto-focus`、 `close-auto-focus`、`resize-start`、`resize`、`resize-end`，并额外提供：
 
-| 事件      | 参数      | 说明             |
-| --------- | --------- | ---------------- |
-| `confirm` | 当前数据  | 开始确认         |
-| `reset`   | 无        | 重置完成         |
-| `error`   | `unknown` | 确认回调发生异常 |
+| 事件      | 参数        | 说明             |
+| --------- | ----------- | ---------------- |
+| `confirm` | `data, api` | 开始确认         |
+| `reset`   | `api`       | 重置完成         |
+| `error`   | `unknown`   | 确认回调发生异常 |
+
+`open`、`close`、`confirm` 的监听函数统一接收 `(data, api)`，`reset` 接收 `(api)`，与命令式配置的同名回调保持一致；只接收 `data` 或不接收参数的现有监听仍可使用。声明式 `@open`、`@close`、`@confirm`、`@reset` 作为默认业务回调使用，同一次流程不会再次调用同一监听；`@close` 与 `@confirm` 返回 `false` 可阻止关闭。
 
 ## ElDrawer API 透传
 
@@ -361,9 +363,9 @@ drawerRef.value?.handleOpen(data, {
 
 | 事件               | 说明                                       |
 | ------------------ | ------------------------------------------ |
-| `open`             | Drawer 打开动画开始；事件参数为当前 `data` |
+| `open`             | 打开流程；参数为当前 `data, api`           |
 | `opened`           | Drawer 打开动画结束；事件参数为当前 `data` |
-| `close`            | Drawer 关闭动画开始；事件参数为当前 `data` |
+| `close`            | 关闭流程；参数为当前 `data, api`           |
 | `closed`           | Drawer 关闭动画结束                        |
 | `open-auto-focus`  | 内容获得焦点时触发                         |
 | `close-auto-focus` | 内容失去焦点时触发                         |
@@ -376,6 +378,8 @@ drawerRef.value?.handleOpen(data, {
 ## 使用建议
 
 抽屉 Body 本身不设置内边距，默认内容间距由 `art-drawer__content` 承担，因此滚动条会贴近抽屉边缘。确需贴边展示的特殊内容可在抽屉类名上覆盖 `--art-drawer-content-padding: 0`。
+
+没有底部操作区时，正文可视窗口底部始终保留 16px 留白，滚动条轨道、滚动高度和当前位置不变。正文原有末尾 padding 与滚动定位的 scroll-padding 保证末项可见。聊天、地图或自带底部区域的贴边工作区同时设置 `--art-scroll-viewport-inset: 0px`，保留其自身布局。
 
 抽屉内容中嵌套 `ElScrollbar`、表格等独立滚动区时，内部仍可滚动的方向由内部消费；内部没有滚动空间或已到边界时，纵向滚轮会自动交给抽屉外层，避免形成滚轮陷阱。
 

@@ -30,15 +30,13 @@
       <ArtForm
         tenant-scope-mode="manual"
         ref="formRef"
-        :model-value="form"
-        @update:model-value="replaceReactiveModel(form, $event)"
+        v-model="form"
         :items="formItems"
         :rules="rules"
         :span="12"
         :gutter="20"
+        root-class="px-0! pt-0!"
         label-width="100px"
-        :show-reset="false"
-        :show-submit="false"
       />
     </div>
   </ArtDialog>
@@ -46,7 +44,6 @@
 
 <script setup lang="ts">
   import { ROLE_BUILTIN_TYPES } from '@/config/builtin-roles'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import type { FormRules } from 'element-plus'
@@ -95,11 +92,13 @@
   )
 
   const isBuiltinRegisterRole = computed(
-    () => dialogType.value === 'edit' && form.builtinType === ROLE_BUILTIN_TYPES.DEFAULT_REGISTER
+    () =>
+      dialogType.value === 'edit' && form.value.builtinType === ROLE_BUILTIN_TYPES.DEFAULT_REGISTER
   )
 
   const isSuperRole = computed(
-    () => dialogType.value === 'edit' && form.builtinType === ROLE_BUILTIN_TYPES.PLATFORM_SUPER
+    () =>
+      dialogType.value === 'edit' && form.value.builtinType === ROLE_BUILTIN_TYPES.PLATFORM_SUPER
   )
 
   const isSystemBuiltinRole = computed(() => isBuiltinRegisterRole.value || isSuperRole.value)
@@ -124,7 +123,7 @@
     createBy: undefined
   })
 
-  const form = reactive<RoleListItem>(createInitialForm())
+  const form = ref<RoleListItem>(createInitialForm())
 
   const rules = computed<FormRules>(() => ({
     tenantId: canSelectTenant.value
@@ -141,8 +140,8 @@
         validator: uniqueValidator({
           table: 'sys_role',
           field: 'role_code',
-          getExcludeId: (): string | undefined => form.id,
-          extraWhere: () => ({ tenant_id: form.tenantId }),
+          getExcludeId: (): string | undefined => form.value.id,
+          extraWhere: () => ({ tenant_id: form.value.tenantId }),
           message: '角色编码已存在'
         }),
         trigger: 'change'
@@ -156,15 +155,10 @@
 
   const formItems = computed<FormItem[]>(() => [
     {
-      label: '角色定义',
-      key: 'identitySection',
-      type: 'divider',
-      span: 24
-    },
-    {
       label: '所属租户',
       key: 'tenantId',
       type: 'select',
+      span: 24,
       hidden: !canSelectTenant.value,
       props: {
         disabled: dialogType.value === 'edit',
@@ -184,32 +178,7 @@
       props: {
         placeholder: '如：财务审核员'
       },
-      description: '建议使用能够直接体现职责范围的名称。'
-    },
-    {
-      label: '适用组织',
-      key: 'organizationId',
-      type: 'treeSelect',
-      span: 24,
-      api: fetchEnabledOrganizationTree,
-      immediate: false,
-      beforeFetch: () => ({ tenantId: form.tenantId }),
-      resultField: 'data',
-      labelField: 'organizationName',
-      valueField: 'id',
-      labelFn: (item) => `${item.organizationName}（${item.organizationCode}）`,
-      childrenField: 'children',
-      props: {
-        disabled: !form.tenantId || isSystemBuiltinRole.value,
-        clearable: true,
-        checkStrictly: true,
-        defaultExpandAll: true,
-        renderAfterExpand: false,
-        placeholder: form.tenantId ? '请选择角色主要适用组织' : '请先选择租户'
-      },
-      description: isSystemBuiltinRole.value
-        ? '系统内置角色固定归入租户根组织。'
-        : '用于组织治理与职责审计，不改变角色菜单权限的独立配置。'
+      help: '建议使用能够直接体现职责范围的名称。'
     },
     {
       label: '角色编码',
@@ -220,6 +189,43 @@
         placeholder: '如：R_FINANCE_AUDITOR'
       },
       help: '建议使用大写字母、数字与下划线，保存后应谨慎修改。'
+    },
+    {
+      label: '适用组织',
+      key: 'organizationId',
+      type: 'treeSelect',
+      span: 18,
+      api: fetchEnabledOrganizationTree,
+      immediate: false,
+      beforeFetch: () => ({ tenantId: form.value.tenantId }),
+      resultField: 'data',
+      labelField: 'organizationName',
+      valueField: 'id',
+      labelFn: (item) => `${item.organizationName}（${item.organizationCode}）`,
+      childrenField: 'children',
+      props: {
+        disabled: !form.value.tenantId || isSystemBuiltinRole.value,
+        clearable: true,
+        checkStrictly: true,
+        defaultExpandAll: true,
+        renderAfterExpand: false,
+        placeholder: form.value.tenantId ? '请选择角色主要适用组织' : '请先选择租户'
+      },
+      help: isSystemBuiltinRole.value
+        ? '系统内置角色固定归入租户根组织。'
+        : '用于组织治理与职责审计，不改变角色菜单权限的独立配置。'
+    },
+    {
+      label: '启用',
+      key: 'enabled',
+      type: 'switch',
+      props: {
+        disabled: isSystemBuiltinRole.value
+      },
+      span: 6,
+      help: isSystemBuiltinRole.value
+        ? '系统内置角色始终保持启用。'
+        : '停用后请同步检查已关联用户的访问安排。'
     },
     {
       label: '描述',
@@ -233,30 +239,12 @@
         showWordLimit: true,
         placeholder: '说明该角色的职责边界和适用成员'
       },
-      description: '清晰的职责说明有助于后续权限审计。'
-    },
-    {
-      label: '状态控制',
-      key: 'statusSection',
-      type: 'divider',
-      span: 24
-    },
-    {
-      label: '启用',
-      key: 'enabled',
-      type: 'switch',
-      props: {
-        disabled: isSystemBuiltinRole.value
-      },
-      span: 24,
-      description: isSystemBuiltinRole.value
-        ? '系统内置角色始终保持启用。'
-        : '停用后请同步检查已关联用户的访问安排。'
+      help: '清晰的职责说明有助于后续权限审计。'
     }
   ])
 
   const resetForm = async (): Promise<void> => {
-    Object.assign(form, createInitialForm())
+    Object.assign(form.value, createInitialForm())
     await nextTick()
     formRef.value?.clearValidate()
   }
@@ -277,7 +265,7 @@
         enabled,
         createBy
       } = data.roleData
-      Object.assign(form, {
+      Object.assign(form.value, {
         id,
         tenantId,
         organizationId,
@@ -292,12 +280,12 @@
     }
 
     if (!canSelectTenant.value) {
-      form.tenantId = currentTenantId.value
+      form.value.tenantId = currentTenantId.value
     }
   }
 
   const buildRolePayload = (): Omit<RoleListItem, 'id'> => {
-    const payload = { ...toRaw(form) }
+    const payload = { ...toRaw(form.value) }
     delete payload.id
     delete payload.builtinType
 
@@ -328,7 +316,7 @@
       if (dialogType.value === 'add') {
         await addRole(payload)
       } else {
-        await editRole({ ...payload, id: form.id })
+        await editRole({ ...payload, id: form.value.id })
       }
       emit('success')
       return true
@@ -345,9 +333,9 @@
   }
 
   const handleTenantChange = (): void => {
-    form.organizationId = null
+    form.value.organizationId = null
     void formRef.value?.reloadOptions('organizationId')
-    if (form.roleCode) {
+    if (form.value.roleCode) {
       void formRef.value?.validateField('roleCode')
     }
   }

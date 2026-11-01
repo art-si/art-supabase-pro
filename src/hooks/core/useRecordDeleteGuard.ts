@@ -5,6 +5,7 @@ import { createRecordReferenceNavigation } from '@/components/business/master-da
 import { ElMessage } from 'element-plus'
 import {
   fetchRecordDeleteDependencies,
+  type MasterDataDeleteResourceType,
   type RecordDeleteDependency
 } from '@/api/master-data-delete'
 import { notifyFriendlyError, useArtFeedback } from './useArtFeedback'
@@ -39,10 +40,11 @@ export function recordDeleteGuardOptions(
     resources,
     dependencyMeta,
     navigationResource: { type: context.table, queryKey: 'referencedRecordId' },
-    fetchDependencies: async () => {
+    fetchDependencies: async (resourceIds) => {
+      const resolvedContext = { ...context, ids: resourceIds }
       const [standardRows, additionalRows] = await Promise.all([
-        fetchRecordDeleteDependencies(context),
-        fetchAdditionalDependencies?.(context) ?? []
+        fetchRecordDeleteDependencies(resolvedContext),
+        fetchAdditionalDependencies?.(resolvedContext) ?? []
       ])
       const rows = [...standardRows, ...additionalRows]
       for (const row of rows) {
@@ -88,20 +90,23 @@ export function useRecordDeleteGuard(
     tableName: string,
     label: string,
     constraint?: string,
-    resolveResources?: () => Promise<MasterDataDeleteResource[]>
+    resolveResources?: () => Promise<MasterDataDeleteResource[]>,
+    resourceType?: MasterDataDeleteResourceType
   ) => {
     if (!deleteGuardRef.value) {
       ElMessage.error('关联校验尚未就绪，请刷新页面后重试删除')
       return Promise.resolve(true)
     }
     return deleteGuardRef.value.inspect({
-      ...recordDeleteGuardOptions(
-        { table: tableName, ids: resources.map((row) => row.id), constraint },
-        label,
-        resources,
-        referenceMeta,
-        fetchAdditionalDependencies
-      ),
+      ...(resourceType
+        ? { resourceType, resourceLabel: label, resources }
+        : recordDeleteGuardOptions(
+            { table: tableName, ids: resources.map((row) => row.id), constraint },
+            label,
+            resources,
+            referenceMeta,
+            fetchAdditionalDependencies
+          )),
       resolveResources
     })
   }
@@ -109,6 +114,7 @@ export function useRecordDeleteGuard(
     inspectResolvedReferences(resources, toValue(table), toValue(resourceLabel), constraint)
   const deleteRecords = async (options: {
     resources: MasterDataDeleteResource[]
+    resourceType?: MasterDataDeleteResourceType
     resourceLabel?: string
     permission: string | string[]
     remove: () => Promise<unknown>
@@ -158,7 +164,8 @@ export function useRecordDeleteGuard(
                   assertScope()
                   return resolved
                 }
-              : undefined
+              : undefined,
+            options.resourceType
           )
     try {
       if (await inspect()) return

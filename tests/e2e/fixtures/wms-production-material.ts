@@ -15,15 +15,19 @@ const requestedKind = new URLSearchParams(location.search).get('kind')
 const kind =
   requestedKind === 'finished_inbound'
     ? 'finished_inbound'
-    : requestedKind === 'return'
-      ? 'return'
-      : 'issue'
+    : requestedKind === 'finished_return'
+      ? 'finished_return'
+      : requestedKind === 'return'
+        ? 'return'
+        : 'issue'
 const pageName =
   kind === 'issue'
     ? 'WmsProductionIssue'
     : kind === 'return'
       ? 'WmsProductionReturn'
-      : 'WmsFinishedInbound'
+      : kind === 'finished_return'
+        ? 'WmsFinishedReturn'
+        : 'WmsFinishedInbound'
 const saveAndPost = new URLSearchParams(location.search).has('saveAndPost')
 const missingPermission = new URLSearchParams(location.search).get('missingPermission')
 const app = createApp({
@@ -37,14 +41,19 @@ const app = createApp({
         {
           default: () =>
             h('main', { class: 'min-w-0 p-6' }, [
-              h(
-                'button',
-                {
-                  type: 'button',
-                  onClick: () =>
-                    drawer.value?.handleOpen({ mode: 'edit', documentId: 'production-test' })
-                },
-                '测试生产单据 edit'
+              ...(['view', 'edit', 'copy', 'create'] as const).map((mode) =>
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () =>
+                      drawer.value?.handleOpen({
+                        mode,
+                        documentId: mode === 'create' ? undefined : 'production-test'
+                      })
+                  },
+                  `测试生产单据 ${mode}`
+                )
               ),
               h(ProductionDrawer, { ref: drawer, kind })
             ])

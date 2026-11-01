@@ -23,8 +23,7 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -217,7 +216,6 @@
   import { useWmsInitialObligationPush } from '@/hooks/business/useWmsInitialObligationPush'
   import PurchasePrintSheet from './modules/purchase-print-sheet.vue'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase/error'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatUnitDisplayName } from '@/utils/business/unit-display'
   import { formatCurrencyValue } from '@/utils/ui/format'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
@@ -487,7 +485,7 @@
         : `${isInitial.value ? '登记库存初始化前' : '登记日常'}的入库业务，支持供应商、项目与物料组合查询。`
   )
   const permission = computed(() => props.permissions)
-  const search = reactive({
+  const search = ref({
     status: '',
     supplier: '',
     projectName: '',
@@ -501,7 +499,7 @@
       'wms_purchase_document',
       'wms_purchase_document_line'
     ],
-    filters: { ...search },
+    filters: { ...search.value },
     selection: uniq(selectedRows.value.map((row) => row.documentNo || '已选单据')),
     filterFields: ['供应商', '客户', '项目', '物料描述', '物料编码'],
     viewSelection: async () => {
@@ -522,7 +520,7 @@
     },
     applyFilters: async (filters) => {
       if (!hasAuth(permission.value.View)) throw new Error('当前账号没有查看此页面的权限')
-      const mapping: Record<string, keyof typeof search> = {
+      const mapping: Record<string, keyof typeof search.value> = {
         供应商: 'supplier',
         客户: 'supplier',
         项目: 'projectName',
@@ -531,7 +529,7 @@
       }
       for (const [key, value] of Object.entries(filters)) {
         const field = mapping[key]
-        if (field) search[field] = value
+        if (field) search.value[field] = value
       }
       await nextTick()
       await tableRef.value?.getData()
@@ -973,7 +971,7 @@
       buttonProps: { type: 'warning', plain: true },
       exportFilename: title.value,
       exportData: async () =>
-        (await fetchRows({ ...search, current: 1, size: 500, exportAll: true })).data.map(
+        (await fetchRows({ ...search.value, current: 1, size: 500, exportAll: true })).data.map(
           (row) => ({ ...row, status: statusLabel(row.status) })
         ),
       exportColumns: [

@@ -12,6 +12,7 @@ const readOptions = {
 export interface WmsInventoryOrganizationOption {
   id: string
   tenantId: string
+  parentId?: string | null
   organizationCode: string
   organizationName: string
   organizationType: string
@@ -47,7 +48,7 @@ export async function fetchWmsInventoryOrganizationOptions(
         let request = supabase
           .from('mdm_organization')
           .select(
-            'id,tenant_id,organization_code,organization_name,organization_type,status,initialization:wms_inventory_initialization!wms_inventory_initialization_organization_id_fkey(enabled_on,is_default,initialization_closed_at)',
+            'id,tenant_id,parent_id,organization_code,organization_name,organization_type,status,initialization:wms_inventory_initialization!wms_inventory_initialization_organization_id_fkey(enabled_on,is_default,initialization_closed_at)',
             { count: 'exact' }
           )
           .eq('status', '1')

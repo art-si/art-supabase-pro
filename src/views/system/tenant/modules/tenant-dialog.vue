@@ -29,22 +29,19 @@
 
       <ArtForm
         ref="formRef"
-        :model-value="form"
-        @update:model-value="replaceReactiveModel(form, $event)"
+        v-model="form"
         :items="items"
         :rules="rules"
         :span="12"
         :gutter="20"
+        root-class="px-0! pt-0!"
         label-width="100px"
-        :show-reset="false"
-        :show-submit="false"
       />
     </div>
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import type { FormRules } from 'element-plus'
@@ -85,9 +82,9 @@
     builtinType: null
   })
 
-  const form = reactive<Tenant>(createInitialForm())
-  const isEdit = computed(() => Boolean(form.id))
-  const isSystemTenant = computed(() => Boolean(form.builtinType))
+  const form = ref<Tenant>(createInitialForm())
+  const isEdit = computed(() => Boolean(form.value.id))
+  const isSystemTenant = computed(() => Boolean(form.value.builtinType))
   const contextTitle = computed(() =>
     isEdit.value ? '核对租户身份与访问状态' : '创建新的业务隔离空间'
   )
@@ -127,7 +124,7 @@
             callback(new Error('请选择到期日期'))
             return
           }
-          if (value && form.serviceStartDate && value < form.serviceStartDate) {
+          if (value && form.value.serviceStartDate && value < form.value.serviceStartDate) {
             callback(new Error('到期日期不能早于启用日期'))
             return
           }
@@ -141,22 +138,15 @@
 
   const items = computed<FormItem[]>(() => [
     {
-      label: '租户身份',
-      key: 'identitySection',
-      type: 'divider',
-      span: 24
-    },
-    {
       label: '租户编码',
       key: 'tenantCode',
       type: 'input',
       props: {
         maxlength: 50,
-        disabled: !!form.id,
+        disabled: !!form.value.id,
         placeholder: '如：north_china_ops'
       },
-      help: '租户编码用于系统隔离与内部识别，创建后不可修改。',
-      description: form.id ? '该租户编码已锁定。' : '建议使用简短、稳定的英文编码。'
+      help: '租户编码用于系统隔离与内部识别，创建后不可修改。建议使用简短、稳定的英文编码。'
     },
     {
       label: '租户名称',
@@ -166,14 +156,9 @@
         maxlength: 100,
         placeholder: '请输入组织或业务主体名称'
       },
-      description: '名称将用于租户识别与后台管理展示。'
+      help: '名称将用于租户识别与后台管理展示。'
     },
-    {
-      label: '状态与说明',
-      key: 'statusSection',
-      type: 'divider',
-      span: 24
-    },
+
     {
       label: '启用日期',
       key: 'serviceStartDate',
@@ -183,7 +168,7 @@
         valueFormat: 'YYYY-MM-DD',
         placeholder: isSystemTenant.value ? '长期有效（可不填）' : '请选择启用日期'
       },
-      description: '早于该日期时，租户账号不能登录或访问租户数据。'
+      help: '早于该日期时，租户账号不能登录或访问租户数据。'
     },
     {
       label: '到期日期',
@@ -195,10 +180,11 @@
         placeholder: isSystemTenant.value ? '长期有效（可不填）' : '请选择到期日期',
         disabledDate: (date: Date) =>
           Boolean(
-            form.serviceStartDate && date.getTime() < new Date(form.serviceStartDate).getTime()
+            form.value.serviceStartDate &&
+            date.getTime() < new Date(form.value.serviceStartDate).getTime()
           )
       },
-      description: '到期后系统会在数据库边界阻止访问；提醒规则可在“消息提醒”中配置。'
+      help: '到期后系统会在数据库边界阻止访问；提醒规则可在“消息提醒”中配置。'
     },
     {
       label: '状态',
@@ -209,7 +195,7 @@
         disabled: isSystemTenant.value
       },
       span: 24,
-      description: isSystemTenant.value
+      help: isSystemTenant.value
         ? '系统预置租户必须保持启用。'
         : '停用前请确认租户内账号及业务安排已妥善处理。'
     },
@@ -225,15 +211,15 @@
         showWordLimit: true,
         placeholder: '补充租户用途、负责人或管理说明（选填）'
       },
-      description: '建议记录该租户的业务范围，便于后续运维识别。'
+      help: '建议记录该租户的业务范围，便于后续运维识别。'
     }
   ])
 
   const replaceForm = (nextForm: Tenant): void => {
-    Object.keys(form).forEach((key) => {
-      delete form[key as keyof Tenant]
+    Object.keys(form.value).forEach((key) => {
+      delete form.value[key as keyof Tenant]
     })
-    Object.assign(form, nextForm)
+    Object.assign(form.value, nextForm)
   }
 
   const resetForm = async (): Promise<void> => {
@@ -251,19 +237,19 @@
     }
 
     try {
-      const payload = omit(toRaw(form), [
+      const payload = omit(toRaw(form.value), [
         'createBy',
         'createTime',
         'updateBy',
         'updateTime',
         'builtinType'
       ])
-      if (form.id) {
+      if (form.value.id) {
         await editTenant(payload)
       } else {
         await addTenant(payload)
       }
-      emit('success', form.id ? 'edit' : 'add')
+      emit('success', form.value.id ? 'edit' : 'add')
       return true
     } catch (error) {
       notifyFriendlyError(error, '租户保存失败，请检查租户信息后重试', 'warning')

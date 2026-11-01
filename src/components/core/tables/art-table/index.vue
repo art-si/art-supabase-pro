@@ -55,7 +55,7 @@
       </ArtVirtualTable>
     </div>
     <ElTable v-else ref="elTableRef" v-bind="mergedTableProps">
-      <template v-for="col in visibleColumns" :key="col.prop || col.type">
+      <template v-for="col in visibleColumns" :key="columnRenderKey(col)">
         <!-- 渲染全局序号列 -->
         <ElTableColumn v-if="col.type === 'globalIndex'" v-bind="cleanColumnProps(col)">
           <template #default="{ $index }">
@@ -82,13 +82,21 @@
           v-else-if="Array.isArray(col.children) && col.children.length"
           v-bind="cleanColumnProps(col)"
         >
+          <template v-if="col.headerTooltip" #header="headerScope">
+            <component :is="renderVirtualHeader(col, headerScope.$index)" />
+          </template>
           <ElTableColumn
             v-for="child in col.children"
             :key="child.prop || child.label"
             v-bind="cleanColumnProps(child)"
           >
             <template
-              v-if="child.required || (child.useHeaderSlot && child.prop) || hasColumnFilter(child)"
+              v-if="
+                child.required ||
+                child.headerTooltip ||
+                (child.useHeaderSlot && child.prop) ||
+                hasColumnFilter(child)
+              "
               #header="headerScope"
             >
               <span class="art-table__header-label">
@@ -108,6 +116,7 @@
                 />
                 <template v-else>{{ child.label }}</template>
                 <span v-if="child.required" class="sr-only">（必填）</span>
+                <component v-if="child.headerTooltip" :is="renderHeaderTooltip(child)" />
                 <component v-if="hasColumnFilter(child)" :is="renderColumnFilter(child)" />
               </span>
             </template>
@@ -199,7 +208,12 @@
         <!-- 渲染普通列 -->
         <ElTableColumn v-else v-bind="cleanColumnProps(col)">
           <template
-            v-if="col.required || (col.useHeaderSlot && col.prop) || hasColumnFilter(col)"
+            v-if="
+              col.required ||
+              col.headerTooltip ||
+              (col.useHeaderSlot && col.prop) ||
+              hasColumnFilter(col)
+            "
             #header="headerScope"
           >
             <span class="art-table__header-label">
@@ -219,6 +233,7 @@
               />
               <template v-else>{{ col.label }}</template>
               <span v-if="col.required" class="sr-only">（必填）</span>
+              <component v-if="col.headerTooltip" :is="renderHeaderTooltip(col)" />
               <component v-if="hasColumnFilter(col)" :is="renderColumnFilter(col)" />
             </span>
           </template>
@@ -415,7 +430,11 @@
     TableEditContext
   } from '@/types/table-edit'
   import { readSlotColumns, renderSlotColumns } from '@/utils/table/slot-columns'
-  import { fitColumnHeaderControls } from '@/utils/table/column-profile'
+  import {
+    ensureTableFillColumn,
+    fitColumnHeaderControls,
+    getColumnKey
+  } from '@/utils/table/column-profile'
   import { cloneVNode, type ComponentPublicInstance } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { ElTooltip, type TableProps } from 'element-plus'
@@ -423,6 +442,8 @@
   import { useDraggable, type DraggableEvent } from 'vue-draggable-plus'
   import type { ColumnOption, TableColumnValidationContext } from '@/types'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
+  import ArtTooltip from '@/components/core/feedback/art-tooltip/index.vue'
+  import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import BusinessAttachmentRowActions from '@/components/business/business-attachment-row-actions/index.vue'
@@ -686,14 +707,22 @@
         )
       : nodes
   }
-  const visibleColumns = computed(() =>
-    filterTenantDimensionDescriptors(
+  const visibleColumns = computed(() => {
+    const columns = filterTenantDimensionDescriptors(
       configuredColumns
         .factory()
         .filter((column) => column.visible !== false && column.checked !== false),
       isPlatformScope.value
     ).map(applyEditRuleHeaders)
-  )
+    return props.fit ? ensureTableFillColumn(columns) : columns
+  })
+  // Element Plus caches grouped children; rebuild the group when its visible members change.
+  function columnRenderKey(column: ArtTableColumn): string {
+    const key = getColumnKey(column)
+    return column.children?.length
+      ? `${key}:${column.children.map(columnRenderKey).join(',')}`
+      : key
+  }
   function applyEditRuleHeaders(column: ArtTableColumn): ArtTableColumn {
     if (column.children) return { ...column, children: column.children.map(applyEditRuleHeaders) }
     const rules = column.prop ? props.editRules?.[column.prop] : undefined
@@ -735,6 +764,7 @@
       hasNativeColumns: Boolean(slots.default),
       lazy: props.lazy,
       treeChildren: props.treeProps?.children,
+      hasTreeProps: Boolean(props.treeProps),
       spanMethod: props.spanMethod,
       showSummary: props.showSummary,
       maxHeight: props.maxHeight,
@@ -748,6 +778,9 @@
   )
   const virtualConfig = computed<TableVirtualScrollConfig>(() =>
     typeof props.virtualScroll === 'object' ? props.virtualScroll : {}
+  )
+  const effectiveFlatData = computed(
+    () => renderMode.value.virtual && virtualConfig.value.flatData === true
   )
   watchPostEffect(() => {
     if (renderMode.value.virtual && virtualTableRef.value) {
@@ -817,7 +850,7 @@
       tableRows.value,
       filterableColumns.value,
       columnFilters.value,
-      props.treeProps?.children ?? 'children'
+      effectiveFlatData.value ? null : (props.treeProps?.children ?? 'children')
     )
   )
   function hasColumnFilter(column: ArtTableColumn): boolean {
@@ -1621,6 +1654,25 @@
         : value
     )
   }
+  const renderHeaderTooltip = (column: ArtTableColumn) =>
+    h(
+      ArtTooltip,
+      { content: column.headerTooltip, placement: 'top', trigger: ['hover', 'focus'] },
+      {
+        default: () =>
+          h(
+            'button',
+            {
+              type: 'button',
+              class:
+                'inline-flex size-4 shrink-0 items-center border-0 bg-transparent p-0 text-g-600',
+              'aria-label': `${column.label || '本列'}填写说明`,
+              onClick: (event: MouseEvent) => event.stopPropagation()
+            },
+            [h(ArtSvgIcon, { icon: 'ri:question-fill', class: 'size-4' })]
+          )
+      }
+    )
   const renderVirtualHeader = (column: ArtTableColumn, index: number) => {
     const scope = { column, $index: index, prop: column.prop, label: column.label }
     const content: VNodeChild =
@@ -1635,6 +1687,7 @@
         : null,
       content,
       column.required ? h('span', { class: 'sr-only' }, '（必填）') : null,
+      column.headerTooltip ? renderHeaderTooltip(column) : null,
       hasColumnFilter(column) ? renderColumnFilter(column) : null
     ])
   }
@@ -1845,6 +1898,7 @@
   const rowTreeUtils = new TreeUtils({ deepClone: false })
 
   const flattenRows = (rows: ArtTableRow[] = []): ArtTableRow[] => {
+    if (effectiveFlatData.value) return rows
     const result: ArtTableRow[] = []
     rowTreeUtils.traverse(rows, (row) => {
       result.push(row)
@@ -2008,6 +2062,7 @@
     // 删除自定义的插槽控制属性
     delete columnProps.useHeaderSlot
     delete columnProps.headerSlotName
+    delete columnProps.headerTooltip
     delete columnProps.useSlot
     delete columnProps.slotName
     delete columnProps.draggable

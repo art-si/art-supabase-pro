@@ -13,6 +13,7 @@ test.beforeEach(async ({ page }) => {
     let search = 0
     let geocode = 0
     let locations = 0
+    let deviceLocations = 0
     const active = new Set<number>()
     const report = () => {
       document.documentElement.dataset.activeMaps = String(active.size)
@@ -20,18 +21,33 @@ test.beforeEach(async ({ page }) => {
     class SdkMap {
       id = ++count
       listeners: Array<() => void> = []
-      constructor(private element: HTMLElement) {
+      constructor(
+        private element: HTMLElement,
+        options: { center?: number[] }
+      ) {
         active.add(this.id)
         report()
         document.documentElement.dataset.mapAttempts = String(count)
+        document.documentElement.dataset.initialMapCenter = JSON.stringify(options.center ?? null)
+        document.documentElement.dataset.mapCenter = JSON.stringify(options.center ?? null)
         element.textContent = '合成地址选点地图'
       }
       addControl() {}
       add() {}
       resize() {}
-      setCenter() {}
-      setZoomAndCenter() {}
+      setCenter(center: number[]) {
+        document.documentElement.dataset.mapCenter = JSON.stringify(center)
+      }
+      setZoomAndCenter(_zoom: number, center: number[]) {
+        this.setCenter(center)
+      }
       on(name: string, callback: (event: object) => void) {
+        if (name === 'dragstart' || name === 'zoomstart') {
+          const listener = () => callback({ originEvent: new Event(name) })
+          document.addEventListener(`map-${name}`, listener)
+          this.listeners.push(() => document.removeEventListener(`map-${name}`, listener))
+          return
+        }
         if (name !== 'click') return
         const listener = (event: Event) => callback({ lnglat: (event as CustomEvent).detail })
         document.addEventListener('map-click', listener)
@@ -47,9 +63,10 @@ test.beforeEach(async ({ page }) => {
     class Search {
       clear() {}
       setCity() {}
-      search(_keyword: string, callback: (status: string, result: object) => void) {
+      search(keyword: string, callback: (status: string, result: object) => void) {
         const request = ++search
         document.documentElement.dataset.poiSearches = String(search)
+        document.documentElement.dataset.poiKeyword = keyword
         document.addEventListener('poi-result', (event) => {
           const detail = (
             event as CustomEvent<{
@@ -78,9 +95,39 @@ test.beforeEach(async ({ page }) => {
         Map: SdkMap,
         Marker: class {
           setPosition() {}
+          setContent() {}
+          setzIndex() {}
         },
+        Pixel: class {},
         Scale: class {},
         ToolBar: class {},
+        Driving: class {},
+        Geolocation: class {
+          getCurrentPosition(callback: (status: string, result: object) => void) {
+            const request = ++deviceLocations
+            document.documentElement.dataset.deviceLocationRequests = String(request)
+            document.addEventListener('device-location-result', (event) => {
+              const detail = (
+                event as CustomEvent<{
+                  request: number
+                  denied?: boolean
+                  lng?: number
+                  lat?: number
+                }>
+              ).detail
+              if (detail.request !== request) return
+              callback(
+                detail.denied ? 'error' : 'complete',
+                detail.denied
+                  ? { message: 'permission denied' }
+                  : {
+                      position: { lng: detail.lng ?? 113.3, lat: detail.lat ?? 23.1 },
+                      formattedAddress: '合成设备位置，不应回填地址'
+                    }
+              )
+            })
+          }
+        },
         PlaceSearch: Search,
         AutoComplete: Search,
         DistrictSearch: class {
@@ -157,6 +204,162 @@ test('关闭地址弹窗后，晚到 SDK 不创建隐藏地图', async ({ page }
   await expect(page.locator('html')).toHaveAttribute('data-active-maps', '1')
 })
 
+test('空白地址地图以当前位置作为视野且不回填业务地址坐标', async ({ page }, info) => {
+  await page.goto('/tests/e2e/fixtures/picker-overlay-state.html?mode=address')
+  await page.getByRole('button', { name: '打开选择器', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-device-location-requests', '1')
+  await expect(page.locator('html')).toHaveAttribute('data-initial-map-center', 'null')
+  await page.evaluate(() =>
+    document.dispatchEvent(new CustomEvent('device-location-result', { detail: { request: 1 } }))
+  )
+  await expect(page.locator('html')).toHaveAttribute('data-map-center', '[113.3,23.1]')
+  await expect(page.getByLabel('已保存地址数据')).toHaveText(
+    '{"address":"","longitude":null,"latitude":null}'
+  )
+  const dialog = page.getByRole('dialog', { name: '选择地址' })
+  await expect(dialog.getByRole('button', { name: '保存地址', exact: true })).toBeDisabled()
+  await page.screenshot({ path: info.outputPath('current-location-view.png'), fullPage: true })
+})
+
+test('已保存业务坐标优先回显，不申请当前位置也不覆盖原地址', async ({ page }) => {
+  await page.goto('/tests/e2e/fixtures/picker-overlay-state.html?mode=address&seedCoordinate')
+  await page.getByRole('button', { name: '打开选择器', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-initial-map-center', '[121.5,31.2]')
+  await expect(page.locator('html')).not.toHaveAttribute('data-device-location-requests')
+  await expect(page.getByLabel('已保存地址数据')).toHaveText(
+    '{"address":"已保存的合成业务地址","longitude":121.5,"latitude":31.2}'
+  )
+})
+
+test('定位拒绝后可继续地图选点，迟到定位不能覆盖手动选点', async ({ page }) => {
+  await page.goto('/tests/e2e/fixtures/picker-overlay-state.html?mode=address')
+  await page.getByRole('button', { name: '打开选择器', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-device-location-requests', '1')
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new CustomEvent('device-location-result', { detail: { request: 1, denied: true } })
+    )
+  )
+  const dialog = page.getByRole('dialog', { name: '选择地址' })
+  await expect(dialog.locator('.art-address-map__message')).toContainText('定位权限未开启')
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await page.getByRole('button', { name: '打开选择器', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-device-location-requests', '2')
+  await page.evaluate(() =>
+    document.dispatchEvent(new CustomEvent('map-click', { detail: { lng: 118, lat: 28 } }))
+  )
+  await expect(page.locator('html')).toHaveAttribute('data-geocode-requests', '1')
+  await page.evaluate(() => {
+    document.dispatchEvent(
+      new CustomEvent('geocode-result', { detail: { request: 1, name: '合成手动选点地址' } })
+    )
+    document.dispatchEvent(
+      new CustomEvent('device-location-result', { detail: { request: 2, lng: 113, lat: 23 } })
+    )
+  })
+  await expect(page.locator('html')).toHaveAttribute('data-map-center', '[118,28]')
+  await expect(dialog.getByRole('button', { name: '保存地址', exact: true })).toBeEnabled()
+  await expect(page.getByLabel('已保存地址数据')).toHaveText(
+    '{"address":"","longitude":null,"latitude":null}'
+  )
+})
+
+test('关闭重开后旧定位和用户拖拽后的定位均不抢当前地图视野', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/tests/e2e/fixtures/picker-overlay-state.html?mode=address')
+  await page.getByRole('button', { name: '打开选择器', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-device-location-requests', '1')
+  const dialog = page.getByRole('dialog', { name: '选择地址' })
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await page.getByRole('button', { name: '打开选择器', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-device-location-requests', '2')
+  await page.evaluate(() =>
+    document.dispatchEvent(new CustomEvent('device-location-result', { detail: { request: 1 } }))
+  )
+  await page.clock.runFor(32)
+  await expect(page.locator('html')).toHaveAttribute('data-map-center', 'null')
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event('map-dragstart'))
+    document.dispatchEvent(new CustomEvent('device-location-result', { detail: { request: 2 } }))
+  })
+  await page.clock.runFor(32)
+  await expect(page.locator('html')).toHaveAttribute('data-map-center', 'null')
+  expect(errors).toEqual([])
+})
+
+test('空数据在途地图默认定位当前视野，拖拽后不受迟到定位影响', async ({ page }) => {
+  await page.goto('/tests/e2e/fixtures/tms-monitor-date-format.html?root')
+  await expect(page.locator('html')).toHaveAttribute('data-device-location-requests', '1')
+  await expect(page.locator('html')).toHaveAttribute('data-initial-map-center', 'null')
+  await page.evaluate(() =>
+    document.dispatchEvent(new CustomEvent('device-location-result', { detail: { request: 1 } }))
+  )
+  await expect(page.locator('html')).toHaveAttribute('data-map-center', '[113.3,23.1]')
+
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-device-location-requests', '1')
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event('map-dragstart'))
+    document.dispatchEvent(new CustomEvent('device-location-result', { detail: { request: 1 } }))
+  })
+  await page.clock.runFor(32)
+  await expect(page.locator('html')).toHaveAttribute('data-map-center', 'null')
+})
+
+test('卸载地址选择器后晚到定位不重建地图或产生错误', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/tests/e2e/fixtures/picker-overlay-state.html?mode=address')
+  await page.getByRole('button', { name: '打开选择器', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-device-location-requests', '1')
+  await page
+    .getByRole('button', { name: '卸载地址选择器', exact: true })
+    .evaluate((element: HTMLButtonElement) => element.click())
+  await expect(page.locator('html')).toHaveAttribute('data-active-maps', '0')
+  await page.evaluate(() =>
+    document.dispatchEvent(new CustomEvent('device-location-result', { detail: { request: 1 } }))
+  )
+  await page.clock.runFor(32)
+  await expect(page.getByRole('dialog', { name: '选择地址' })).toHaveCount(0)
+  await expect(page.locator('html')).toHaveAttribute('data-map-center', 'null')
+  expect(errors).toEqual([])
+})
+
+test('在途业务坐标到达后优先显示车辆位置，当前位置不能覆盖', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/rest/v1/rpc/tms_list_waybills_secure', (route) =>
+    route.fulfill({
+      json: {
+        records: [
+          {
+            id: 'synthetic-location-waybill',
+            waybillNo: '合成定位运单',
+            status: 'transporting',
+            currentLongitude: 120,
+            currentLatitude: 30,
+            vehicle: { id: 'synthetic-location-vehicle', plateNo: '合成车辆' }
+          }
+        ],
+        total: 1
+      }
+    })
+  )
+  await page.route('**/rest/v1/rpc/tms_list_orders_secure', (route) =>
+    route.fulfill({ json: { records: [], total: 0 } })
+  )
+  await page.goto('/tests/e2e/fixtures/tms-monitor-date-format.html?root')
+  await expect(page.locator('.vehicle-card')).toHaveCount(1)
+  await expect(page.locator('html')).toHaveAttribute('data-map-center', '[120,30]')
+  await page.evaluate(() =>
+    document.dispatchEvent(new CustomEvent('device-location-result', { detail: { request: 1 } }))
+  )
+  await page.clock.runFor(32)
+  await expect(page.locator('html')).toHaveAttribute('data-map-center', '[120,30]')
+  expect(errors).toEqual([])
+})
+
 test('重新打开后的地图不显示旧 SDK 失败反馈', async ({ page }) => {
   await page.goto('/tests/e2e/fixtures/picker-overlay-state.html?mode=address&holdSdk', {
     waitUntil: 'domcontentloaded'
@@ -217,6 +420,43 @@ test('改词和清空搜索立即隔离旧候选结果', async ({ page }) => {
   )
   await page.clock.runFor(32)
   await expect(dialog.locator('.art-address-map__poi')).toHaveCount(0)
+})
+
+test('父级v-model同一事件循环改词后自动搜索最新关键词并保存POI', async ({ page }, info) => {
+  await page.goto('/tests/e2e/fixtures/picker-overlay-state.html?mode=address', {
+    waitUntil: 'domcontentloaded'
+  })
+  await page.getByRole('button', { name: '打开选择器', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '选择地址' })
+  await expect(page.locator('html')).toHaveAttribute('data-active-maps', '1')
+  const input = dialog.getByPlaceholder('搜索地点、园区、道路、仓库名称')
+  await input.evaluate((element: HTMLInputElement) => {
+    element.value = '首次关键词'
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+    element.value = '自动搜索仓库'
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await page.clock.runFor(400)
+  await expect(page.locator('html')).toHaveAttribute('data-poi-searches', '1')
+  await expect(page.locator('html')).toHaveAttribute('data-poi-keyword', '自动搜索仓库')
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new CustomEvent('poi-result', { detail: { request: 1, name: '自动搜索仓库' } })
+    )
+  )
+  await dialog.getByRole('button', { name: /自动搜索仓库/ }).click()
+  await expect(dialog.locator('.art-address-picker-map__selected strong')).toHaveText(
+    '自动搜索仓库'
+  )
+  await page.screenshot({
+    path: info.outputPath('automatic-poi-search.png'),
+    animations: 'disabled'
+  })
+  await dialog.getByRole('button', { name: '保存地址', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(
+    page.getByPlaceholder('请输入道路、门牌号、小区、楼栋等，或点击地图选择')
+  ).toHaveValue('自动搜索仓库')
 })
 
 test('地图只保存最新选点，跨弹窗旧地理编码不能回填', async ({ page }, info) => {

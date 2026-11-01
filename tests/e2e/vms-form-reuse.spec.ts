@@ -8,6 +8,9 @@ test('供应厂商受限字段隐藏且不带入新增表单', async ({ page }) 
   await page.goto('/tests/e2e/fixtures/scrollbar-workspace.html?page=form-reuse&restricted=true')
   await page.getByRole('button', { name: '编辑供应厂商', exact: true }).click()
   const editor = page.getByRole('dialog', { name: '编辑供应厂商', exact: true })
+  await expect(editor.locator('.art-async-state[aria-busy="true"]')).toHaveCount(0, {
+    timeout: 30_000
+  })
   await expect(editor.getByRole('textbox', { name: '供应厂商名称', exact: false })).toHaveValue(
     '测试供应厂商'
   )
@@ -40,9 +43,14 @@ for (const feature of [
     await page.getByRole('button', { name: `编辑${feature.title}`, exact: true }).click()
     const editor = page.getByRole('dialog', { name: `编辑${feature.title}`, exact: true })
     await expect(editor).toBeVisible()
+    await expect(editor.locator('.art-async-state[aria-busy="true"]')).toHaveCount(0, {
+      timeout: 30_000
+    })
     await expect(editor.getByRole('textbox', { name: feature.label, exact: false })).toHaveValue(
       feature.value
     )
+    if (feature.title === '零部件')
+      await editor.getByRole('tab', { name: '供应信息', exact: true }).click()
     await expect(editor.getByRole('textbox', { name: '备注', exact: true })).toHaveValue(
       '编辑记录备注'
     )
@@ -59,9 +67,13 @@ for (const feature of [
     await expect(creator.getByRole('textbox', { name: feature.label, exact: false })).toHaveValue(
       ''
     )
-    await expect(creator.getByRole('textbox', { name: '备注', exact: true })).toHaveValue('')
     if (feature.title === '零部件')
+      await creator.getByRole('tab', { name: '供应信息', exact: true }).click()
+    await expect(creator.getByRole('textbox', { name: '备注', exact: true })).toHaveValue('')
+    if (feature.title === '零部件') {
+      await creator.getByRole('tab', { name: '基础信息', exact: true }).click()
       await expect(creator.getByText('当前租户尚未配置编号规则。', { exact: true })).toBeVisible()
+    }
     const overflow = await creator.evaluate(
       (element) => element.scrollWidth > element.clientWidth + 1
     )

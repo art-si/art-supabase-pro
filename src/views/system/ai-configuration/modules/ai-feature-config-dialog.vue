@@ -32,6 +32,7 @@
       />
 
       <ArtForm
+        v-model:active-tab="activeTab"
         ref="formRef"
         v-model="form.model"
         :items="form.items.value"
@@ -40,8 +41,6 @@
         :gutter="20"
         label-position="top"
         label-width="auto"
-        :show-reset="false"
-        :show-submit="false"
         :validate-on-rule-change="false"
       >
         <template #model>
@@ -153,6 +152,7 @@
 
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<DialogOpenData>>()
+  const activeTab = ref('')
   const formRef = ref<ArtFormExpose>()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
@@ -204,7 +204,7 @@
   const form: FormGroup = {
     model: formModel,
     items: computed<FormItem[]>(() => [
-      { label: '能力开关与模型路由', key: 'routeSection', type: 'divider', span: 24 },
+      { label: '能力开关与模型路由', key: 'routeSection', type: 'tab', span: 24 },
       {
         label: '启用能力',
         key: 'enabled',
@@ -249,7 +249,7 @@
         span: 24,
         description: '主模型暂时不可用时的备用路由；留空表示不启用。'
       },
-      { label: '生成与稳定性', key: 'generationSection', type: 'divider', span: 24 },
+      { label: '生成与配额', key: 'generationSection', type: 'tab', span: 24 },
       {
         label: '单次超时（毫秒）',
         key: 'timeoutMs',
@@ -300,7 +300,7 @@
           style: { width: '100%' }
         }
       },
-      { label: '配额与版本', key: 'governanceSection', type: 'divider', span: 24 },
+
       {
         label: '每分钟上限',
         key: 'rateLimitPerMinute',
@@ -451,6 +451,7 @@
   }
 
   async function handleOpen(data: DialogOpenData): Promise<void> {
+    activeTab.value = ''
     resetForm()
     initializeForm(data)
     await dialogRef.value?.handleOpen(data, {

@@ -32,11 +32,12 @@ for (const kind of ['issue', 'return', 'finished_inbound']) {
         json: duplicate ? [material, { ...material, id: 'duplicate-mat' }] : [material]
       })
     })
-    await page.goto(`/tests/e2e/fixtures/wms-operation-retry.html?kind=${kind}`, {
+    await page.goto(`/tests/e2e/fixtures/wms-production-material.html?kind=${kind}`, {
       waitUntil: 'domcontentloaded'
     })
-    await page.getByRole('button', { name: '测试生产单据创建', exact: true }).click()
+    await page.getByRole('button', { name: '测试生产单据 create', exact: true }).click()
     const drawer = page.locator('.el-drawer')
+    await drawer.getByRole('tab', { name: /明细$/ }).click()
     const input = drawer.locator('input[type="file"]')
     const button = drawer.getByRole('button', { name: '导入明细', exact: true })
     const save = drawer.getByRole('button', { name: '保存', exact: true })
@@ -150,7 +151,7 @@ for (const kind of ['issue', 'return', 'finished_inbound']) {
         ]
       })
     })
-    await page.goto(`/tests/e2e/fixtures/wms-operation-retry.html?kind=${kind}`, {
+    await page.goto(`/tests/e2e/fixtures/wms-production-material.html?kind=${kind}`, {
       waitUntil: 'domcontentloaded'
     })
     await page.evaluate(() => {
@@ -171,9 +172,10 @@ for (const kind of ['issue', 'return', 'finished_inbound']) {
         } else original.call(this, blob, encoding)
       }
     })
-    const trigger = page.getByRole('button', { name: '测试生产单据创建', exact: true })
+    const trigger = page.getByRole('button', { name: '测试生产单据 create', exact: true })
     await trigger.click()
     const drawer = page.locator('.el-drawer')
+    await drawer.getByRole('tab', { name: /明细$/ }).click()
     const button = drawer.getByRole('button', { name: '导入明细', exact: true })
     const save = drawer.getByRole('button', { name: '保存', exact: true })
     const input = drawer.locator('input[type="file"]')
@@ -199,6 +201,7 @@ for (const kind of ['issue', 'return', 'finished_inbound']) {
       await drawer.getByRole('button', { name: '取消', exact: true }).click()
       await expect(page.locator('.el-drawer:visible')).toHaveCount(0)
       await trigger.click()
+      await drawer.getByRole('tab', { name: /明细$/ }).click()
       await expect(button).toBeEnabled()
       await expect(save).toBeEnabled()
     }

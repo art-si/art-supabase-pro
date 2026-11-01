@@ -43,11 +43,13 @@
     />
 
     <SystemParamDialog ref="dialogRef" @success="handleSaveSuccess" />
+    <MasterDataDeleteGuard ref="deleteGuardRef" />
   </div>
 </template>
 
 <script setup lang="tsx">
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import { ElMessage } from 'element-plus'
   import { omit } from 'lodash-es'
   import type { ComputedRef, UnwrapNestedRefs } from 'vue'
@@ -82,7 +84,10 @@
 
   defineOptions({ name: 'SystemParam' })
 
-  const { confirmAction } = useArtFeedback()
+  const { deleteGuardRef, deleteRecord, deleteRecords } = useRecordDeleteGuard(
+    'sys_param',
+    '系统参数'
+  )
 
   type SystemParam = Api.SystemManage.SystemParamItem
   type SearchParams = Api.SystemManage.SystemParamSearchParams
@@ -214,22 +219,28 @@
           {
             type: 'delete',
             permission: 'System:SystemParam:Delete',
+            confirm: false,
             disabled: ({ selectedRows }) => selectedRows.every((row) => Boolean(row.builtin)),
             content: ({ selectedRows }: ArtTableQueryHeaderActionContext) => {
               const removableCount = selectedRows.filter((row) => !row.builtin).length
               return `确定删除选中的 ${removableCount} 个非内置参数吗？内置参数会被自动跳过。`
             },
             onClick: async ({ selectedRows }) => {
-              const ids = selectedRows
-                .filter((row) => !row.builtin)
-                .map((row) => String(row.id))
-                .filter(Boolean)
+              const removableRows = (selectedRows as SystemParam[]).filter(
+                (row): row is SystemParam & { id: string } =>
+                  !row.builtin && typeof row.id === 'string' && Boolean(row.id)
+              )
+              const ids = removableRows.map((row) => row.id)
               if (!ids.length) {
                 ElMessage.warning('请选择非内置参数')
                 return
               }
-              await deleteSystemParamBatch(ids)
-              await refreshAfterRemove()
+              await deleteRecords({
+                resources: removableRows.map((row) => ({ id: row.id, label: row.paramName })),
+                permission: 'System:SystemParam:Delete',
+                remove: () => deleteSystemParamBatch(ids),
+                onDeleted: refreshAfterRemove
+              })
             }
           },
           {
@@ -394,18 +405,13 @@
       return
     }
 
-    try {
-      await confirmAction(`确定删除参数“${row.paramName}”吗？删除后无法恢复。`, '删除确认', {
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-        confirmButtonType: 'danger'
-      })
-      await deleteSystemParam(row.id)
-      await refreshAfterRemove()
-    } catch {
-      // 用户取消删除，无需提示。
-    }
+    const id = row.id
+    await deleteRecord({
+      resource: { id, label: row.paramName },
+      permission: 'System:SystemParam:Delete',
+      remove: () => deleteSystemParam(id),
+      onDeleted: refreshAfterRemove
+    })
   }
 
   const handleGroupFilter = async (groupCode: string | number): Promise<void> => {

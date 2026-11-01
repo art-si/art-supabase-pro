@@ -1,6 +1,6 @@
 <template>
   <ArtDrawer ref="drawerRef" size="88%">
-    <div v-if="document" class="flex min-w-0 flex-col gap-4">
+    <div v-if="document" ref="contentRef" class="flex min-w-0 flex-col gap-4">
       <ArtEntitySummary
         icon="ri:bill-line"
         :title="document.documentNo || `新增${title}`"
@@ -49,365 +49,379 @@
           >重新加载币种</ElButton
         >
       </ElAlert>
-      <ArtSectionCard
-        title="基本信息"
-        :subtitle="
-          currency !== baseCurrency
-            ? `记账汇率表示 1 ${currency} 可折算的 ${baseCurrency} 金额；已有汇率不会自动随台账变化。`
-            : '业务日期、往来单位及税价口径；单据编号由系统生成。'
-        "
-        :loading="editable && optionLoading"
-      >
-        <template #actions>
-          <ElButton
-            v-if="editable && currency !== baseCurrency"
-            :loading="currencyLoading"
-            :disabled="optionLoading"
-            @click="loadCurrency(true)"
-            >取业务日期汇率</ElButton
+      <ElTabs v-model="activeTab" class="min-w-0">
+        <ElTabPane name="basic" label="基本信息" :lazy="false">
+          <ArtSectionCard
+            title="基本信息"
+            :subtitle="
+              currency !== baseCurrency
+                ? `记账汇率表示 1 ${currency} 可折算的 ${baseCurrency} 金额；已有汇率不会自动随台账变化。`
+                : '业务日期、往来单位及税价口径；单据编号由系统生成。'
+            "
+            :loading="editable && optionLoading"
           >
-        </template>
-        <ArtDescriptions
-          v-if="!editable"
-          :data="document"
-          :items="readOnlyHeaderItems"
-          :label-width="144"
-        />
-        <ArtForm
-          v-else
-          ref="formRef"
-          :model-value="document"
-          :items="headerItems"
-          :rules="headerRules"
-          :span="8"
-          :gutter="18"
-          label-position="top"
-          :disabled="optionLoading || currencyLoading"
-          :show-submit="false"
-          :show-reset="false"
-          @update:model-value="replaceReactiveModel(document, $event)"
-        />
-      </ArtSectionCard>
-      <ArtSectionCard
-        title="应付明细"
-        :subtitle="`共 ${document.lines.length} 行 · 立账价税合计 ${formatCurrencyValue(signedTotal, currency)}`"
-      >
-        <template #actions>
-          <ElButton
-            v-if="editable && document.sourceType === 'manual'"
-            :disabled="optionError || optionLoading"
-            @click="materialPickerRef?.open()"
-            ><ArtSvgIcon icon="ri:add-line" />选择物料</ElButton
-          >
-        </template>
-        <ArtForm
-          v-if="editable"
-          :model-value="document"
-          :items="entryItems"
-          :span="6"
-          :show-submit="false"
-          :show-reset="false"
-          @update:model-value="replaceReactiveModel(document, $event)"
-        />
-        <p v-if="editable" class="mb-3 text-xs text-g-700">
-          <span v-if="document.isCredit">红字明细按绝对值录入。</span>
-          更换单位按当前数量更新基本数量，单价不会自动折算；基本数量可核对后手工校正。
-        </p>
-        <ArtTable
-          ref="lineTableRef"
-          :data="document.lines"
-          :columns="lineColumns"
-          :pagination="false"
-          row-key="id"
-          :max-height="360"
-        >
-          <template v-for="field in numericFields" :key="field" #[field]="{ row }">
-            <ElInputNumber
-              v-if="editable && canEditNumber(field)"
-              v-model="row[field]"
-              :aria-label="numericLabels[field]"
-              :precision="
-                field === 'quantity' || field === 'baseQuantity'
-                  ? 6
-                  : field.includes('Price')
-                    ? 4
-                    : 2
-              "
-              :min="field === 'quantity' || field === 'baseQuantity' ? 0.000001 : 0"
-              :controls="false"
-              class="w-full!"
-              @change="
-                (_value: number | undefined, previous: number | undefined) =>
-                  recalculate(row, field, previous)
-              "
+            <template #actions>
+              <ElButton
+                v-if="editable && currency !== baseCurrency"
+                :loading="currencyLoading"
+                :disabled="optionLoading"
+                @click="loadCurrency(true)"
+                >取业务日期汇率</ElButton
+              >
+            </template>
+            <ArtDescriptions
+              v-if="!editable"
+              :data="document"
+              :items="readOnlyHeaderItems"
+              :label-width="144"
             />
-            <span v-else>{{ row[field] ?? '—' }}</span>
-          </template>
-          <template #taxRate="{ row }"
-            ><ElSelect
-              v-if="editable"
-              v-model="row.taxRate"
-              aria-label="税率"
-              class="w-full!"
-              @change="recalculate(row)"
-              ><ElOption
-                v-for="option in options.tax"
-                :key="option.id"
-                :value="Number(option.code)"
-                :label="`${Number(option.code)}%`" /></ElSelect
-            ><span v-else>{{ row.taxRate ?? 0 }}%</span></template
-          >
-          <template #projectName="{ row }"
-            ><ArtTableSingleSelect
-              v-if="editable"
-              :model-value="row.projectId || undefined"
-              :data="options.project"
-              :columns="pickerColumns"
-              row-key="id"
-              label-key="name"
-              description-key="code"
-              title="参选项目"
-              @update:selected-data="(rows) => selectProject(row, rows)"
-            /><span v-else>{{ row.projectName || '—' }}</span></template
-          >
-          <template #inventoryUnitId="{ row }"
-            ><ElSelect
-              v-if="editable"
-              v-model="row.inventoryUnitId"
-              aria-label="库存单位"
-              :disabled="optionLoading"
-              :loading="optionLoading"
-              class="w-full!"
-              @change="updateLineUnit(row, 'inventoryUnitId')"
-              ><ElOption
-                v-if="
-                  row.inventoryUnitId &&
-                  !options.unit?.some((unit) => unit.id === row.inventoryUnitId)
-                "
-                :value="row.inventoryUnitId"
-                :label="row.unitName || '历史库存单位不可参选，请核对'"
-                disabled /><ElOption
-                v-for="unit in options.unit"
-                :key="unit.id"
-                :value="unit.id"
-                :label="unit.name" /></ElSelect
-            ><span v-else>{{ row.unitName }}</span></template
-          >
-          <template v-for="field in referenceFields" :key="field" #[field]="{ row }">
-            <ElTreeSelect
-              v-if="editable && field === 'departmentId'"
-              v-model="row.departmentId"
-              aria-label="费用承担部门"
-              :data="organizationTree"
-              :props="{ label: 'organizationName', children: 'children' }"
-              node-key="id"
-              :disabled="optionLoading"
-              :cache-data="
-                row.departmentId
-                  ? [{ id: row.departmentId, organizationName: referenceName(row, field) }]
-                  : []
-              "
-              check-strictly
-              filterable
-              clearable
-              class="w-full!"
-            />
-            <ElSelect
-              v-else-if="editable"
-              v-model="row[field]"
-              :aria-label="referenceLabels[field]"
-              :disabled="optionLoading"
-              :loading="optionLoading"
-              :no-data-text="
-                field === 'contractId'
-                  ? '暂无可参选合同，请确认采购合同查看权限或合同数据'
-                  : '暂无数据'
-              "
-              clearable
-              filterable
-              class="w-full!"
-              @change="field === 'baseUnitId' && updateLineUnit(row, 'baseUnitId')"
-            >
-              <ElOption
-                v-if="
-                  row[field] &&
-                  !(options[referenceOptions[field]] || []).some(
-                    (option) => option.id === row[field]
-                  )
-                "
-                :value="row[field]"
-                :label="referenceName(row, field)"
-                disabled
-              />
-              <ElOption
-                v-for="option in options[referenceOptions[field]] || []"
-                :key="option.id"
-                :value="option.id"
-                :label="option.name"
-              />
-            </ElSelect>
-            <span v-else>{{ referenceName(row, field) }}</span>
-          </template>
-          <template v-for="field in sourceFields" :key="field" #[field]="{ row }">
-            <ElInput
-              v-if="editable && document.sourceType === 'manual' && !row.estimatedLineId"
-              v-model="row[field]"
-              :aria-label="field === 'sourceDocumentNo' ? '明细来源单据' : '明细源行号'"
-              maxlength="200"
-            />
-            <BusinessRecordLink
-              v-else-if="
-                !editable &&
-                field === 'sourceDocumentNo' &&
-                document.sourceType === 'manual' &&
-                row.estimatedDocumentId &&
-                hasAuth('FinanceEstimatedPayable:View')
-              "
-              :label="row[field] || '来源暂估'"
-              :title="`查看来源暂估 ${row[field]}`"
-              interactive
-              compact
-              @click="openEstimatedSource(row.estimatedDocumentId)"
-            />
-            <span v-else>{{ row[field] || '—' }}</span>
-          </template>
-          <template #discountMethod="{ row }"
-            ><ElSelect
-              v-if="editable"
-              v-model="row.discountMethod"
-              aria-label="折扣方式"
-              class="w-full!"
-              @change="recalculate(row)"
-              ><ElOption label="无" value="none" /><ElOption
-                label="折扣率(%)"
-                value="rate" /><ElOption label="单位折扣" value="unit" /></ElSelect
-            ><span v-else>{{
-              row.discountMethod === 'rate'
-                ? '折扣率'
-                : row.discountMethod === 'unit'
-                  ? '单位折扣'
-                  : '无'
-            }}</span></template
-          >
-          <template #discountValue="{ row }"
-            ><ElInputNumber
-              v-if="editable"
-              v-model="row.discountValue"
-              aria-label="单位折扣或折扣率"
-              :disabled="!row.discountMethod || row.discountMethod === 'none'"
-              :min="0"
-              :max="row.discountMethod === 'rate' ? 100 : undefined"
-              :controls="false"
-              class="w-full!"
-              @change="recalculate(row)"
-            /><span v-else>{{ row.discountValue || 0 }}</span></template
-          >
-          <template #gift="{ row }"
-            ><ElCheckbox
-              v-model="row.gift"
-              aria-label="赠品"
-              :disabled="!editable"
-              @change="recalculate(row)"
-          /></template>
-          <template #invoiceFirst="{ row }"
-            ><ElSwitch v-model="row.invoiceFirst" aria-label="先到票" :disabled="!editable"
-          /></template>
-          <template #remark="{ row }"
-            ><ElInput
-              v-if="editable"
-              v-model="row.remark"
-              aria-label="明细备注"
-              maxlength="1000"
-            /><span v-else>{{ row.remark || '—' }}</span></template
-          >
-          <template #operation="{ row }"
-            ><ArtButtonTable v-if="editable" type="delete" label="移除" @click="removeLine(row.id)"
-          /></template>
-        </ArtTable>
-      </ArtSectionCard>
-      <ArtSectionCard
-        v-if="document.kind === 'financial' && !document.isCredit"
-        title="付款计划"
-        subtitle="金额合计需与价税合计一致；按比例开启后，应付金额自动计算。"
-      >
-        <template #actions
-          ><ElButton v-if="editable" @click="addPlan"
-            ><ArtSvgIcon icon="ri:add-line" />增加付款期次</ElButton
-          ></template
-        >
-        <ElSwitch
-          v-model="document.plansByRatio"
-          :disabled="!editable"
-          active-text="按比例(%)"
-          aria-label="按比例计算付款计划"
-          @change="recalculatePlans"
-        />
-        <ArtTable
-          class="mt-3"
-          :data="document.paymentPlans || []"
-          :columns="planColumns"
-          :pagination="false"
-        >
-          <template #dueDate="{ row }"
-            ><ElDatePicker
-              v-if="editable"
-              v-model="row.dueDate"
-              type="date"
-              value-format="YYYY-MM-DD"
-              aria-label="到期日期"
-              class="w-full!"
-            /><span v-else>{{ row.dueDate }}</span></template
-          >
-          <template #ratio="{ row }"
-            ><ElInputNumber
-              v-if="editable && document.plansByRatio"
-              v-model="row.ratio"
-              :min="0"
-              :max="100"
-              :precision="6"
-              :controls="false"
-              aria-label="应付比例"
-              class="w-full!"
-              @change="recalculatePlans"
-            /><span v-else>{{ row.ratio }}%</span></template
-          >
-          <template #amount="{ row }"
-            ><ElInputNumber
-              v-if="editable && !document.plansByRatio"
-              v-model="row.amount"
-              :min="0"
-              :precision="2"
-              :controls="false"
-              aria-label="应付金额"
-              class="w-full!"
-              @change="recalculatePlans"
-            /><span v-else>{{ formatCurrencyValue(row.amount, currency) }}</span></template
-          >
-          <template #remark="{ row }"
-            ><ElInput v-if="editable" v-model="row.remark" aria-label="付款计划备注" /><span
+            <ArtForm
               v-else
-              >{{ row.remark || '—' }}</span
-            ></template
+              ref="formRef"
+              v-model="document"
+              :items="headerItems"
+              :rules="headerRules"
+              :span="8"
+              :gutter="18"
+              label-position="top"
+              :disabled="optionLoading || currencyLoading"
+            />
+          </ArtSectionCard>
+        </ElTabPane>
+        <ElTabPane name="details" label="应付明细" :lazy="false">
+          <ArtSectionCard
+            title="应付明细"
+            :subtitle="`共 ${document.lines.length} 行 · 立账价税合计 ${formatCurrencyValue(signedTotal, currency)}`"
           >
-          <template #operation="{ $index }"
-            ><ArtButtonTable
-              v-if="editable"
-              type="delete"
-              label="移除"
-              @click="document.paymentPlans?.splice($index, 1)"
-          /></template>
-        </ArtTable>
-      </ArtSectionCard>
-      <ArtSectionCard
-        title="关联信息"
-        :subtitle="
-          document.isCredit
-            ? '核对红字核销余额、冻结与会计凭证，不创建资金付款。'
-            : '来源、冲回与制证均保留在统一应付账簿。'
-        "
-      >
-        <ArtDescriptions :data="document" :items="relatedItems" :columns="3" :label-width="144" />
-      </ArtSectionCard>
+            <template #actions>
+              <ElButton
+                v-if="editable && document.sourceType === 'manual'"
+                :disabled="optionError || optionLoading"
+                @click="materialPickerRef?.open()"
+                ><ArtSvgIcon icon="ri:add-line" />选择物料</ElButton
+              >
+            </template>
+            <ArtForm v-if="editable" v-model="document" :items="entryItems" :span="6" />
+            <p v-if="editable" class="mb-3 text-xs text-g-700">
+              <span v-if="document.isCredit">红字明细按绝对值录入。</span>
+              更换单位按当前数量更新基本数量，单价不会自动折算；基本数量可核对后手工校正。
+            </p>
+            <ArtTable
+              ref="lineTableRef"
+              :data="document.lines"
+              :columns="lineColumns"
+              :pagination="false"
+              row-key="id"
+              :max-height="360"
+            >
+              <template v-for="field in numericFields" :key="field" #[field]="{ row }">
+                <ElInputNumber
+                  v-if="editable && canEditNumber(field)"
+                  v-model="row[field]"
+                  :aria-label="numericLabels[field]"
+                  :precision="
+                    field === 'quantity' || field === 'baseQuantity'
+                      ? 6
+                      : field.includes('Price')
+                        ? 4
+                        : 2
+                  "
+                  :min="field === 'quantity' || field === 'baseQuantity' ? 0.000001 : 0"
+                  :controls="false"
+                  class="w-full!"
+                  @change="
+                    (_value: number | undefined, previous: number | undefined) =>
+                      recalculate(row, field, previous)
+                  "
+                />
+                <span v-else>{{ row[field] ?? '—' }}</span>
+              </template>
+              <template #taxRate="{ row }"
+                ><ElSelect
+                  v-if="editable"
+                  v-model="row.taxRate"
+                  aria-label="税率"
+                  class="w-full!"
+                  @change="recalculate(row)"
+                  ><ElOption
+                    v-for="option in options.tax"
+                    :key="option.id"
+                    :value="Number(option.code)"
+                    :label="`${Number(option.code)}%`" /></ElSelect
+                ><span v-else>{{ row.taxRate ?? 0 }}%</span></template
+              >
+              <template #projectName="{ row }"
+                ><ArtTableSingleSelect
+                  v-if="editable"
+                  :model-value="row.projectId || undefined"
+                  :data="options.project"
+                  :columns="pickerColumns"
+                  row-key="id"
+                  label-key="name"
+                  description-key="code"
+                  title="参选项目"
+                  @update:selected-data="(rows) => selectProject(row, rows)"
+                /><span v-else>{{ row.projectName || '—' }}</span></template
+              >
+              <template #inventoryUnitId="{ row }"
+                ><ElSelect
+                  v-if="editable"
+                  v-model="row.inventoryUnitId"
+                  aria-label="库存单位"
+                  :disabled="optionLoading"
+                  :loading="optionLoading"
+                  class="w-full!"
+                  @change="updateLineUnit(row, 'inventoryUnitId')"
+                  ><ElOption
+                    v-if="
+                      row.inventoryUnitId &&
+                      !options.unit?.some((unit) => unit.id === row.inventoryUnitId)
+                    "
+                    :value="row.inventoryUnitId"
+                    :label="row.unitName || '历史库存单位不可参选，请核对'"
+                    disabled /><ElOption
+                    v-for="unit in options.unit"
+                    :key="unit.id"
+                    :value="unit.id"
+                    :label="unit.name" /></ElSelect
+                ><span v-else>{{ row.unitName }}</span></template
+              >
+              <template v-for="field in referenceFields" :key="field" #[field]="{ row }">
+                <ElTreeSelect
+                  v-if="editable && field === 'departmentId'"
+                  v-model="row.departmentId"
+                  aria-label="费用承担部门"
+                  :data="organizationTree"
+                  :props="{ label: 'organizationName', children: 'children' }"
+                  node-key="id"
+                  :disabled="optionLoading"
+                  :cache-data="
+                    row.departmentId
+                      ? [{ id: row.departmentId, organizationName: referenceName(row, field) }]
+                      : []
+                  "
+                  check-strictly
+                  filterable
+                  clearable
+                  class="w-full!"
+                />
+                <ElSelect
+                  v-else-if="editable"
+                  v-model="row[field]"
+                  :aria-label="referenceLabels[field]"
+                  :disabled="optionLoading"
+                  :loading="optionLoading"
+                  :no-data-text="
+                    field === 'contractId'
+                      ? '暂无可参选合同，请确认采购合同查看权限或合同数据'
+                      : '暂无数据'
+                  "
+                  clearable
+                  filterable
+                  class="w-full!"
+                  @change="field === 'baseUnitId' && updateLineUnit(row, 'baseUnitId')"
+                >
+                  <ElOption
+                    v-if="
+                      row[field] &&
+                      !(options[referenceOptions[field]] || []).some(
+                        (option) => option.id === row[field]
+                      )
+                    "
+                    :value="row[field]"
+                    :label="referenceName(row, field)"
+                    disabled
+                  />
+                  <ElOption
+                    v-for="option in options[referenceOptions[field]] || []"
+                    :key="option.id"
+                    :value="option.id"
+                    :label="option.name"
+                  />
+                </ElSelect>
+                <span v-else>{{ referenceName(row, field) }}</span>
+              </template>
+              <template v-for="field in sourceFields" :key="field" #[field]="{ row }">
+                <ElInput
+                  v-if="editable && document.sourceType === 'manual' && !row.estimatedLineId"
+                  v-model="row[field]"
+                  :aria-label="field === 'sourceDocumentNo' ? '明细来源单据' : '明细源行号'"
+                  maxlength="200"
+                />
+                <BusinessRecordLink
+                  v-else-if="
+                    !editable &&
+                    field === 'sourceDocumentNo' &&
+                    document.sourceType === 'manual' &&
+                    row.estimatedDocumentId &&
+                    hasAuth('FinanceEstimatedPayable:View')
+                  "
+                  :label="row[field] || '来源暂估'"
+                  :title="`查看来源暂估 ${row[field]}`"
+                  interactive
+                  compact
+                  @click="openEstimatedSource(row.estimatedDocumentId)"
+                />
+                <span v-else>{{ row[field] || '—' }}</span>
+              </template>
+              <template #discountMethod="{ row }"
+                ><ElSelect
+                  v-if="editable"
+                  v-model="row.discountMethod"
+                  aria-label="折扣方式"
+                  class="w-full!"
+                  @change="recalculate(row)"
+                  ><ElOption label="无" value="none" /><ElOption
+                    label="折扣率(%)"
+                    value="rate" /><ElOption label="单位折扣" value="unit" /></ElSelect
+                ><span v-else>{{
+                  row.discountMethod === 'rate'
+                    ? '折扣率'
+                    : row.discountMethod === 'unit'
+                      ? '单位折扣'
+                      : '无'
+                }}</span></template
+              >
+              <template #discountValue="{ row }"
+                ><ElInputNumber
+                  v-if="editable"
+                  v-model="row.discountValue"
+                  aria-label="单位折扣或折扣率"
+                  :disabled="!row.discountMethod || row.discountMethod === 'none'"
+                  :min="0"
+                  :max="row.discountMethod === 'rate' ? 100 : undefined"
+                  :controls="false"
+                  class="w-full!"
+                  @change="recalculate(row)"
+                /><span v-else>{{ row.discountValue || 0 }}</span></template
+              >
+              <template #gift="{ row }"
+                ><ElCheckbox
+                  v-model="row.gift"
+                  aria-label="赠品"
+                  :disabled="!editable"
+                  @change="recalculate(row)"
+              /></template>
+              <template #invoiceFirst="{ row }"
+                ><ElSwitch v-model="row.invoiceFirst" aria-label="先到票" :disabled="!editable"
+              /></template>
+              <template #remark="{ row }"
+                ><ElInput
+                  v-if="editable"
+                  v-model="row.remark"
+                  aria-label="明细备注"
+                  maxlength="1000"
+                /><span v-else>{{ row.remark || '—' }}</span></template
+              >
+              <template #operation="{ row }"
+                ><ArtButtonTable
+                  v-if="editable"
+                  type="delete"
+                  label="移除"
+                  @click="removeLine(row.id)"
+              /></template>
+            </ArtTable>
+          </ArtSectionCard>
+        </ElTabPane>
+        <ElTabPane
+          name="plans"
+          label="付款计划"
+          :lazy="false"
+          v-if="document.kind === 'financial' && !document.isCredit"
+        >
+          <ArtSectionCard
+            v-if="document.kind === 'financial' && !document.isCredit"
+            title="付款计划"
+            subtitle="金额合计需与价税合计一致；按比例开启后，应付金额自动计算。"
+          >
+            <template #actions
+              ><ElButton v-if="editable" @click="addPlan"
+                ><ArtSvgIcon icon="ri:add-line" />增加付款期次</ElButton
+              ></template
+            >
+            <ElSwitch
+              v-model="document.plansByRatio"
+              :disabled="!editable"
+              active-text="按比例(%)"
+              aria-label="按比例计算付款计划"
+              @change="recalculatePlans"
+            />
+            <ArtTable
+              ref="planTableRef"
+              class="mt-3"
+              :data="document.paymentPlans || []"
+              :columns="planColumns"
+              :pagination="false"
+            >
+              <template #dueDate="{ row }"
+                ><ElDatePicker
+                  v-if="editable"
+                  v-model="row.dueDate"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  aria-label="到期日期"
+                  class="w-full!"
+                /><span v-else>{{ row.dueDate }}</span></template
+              >
+              <template #ratio="{ row }"
+                ><ElInputNumber
+                  v-if="editable && document.plansByRatio"
+                  v-model="row.ratio"
+                  :min="0"
+                  :max="100"
+                  :precision="6"
+                  :controls="false"
+                  aria-label="应付比例"
+                  class="w-full!"
+                  @change="recalculatePlans"
+                /><span v-else>{{ row.ratio }}%</span></template
+              >
+              <template #amount="{ row }"
+                ><ElInputNumber
+                  v-if="editable && !document.plansByRatio"
+                  v-model="row.amount"
+                  :min="0"
+                  :precision="2"
+                  :controls="false"
+                  aria-label="应付金额"
+                  class="w-full!"
+                  @change="recalculatePlans"
+                /><span v-else>{{ formatCurrencyValue(row.amount, currency) }}</span></template
+              >
+              <template #remark="{ row }"
+                ><ElInput v-if="editable" v-model="row.remark" aria-label="付款计划备注" /><span
+                  v-else
+                  >{{ row.remark || '—' }}</span
+                ></template
+              >
+              <template #operation="{ $index }"
+                ><ArtButtonTable
+                  v-if="editable"
+                  type="delete"
+                  label="移除"
+                  @click="document.paymentPlans?.splice($index, 1)"
+              /></template>
+            </ArtTable>
+          </ArtSectionCard>
+        </ElTabPane>
+        <ElTabPane name="related" label="关联信息" :lazy="false">
+          <ArtSectionCard
+            title="关联信息"
+            :subtitle="
+              document.isCredit
+                ? '核对红字核销余额、冻结与会计凭证，不创建资金付款。'
+                : '来源、冲回与制证均保留在统一应付账簿。'
+            "
+          >
+            <ArtDescriptions
+              :data="document"
+              :items="relatedItems"
+              :columns="3"
+              :label-width="144"
+            />
+          </ArtSectionCard>
+        </ElTabPane>
+      </ElTabs>
     </div>
   </ArtDrawer>
   <ArtTableMultipleSelect
@@ -442,12 +456,12 @@
     calculatePayableLine,
     calculatePaymentPlans,
     validatePaymentPlans,
+    isValidPlanDate,
     payableStatusLabels,
     roundPayable,
     payableLiabilityAmount,
     payableDocumentForEditing
   } from '@/utils/finance/payable'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { formatCurrencyValue } from '@/utils/ui/format'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -464,6 +478,8 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
+  import { ElTabs, ElTabPane } from 'element-plus'
+  import { focusFirstInvalidFormField } from '@/utils/form/validation'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
@@ -496,8 +512,11 @@
   const captureOperation = useTenantOperationGuard(permissionMap[props.kind].View)
   const session = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
   const materialPickerRef = ref<ArtDataSelectExpose>()
+  const activeTab = ref('basic')
+  const contentRef = useTemplateRef<HTMLElement>('contentRef')
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const lineTableRef = ref<ArtTableExpose>()
+  const planTableRef = ref<ArtTableExpose<PayablePaymentPlan>>()
   const document = ref<PurchasePayableDocument>()
   const editable = ref(false)
   async function openEstimatedSource(id: string): Promise<void> {
@@ -962,9 +981,31 @@
       : [])
   ])
   const planColumns = computed<ColumnOption<PayablePaymentPlan>[]>(() => [
-    { prop: 'dueDate', label: '到期日期', width: 180, useSlot: true },
+    {
+      prop: 'dueDate',
+      label: '到期日期',
+      width: 180,
+      useSlot: true,
+      required: editable.value,
+      headerTooltip: '填写有效的付款到期日期。',
+      rules: {
+        validator: ({ value }) => typeof value === 'string' && isValidPlanDate(value),
+        message: '请填写有效的付款到期日期'
+      }
+    },
     { prop: 'ratio', label: '应付比例(%)', width: 150, useSlot: true },
-    { prop: 'amount', label: amountLabel('应付金额'), width: 160, useSlot: true },
+    {
+      prop: 'amount',
+      label: amountLabel('应付金额'),
+      width: 160,
+      useSlot: true,
+      required: editable.value,
+      headerTooltip: '每期金额不能为负，所有期次金额合计须等于单据价税合计。',
+      rules: {
+        validator: ({ value }) => typeof value === 'number' && Number.isFinite(value) && value >= 0,
+        message: '请填写有效的非负应付金额'
+      }
+    },
     { prop: 'sourceDocumentNo', label: '来源单据', minWidth: 170 },
     { prop: 'contractNo', label: '合同', minWidth: 140 },
     { prop: 'remark', label: '备注', minWidth: 160, useSlot: true },
@@ -1241,16 +1282,35 @@
     )
       return false
     try {
-      if (!(await validateArtFormForSubmit(formRef.value))) return false
+      if (!(await validateArtFormForSubmit(formRef.value))) {
+        activeTab.value = 'basic'
+        await nextTick()
+        focusFirstInvalidFormField(contentRef)
+        return false
+      }
       if (!isCurrent()) return false
       if (!document.value.lines.length) {
+        activeTab.value = 'details'
         ElMessage.warning('请至少选择一行物料明细')
         return false
       }
-      const lineValidation = await lineTableRef.value?.validate()
+      const lineValidation = await lineTableRef.value?.validate({ focus: false })
       if (!isCurrent()) return false
       if (lineValidation?.valid === false) {
+        activeTab.value = 'details'
+        await nextTick()
+        if (lineValidation.firstError)
+          await lineTableRef.value?.validateField(lineValidation.firstError.prop)
         ElMessage.warning(lineValidation.firstError?.message || '请完整填写应付明细')
+        return false
+      }
+      const planValidation = await planTableRef.value?.validate({ focus: false })
+      if (planValidation?.valid === false) {
+        activeTab.value = 'plans'
+        await nextTick()
+        if (planValidation.firstError)
+          await planTableRef.value?.validateField(planValidation.firstError.prop)
+        ElMessage.warning(planValidation.firstError?.message || '请完整填写付款计划')
         return false
       }
       const planError = validatePaymentPlans(document.value.paymentPlans || [], total.value)
@@ -1259,6 +1319,7 @@
         return false
       }
       if (planError) {
+        activeTab.value = 'plans'
         ElMessage.warning(planError)
         return false
       }
@@ -1273,6 +1334,7 @@
     }
   }
   async function open(row?: PurchasePayableDocument, edit = false): Promise<void> {
+    activeTab.value = 'basic'
     const kind = props.kind
     const scopeCurrent = captureOperation()
     const version = session.invalidate()

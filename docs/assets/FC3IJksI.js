@@ -1,0 +1,1 @@
+function e(e){return typeof e==`object`&&!!e&&!Array.isArray(e)}function t(t){return e(t)?t:{}}function n(e,t){Reflect.has(e,t);let n=Object.getOwnPropertyDescriptor(e,t);return n&&`value`in n?n.value:void 0}export{e as n,t as r,n as t};

@@ -1,7 +1,7 @@
 <template>
   <ElPopover v-model:visible="visible" placement="bottom-end" :width="320" trigger="click">
     <template #reference
-      ><ArtIconButton size="small" icon="ri:tools-line" label="编辑器工具"
+      ><ArtIconButton ref="trigger" size="small" icon="ri:tools-line" label="编辑器工具"
     /></template>
     <div class="flex flex-col gap-4">
       <div class="text-sm font-medium">编辑器工具</div>
@@ -13,18 +13,9 @@
           ><ArtSvgIcon icon="ri:code-s-slash-line" />切换注释</ElButton
         >
         <ElButton @click="run(() => emit('format'))">格式化 SQL</ElButton>
-        <ElButton @click="fileInput?.click()">导入 SQL 文件</ElButton>
-        <ElButton :disabled="!sql.trim()" @click="download">下载 SQL 文件</ElButton>
+        <ElButton :loading="importLoading" @click="chooseFile">导入 SQL 文件</ElButton>
+        <ElButton :disabled="!sql.trim()" @click="run(download)">下载 SQL 文件</ElButton>
       </div>
-      <input
-        ref="fileInput"
-        type="file"
-        accept=".sql,text/plain"
-        aria-label="选择 SQL 文件"
-        class="sr-only"
-        tabindex="-1"
-        @change="importFile"
-      />
       <div class="flex items-center justify-between gap-3"
         ><span class="text-xs text-g-700">跳转行号</span
         ><ElInputNumber
@@ -73,50 +64,139 @@
       >
     </div>
   </ElPopover>
+  <input
+    ref="fileInput"
+    type="file"
+    accept=".sql,text/plain"
+    aria-label="选择 SQL 文件"
+    hidden
+    tabindex="-1"
+    @change="importFile"
+    @cancel="cancelFileChoice"
+  />
+  <component
+    v-if="importComponent"
+    :is="importComponent"
+    ref="importDialog"
+    :scope="scope"
+    :import-sql="importSql"
+    @choose-file="chooseFile"
+    @closed="focusTrigger"
+  />
 </template>
 <script setup lang="ts">
-  import { computed, nextTick, ref } from 'vue'
+  import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
   import { ElMessage } from 'element-plus'
   import { downloadBlob } from '@/utils/file'
+  import { useLazyComponent } from '@/hooks/core/useLazyComponent'
   import type { SqlEditorView } from './use-sql-tools'
-  const props = defineProps<{ sql: string; scope: string; view: SqlEditorView }>()
+  import { SqlFileImportError, validateSqlFile } from './sql-file-import'
+  interface SqlFileImportExpose {
+    open: (file: File) => Promise<void>
+  }
+  const props = defineProps<{
+    sql: string
+    scope: string
+    view: SqlEditorView
+    importSql: (sql: string) => Promise<boolean>
+  }>()
   const emit = defineEmits<{
     replace: []
     comment: []
     format: []
     goto: [line: number]
     'update:view': [value: SqlEditorView]
-    'load-file': [sql: string]
   }>()
   const fileInput = ref<HTMLInputElement>()
+  const trigger = shallowRef<{ $el?: unknown }>()
+  const importDialog = ref<SqlFileImportExpose>()
+  const importLoading = ref(false)
+  const { component: importComponent, load: loadImport } = useLazyComponent(
+    () => import('./sql-file-import-dialog.vue')
+  )
   const visible = ref(false)
-  const run = async (action: () => void) => {
+  let revision = 0
+  let alive = true
+  let pendingChoice: { version: number; scope: string } | undefined
+  const current = (version: number, scope: string): boolean =>
+    alive && version === revision && scope === props.scope
+  const focusTrigger = (): void => {
+    if (!alive) return
+    const button = trigger.value?.$el
+    if (button instanceof HTMLButtonElement && !button.disabled) button.focus()
+  }
+  const run = async (action: () => void): Promise<void> => {
+    const version = revision
+    const scope = props.scope
+    if (!current(version, scope)) return
+    focusTrigger()
     visible.value = false
     await nextTick()
+    if (!current(version, scope)) return
     action()
   }
   const jumpLine = ref(1)
   const lineCount = computed(() => Math.max(1, props.sql.split('\n').length))
-  const changeView = (value: Partial<SqlEditorView>) =>
-    emit('update:view', { ...props.view, ...value })
+  const changeView = (value: Partial<SqlEditorView>): void => {
+    if (alive) emit('update:view', { ...props.view, ...value })
+  }
   const download = () =>
     downloadBlob(new Blob([props.sql], { type: 'text/plain;charset=utf-8' }), 'query.sql')
-  const importFile = async () => {
+  const chooseFile = (): void => {
+    if (!alive || !fileInput.value) return
+    pendingChoice = { version: ++revision, scope: props.scope }
+    importLoading.value = false
+    fileInput.value.value = ''
+    fileInput.value.click()
+  }
+  const cancelFileChoice = (): void => {
+    pendingChoice = undefined
+    if (fileInput.value) fileInput.value.value = ''
+  }
+  const importFile = async (): Promise<void> => {
     const input = fileInput.value
+    const choice = pendingChoice
+    pendingChoice = undefined
     const file = input?.files?.[0]
-    if (!file || !input) return
-    const owner = props.scope
+    if (input) input.value = ''
+    if (!file || !choice || !current(choice.version, choice.scope)) return
+    const { version, scope: owner } = choice
+    importLoading.value = true
     try {
-      if (!file.name.toLowerCase().endsWith('.sql') || file.size > 1_000_000) {
-        ElMessage.warning('请选择不超过 1 MB 的 .sql 文件')
-        return
-      }
-      const sql = await file.text()
-      if (owner === props.scope) await run(() => emit('load-file', sql.replace(/^\uFEFF/, '')))
-    } catch {
-      ElMessage.warning('SQL 文件读取失败，请检查文件后重试')
+      validateSqlFile(file.name, file.size)
+      if (!current(version, owner)) return
+      focusTrigger()
+      visible.value = false
+      await nextTick()
+      if (!current(version, owner)) return
+      await loadImport()
+      if (!current(version, owner)) return
+      await importDialog.value?.open(file)
+    } catch (cause) {
+      if (current(version, owner))
+        ElMessage.warning(
+          cause instanceof SqlFileImportError
+            ? cause.message
+            : 'SQL 文件导入组件加载失败，请重新选择文件后重试'
+        )
     } finally {
-      input.value = ''
+      if (current(version, owner)) importLoading.value = false
     }
   }
+  watch(
+    () => props.scope,
+    () => {
+      revision++
+      pendingChoice = undefined
+      visible.value = false
+      importLoading.value = false
+      if (fileInput.value) fileInput.value.value = ''
+    },
+    { flush: 'sync' }
+  )
+  onBeforeUnmount(() => {
+    alive = false
+    revision++
+    pendingChoice = undefined
+  })
 </script>

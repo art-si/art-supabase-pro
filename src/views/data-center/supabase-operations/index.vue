@@ -169,8 +169,6 @@
                     :rules="formRules"
                     :span="24"
                     label-position="top"
-                    :show-reset="false"
-                    :show-submit="false"
                     :disabled="workspace.submitting.value"
                   />
                 </div>

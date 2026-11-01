@@ -75,3 +75,21 @@ test('columns combine with AND, hidden filter conditions cannot filter data, tre
   ])
   assert.equal(tree[0].children.length, 2)
 })
+
+test('explicit flat filtering keeps JSON children intact and never treats nested values as rows', () => {
+  const rows = [
+    { name: 'parent', children: [{ id: 999, name: 'Alpha' }], hasChildren: true },
+    { name: 'Alpha', children: [{ id: 1000, name: 'JSON value' }], hasChildren: 'yes' }
+  ]
+  const columns = [{ prop: 'name', filterType: 'text' as const }]
+  const filtered = filterColumnRows(rows, columns, { name: { text: 'alpha' } }, null)
+  assert.deepEqual(filtered, [rows[1]])
+  assert.equal(filtered[0], rows[1])
+  assert.equal(filtered[0].children, rows[1].children)
+  assert.deepEqual(filtered[0].children, [{ id: 1000, name: 'JSON value' }])
+  assert.deepEqual(rows[0].children, [{ id: 999, name: 'Alpha' }])
+  assert.deepEqual(filterColumnRows(rows, columns, { name: { text: 'alpha' } }), [
+    rows[0],
+    { ...rows[1], children: [] }
+  ])
+})

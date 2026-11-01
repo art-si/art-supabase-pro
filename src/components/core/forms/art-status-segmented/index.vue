@@ -2,11 +2,10 @@
   <div class="art-status-segmented art-card-xs">
     <ElSegmented
       class="art-status-segmented__control"
-      :model-value="modelValue"
+      v-model="modelValue"
       :options="options"
       :aria-label="ariaLabel"
       block
-      @update:model-value="emit('update:modelValue', $event)"
     >
       <template #default="{ item }">
         <span class="art-status-segmented__option">
@@ -33,16 +32,13 @@
 
   withDefaults(
     defineProps<{
-      modelValue: ArtStatusSegmentedValue
       options: ArtStatusSegmentedOption[]
       ariaLabel?: string
     }>(),
     { ariaLabel: '状态快捷筛选' }
   )
 
-  const emit = defineEmits<{
-    'update:modelValue': [value: ArtStatusSegmentedValue]
-  }>()
+  const modelValue = defineModel<ArtStatusSegmentedValue>({ required: true })
 </script>
 
 <style scoped lang="scss">

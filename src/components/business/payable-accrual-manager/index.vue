@@ -97,15 +97,7 @@
       :closable="false"
       class="mb-4"
     />
-    <ArtForm
-      ref="form"
-      v-model="model"
-      :items="items"
-      :rules="rules"
-      :show-submit="false"
-      :show-reset="false"
-      label-position="top"
-    />
+    <ArtForm ref="form" v-model="model" :items="items" :rules="rules" label-position="top" />
   </ArtDialog>
   <MasterDataDeleteGuard ref="deleteGuard" />
 </template>

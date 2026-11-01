@@ -16,12 +16,9 @@
           <p class="sub-title">{{ $t('register.subTitle') }}</p>
           <ArtForm
             custom-layout
-            :show-reset="false"
-            :show-submit="false"
             form-class="mt-7.5"
             ref="formRef"
-            :model-value="formData"
-            @update:model-value="replaceReactiveModel(formData, $event)"
+            v-model="formData"
             :rules="rules"
             label-position="top"
             :key="formKey"
@@ -118,7 +115,6 @@
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtForm from '@/components/core/forms/art-form/index.vue'
   import { useI18n } from 'vue-i18n'
   import type { FormItemRule, FormRules } from 'element-plus'
@@ -169,13 +165,13 @@
       }
     })
     void loadPasswordPolicy().then(() => {
-      if (formData.password) {
+      if (formData.value.password) {
         void formRef.value?.validateField('password')
       }
     })
   })
 
-  const formData = reactive<RegisterForm>({
+  const formData = ref<RegisterForm>({
     email: '',
     password: '',
     confirmPassword: '',
@@ -194,7 +190,7 @@
       return
     }
 
-    if (formData.confirmPassword) {
+    if (formData.value.confirmPassword) {
       formRef.value?.validateField('confirmPassword')
     }
 
@@ -218,7 +214,7 @@
       return
     }
 
-    if (confirmPassword !== formData.password) {
+    if (confirmPassword !== formData.value.password) {
       callback(new Error(t('register.rule.passwordMismatch')))
       return
     }
@@ -273,8 +269,8 @@
     loading.value = true
     try {
       const params: RegisterParams = {
-        email: formData.email,
-        password: formData.password
+        email: formData.value.email,
+        password: formData.value.password
       }
       const { data } = (await registerAndLink(params)) as QueryResult<unknown>
       if (data) {

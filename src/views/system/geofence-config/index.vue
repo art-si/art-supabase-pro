@@ -82,16 +82,13 @@
 
         <ArtForm
           ref="formRef"
-          :model-value="form"
-          @update:model-value="replaceReactiveModel(form, $event)"
+          v-model="form"
           :items="formItems"
           :rules="formRules"
           :disabled="isReadOnly"
           :span="12"
           :gutter="24"
           label-position="top"
-          :show-reset="false"
-          :show-submit="false"
           class="geofence-config-page__form"
         />
       </ArtSectionCard>
@@ -230,7 +227,6 @@
 
 <script setup lang="ts">
   import { formatSensitiveCountValue } from '@/utils/ui/format'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import type { FormRules } from 'element-plus'
   import { cloneDeep, isEqual } from 'lodash-es'
@@ -291,19 +287,19 @@
   const { hasAuth } = useAuth()
   const formRef = ref<FormExpose>()
   const page = reactive<PageGroup>({ loading: false, saving: false, error: null })
-  const form = reactive<GeofenceConfig>(createInitialConfig())
+  const form = ref<GeofenceConfig>(createInitialConfig())
   const original = ref<GeofenceConfig>(createInitialConfig())
   const isReadOnly = computed(() => !hasAuth('System:GeofenceConfig:Edit'))
   const changedFieldLabels = computed(() =>
     editableFields
-      .filter(({ key }) => !isEqual(form[key], original.value[key]))
+      .filter(({ key }) => !isEqual(form.value[key], original.value[key]))
       .map(({ label }) => label)
   )
   const hasUnsavedChanges = computed(
-    () => !isEqual(createEditableSnapshot(form), createEditableSnapshot(original.value))
+    () => !isEqual(createEditableSnapshot(form.value), createEditableSnapshot(original.value))
   )
   const updateTimeText = computed(() =>
-    form.updateTime ? formatWithDayjs(form.updateTime, 'YYYY-MM-DD HH:mm') : '尚未发布'
+    form.value.updateTime ? formatWithDayjs(form.value.updateTime, 'YYYY-MM-DD HH:mm') : '尚未发布'
   )
   const changeSummary = computed(() => {
     if (!hasUnsavedChanges.value) return '电子围栏策略已同步'
@@ -324,7 +320,7 @@
     if (isReadOnly.value) return { label: '只读查看', type: 'info' as const, icon: 'ri:eye-line' }
     if (hasUnsavedChanges.value)
       return { label: '待发布', type: 'warning' as const, icon: 'ri:draft-line' }
-    if (!form.enabled)
+    if (!form.value.enabled)
       return { label: '策略已停用', type: 'warning' as const, icon: 'ri:pause-circle-line' }
     return { label: '运行中', type: 'success' as const, icon: 'ri:shield-check-line' }
   })
@@ -332,14 +328,14 @@
   const overviewCards = computed(() => [
     {
       label: '装货默认半径',
-      value: `${formatSensitiveCountValue(form.loadingRadiusM)} m`,
+      value: `${formatSensitiveCountValue(form.value.loadingRadiusM)} m`,
       description: '用于发货地址的进场识别',
       icon: 'ri:login-circle-line',
       tone: 'primary'
     },
     {
       label: '卸货默认半径',
-      value: `${formatSensitiveCountValue(form.unloadingRadiusM)} m`,
+      value: `${formatSensitiveCountValue(form.value.unloadingRadiusM)} m`,
       description: '用于收货地址的到场识别',
       icon: 'ri:logout-circle-r-line',
       tone: 'success'
@@ -347,28 +343,30 @@
     {
       label: '打卡边界',
       value:
-        form.loadingAllowOutsideCheckIn === form.unloadingAllowOutsideCheckIn
-          ? form.loadingAllowOutsideCheckIn
+        form.value.loadingAllowOutsideCheckIn === form.value.unloadingAllowOutsideCheckIn
+          ? form.value.loadingAllowOutsideCheckIn
             ? '装卸均可外打卡'
             : '装卸均需在围栏内'
           : '装卸分别控制',
       description: '围栏外提交始终保留原因与定位',
       icon: 'ri:map-pin-time-line',
       tone:
-        form.loadingAllowOutsideCheckIn || form.unloadingAllowOutsideCheckIn ? 'warning' : 'info'
+        form.value.loadingAllowOutsideCheckIn || form.value.unloadingAllowOutsideCheckIn
+          ? 'warning'
+          : 'info'
     },
     {
       label: '到场自动确认',
       value:
-        Number(form.autoConfirmLoading) + Number(form.autoConfirmUnloading) === 2
+        Number(form.value.autoConfirmLoading) + Number(form.value.autoConfirmUnloading) === 2
           ? '装卸均自动'
-          : Number(form.autoConfirmLoading) + Number(form.autoConfirmUnloading) === 1
+          : Number(form.value.autoConfirmLoading) + Number(form.value.autoConfirmUnloading) === 1
             ? '部分自动'
             : '人工确认',
       description: '业务完成动作仍按原流程确认',
       icon: 'ri:route-line',
       tone:
-        form.autoConfirmLoading || form.autoConfirmUnloading
+        form.value.autoConfirmLoading || form.value.autoConfirmUnloading
           ? ('success' as const)
           : ('primary' as const)
     }
@@ -392,7 +390,6 @@
   }
 
   const formItems = computed<FormItem[]>(() => [
-    { label: '基础策略', key: 'baseSection', type: 'divider', span: 24 },
     {
       label: '启用电子围栏',
       key: 'enabled',
@@ -417,7 +414,7 @@
       description: '建议根据园区入口、收货月台和定位漂移范围合理设置。',
       props: { min: 50, max: 50000, step: 50, controlsPosition: 'right' }
     },
-    { label: '执行规则', key: 'executionSection', type: 'divider', span: 24 },
+
     {
       label: '装货打卡要求',
       key: 'loadingAllowOutsideCheckIn',
@@ -449,7 +446,7 @@
   ])
 
   const replaceConfig = (next: GeofenceConfig): void => {
-    Object.assign(form, createInitialConfig(), cloneDeep(next))
+    Object.assign(form.value, createInitialConfig(), cloneDeep(next))
   }
 
   const loadConfig = async (): Promise<void> => {
@@ -486,7 +483,7 @@
 
     page.saving = true
     try {
-      await saveGeofenceConfig(cloneDeep(toRaw(form)))
+      await saveGeofenceConfig(cloneDeep(toRaw(form.value)))
       await loadConfig()
     } finally {
       page.saving = false

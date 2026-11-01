@@ -234,6 +234,7 @@
   import ArtMenuRight from '@/components/core/others/art-menu-right/index.vue'
   import type { MenuItemType } from '@/components/core/others/art-menu-right/index.vue'
   import { ElMessage, ElScrollbar } from 'element-plus'
+  import { isEqual } from 'lodash-es'
   import { deleteResource, fetchResourceList, renameResource } from '@/api/data-center'
   import useResourceStore from '@/store/modules/resource'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
@@ -382,9 +383,20 @@
   /**
    * 选中资源的key列表,该数据可用做直接返回
    */
-  const selectedKeys = ref<Array<string | number>>([])
+  const selectedKeys = computed<string[]>({
+    get: () => {
+      const value = modelValue.value
+      return Array.isArray(value) ? value : value ? [value] : []
+    },
+    set: (keys) => {
+      if (props.multiple) {
+        if (!isEqual(selectedKeys.value, keys)) modelValue.value = [...keys]
+      } else if (modelValue.value !== keys[0]) {
+        modelValue.value = keys[0]
+      }
+    }
+  })
 
-  const returnType = 'url'
   const selected = ref<Resource[]>([])
 
   const loading = ref(false)
@@ -565,42 +577,6 @@
       }
     }
   })
-
-  // 监听v-model变化，更新selectedKeys
-  watch(
-    () => modelValue.value,
-    (newValue) => {
-      selectedKeys.value = Array.isArray(newValue) ? newValue : newValue ? [newValue] : []
-    },
-    { deep: true, immediate: true }
-  )
-
-  // 监听selectedKeys变化，更新v-model
-  watch(
-    () => selectedKeys.value,
-    (newKeys) => {
-      const newValue = props.multiple ? [...newKeys] : newKeys[0]
-      if (props.multiple) {
-        const currentValue = Array.isArray(modelValue.value)
-          ? modelValue.value
-          : modelValue.value
-            ? [modelValue.value]
-            : []
-        const isSame =
-          currentValue.length === newKeys.length &&
-          currentValue.every((key, index) => key === newKeys[index])
-        if (!isSame) {
-          modelValue.value = newValue as string[]
-        }
-        return
-      }
-
-      if (modelValue.value !== newValue) {
-        modelValue.value = newValue as string | undefined
-      }
-    },
-    { deep: true }
-  )
 
   /**
    * 加载占位符数量
@@ -793,15 +769,14 @@
    * @param resource
    */
   function isSelected(resource: Resource) {
-    const key = resource[returnType] as string
-    return selectedKeys.value.includes(key)
+    return Boolean(resource.url && selectedKeys.value.includes(resource.url))
   }
 
   /**
    * 选中资源
    */
   function select(resource: Resource) {
-    const key = resource[returnType] as string
+    const key = resource.url
     if (!key || selectedKeys.value.includes(key)) return
 
     if (props.multiple) {
@@ -809,8 +784,8 @@
         ElMessage.warning(`最多只能选择 ${props.limit} 个资源`)
         return
       }
-      selectedKeys.value.push(key)
-      if (!selected.value.find((i) => i[returnType] === key)) {
+      selectedKeys.value = [...selectedKeys.value, key]
+      if (!selected.value.find((i) => i.url === key)) {
         selected.value.push(resource)
       }
     } else {
@@ -823,9 +798,9 @@
    * 取消选中
    */
   function unSelect(resource: Resource) {
-    const key = resource[returnType] as string
+    const key = resource.url
     selectedKeys.value = selectedKeys.value.filter((i) => i !== key)
-    selected.value = selected.value.filter((i) => i[returnType] !== key)
+    selected.value = selected.value.filter((i) => i.url !== key)
   }
 
   /**

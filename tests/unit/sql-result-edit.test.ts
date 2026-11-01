@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { reactive } from 'vue'
 import {
   resolveSqlEditSource,
   prepareSqlDraftRows,
@@ -14,6 +15,8 @@ import {
 } from '../../src/views/data-center/sql-console/modules/sql-json-text'
 import { TableEditModel } from '../../src/utils/table/edit-model'
 import { getSqlStatements, type SqlMetadataRef } from '../../src/utils/sql-workbench'
+import { createSqlResultSnapshot } from '../../src/views/data-center/sql-console/modules/result-compare'
+import type { SqlEditSource } from '../../src/views/data-center/sql-console/modules/result-edit'
 
 const table = {
   tableSchema: 'public',
@@ -33,6 +36,87 @@ const metadata: SqlMetadataRef = {
   columns: [],
   functions: []
 }
+
+test('canonical SQL drafts preserve reactive own fields and ref-shaped JSON without retaining undeclared data', async () => {
+  const payload = {
+    __v_isRef: true,
+    value: 'a database value',
+    extra: 'keep the entire JSON',
+    nested: Object.fromEntries([['hasOwnProperty', 'nested data']])
+  }
+  const first = reactive({
+    id: 1,
+    hasOwnProperty: 'literal first',
+    __v_isReactive: 'literal reactive flag',
+    payload,
+    undeclared: 'must not enter the draft'
+  })
+  const second = reactive({
+    id: 2,
+    hasOwnProperty: 'literal second',
+    __v_skip: false,
+    __v_raw: { value: 'literal raw flag' },
+    payload
+  })
+  assert.equal(typeof first.hasOwnProperty, 'function')
+  const fields = ['id', 'hasOwnProperty', '__v_isReactive', '__v_skip', '__v_raw', 'payload']
+  const snapshot = await createSqlResultSnapshot({
+    rows: [first, second],
+    columns: fields.map((name) => ({ name }))
+  })
+  const drafts = prepareSqlDraftRows(
+    snapshot.rows,
+    { mapping: {}, keys: [], reason: '仅本地编辑' },
+    (name) => ({ name, dataType: ['payload', '__v_raw'].includes(name) ? 'jsonb' : 'text' })
+  )
+  assert.equal(drafts[0].hasOwnProperty, 'literal first')
+  assert.equal(drafts[0].__v_isReactive, 'literal reactive flag')
+  assert.equal(drafts[1].hasOwnProperty, 'literal second')
+  assert.equal(drafts[1].__v_skip, false)
+  assert.equal(drafts[1].__v_raw, JSON.stringify({ value: 'literal raw flag' }))
+  assert.equal(drafts[0].payload, JSON.stringify(payload))
+  assert.equal(Object.hasOwn(drafts[0], 'undeclared'), false)
+  assert.equal(Object.hasOwn(drafts[0], '__v_skip'), false)
+})
+
+test('prototype-named literal fields produce review SQL while tenant aliases remain protected', () => {
+  const names = ['hasOwnProperty', 'constructor', '__proto__']
+  const source: SqlEditSource = {
+    table: {
+      ...table,
+      columns: [...table.columns, ...names.map((name) => ({ name, dataType: 'text' }))]
+    },
+    mapping: Object.fromEntries(['id', 'tenant_id', ...names].map((name) => [name, name])),
+    keys: ['id'],
+    reason: ''
+  }
+  const model = new TableEditModel([
+    Object.fromEntries([
+      ['id', 1],
+      ['tenant_id', 'tenant-a'],
+      ...names.map((name) => [name, `original-${name}`])
+    ])
+  ])
+  for (const name of names)
+    assert.equal(model.setCellValue(model.rows[0], name, `new-${name}`), true)
+  const script = buildSqlDraftUpdate(source, model.getRecordset(), model.rows, 'postgres')
+  assert.equal(script.reason, '')
+  for (const name of names) {
+    assert.ok(script.sql.includes(`"${name}" = E'new-${name}'`))
+    assert.ok(script.sql.includes(`"${name}" IS NOT DISTINCT FROM E'original-${name}'`))
+  }
+  assert.equal(Object.getPrototypeOf(model.rows[0]), Object.prototype)
+  assert.equal(Object.hasOwn(Object.prototype, 'polluted'), false)
+  const aliased = new TableEditModel([{ id: 1, constructor: 'tenant-a' }])
+  aliased.setCellValue(aliased.rows[0], 'constructor', 'tenant-b')
+  const blocked = buildSqlDraftUpdate(
+    { ...source, mapping: { id: 'id', constructor: 'tenant_id' } },
+    aliased.getRecordset(),
+    aliased.rows,
+    'postgres'
+  )
+  assert.match(blocked.reason, /租户字段不可修改/)
+})
 const columns = table.columns.map((column) => column.name)
 const input = {
   query: 'SELECT * FROM public.orders',

@@ -28,6 +28,7 @@
       />
 
       <ArtForm
+        v-model:active-tab="activeTab"
         tenant-scope-mode="manual"
         ref="formRef"
         v-model="formData"
@@ -36,8 +37,6 @@
         :span="12"
         :gutter="20"
         label-width="100px"
-        :show-reset="false"
-        :show-submit="false"
         :validate-on-rule-change="false"
       >
         <template #hrEmployeeId>
@@ -124,6 +123,7 @@
     validatePasswordComplexity
   } = useSystemParam()
   const dialogRef = ref<ArtDialogExpose<Partial<UserListItem> | undefined>>()
+  const activeTab = ref('')
   const formRef = ref<ArtFormExpose>()
 
   const createInitialForm = (): UserListItem => ({
@@ -212,7 +212,7 @@
     {
       label: '基本身份',
       key: 'identitySection',
-      type: 'divider',
+      type: 'tab',
       span: 24
     },
     {
@@ -295,9 +295,9 @@
       props: { placeholder: '请输入昵称', clearable: true }
     },
     {
-      label: '登录与联系',
+      label: '联系与账号属性',
       key: 'contactSection',
-      type: 'divider',
+      type: 'tab',
       span: 24
     },
     {
@@ -341,12 +341,7 @@
         showPassword: true
       }
     },
-    {
-      label: '账号属性',
-      key: 'attributeSection',
-      type: 'divider',
-      span: 24
-    },
+
     {
       label: '性别',
       key: 'userGender',
@@ -612,6 +607,7 @@
   }
 
   const handleOpen = async (row?: Partial<UserListItem>): Promise<void> => {
+    activeTab.value = ''
     await initializeForm(row)
     await dialogRef.value?.handleOpen(row, {
       title: isEdit.value ? '编辑用户' : '新增用户',

@@ -19,6 +19,28 @@ const nativeAllowed = ref(false)
 const projectAllowed = ref(false)
 const nativeCalls = ref(0)
 const projectCalls = ref(0)
+const callbackContract = new URLSearchParams(location.search).has('callback-contract')
+const callbackCounts = ref({ open: 0, confirm: 0, close: 0, reset: 0 })
+const callbackApiValid = ref(true)
+type OverlayApi = ArtDialogExpose | ArtDrawerExpose
+const recordCallback = (phase: keyof typeof callbackCounts.value, api: OverlayApi) => {
+  callbackCounts.value[phase]++
+  callbackApiValid.value &&= typeof api.handleOpen === 'function' && api.getData() !== undefined
+}
+const callbackProps = callbackContract
+  ? {
+      onOpen: (_data: unknown, api: OverlayApi) => recordCallback('open', api),
+      onConfirm: (_data: unknown, api: OverlayApi) => {
+        recordCallback('confirm', api)
+        return false
+      },
+      onClose: (_data: unknown, api: OverlayApi) => {
+        recordCallback('close', api)
+        return projectAllowed.value
+      },
+      onReset: (api: OverlayApi) => recordCallback('reset', api)
+    }
+  : {}
 const nativeScrollbar = new URLSearchParams(location.search).has('native-scrollbar')
 const modal = !new URLSearchParams(location.search).has('no-modal')
 const preserveContent = new URLSearchParams(location.search).has('preserve-content')
@@ -71,12 +93,24 @@ const app = createApp({
       ),
       h(
         'button',
-        { onClick: () => dialog.value?.handleOpen({}, { title: '关闭检查弹窗', onClose }) },
+        {
+          onClick: () =>
+            dialog.value?.handleOpen(
+              {},
+              { title: '关闭检查弹窗', ...(callbackContract ? {} : { onClose }) }
+            )
+        },
         '打开弹窗'
       ),
       h(
         'button',
-        { onClick: () => drawer.value?.handleOpen({}, { title: '关闭检查抽屉', onClose }) },
+        {
+          onClick: () =>
+            drawer.value?.handleOpen(
+              {},
+              { title: '关闭检查抽屉', ...(callbackContract ? {} : { onClose }) }
+            )
+        },
         '打开抽屉'
       ),
       h(
@@ -102,6 +136,8 @@ const app = createApp({
         { 'data-testid': 'close-counts' },
         JSON.stringify({ native: nativeCalls.value, project: projectCalls.value })
       ),
+      h('output', { 'data-testid': 'callback-counts' }, JSON.stringify(callbackCounts.value)),
+      h('output', { 'data-testid': 'callback-api-valid' }, String(callbackApiValid.value)),
       h(
         'button',
         {
@@ -115,6 +151,7 @@ const app = createApp({
         ArtDialog,
         {
           ref: dialog,
+          ...callbackProps,
           ...nativeStyles,
           class: attributesChanged.value
             ? 'updated-overlay-attributes'
@@ -136,6 +173,9 @@ const app = createApp({
         {
           default: () => [
             h('p', '测试草稿保持完整'),
+            ...(callbackContract
+              ? [h('button', { onClick: () => dialog.value?.handleReset() }, '重置回调检查')]
+              : []),
             h(
               'button',
               {
@@ -153,6 +193,7 @@ const app = createApp({
         ArtDrawer,
         {
           ref: drawer,
+          ...callbackProps,
           ...nativeStyles,
           class: attributesChanged.value
             ? 'updated-overlay-attributes'
@@ -173,6 +214,9 @@ const app = createApp({
         {
           default: () => [
             h('p', '测试草稿保持完整'),
+            ...(callbackContract
+              ? [h('button', { onClick: () => drawer.value?.handleReset() }, '重置回调检查')]
+              : []),
             h(
               'button',
               {

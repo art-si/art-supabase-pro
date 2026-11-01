@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n,nr as r}from"./1wCw6UuY.js";import{t as i}from"./Qs9aPqT-.js";import{r as a}from"./CeQAo5Sp.js";var o=n({name:`WmsOtherInbound`,__name:`index`,setup(n){let o=a;return(n,a)=>(t(),e(i,{kind:`other_inbound`,permissions:r(o)},null,8,[`permissions`]))}});export{o as default};

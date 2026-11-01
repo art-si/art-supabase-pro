@@ -49,7 +49,8 @@ const rows = Array.from({ length: 125 }, (_, index) => ({
 async function prepare(
   page: Page,
   project: string,
-  query = 'SELECT * FROM public.orders LIMIT 200;'
+  query = 'SELECT * FROM public.orders LIMIT 200;',
+  resultRows: Record<string, unknown>[] = rows
 ) {
   page.setDefaultTimeout(12000)
   page.setDefaultNavigationTimeout(60000)
@@ -75,13 +76,13 @@ async function prepare(
     return route.fulfill({
       json: {
         status: 'ok',
-        rows,
+        rows: resultRows,
         columns: columnMetadata.map((column) => ({
           name: column.name,
           type: column.dataType,
           nullable: column.isNullable
         })),
-        rowCount: 125,
+        rowCount: resultRows.length,
         durationMs: 3,
         commandTag: 'SELECT'
       }
@@ -98,6 +99,53 @@ async function prepare(
   await expect(page.locator('.result-table-container')).toBeVisible()
   return { executions: () => executions }
 }
+
+test('loaded-result search resets pagination, preserves original JSON precision and clears before editing', async ({
+  page
+}, info) => {
+  test.setTimeout(150000)
+  const preciseJson = '{"large":12345678901234567890,"decimal":0.1234567890123456789}'
+  const calls = await prepare(page, info.project.name, undefined, [
+    ...rows,
+    { ...rows[0], id: 126, status: 'json-exact', payload: preciseJson }
+  ])
+  const grid = page.locator('.result-table-container')
+  const search = grid.getByRole('textbox', { name: '搜索已加载结果', exact: true })
+  await grid.locator('.el-pagination .btn-next').click()
+  await expect(grid).toContainText('row-051')
+  await search.fill('ROW-125')
+  await expect(grid).toContainText('匹配 1 行（导出全部已加载行）')
+  await expect(grid).toContainText('row-125')
+  await expect(grid.locator('.el-pagination .el-pager .is-active')).toHaveText('1')
+  await expect(grid.locator('.el-pagination .btn-next')).toBeDisabled()
+  await search.fill('no-such-loaded-result')
+  await expect(grid).toContainText('未找到匹配结果，请更换关键字或清空搜索')
+  await page.screenshot({ path: info.outputPath('result-search-empty.png') })
+  await search.fill('0.1234567890123456789')
+  await expect(grid).toContainText('json-exact')
+  await grid.getByRole('button', { name: '查看 payload 内容', exact: true }).click()
+  const detail = page.getByRole('dialog', { name: '单元格详情', exact: true })
+  await expect(detail.locator('code')).toContainText('12345678901234567890')
+  await expect(detail.locator('code')).toContainText('0.1234567890123456789')
+  await page.screenshot({ path: info.outputPath('result-json-exact-detail.png') })
+  await detail.getByRole('button', { name: '关闭', exact: true }).last().click()
+  await expect(detail).toHaveCount(0)
+  await search.press('Escape')
+  await expect(search).toHaveValue('')
+  await expect(grid).toContainText('row-001')
+  await expect(grid.locator('.el-pagination')).toContainText('126')
+  await search.fill('row-125')
+  await grid.getByRole('button', { name: '编辑副本', exact: true }).click()
+  await expect(search).toHaveCount(0)
+  await expect(grid).toContainText('row-001')
+  await expect(grid.locator('.el-pagination')).toContainText('126')
+  await grid.getByRole('button', { name: '退出编辑', exact: true }).click()
+  await expect(search).toHaveValue('')
+  expect(calls.executions()).toBe(1)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true
+  )
+})
 
 test('loaded results paginate locally and cross-page edits survive undo, preview, export and cancelled navigation', async ({
   page
@@ -401,7 +449,10 @@ test('typed cell popovers preserve JSON precision, use header arrow icons and sa
   const time = picker.locator('.el-date-picker__time-header input').nth(1)
   await time.fill('09:15:23')
   await time.press('Enter')
-  await picker.getByRole('button', { name: '确定', exact: true }).click()
+  await picker
+    .locator('.el-picker-panel__footer')
+    .getByRole('button', { name: '确定', exact: true })
+    .click()
   await expect(raw).toHaveValue(/2026-10-15T09:15:23/)
   await expect(dateDialog.getByRole('button', { name: '保留修改', exact: true })).toBeEnabled()
   await page.screenshot({ path: info.outputPath('picked-datetime-editor.png') })

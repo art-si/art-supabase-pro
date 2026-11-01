@@ -10,6 +10,7 @@ export {
 } from './attachment'
 import { createTenantScopeReadGuard } from '../tenant-scope-context'
 import { ElMessage } from 'element-plus'
+import { uniq } from 'lodash-es'
 import { openFilePreview, type FilePreviewTarget } from '@/hooks/core/useFilePreview'
 
 export type ExcelCellValue = string | number | boolean | null | undefined | Date
@@ -32,6 +33,7 @@ export interface ExportExcelOptions<TRecord extends object = ExcelRecord> {
   autoIndex?: boolean
   indexColumnTitle?: string
   maxRows?: number
+  allowEmpty?: boolean
   filenameSuffix?: 'date' | 'datetime' | false
   workbookProperties?: ExcelWorkbookProperties
   onProgress?: (progress: number) => void
@@ -54,12 +56,10 @@ const formatExcelCellValue = (value: unknown): string => {
 
 const calculateExcelColumnWidths = (
   rows: Record<string, string>[],
-  columns: Array<Pick<ExcelColumn<object>, 'title' | 'width'>>
+  columns: Array<Pick<ExcelColumn<object>, 'title' | 'width'>>,
+  titles: string[]
 ): ColInfo[] => {
-  if (!rows.length) return []
-
   const sampleSize = Math.min(rows.length, 100)
-  const titles = Object.keys(rows[0])
 
   return titles.map((title) => {
     const configuredWidth = columns.find((column) => column.title === title)?.width
@@ -79,19 +79,19 @@ export const buildExcelRows = <TRecord extends object>(
   options: Pick<ExportExcelOptions<TRecord>, 'autoIndex' | 'indexColumnTitle'> = {}
 ): Record<string, string>[] => {
   return data.map((row, index) => {
-    const output: Record<string, string> = {}
+    const entries: Array<[string, string]> = []
 
     if (options.autoIndex) {
-      output[options.indexColumnTitle || '序号'] = String(index + 1)
+      entries.push([options.indexColumnTitle || '序号', String(index + 1)])
     }
 
     columns.forEach((column) => {
       const value = Reflect.get(row, String(column.key))
       const formattedValue = column.formatter ? column.formatter(value, row, index) : value
-      output[column.title] = formatExcelCellValue(formattedValue)
+      entries.push([column.title, formatExcelCellValue(formattedValue)])
     })
 
-    return output
+    return Object.fromEntries(entries)
   })
 }
 
@@ -117,13 +117,14 @@ export const exportExcel = async <TRecord extends object>(
     autoIndex = false,
     indexColumnTitle = '序号',
     maxRows = 100000,
+    allowEmpty = false,
     filenameSuffix = 'date',
     workbookProperties = {},
     onProgress,
     assertCanDownload
   } = options
 
-  if (!Array.isArray(data) || !data.length) {
+  if (!Array.isArray(data) || (!data.length && !allowEmpty)) {
     throw new Error('没有可导出的数据')
   }
   if (!Array.isArray(columns) || !columns.length) {
@@ -138,14 +139,18 @@ export const exportExcel = async <TRecord extends object>(
 
   const assertTenantScope = createTenantScopeReadGuard()
   const rows = buildExcelRows(data, columns, { autoIndex, indexColumnTitle })
-  const columnWidths = calculateExcelColumnWidths(rows, columns)
+  const headers = uniq([
+    ...(autoIndex ? [indexColumnTitle || '序号'] : []),
+    ...columns.map((column) => column.title)
+  ])
+  const columnWidths = calculateExcelColumnWidths(rows, columns, headers)
   onProgress?.(10)
   const [{ default: FileSaver }, XLSX] = await Promise.all([
     import('file-saver'),
     import('./sheetjs')
   ])
   onProgress?.(30)
-  const worksheet = XLSX.utils.json_to_sheet(rows)
+  const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers })
   worksheet['!cols'] = columnWidths
   onProgress?.(50)
 
@@ -185,26 +190,10 @@ export const exportExcel = async <TRecord extends object>(
 export async function importExcelFile(file: File): Promise<Array<Record<string, unknown>>> {
   const XLSX = await import('./sheetjs')
   const isCsv = file.name.toLowerCase().endsWith('.csv')
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onload = (event) => {
-      try {
-        const data = event.target?.result
-        const workbook = XLSX.read(data, { type: isCsv ? 'string' : 'array' })
-        const firstSheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[firstSheetName]
-        const rows = XLSX.utils.sheet_to_json(worksheet)
-        resolve(rows as Array<Record<string, unknown>>)
-      } catch (error) {
-        reject(error)
-      }
-    }
-
-    reader.onerror = (error) => reject(error)
-    if (isCsv) reader.readAsText(file, 'UTF-8')
-    else reader.readAsArrayBuffer(file)
-  })
+  const data = isCsv ? await file.text() : await file.arrayBuffer()
+  const workbook = XLSX.read(data, { type: isCsv ? 'string' : 'array' })
+  const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+  return XLSX.utils.sheet_to_json(worksheet) as Array<Record<string, unknown>>
 }
 
 export const mapExcelRowsToRecords = <TRecord extends ExcelRecord>(

@@ -76,8 +76,6 @@
         v-model="form"
         :items="formItems"
         :rules="formRules"
-        :show-reset="false"
-        :show-submit="false"
         label-position="top"
       />
       <div :class="['workflow-action__notice', { 'is-danger': state.action === 'reject' }]">

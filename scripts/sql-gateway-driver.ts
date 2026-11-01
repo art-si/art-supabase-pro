@@ -4,6 +4,7 @@ import sqlParser from 'node-sql-parser'
 import { mapKeys, uniqBy } from 'lodash-es'
 import { withDmDatabase, inspectDmCatalog } from './sql-gateway-dm'
 import { getSqlStatements } from '../src/utils/sql-workbench'
+import { SqlQueryCancellation } from './sql-gateway-cancellation'
 import type {
   SqlConnection,
   SqlConnectionMetadata,
@@ -79,6 +80,12 @@ export function validateGatewayQuery(value: unknown): SqlGatewayQuery {
   )
     throw new Error('查询设置无效：最多返回 1000 行，超时为 1 至 30 秒')
   if (
+    row.requestId !== undefined &&
+    (typeof row.requestId !== 'string' ||
+      !/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i.test(row.requestId))
+  )
+    throw new Error('查询请求编号无效，请重新执行')
+  if (
     row.schema !== undefined &&
     (typeof row.schema !== 'string' ||
       !row.schema.trim() ||
@@ -91,6 +98,7 @@ export function validateGatewayQuery(value: unknown): SqlGatewayQuery {
     action: row.action,
     maxRows: row.maxRows,
     timeoutMs: row.timeoutMs,
+    ...(typeof row.requestId === 'string' ? { requestId: row.requestId } : {}),
     ...(typeof row.schema === 'string' ? { schema: row.schema } : {})
   }
 }
@@ -99,11 +107,13 @@ export async function withSqlDatabase<T>(
   connection: SqlConnection,
   password: string,
   timeoutMs: number,
-  use: (query: SqlDatabaseQuery) => Promise<T>
+  use: (query: SqlDatabaseQuery) => Promise<T>,
+  cancellation?: SqlQueryCancellation
 ): Promise<T> {
+  cancellation?.throwIfRequested()
   if (connection.dialect === 'dm') return withDmDatabase(connection, password, timeoutMs, use)
   if (connection.dialect === 'postgres') {
-    const sql = postgres({
+    const postgresOptions = {
       host: connection.host,
       port: connection.port,
       database: connection.database,
@@ -120,24 +130,52 @@ export async function withSqlDatabase<T>(
         default_transaction_read_only: true
       },
       onnotice: () => undefined
-    })
+    } satisfies postgres.Options<Record<string, postgres.PostgresType>>
+    const sql = postgres(postgresOptions)
+    let closing: Promise<void> | undefined
+    const close = () =>
+      (closing ||= cancellation
+        ? cancellation.close(() => sql.end({ timeout: 0 }))
+        : sql.end({ timeout: 0 }))
     const timer = setTimeout(() => {
-      void sql.end({ timeout: 0 })
+      // The finally path awaits the same promise and reports a close failure.
+      void close().catch(() => undefined)
     }, timeoutMs + 1000)
     try {
-      const result = await sql.begin('read only', async (transaction) => ({
-        value: await use(async (query, parameters = []) => {
-          const result = await transaction.unsafe(query, parameters)
-          return { rows: Array.from(result), columns: result.columns.map((column) => column.name) }
-        })
-      }))
+      const result = await sql.begin('read only', async (transaction) => {
+        cancellation?.throwIfRequested()
+        const pid = cancellation
+          ? Number((await transaction`SELECT pg_backend_pid() AS pid`)[0].pid)
+          : 0
+        return {
+          value: await use(async (query, parameters = []) => {
+            const result = cancellation
+              ? await cancellation.run(
+                  () => Promise.resolve(transaction.unsafe(query, parameters)),
+                  async () => {
+                    const control = postgres(postgresOptions)
+                    try {
+                      await control`SELECT pg_cancel_backend(${pid})`
+                    } finally {
+                      await control.end({ timeout: 0 })
+                    }
+                  }
+                )
+              : await transaction.unsafe(query, parameters)
+            return {
+              rows: Array.from(result),
+              columns: result.columns.map((column) => column.name)
+            }
+          })
+        }
+      })
       return result.value
     } finally {
       clearTimeout(timer)
-      await sql.end({ timeout: 0 })
+      await close()
     }
   }
-  const db = await mysql.createConnection({
+  const mysqlOptions = {
     host: connection.host,
     port: connection.port,
     database: connection.database,
@@ -151,27 +189,54 @@ export async function withSqlDatabase<T>(
     dateStrings: true,
     // SELECT INTO LOCAL INFILE is never supported by this workbench.
     flags: ['-LOCAL_FILES']
-  })
-  const timer = setTimeout(() => db.destroy(), timeoutMs)
+  }
+  const db = await mysql.createConnection(mysqlOptions)
+  let closing: Promise<void> | undefined
+  const close = () =>
+    (closing ||= cancellation
+      ? cancellation.close(() => db.destroy())
+      : Promise.resolve(db.destroy()))
+  const timer = setTimeout(() => {
+    // The finally path awaits the same promise and reports a close failure.
+    void close().catch(() => undefined)
+  }, timeoutMs)
   try {
+    cancellation?.throwIfRequested()
     await db.query(`SET SESSION MAX_EXECUTION_TIME = ${timeoutMs}`)
     await db.query('SET TRANSACTION READ ONLY')
     await db.query('START TRANSACTION READ ONLY')
     return await use(async (query, parameters = []) => {
-      const [rows, fields] = await db.query(query, parameters)
+      const [rows, fields] = cancellation
+        ? await cancellation.run(
+            () => db.query(query, parameters),
+            async () => {
+              const control = await mysql.createConnection(mysqlOptions)
+              try {
+                // The original session remains open until this operation finishes.
+                // This account may terminate its own statements without global privileges.
+                if (!Number.isSafeInteger(db.threadId) || db.threadId <= 0)
+                  throw new Error('数据库会话编号无效')
+                await control.query(`KILL QUERY ${db.threadId}`)
+              } finally {
+                control.destroy()
+              }
+            }
+          )
+        : await db.query(query, parameters)
       if (!Array.isArray(rows)) throw new Error('查询未返回结果集')
       return { rows: rows.map(object), columns: fields.map((field) => field.name) }
     })
   } finally {
     clearTimeout(timer)
-    db.destroy()
+    await close()
   }
 }
 
 export async function querySqlConnection(
   connection: SqlConnection,
   password: string,
-  request: SqlGatewayQuery
+  request: SqlGatewayQuery,
+  cancellation?: SqlQueryCancellation
 ): Promise<SqlGatewayResult> {
   if (connection.dialect === 'dm' && request.action === 'explain')
     throw new Error('当前达梦驱动不提供可读取的执行计划，请使用数据库管理工具查看')
@@ -206,7 +271,8 @@ export async function querySqlConnection(
         maxRows: request.maxRows,
         timeoutMs: request.timeoutMs
       }
-    }
+    },
+    cancellation
   )
 }
 

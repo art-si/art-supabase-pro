@@ -42,6 +42,9 @@ export async function deleteNotificationRule(ruleId: string) {
     {
       showMessage: true,
       message: '提醒规则删除成功',
+      showErrorMessage: false,
+      showReferenceFeedback: false,
+      requireAffected: true,
       errorMessage: '提醒规则删除失败，请检查按钮权限后重试',
       breakReturn: true
     }

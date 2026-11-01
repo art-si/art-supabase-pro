@@ -232,7 +232,7 @@ test('schema relationships, query templates and explain remain inspectable witho
   await expect(page.locator('.el-popover .el-select').first()).toBeVisible()
   expect(
     await page
-      .locator('.el-popover')
+      .locator('.el-popover:visible')
       .evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
   ).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(

@@ -332,8 +332,6 @@
                   :items="approvalItems"
                   :span="24"
                   label-position="top"
-                  :show-reset="false"
-                  :show-submit="false"
                 />
               </ElTabPane>
               <ElTabPane label="时效与条件" name="rules">
@@ -342,8 +340,6 @@
                   :items="ruleItems"
                   :span="24"
                   label-position="top"
-                  :show-reset="false"
-                  :show-submit="false"
                 />
               </ElTabPane>
             </ElTabs>

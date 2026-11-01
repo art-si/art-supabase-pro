@@ -72,17 +72,17 @@ export interface ArtDialogExpose<TData = unknown> extends ArtOverlayExpose<
 
 export interface ArtDialogEmits<TData = unknown> {
   /** 打开动画开始 */
-  open: [data: TData]
+  open: [data: TData, api: ArtDialogExpose<TData>]
   /** 打开动画结束 */
   opened: [data: TData]
   /** 关闭动画开始 */
-  close: [data: TData]
+  close: [data: TData, api: ArtDialogExpose<TData>]
   /** 关闭动画结束 */
   closed: []
   /** 开始执行确认流程 */
-  confirm: [data: TData]
+  confirm: [data: TData, api: ArtDialogExpose<TData>]
   /** 数据重置完成 */
-  reset: []
+  reset: [api: ArtDialogExpose<TData>]
   /** 打开、关闭或确认回调发生异常 */
   error: [error: unknown]
   /** 全屏状态切换完成 */

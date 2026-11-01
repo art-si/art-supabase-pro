@@ -118,6 +118,19 @@ test('默认继承的三种尺寸、表头背景、边框和斑马纹保持旧 A
     await expect(
       page.getByRole('radiogroup', { name: '表格尺寸' }).locator('.el-segmented__item.is-selected')
     ).toHaveText(label)
+    // ElTable applies its size after the store/segmented update; sample both renderers only
+    // once their public density classes reflect the requested size.
+    const densityClass = new RegExp(`\\bel-table--${size}\\b`)
+    await expect(native.locator('.el-table')).toHaveClass(densityClass)
+    await expect(virtual.locator('.art-table-v2')).toHaveClass(densityClass)
+    const fontSize = await native
+      .locator('.el-table')
+      .evaluate(
+        (element, token) => getComputedStyle(element).getPropertyValue(token).trim(),
+        size === 'small' ? '--el-font-size-extra-small' : '--el-font-size-base'
+      )
+    await expect(nativeCell.locator('.cell').first()).toHaveCSS('font-size', fontSize)
+    await expect(virtualCell.locator('.cell').first()).toHaveCSS('font-size', fontSize)
     await compareCell(nativeHeader, virtualHeader, `${label}表头`)
     await compareCell(nativeCell, virtualCell, `${label}正文`)
     await page.screenshot({ path: info.outputPath(`table-parity-${size}.png`), fullPage: true })

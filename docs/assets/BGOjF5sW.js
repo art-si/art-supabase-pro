@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./CfmgQbAp.js";var i=n({__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`maintenance`}))}});export{i as default};

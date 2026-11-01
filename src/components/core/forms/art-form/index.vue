@@ -24,256 +24,294 @@
       @submit.prevent="handleSubmit"
     >
       <slot v-if="customLayout" :model-value="modelValue" />
-      <ElRow v-else class="flex flex-wrap" :gutter="effectiveGutter">
-        <ElCol
-          v-for="item in visibleFormItems"
-          :key="item.key"
-          v-show="!isFormItemCollapsed(item)"
-          :xs="getColSpan(getItemSpan(item), 'xs')"
-          :sm="getColSpan(getItemSpan(item), 'sm')"
-          :md="getColSpan(getItemSpan(item), 'md')"
-          :lg="getColSpan(getItemSpan(item), 'lg')"
-          :xl="getColSpan(getItemSpan(item), 'xl')"
-        >
-          <ArtSectionTitle
-            v-if="isDividerItem(item)"
-            :show-line="getDividerShowLine(item)"
-            :show-label="getDividerShowLabel(item)"
-            :show-marker="getDividerShowMarker(item)"
-            :collapsible="isDividerCollapsible(item)"
-            :expanded="!isSectionCollapsed(item.key)"
-            :accessible-label="getDividerAccessibleLabel(item)"
-            @toggle="toggleSection(item.key)"
+      <DefineFields v-slot="{ items, actions }">
+        <ElRow class="flex flex-wrap" :gutter="effectiveGutter">
+          <ElCol
+            v-for="item in items"
+            :key="item.key"
+            :data-art-form-item-key="item.key"
+            v-show="!isFormItemCollapsed(item)"
+            :xs="getColSpan(getItemSpan(item), 'xs')"
+            :sm="getColSpan(getItemSpan(item), 'sm')"
+            :md="getColSpan(getItemSpan(item), 'md')"
+            :lg="getColSpan(getItemSpan(item), 'lg')"
+            :xl="getColSpan(getItemSpan(item), 'xl')"
           >
-            <template #default>
-              <slot
-                :name="item.key"
-                :item="item"
-                :modelValue="modelValue"
-                :value="getFieldValue(item.key)"
-                :setValue="createSlotSetValue(item)"
-                :clearValue="createSlotClearValue(item)"
-              >
-                <component v-if="typeof item.label !== 'string'" :is="item.label" />
-                <span v-else>{{ item.label }}</span>
-              </slot>
-            </template>
-            <template v-if="$slots[`${item.key}Actions`]" #actions>
-              <slot :name="`${item.key}Actions`" :item="item" :modelValue="modelValue" />
-            </template>
-          </ArtSectionTitle>
-          <ElFormItem v-else :prop="item.key" :label-width="getFormItemLabelWidth(item)">
-            <template #label v-if="item.label">
-              <span class="art-form-item__label">
-                <component v-if="typeof item.label !== 'string'" :is="item.label" />
-                <ArtTooltip
-                  v-else-if="overlayFocus?.focusMode.value"
-                  :content="item.label"
-                  :visible="activeLabelTooltipKey === item.key"
-                  :enterable="false"
-                  placement="top"
-                  popper-class="art-form-item__label-tooltip"
+            <ArtSectionTitle
+              v-if="isDividerItem(item)"
+              :show-line="getDividerShowLine(item)"
+              :show-label="getDividerShowLabel(item)"
+              :show-marker="getDividerShowMarker(item)"
+              :collapsible="isDividerCollapsible(item)"
+              :expanded="!isSectionCollapsed(item.key)"
+              :accessible-label="getDividerAccessibleLabel(item)"
+              @toggle="toggleSection(item.key)"
+            >
+              <template #default>
+                <slot
+                  :name="item.key"
+                  :item="item"
+                  :modelValue="modelValue"
+                  :value="getFieldValue(item.key)"
+                  :setValue="createSlotSetValue(item)"
+                  :clearValue="createSlotClearValue(item)"
+                >
+                  <component v-if="typeof item.label !== 'string'" :is="item.label" />
+                  <span v-else>{{ item.label }}</span>
+                </slot>
+              </template>
+              <template v-if="$slots[`${item.key}Actions`]" #actions>
+                <slot :name="`${item.key}Actions`" :item="item" :modelValue="modelValue" />
+              </template>
+            </ArtSectionTitle>
+            <ElFormItem v-else :prop="item.key" :label-width="getFormItemLabelWidth(item)">
+              <template #label v-if="item.label">
+                <span class="art-form-item__label">
+                  <component v-if="typeof item.label !== 'string'" :is="item.label" />
+                  <ArtTooltip
+                    v-else-if="overlayFocus?.focusMode.value"
+                    :content="item.label"
+                    :visible="activeLabelTooltipKey === item.key"
+                    :enterable="false"
+                    placement="top"
+                    popper-class="art-form-item__label-tooltip"
+                  >
+                    <span
+                      class="art-form-item__label-text"
+                      @mouseenter="showOverflowLabelTooltip($event, item.key)"
+                      @mouseleave="hideOverflowLabelTooltip(item.key)"
+                    >
+                      {{ item.label }}
+                    </span>
+                  </ArtTooltip>
+                  <span v-else>{{ item.label }}</span>
+                  <ArtTooltip v-if="item.help" placement="top" effect="dark">
+                    <template #content>
+                      <component v-if="typeof item.help !== 'string'" :is="item.help" />
+                      <span v-else class="whitespace-pre-line">{{ item.help }}</span>
+                    </template>
+                    <ElIcon class="art-form-item__help-icon" aria-label="查看帮助信息" tabindex="0">
+                      <QuestionFilled />
+                    </ElIcon>
+                  </ArtTooltip>
+                </span>
+              </template>
+              <div class="art-form-item__content">
+                <slot
+                  :name="item.key"
+                  :item="item"
+                  :modelValue="modelValue"
+                  :value="getFieldValue(item.key)"
+                  :setValue="createSlotSetValue(item)"
+                  :clearValue="createSlotClearValue(item)"
                 >
                   <span
-                    class="art-form-item__label-text"
-                    @mouseenter="showOverflowLabelTooltip($event, item.key)"
-                    @mouseleave="hideOverflowLabelTooltip(item.key)"
+                    v-if="isTextItem(item)"
+                    class="art-form-item__text"
+                    :class="getTextClass(item)"
                   >
-                    {{ item.label }}
+                    {{ getTextDisplayValue(item) }}
                   </span>
-                </ArtTooltip>
-                <span v-else>{{ item.label }}</span>
-                <ArtTooltip v-if="item.help" placement="top" effect="dark">
-                  <template #content>
-                    <component v-if="typeof item.help !== 'string'" :is="item.help" />
-                    <span v-else class="whitespace-pre-line">{{ item.help }}</span>
-                  </template>
-                  <ElIcon class="art-form-item__help-icon" aria-label="查看帮助信息" tabindex="0">
-                    <QuestionFilled />
-                  </ElIcon>
-                </ArtTooltip>
-              </span>
-            </template>
-            <div class="art-form-item__content">
-              <slot
-                :name="item.key"
-                :item="item"
-                :modelValue="modelValue"
-                :value="getFieldValue(item.key)"
-                :setValue="createSlotSetValue(item)"
-                :clearValue="createSlotClearValue(item)"
-              >
-                <span
-                  v-if="isTextItem(item)"
-                  class="art-form-item__text"
-                  :class="getTextClass(item)"
-                >
-                  {{ getTextDisplayValue(item) }}
-                </span>
-                <ArtAsyncState
-                  v-else-if="!item.render && !componentMap"
-                  size="compact"
-                  loading-mode="skeleton"
-                  :skeleton-rows="1"
-                  :min-height="36"
-                  :loading="componentsLoading"
-                  :error="componentLoadErrorMessage"
-                  error-title="控件加载失败"
-                  :retryable="componentLoadAttempts < 2"
-                  @retry="loadFormComponents()"
-                />
-                <component
-                  v-else
-                  :is="getComponent(item)"
-                  :model-value="getFieldValue(item.key)"
-                  @update:model-value="setFieldValue(item.key, $event, item)"
-                  v-bind="getComponentProps(item)"
-                >
-                  <!-- 下拉选择 -->
-                  <template v-if="item.type === 'select' && getOptions(item).length">
-                    <template v-for="option in getOptions(item)" :key="option.value">
-                      <ElOption
-                        v-if="item.optionComponent"
+                  <ArtAsyncState
+                    v-else-if="!item.render && !componentMap"
+                    size="compact"
+                    loading-mode="skeleton"
+                    :skeleton-rows="1"
+                    :min-height="36"
+                    :loading="componentsLoading"
+                    :error="componentLoadErrorMessage"
+                    error-title="控件加载失败"
+                    :retryable="componentLoadAttempts < 2"
+                    @retry="loadFormComponents()"
+                  />
+                  <component
+                    v-else
+                    :is="getComponent(item)"
+                    :model-value="getFieldValue(item.key)"
+                    @update:model-value="setFieldValue(item.key, $event, item)"
+                    v-bind="getComponentProps(item)"
+                  >
+                    <!-- 下拉选择 -->
+                    <template v-if="item.type === 'select' && getOptions(item).length">
+                      <template v-for="option in getOptions(item)" :key="option.value">
+                        <ElOption
+                          v-if="item.optionComponent"
+                          :disabled="option.disabled === true"
+                          :created="option.created === true"
+                          :label="option.label"
+                          :value="option.value"
+                        >
+                          <component :is="item.optionComponent" :option="option" />
+                        </ElOption>
+                        <ElOption
+                          v-else
+                          :disabled="option.disabled === true"
+                          :created="option.created === true"
+                          :label="option.label"
+                          :value="option.value"
+                        />
+                      </template>
+                    </template>
+
+                    <!-- 复选框组 -->
+                    <template
+                      v-if="
+                        ['checkbox', 'radio'].includes(String(item.type)) && !getSlots(item).default
+                      "
+                    >
+                      {{ getProps(item).label ?? getPlainTextLabel(item) }}
+                    </template>
+                    <template v-if="item.type === 'checkboxGroup' && getOptions(item).length">
+                      <component
+                        :is="getProps(item).optionType === 'button' ? ElCheckboxButton : ElCheckbox"
+                        v-for="option in getOptions(item)"
                         v-bind="option"
-                        :label="option.label"
-                        :value="option.value"
-                      >
-                        <component :is="item.optionComponent" :option="option" />
-                      </ElOption>
-                      <ElOption
-                        v-else
-                        v-bind="option"
-                        :label="option.label"
-                        :value="option.value"
+                        :disabled="isFieldDisabled(item) || option.disabled"
+                        :key="option.value"
                       />
                     </template>
-                  </template>
 
-                  <!-- 复选框组 -->
-                  <template
-                    v-if="
-                      ['checkbox', 'radio'].includes(String(item.type)) && !getSlots(item).default
-                    "
-                  >
-                    {{ getProps(item).label ?? getPlainTextLabel(item) }}
-                  </template>
-                  <template v-if="item.type === 'checkboxGroup' && getOptions(item).length">
-                    <component
-                      :is="getProps(item).optionType === 'button' ? ElCheckboxButton : ElCheckbox"
-                      v-for="option in getOptions(item)"
-                      v-bind="option"
-                      :disabled="isFieldDisabled(item) || option.disabled"
-                      :key="option.value"
-                    />
-                  </template>
+                    <!-- 单选框组 -->
+                    <template v-if="item.type === 'radioGroup' && getOptions(item).length">
+                      <component
+                        :is="getProps(item).optionType === 'button' ? ElRadioButton : ElRadio"
+                        v-for="option in getOptions(item)"
+                        v-bind="option"
+                        :disabled="isFieldDisabled(item) || option.disabled"
+                        :key="option.value"
+                      />
+                    </template>
 
-                  <!-- 单选框组 -->
-                  <template v-if="item.type === 'radioGroup' && getOptions(item).length">
-                    <component
-                      :is="getProps(item).optionType === 'button' ? ElRadioButton : ElRadio"
-                      v-for="option in getOptions(item)"
-                      v-bind="option"
-                      :disabled="isFieldDisabled(item) || option.disabled"
-                      :key="option.value"
-                    />
-                  </template>
+                    <template v-if="hasPickerEmptySlot(item) && !getSlots(item).empty" #empty>
+                      <ArtPickerEmpty :title="getPickerEmptyTitle(item)" />
+                    </template>
 
-                  <template v-if="hasPickerEmptySlot(item) && !getSlots(item).empty" #empty>
-                    <ArtPickerEmpty :title="getPickerEmptyTitle(item)" />
-                  </template>
+                    <!-- 动态插槽支持 -->
+                    <template
+                      v-for="(slotFn, slotName) in getSlots(item)"
+                      :key="slotName"
+                      #[slotName]
+                    >
+                      <component :is="slotFn" />
+                    </template>
+                  </component>
+                </slot>
 
-                  <!-- 动态插槽支持 -->
-                  <template
-                    v-for="(slotFn, slotName) in getSlots(item)"
-                    :key="slotName"
-                    #[slotName]
-                  >
-                    <component :is="slotFn" />
-                  </template>
-                </component>
-              </slot>
-
-              <ArtAsyncState
-                v-if="asyncErrorMap[item.key]"
-                size="compact"
-                :error="asyncErrorMap[item.key]"
-                error-title="选项加载失败"
-                @retry="fetchOptions(item)"
-              />
-              <div v-if="item.description" class="art-form-item__description">
-                <component v-if="typeof item.description !== 'string'" :is="item.description" />
-                <span v-else class="whitespace-pre-line">{{ item.description }}</span>
+                <ArtAsyncState
+                  v-if="asyncErrorMap[item.key]"
+                  size="compact"
+                  :error="asyncErrorMap[item.key]"
+                  error-title="选项加载失败"
+                  @retry="fetchOptions(item)"
+                />
+                <div v-if="item.description" class="art-form-item__description">
+                  <component v-if="typeof item.description !== 'string'" :is="item.description" />
+                  <span v-else class="whitespace-pre-line">{{ item.description }}</span>
+                </div>
               </div>
-            </div>
-          </ElFormItem>
-        </ElCol>
-        <ElCol
-          :xs="getActionColSpan('xs')"
-          :sm="getActionColSpan('sm')"
-          :md="getActionColSpan('md')"
-          :lg="getActionColSpan('lg')"
-          :xl="getActionColSpan('xl')"
-          class="max-w-full"
-        >
-          <div
-            class="mb-3 flex-c flex-wrap justify-end md:flex-row md:items-stretch md:gap-2"
-            :style="actionButtonsStyle"
+            </ElFormItem>
+          </ElCol>
+          <ElCol
+            v-if="actions"
+            :xs="getActionColSpan('xs')"
+            :sm="getActionColSpan('sm')"
+            :md="getActionColSpan('md')"
+            :lg="getActionColSpan('lg')"
+            :xl="getActionColSpan('xl')"
+            class="max-w-full"
           >
-            <div class="flex gap-2 md:justify-center">
-              <ElButton
-                v-if="showReset"
-                class="reset-button"
-                :disabled="props.disabled || !formControlsReady"
-                :loading="resetLoading"
-                @click="handleReset"
-                v-ripple
-              >
-                <ElIcon>
-                  <RefreshLeft />
-                </ElIcon>
-                {{ resetText || t('table.form.reset') }}
-              </ElButton>
-              <ElButton
-                v-if="showSubmit"
-                type="primary"
-                class="submit-button"
-                @click="handleSubmit"
-                v-ripple
-                :disabled="props.disabled || disabledSubmit || hasBlockingFields"
-                :loading="submitLoading"
-              >
-                <ElIcon>
-                  <Search />
-                </ElIcon>
-                {{ submitText || t('table.form.submit') }}
-              </ElButton>
-            </div>
-            <button
-              v-if="shouldShowExpandToggle"
-              type="button"
-              class="art-form__filter-toggle"
-              :aria-expanded="isExpanded"
-              @click="toggleExpand"
+            <div
+              class="mb-3 flex-c flex-wrap justify-end md:flex-row md:items-stretch md:gap-2"
+              :style="actionButtonsStyle"
             >
-              <span>{{ expandToggleText }}</span>
-              <div class="art-form__filter-toggle-icon">
-                <ElIcon>
-                  <ArrowUpBold v-if="isExpanded" />
-                  <ArrowDownBold v-else />
-                </ElIcon>
+              <div class="flex gap-2 md:justify-center">
+                <ElButton
+                  v-if="showReset"
+                  class="reset-button"
+                  :disabled="props.disabled || !formControlsReady"
+                  :loading="resetLoading"
+                  @click="handleReset"
+                  v-ripple
+                >
+                  <ElIcon>
+                    <RefreshLeft />
+                  </ElIcon>
+                  {{ resetText || t('table.form.reset') }}
+                </ElButton>
+                <ElButton
+                  v-if="showSubmit"
+                  type="primary"
+                  class="submit-button"
+                  @click="handleSubmit"
+                  v-ripple
+                  :disabled="props.disabled || disabledSubmit || hasBlockingFields"
+                  :loading="submitLoading"
+                >
+                  <ElIcon>
+                    <Search />
+                  </ElIcon>
+                  {{ submitText || t('table.form.submit') }}
+                </ElButton>
               </div>
-            </button>
-          </div>
-        </ElCol>
-      </ElRow>
+              <button
+                v-if="shouldShowExpandToggle"
+                type="button"
+                class="art-form__filter-toggle"
+                :aria-expanded="isExpanded"
+                @click="toggleExpand"
+              >
+                <span>{{ expandToggleText }}</span>
+                <div class="art-form__filter-toggle-icon">
+                  <ElIcon>
+                    <ArrowUpBold v-if="isExpanded" />
+                    <ArrowDownBold v-else />
+                  </ElIcon>
+                </div>
+              </button>
+            </div>
+          </ElCol>
+        </ElRow>
+      </DefineFields>
+      <template v-if="!customLayout">
+        <ReuseFields v-if="!hasTabs" :items="visibleFormItems" :actions="true" />
+        <template v-else>
+          <ReuseFields v-if="commonFormItems.length" :items="commonFormItems" :actions="false" />
+          <ElTabs v-model="activeTab" class="art-form__tabs">
+            <ElTabPane
+              v-for="tab in formTabs"
+              :key="tab.marker.key"
+              :name="tab.marker.key"
+              :data-art-form-tab="tab.marker.key"
+              :disabled="getProps(tab.marker).disabled === true"
+              :lazy="false"
+            >
+              <template #label>
+                <span class="art-icon-label">
+                  <component v-if="typeof tab.marker.label !== 'string'" :is="tab.marker.label" />
+                  <span v-else>{{ tab.marker.label }}</span>
+                </span>
+              </template>
+              <div v-if="tab.marker.description" class="art-form__tab-description">
+                <component
+                  v-if="typeof tab.marker.description !== 'string'"
+                  :is="tab.marker.description"
+                />
+                <template v-else>{{ tab.marker.description }}</template>
+              </div>
+              <ReuseFields :items="tab.items" :actions="false" />
+            </ElTabPane>
+          </ElTabs>
+          <ReuseFields v-if="showReset || showSubmit" :items="[]" :actions="true" />
+        </template>
+      </template>
     </ElForm>
   </section>
 </template>
 
 <script setup lang="ts">
-  import { useAsyncState, useWindowSize } from '@vueuse/core'
+  import { createReusableTemplate, useAsyncState, useWindowSize } from '@vueuse/core'
   import { useI18n } from 'vue-i18n'
-  import { get, isEqual, unset } from 'lodash-es'
+  import { get, isEqual, minBy, unset } from 'lodash-es'
   import {
     inject,
     onMounted,
@@ -290,7 +328,11 @@
     ElIcon,
     ElRadio,
     ElRadioButton,
+    ElTabs,
+    ElTabPane,
     type FormInstance,
+    type FormValidateCallback,
+    type FormValidateFailure,
     type FormItemProp,
     type FormPropsPublic
   } from 'element-plus'
@@ -312,6 +354,7 @@
     type ResponsiveBreakpoint
   } from '@/utils/form/responsive'
   import { replaceReactiveModel } from '@/utils/form/model'
+  import { focusFirstInvalidFormField } from '@/utils/form/validation'
   import {
     cloneModelValue,
     sanitizeFormValue,
@@ -354,6 +397,7 @@
   )
 
   const dividerType = 'divider'
+  const tabType = 'tab'
   const textType = 'text'
   const datePickerShortcutTypes = ['daterange', 'datetimerange', 'monthrange'] as const
 
@@ -377,7 +421,7 @@
   }
 
   export type FormItemContent = string | (() => VNodeChild) | Component
-  export type FormItemPresetType = keyof ComponentMap | 'divider' | 'text'
+  export type FormItemPresetType = keyof ComponentMap | 'divider' | 'tab' | 'text'
   export type FormItemCustomType = string & {}
   export type FormItemType = FormItemPresetType | FormItemCustomType
   export type FormItemOptionType = 'default' | 'button'
@@ -419,6 +463,11 @@
     class?: string | string[] | Record<string, boolean>
   }
 
+  export interface FormItemTabProps {
+    /** Disable navigation to this tab without discarding its model values. */
+    disabled?: boolean
+  }
+
   export type FormItemComponentProps<TType extends FormItemType = FormItemType> = TType extends
     'radioGroup' | 'checkboxGroup'
     ? FormItemPassThroughProps & FormItemChoiceGroupProps
@@ -426,11 +475,13 @@
       ? FormItemPassThroughProps & FormItemOptionProps
       : TType extends 'divider'
         ? FormItemPassThroughProps & FormItemDividerProps
-        : TType extends 'text'
-          ? FormItemPassThroughProps & FormItemTextProps
-          : TType extends keyof ComponentMap
-            ? FormItemPassThroughProps
-            : FormItemPassThroughProps
+        : TType extends 'tab'
+          ? FormItemPassThroughProps & FormItemTabProps
+          : TType extends 'text'
+            ? FormItemPassThroughProps & FormItemTextProps
+            : TType extends keyof ComponentMap
+              ? FormItemPassThroughProps
+              : FormItemPassThroughProps
   export type MaybePromise<T> = T | Promise<T>
   export type FormItemApiParams = FormRecord | undefined
   export type FormItemApiFn<TParams = FormItemApiParams, TResult = unknown> = (
@@ -583,10 +634,10 @@
     labelPosition: 'top',
     labelWidth: '70px',
     buttonLeftLimit: 2,
-    showReset: true,
+    showReset: false,
     resetLoading: false,
     submitLoading: false,
-    showSubmit: true,
+    showSubmit: false,
     disabledSubmit: false,
     rootClass: '',
     formClass: '',
@@ -604,7 +655,11 @@
     () =>
       !props.customLayout &&
       props.items.some(
-        (item) => item.type !== dividerType && item.type !== textType && !item.render
+        (item) =>
+          item.type !== dividerType &&
+          item.type !== tabType &&
+          item.type !== textType &&
+          !item.render
       )
   )
   const formControlsReady = computed(() => !needsComponentRegistry.value || !!componentMap.value)
@@ -649,6 +704,11 @@
   const emit = defineEmits<ArtFormEmits>()
 
   const modelValue = defineModel<FormRecord>({ default: () => ({}) })
+  const activeTab = defineModel<string>('activeTab', { default: '' })
+  const [DefineFields, ReuseFields] = createReusableTemplate<{
+    items: FormItem[]
+    actions: boolean
+  }>()
   const initialModelValue = ref<FormRecord>({})
   const isExpanded = ref(props.defaultExpanded)
   const collapsedSectionKeys = ref<Set<string>>(new Set())
@@ -668,6 +728,37 @@
       )
   )
   const asyncRequestSignatureMap = ref<Record<string, string>>({})
+
+  interface FormTabSection {
+    marker: FormItem
+    items: FormItem[]
+  }
+  const tabStructure = computed(() => {
+    const common: FormItem[] = []
+    const tabs: FormTabSection[] = []
+    const owners = new Map<string, FormTabSection>()
+    let current: FormTabSection | undefined
+    for (const item of props.items) {
+      if (item.type === tabType) {
+        current = { marker: item, items: [] }
+        tabs.push(current)
+      } else if (current) {
+        current.items.push(item)
+        owners.set(item.key, current)
+      } else common.push(item)
+    }
+    return { common, tabs, owners }
+  })
+  const hasTabs = computed(() => !props.customLayout && tabStructure.value.tabs.length > 0)
+  const hasTabLayout = computed(() => hasTabs.value || (props.customLayout && !!activeTab.value))
+  const formTabs = computed(() =>
+    tabStructure.value.tabs
+      .filter((tab) => !isOwnHidden(tab.marker))
+      .map((tab) => ({ ...tab, items: tab.items.filter(isRenderedField) }))
+  )
+  const commonFormItems = computed(() => tabStructure.value.common.filter(isRenderedField))
+  const firstAvailableTab = () =>
+    formTabs.value.find((tab) => getProps(tab.marker).disabled !== true)?.marker.key ?? ''
 
   initialModelValue.value = cloneModelValue(modelValue.value)
 
@@ -770,6 +861,7 @@
 
   const normalizeClearedFormValues = () => {
     props.items.forEach((item) => {
+      if (item.type === tabType) return
       const value = getFieldValue(item.key)
 
       if (typeof value === 'string') {
@@ -795,7 +887,7 @@
     const outputValue = cloneModelValue(modelValue.value)
 
     props.items.forEach((item) => {
-      if (isFormItemHidden(item)) {
+      if (item.type !== tabType && isFormItemHidden(item)) {
         unset(outputValue, item.key)
       }
     })
@@ -930,6 +1022,7 @@
 
   const loadImmediateOptions = () => {
     props.items.forEach((item) => {
+      if (item.type === tabType || isFormItemHidden(item)) return
       if (isTenantScopeItem(item)) return
       if (item.api && item.immediate !== false) {
         const signature = getOptionsRequestSignature(item)
@@ -943,7 +1036,7 @@
 
   const reloadOptions = async (key?: string) => {
     const targetItems = (key ? props.items.filter((item) => item.key === key) : props.items).filter(
-      (item) => !isTenantScopeItem(item)
+      (item) => item.type !== tabType && !isTenantScopeItem(item) && !isFormItemHidden(item)
     )
     const results = await Promise.all(targetItems.filter((item) => item.api).map(fetchOptions))
     return key ? results[0] : results
@@ -1098,6 +1191,8 @@
 
     for (let index = itemIndex - 1; index >= 0; index -= 1) {
       const candidate = filteredFormItems.value[index]
+      if (tabStructure.value.owners.get(candidate.key) !== tabStructure.value.owners.get(item.key))
+        break
       if (candidate && isDividerItem(candidate)) return candidate
     }
 
@@ -1205,18 +1300,31 @@
   }
 
   const getActionColSpan = (breakpoint: ResponsiveBreakpoint): number => {
+    if (hasTabs.value) return 24
     return calculateActionSpan(
       visibleFormItems.value.map((item) => getColSpan(getItemSpan(item), breakpoint)),
       props.showReset || props.showSubmit ? getColSpan(undefined, breakpoint) : 1
     )
   }
 
-  const isFormItemHidden = (item: FormItem): boolean => {
+  function isOwnHidden(item: FormItem): boolean {
     if (typeof item.hidden === 'function') {
       return item.hidden(modelValue.value, item)
     }
 
     return !!unref(item.hidden)
+  }
+  const isFormItemHidden = (item: FormItem): boolean => {
+    const owner = tabStructure.value.owners.get(item.key)
+    return isOwnHidden(item) || !!(owner && isOwnHidden(owner.marker))
+  }
+  function isRenderedField(item: FormItem): boolean {
+    return (
+      item.type !== tabType &&
+      (!isTenantScopeItem(item) ||
+        (props.tenantScopeMode === 'manual' && shouldExposeTenantField.value)) &&
+      !isFormItemHidden(item)
+    )
   }
 
   const isFormItemCollapsed = (item: FormItem): boolean => {
@@ -1226,16 +1334,11 @@
   }
 
   const filteredFormItems = computed(() => {
-    return props.items.filter(
-      (item) =>
-        (!isTenantScopeItem(item) ||
-          (props.tenantScopeMode === 'manual' && shouldExposeTenantField.value)) &&
-        !isFormItemHidden(item)
-    )
+    return props.items.filter(isRenderedField)
   })
 
   const syncTenantScopeField = () => {
-    const tenantItem = props.items.find(isTenantScopeItem)
+    const tenantItem = props.items.find((item) => item.type !== tabType && isTenantScopeItem(item))
     if (!tenantItem) return
 
     const tenantId =
@@ -1255,7 +1358,11 @@
    */
   const visibleFormItems = computed(() => {
     const shouldShowLess =
-      props.enableExpand && props.showExpand && !props.isExpand && !isExpanded.value
+      !hasTabs.value &&
+      props.enableExpand &&
+      props.showExpand &&
+      !props.isExpand &&
+      !isExpanded.value
 
     if (shouldShowLess) {
       const maxItemsPerRow = Math.floor(24 / props.span) - 1
@@ -1267,6 +1374,7 @@
 
   const shouldShowExpandToggle = computed(() => {
     return (
+      !hasTabs.value &&
       props.enableExpand &&
       !props.isExpand &&
       props.showExpand &&
@@ -1304,6 +1412,14 @@
     commitModelValue(cloneModelValue(initialModelValue.value))
     syncTenantScopeField()
     resetCollapsedSections()
+    if (props.customLayout) {
+      const root = formInstance.value?.$el
+      const firstTab =
+        root instanceof HTMLElement
+          ? root.querySelector<HTMLElement>('[data-art-form-tab]')?.dataset.artFormTab
+          : undefined
+      if (firstTab) activeTab.value = firstTab
+    } else activeTab.value = firstAvailableTab()
 
     // 触发 reset 事件
     emit('reset')
@@ -1320,19 +1436,88 @@
     emit('submit', getSanitizedOutput())
   }
 
+  let validationBatch = 0
+  const resolveFieldElement = (prop: FormItemProp): HTMLElement | undefined => {
+    const element = formInstance.value?.getField(prop)?.$el
+    return element instanceof HTMLElement ? element : undefined
+  }
+  const resolveFieldItem = (prop: FormItemProp): FormItem | undefined => {
+    const fieldKey = Array.isArray(prop) ? prop.join('.') : String(prop)
+    const ownerKey = resolveFieldElement(prop)?.closest<HTMLElement>('[data-art-form-item-key]')
+      ?.dataset.artFormItemKey
+    return (
+      filteredFormItems.value.find((item) => item.key === fieldKey) ??
+      filteredFormItems.value.find((item) => item.key === ownerKey)
+    )
+  }
+  const revealField = async (prop: FormItemProp, scroll = true): Promise<void> => {
+    const fieldItem = resolveFieldItem(prop)
+    const tab = fieldItem ? tabStructure.value.owners.get(fieldItem.key) : undefined
+    if (tab && !isOwnHidden(tab.marker)) activeTab.value = tab.marker.key
+    else if (props.customLayout && activeTab.value) {
+      const ownerTab =
+        resolveFieldElement(prop)?.closest<HTMLElement>('[data-art-form-tab]')?.dataset.artFormTab
+      if (ownerTab) activeTab.value = ownerTab
+    }
+    const divider = fieldItem ? findOwningDivider(fieldItem) : undefined
+    if (divider && isSectionCollapsed(divider.key)) {
+      const nextKeys = new Set(collapsedSectionKeys.value)
+      nextKeys.delete(divider.key)
+      collapsedSectionKeys.value = nextKeys
+    }
+    await nextTick()
+    if (scroll) formInstance.value?.scrollToField(prop)
+  }
+  const focusField = async (prop: FormItemProp): Promise<void> => {
+    await revealField(prop, false)
+    const fieldElement = resolveFieldElement(prop)
+    if (fieldElement) focusFirstInvalidFormField(shallowRef(fieldElement), '.el-form-item__content')
+    else formInstance.value?.scrollToField(prop)
+  }
+  const revealInvalidFields = async (fields?: FormValidateFailure['fields']): Promise<void> => {
+    const first = minBy(Object.keys(fields ?? {}), (prop) => {
+      const item = resolveFieldItem(prop)
+      const index = item ? filteredFormItems.value.indexOf(item) : -1
+      if (index >= 0) return index
+      const field = formInstance.value?.getField(prop)
+      const registeredIndex = field ? formInstance.value?.fields.indexOf(field) : undefined
+      return (
+        filteredFormItems.value.length +
+        (registeredIndex !== undefined && registeredIndex >= 0
+          ? registeredIndex
+          : Number.MAX_SAFE_INTEGER)
+      )
+    })
+    if (first) await focusField(first)
+  }
   const handleValidate = (prop: FormItemProp, isValid: boolean, message: string) => {
-    if (!isValid) {
+    if (!isValid && validationBatch === 0 && !hasTabLayout.value) {
       const fieldKey = Array.isArray(prop) ? prop.join('.') : String(prop)
       const fieldItem = filteredFormItems.value.find((item) => item.key === fieldKey)
       const divider = fieldItem ? findOwningDivider(fieldItem) : undefined
-      if (divider && isSectionCollapsed(divider.key)) {
-        const nextKeys = new Set(collapsedSectionKeys.value)
-        nextKeys.delete(divider.key)
-        collapsedSectionKeys.value = nextKeys
-        nextTick(() => formInstance.value?.scrollToField(prop))
-      }
+      if (divider && isSectionCollapsed(divider.key)) void revealField(prop)
     }
     emit('validate', prop, isValid, message)
+  }
+
+  const validateWithReveal = async (
+    fields?: Parameters<FormInstance['validateField']>[0],
+    callback?: FormValidateCallback
+  ): Promise<boolean> => {
+    validationBatch++
+    let invalidFields: FormValidateFailure['fields'] | undefined
+    try {
+      const valid =
+        (await formInstance.value?.validateField(fields, (_valid, errors) => {
+          invalidFields = errors
+        })) === true
+      if (!valid) await revealInvalidFields(invalidFields)
+      await callback?.(valid, invalidFields)
+      if (!valid && !callback && invalidFields) throw invalidFields
+      return valid
+    } finally {
+      validationBatch--
+    }
   }
 
   const resetCollapsedSections = (): void => {
@@ -1347,6 +1532,19 @@
         .map((item) => item.key)
     )
   }
+
+  watch(
+    () => [
+      activeTab.value,
+      formTabs.value.map((tab) => [tab.marker.key, getProps(tab.marker).disabled])
+    ],
+    () => {
+      if (props.customLayout) return
+      if (!formTabs.value.some((tab) => tab.marker.key === activeTab.value))
+        activeTab.value = firstAvailableTab()
+    },
+    { immediate: true }
+  )
 
   onMounted(() => {
     unregisterOverlayForm = overlayFocus?.registerForm()
@@ -1363,6 +1561,7 @@
     () =>
       props.items.map((item) => ({
         key: item.key,
+        hidden: isFormItemHidden(item),
         hasApi: !!item.api,
         immediate: item.immediate,
         params: cloneModelValue(item.params)
@@ -1389,13 +1588,15 @@
 
   watch(
     () =>
-      props.items.map((item) => ({
-        key: item.key,
-        type: item.type,
-        slots: item.slots,
-        render: item.render,
-        value: getFieldValue(item.key)
-      })),
+      props.items
+        .filter((item) => item.type !== tabType)
+        .map((item) => ({
+          key: item.key,
+          type: item.type,
+          slots: item.slots,
+          render: item.render,
+          value: getFieldValue(item.key)
+        })),
     normalizeClearedFormValues,
     { deep: true, immediate: true }
   )
@@ -1405,7 +1606,7 @@
       effectiveTenantId.value,
       defaultWriteTenantId.value,
       props.tenantScopeMode,
-      props.items.some(isTenantScopeItem),
+      props.items.some((item) => item.type !== tabType && isTenantScopeItem(item)),
       getFieldValue('tenantId')
     ],
     syncTenantScopeField,
@@ -1449,20 +1650,24 @@
               ]
             ])
         )
+        if (hasTabLayout.value) await revealInvalidFields(invalidFields)
         if (args[0]) {
           await args[0](false, invalidFields)
           return false
         }
         throw invalidFields
       }
-      return formInstance.value?.validate(...args)
+      return hasTabLayout.value
+        ? validateWithReveal(undefined, args[0])
+        : formInstance.value?.validate(...args)
     },
     validateField: (...args: Parameters<FormInstance['validateField']>) =>
-      formInstance.value?.validateField(...args),
+      hasTabLayout.value ? validateWithReveal(...args) : formInstance.value?.validateField(...args),
     clearValidate: (...args: Parameters<FormInstance['clearValidate']>) =>
       formInstance.value?.clearValidate(...args),
     scrollToField: (...args: Parameters<FormInstance['scrollToField']>) =>
-      formInstance.value?.scrollToField(...args),
+      hasTabLayout.value ? revealField(...args) : formInstance.value?.scrollToField(...args),
+    focusField,
     reset: handleReset,
     fetchOptions,
     reloadOptions,

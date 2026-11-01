@@ -435,8 +435,11 @@ export async function deleteOrganization(id: string) {
         .eq('id', id)
         .eq('is_system', false),
     {
-      showMessage: true,
+      showMessage: false,
       requireAffected: true,
+      breakReturn: true,
+      showErrorMessage: false,
+      showReferenceFeedback: false,
       noAffectedMessage: '系统预置根组织不可删除，或当前账号没有删除权限'
     }
   )
@@ -745,9 +748,11 @@ export async function deleteRole(params: Api.SystemManage.RoleListItem) {
     () =>
       supabase.from('sys_role').delete({ count: 'exact' }).eq('id', id).is('builtin_type', null),
     {
-      showMessage: true,
+      showMessage: false,
       breakReturn: true,
       requireAffected: true,
+      showErrorMessage: false,
+      showReferenceFeedback: false,
       noAffectedMessage: '系统预置角色不可删除，或当前账号没有删除权限'
     }
   )
@@ -894,6 +899,8 @@ async function deleteMenuRows(ids: string[]) {
     {
       breakReturn: true,
       requireAffected: true,
+      showErrorMessage: false,
+      showReferenceFeedback: false,
       noAffectedMessage: WRITE_PERMISSION_DENIED_MESSAGE
     }
   )

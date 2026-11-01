@@ -50,25 +50,24 @@
         </article>
       </section>
 
-      <ArtSectionCard class="menu-detail__section" preserve-content-structure title="导航与访问">
-        <ArtDescriptions :data="menu" :items="accessItems" :columns="2" />
-      </ArtSectionCard>
-
-      <ArtSectionCard class="menu-detail__section" preserve-content-structure title="页面行为">
-        <ArtDescriptions :data="menu" :items="behaviorItems" :columns="4" />
-      </ArtSectionCard>
-
-      <ArtSectionCard class="menu-detail__section" preserve-content-structure title="审计信息">
-        <ArtDescriptions :data="menu" :items="auditItems" :columns="2" />
-      </ArtSectionCard>
+      <ElTabs v-model="activeTab" class="min-w-0">
+        <ElTabPane label="基础定义与路由" name="basicSection" :lazy="false">
+          <ArtDescriptions :data="menu" :items="accessItems" :columns="2" :label-width="112" />
+        </ElTabPane>
+        <ElTabPane label="页面行为" name="behaviorSection" :lazy="false">
+          <ArtDescriptions :data="menu" :items="behaviorItems" :columns="4" :label-width="112" />
+        </ElTabPane>
+        <ElTabPane label="审计信息" name="audit" :lazy="false">
+          <ArtDescriptions :data="menu" :items="auditItems" :columns="2" :label-width="112" />
+        </ElTabPane>
+      </ElTabs>
     </div>
   </ArtDrawer>
 </template>
 
 <script setup lang="ts">
-  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { h } from 'vue'
-  import { ElTag } from 'element-plus'
+  import { ElTag, ElTabs, ElTabPane } from 'element-plus'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
@@ -100,6 +99,7 @@
   }
 
   const drawerRef = ref<ArtDrawerExpose<MenuRecord>>()
+  const activeTab = ref('basicSection')
   const menu = shallowRef<MenuRecord>()
   const hierarchy = shallowRef<MenuRecord[]>([])
   const descendantCount = ref(0)
@@ -286,6 +286,7 @@
     menuTree: MenuRecord[],
     loadTree?: () => Promise<AppRouteRecord[]>
   ): Promise<void> => {
+    activeTab.value = 'basicSection'
     menu.value = row
     loadError.value = false
     menuTreeLoader.value = menuTree.length ? undefined : loadTree
@@ -457,13 +458,6 @@
       border-radius: var(--el-border-radius-base);
     }
 
-    &__section {
-      display: grid;
-      gap: 14px;
-      min-width: 0;
-      padding: 16px;
-    }
-
     @media (width <= 860px) {
       &__metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -471,8 +465,42 @@
     }
 
     @media (width <= 560px) {
+      &__hero {
+        gap: 10px;
+        padding: 14px;
+      }
+
+      &__hero-icon {
+        flex-basis: 36px;
+        width: 36px;
+        height: 36px;
+      }
+
+      &__title-row h2 {
+        font-size: 18px;
+      }
+
       &__metrics {
-        grid-template-columns: 1fr;
+        gap: 8px;
+
+        article {
+          gap: 8px;
+          padding: 10px;
+
+          strong {
+            font-size: 18px;
+          }
+
+          small {
+            white-space: normal;
+          }
+        }
+      }
+
+      &__metric-icon {
+        flex-basis: 28px;
+        width: 28px;
+        height: 28px;
       }
     }
   }

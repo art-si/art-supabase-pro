@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   applyColumnProfile,
+  ensureTableFillColumn,
   hasVisibleBusinessColumn,
+  isTableOperationColumn,
   matchesColumnCatalog,
   resolveColumnProfiles
 } from '../../src/utils/table/column-profile'
-import type { TableColumnProfile } from '../../src/types/table-column-config'
+import type { TableColumnProfile, TableColumnSetting } from '../../src/types/table-column-config'
 
 const profile = (
   id: string,
@@ -23,6 +25,29 @@ const profile = (
   columns: [{ key: 'name', label: id, visible: true }],
   revision: 1,
   updatedAt: ''
+})
+
+test('fit tables retain a stretchable business column after every saved width becomes explicit', () => {
+  const columns = [
+    { type: 'selection', width: 48 },
+    { prop: 'name', label: '名称', width: 220, minWidth: 180, fixed: 'left' },
+    { prop: 'status', label: '状态', width: 96 },
+    { prop: 'operation', label: '操作', width: 112, fixed: 'right' }
+  ] as Parameters<typeof ensureTableFillColumn>[0]
+  const fitted = ensureTableFillColumn(columns)
+  assert.equal(fitted[1].width, undefined)
+  assert.equal(fitted[1].minWidth, 220)
+  assert.equal(fitted[0].width, 48)
+  assert.equal(fitted[3].width, 112)
+  assert.equal(columns[1].width, 220)
+  const elastic = [
+    { prop: 'name', minWidth: 180 },
+    { prop: 'operation', width: 112 }
+  ]
+  assert.equal(ensureTableFillColumn(elastic), elastic)
+  assert.deepEqual(ensureTableFillColumn([{ type: 'selection', width: 48 }]), [
+    { type: 'selection', width: 48 }
+  ])
 })
 test('column layout cannot invent unauthorized columns or remove structural actions', () => {
   const renderer = () => '业务入口'
@@ -188,6 +213,46 @@ test('a hidden group cannot leave a supposedly visible business leaf or save a s
   )
 })
 
+test('multi-table variants match parent columns without counting children toward the coverage threshold', () => {
+  const catalog: TableColumnSetting[] = [
+    { key: 'name', label: '物料', visible: true, groups: ['stock'] },
+    { key: 'quantity', label: '数量', visible: true, groups: ['stock'] },
+    ...['inventory', 'basic', 'auxiliary', 'auxiliary2'].map((key) => ({
+      key,
+      label: key,
+      visible: true,
+      parentKey: 'quantity',
+      groups: ['stock']
+    })),
+    { key: 'documentNo', label: '单据', visible: true, groups: ['documents'] },
+    { key: 'status', label: '状态', visible: true, groups: ['documents'] },
+    { key: 'operation', label: '操作', visible: true, groups: ['stock', 'documents'] }
+  ]
+  const keys = catalog.map((column) => column.key)
+  assert.equal(
+    matchesColumnCatalog(
+      [
+        { prop: 'name' },
+        { prop: 'quantity', children: [{ prop: 'inventory' }, { prop: 'basic' }] },
+        { prop: 'operation' }
+      ],
+      keys,
+      catalog
+    ),
+    true
+  )
+  assert.equal(
+    matchesColumnCatalog([{ prop: 'documentNo' }, { prop: 'status' }], keys, catalog),
+    true
+  )
+  assert.equal(matchesColumnCatalog([{ prop: 'name' }], keys, catalog), false)
+  assert.equal(matchesColumnCatalog([{ prop: 'inventory' }], keys, catalog), false)
+  assert.equal(
+    matchesColumnCatalog([{ prop: 'name' }, { prop: 'documentNo' }], keys, catalog),
+    false
+  )
+})
+
 test('automatic sizing on a saved row clears a width inherited from another scope', () => {
   const inherited = {
     ...profile('role', 'role'),
@@ -202,5 +267,79 @@ test('automatic sizing on a saved row clears a width inherited from another scop
   assert.equal(
     applyColumnProfile([{ prop: 'name', width: 180 }], effective.columns)[0].width,
     undefined
+  )
+})
+
+test('permission-dependent columns do not reject an authorized main list or turn a partial detail into it', () => {
+  const catalog: TableColumnSetting[] = [
+    ...['name', 'code', 'status'].map((key) => ({ key, label: key, visible: true })),
+    ...Array.from({ length: 9 }, (_, index) => ({
+      key: `sensitive${index}`,
+      label: `敏感字段${index}`,
+      visible: true,
+      optional: true
+    }))
+  ]
+  const keys = catalog.map((column) => column.key)
+  const original = [{ prop: 'name' }, { prop: 'code' }, { prop: 'status' }]
+  assert.equal(matchesColumnCatalog(original, keys, catalog), true)
+  assert.equal(matchesColumnCatalog([{ prop: 'name' }], keys, catalog), false)
+  assert.equal(
+    matchesColumnCatalog(
+      catalog.filter((column) => column.optional).map((column) => ({ prop: column.key })),
+      keys,
+      catalog
+    ),
+    false
+  )
+  assert.equal(matchesColumnCatalog([...original, { prop: 'unknown' }], keys, catalog), false)
+  assert.deepEqual(
+    applyColumnProfile(original, catalog, catalog).map((column) => column.prop),
+    ['name', 'code', 'status']
+  )
+})
+
+test('the action operation alias stays structural without locking an ordinary business action field', () => {
+  const action = { key: 'action', label: '操作', visible: true }
+  assert.equal(isTableOperationColumn(action), true)
+  assert.equal(isTableOperationColumn({ key: 'operation', label: '行操作' }), true)
+  assert.equal(isTableOperationColumn({ prop: 'action', label: '业务动作' }), false)
+  const configured = applyColumnProfile(
+    [{ prop: 'action', label: '操作', fixed: 'right' }],
+    [{ ...action, label: '被重命名', visible: false, fixed: false, sortable: true }]
+  )
+  assert.equal(configured[0].label, '操作')
+  assert.equal(configured[0].visible, true)
+  assert.equal(configured[0].checked, true)
+  assert.equal(configured[0].fixed, 'right')
+  assert.equal(configured[0].sortable, undefined)
+  assert.equal(hasVisibleBusinessColumn([action], [action]), false)
+  assert.equal(hasVisibleBusinessColumn([{ ...action, label: '被重命名' }], [action]), false)
+  assert.equal(
+    matchesColumnCatalog([{ prop: 'action', label: '操作' }], ['action'], [action]),
+    false
+  )
+  assert.equal(
+    matchesColumnCatalog(
+      [
+        { prop: 'name', label: '名称' },
+        { prop: 'action', label: '操作' }
+      ],
+      ['name', 'action']
+    ),
+    true
+  )
+  const businessAction = { ...action, label: '业务动作' }
+  assert.equal(hasVisibleBusinessColumn([businessAction], [businessAction]), true)
+  assert.equal(
+    matchesColumnCatalog([{ prop: 'action', label: '业务动作' }], ['action'], [businessAction]),
+    true
+  )
+  assert.equal(
+    applyColumnProfile(
+      [{ prop: 'action', label: '业务动作' }],
+      [{ ...businessAction, visible: false }]
+    )[0].visible,
+    false
   )
 })

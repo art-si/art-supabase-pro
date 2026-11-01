@@ -131,7 +131,10 @@ export async function deleteSystemParam(id: string) {
     {
       showMessage: true,
       requireAffected: true,
-      noAffectedMessage: '内置参数不允许删除，或当前账号没有删除权限'
+      noAffectedMessage: '内置参数不允许删除，或当前账号没有删除权限',
+      showReferenceFeedback: false,
+      breakReturn: true,
+      showErrorMessage: false
     }
   )
 }
@@ -142,7 +145,10 @@ export async function deleteSystemParamBatch(ids: string[]) {
     {
       showMessage: true,
       requireAffected: true,
-      noAffectedMessage: '未删除任何数据，请确认未选择内置参数且当前账号有删除权限'
+      noAffectedMessage: '未删除任何数据，请确认未选择内置参数且当前账号有删除权限',
+      showReferenceFeedback: false,
+      breakReturn: true,
+      showErrorMessage: false
     }
   )
 }

@@ -9,9 +9,7 @@
       :gutter="20"
       label-position="top"
       label-width="auto"
-      root-class="dict-maintenance-form dict-type-form"
-      :show-reset="false"
-      :show-submit="false"
+      root-class="dict-maintenance-form dict-type-form px-0! pt-0!"
       :validate-on-rule-change="false"
       scroll-to-error
     />
@@ -81,17 +79,11 @@
     editing: false,
     items: computed<FormItem[]>((): FormItem[] => [
       {
-        label: '节点定义',
-        key: 'definitionSection',
-        type: 'divider',
-        span: 24
-      },
-      {
         label: '节点类型',
         key: 'nodeType',
         type: 'segment',
         span: 24,
-        description: form.editing
+        help: form.editing
           ? '节点类型创建后不可更改。'
           : '根层级仅支持目录；字典类型需选择上级目录。',
         props: {
@@ -128,12 +120,7 @@
           placeholder: form.data.nodeType === 'directory' ? '请输入目录编码' : '请输入字典类型编码'
         }
       },
-      {
-        label: '层级关系',
-        key: 'hierarchySection',
-        type: 'divider',
-        span: 24
-      },
+
       {
         label: '上级目录',
         key: 'parentId',
@@ -147,7 +134,7 @@
         labelField: 'name',
         valueField: 'id',
         childrenField: 'children',
-        description:
+        help:
           form.data.nodeType === 'dictionary'
             ? '必选。字典类型必须归属到目录，根层级只展示目录。'
             : '可选。不选择则作为最外层目录。',
@@ -179,25 +166,19 @@
         labelField: 'name',
         valueField: 'id',
         labelFn: (option) => `${String(option.name ?? '')} · ${String(option.code ?? '')}`,
-        description:
-          '可选。配置后，本类型的每个字典项都必须归属到所选上级类型的一个字典项；适用于一级、二级等分类级联。',
+        help: '可选。配置后，本类型的每个字典项都必须归属到所选上级类型的一个字典项；适用于一级、二级等分类级联。',
         props: {
           clearable: true,
           filterable: true,
           placeholder: '请选择级联上级类型'
         }
       },
-      {
-        label: '展示设置',
-        key: 'presentationSection',
-        type: 'divider',
-        span: 24
-      },
+
       {
         label: '排序',
         key: 'sort',
         type: 'number',
-        description: '值越小，显示位置越靠前。',
+        help: '值越小，显示位置越靠前。',
         props: {
           min: 0,
           step: 1,
@@ -214,12 +195,7 @@
           options: getDictMap.value?.status ?? []
         }
       },
-      {
-        label: '补充说明',
-        key: 'descriptionSection',
-        type: 'divider',
-        span: 24
-      },
+
       {
         label: '描述',
         key: 'remark',
@@ -227,7 +203,7 @@
         span: 24,
         props: {
           type: 'textarea',
-          rows: 3,
+          rows: 2,
           placeholder: '请输入节点的用途或维护说明',
           maxlength: 500,
           showWordLimit: true
@@ -345,4 +321,21 @@
 
 <style scoped lang="scss">
   @use './dict-maintenance-dialog';
+
+  .dict-type-form.art-form:not(.art-form--custom-layout) {
+    :deep(.el-form-item) {
+      margin-bottom: var(--art-space-4);
+    }
+
+    :deep(.el-form-item__label) {
+      height: var(--art-space-6) !important;
+      padding-bottom: var(--art-space-1);
+      line-height: 20px !important;
+    }
+
+    :deep(.el-textarea__inner) {
+      height: auto;
+      min-height: 72px !important;
+    }
+  }
 </style>

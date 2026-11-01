@@ -3,6 +3,25 @@ import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
+test('解析关联配置后，初检和并发重检均使用实际关联主键', async ({ page }) => {
+  await prepareIsolatedSession(page)
+  const requests: string[][] = []
+  await page.route('**/rest/v1/sys_tenant**', (route) => route.fulfill({ json: [] }))
+  await page.route('**/rest/v1/rpc/get_record_delete_dependency_details**', (route) => {
+    requests.push(route.request().postDataJSON().p_ids)
+    return route.fulfill({ json: [] })
+  })
+  await page.goto('/tests/e2e/fixtures/record-delete-context.html?resolve=1')
+  await page.getByRole('button', { name: '删除记录', exact: true }).click()
+  const confirmation = page.getByRole('dialog', { name: '删除确认' })
+  await expect(confirmation).toBeVisible()
+  expect(requests).toEqual([['cccccccc-cccc-4ccc-accc-cccccccccccc']])
+  await confirmation.getByRole('button', { name: '删除', exact: true }).click()
+  await expect
+    .poll(() => requests)
+    .toEqual([['cccccccc-cccc-4ccc-accc-cccccccccccc'], ['cccccccc-cccc-4ccc-accc-cccccccccccc']])
+})
+
 for (const count of [1, 2]) {
   test(`供应商确认期间撤销权限阻止 ${count} 条记录删除`, async ({ page }) => {
     await prepareIsolatedSession(page)

@@ -129,16 +129,16 @@
             </article>
           </section>
 
-          <ArtSectionCard class="workflow-analytics__governance-card" preserve-content-structure>
-            <template #header
-              ><div class="workflow-analytics__heading">
-                <div>
-                  <ArtSectionTitle :show-line="false">节点瓶颈</ArtSectionTitle>
-                  <p>按逾期、SLA 违约、待办量与 P90 耗时排序，优先处理影响面更大的节点。</p>
-                </div>
-                <ElTag effect="plain" round>{{ attentionNodeCount }} 个需关注</ElTag>
-              </div></template
-            >
+          <ArtSectionCard
+            class="workflow-analytics__governance-card"
+            title="节点瓶颈"
+            subtitle="按逾期、SLA 违约、待办量与 P90 耗时排序，优先处理影响面更大的节点。"
+            :show-marker="false"
+            scroll-max-height="min(360px, 42vh)"
+          >
+            <template #actions>
+              <ElTag effect="plain" round>{{ attentionNodeCount }} 个需关注</ElTag>
+            </template>
 
             <ArtEmptyState
               v-if="!state.bottleneck.nodes.length"
@@ -146,54 +146,52 @@
               description="流程运行后会在这里形成节点级治理依据。"
               icon="ri:flow-chart"
             />
-            <ElScrollbar v-else max-height="min(360px, 42vh)">
-              <div class="workflow-analytics__node-list">
-                <article
-                  v-for="item in state.bottleneck.nodes"
-                  :key="`${item.definitionId}:${item.nodeKey}`"
-                >
-                  <div class="workflow-analytics__node-main">
-                    <div>
-                      <ElTag :type="riskMeta[item.riskLevel].type" effect="light" size="small">
-                        {{ riskMeta[item.riskLevel].label }}
-                      </ElTag>
-                      <strong>{{ item.nodeName }}</strong>
-                    </div>
-                    <span>{{ item.definitionName }}</span>
-                    <small v-if="item.slaMeasuredCount < state.bottleneck.minimumSampleSize">
-                      样本 {{ item.slaMeasuredCount }} 条，暂不评级
-                    </small>
+            <div v-else class="workflow-analytics__node-list">
+              <article
+                v-for="item in state.bottleneck.nodes"
+                :key="`${item.definitionId}:${item.nodeKey}`"
+              >
+                <div class="workflow-analytics__node-main">
+                  <div>
+                    <ElTag :type="riskMeta[item.riskLevel].type" effect="light" size="small">
+                      {{ riskMeta[item.riskLevel].label }}
+                    </ElTag>
+                    <strong>{{ item.nodeName }}</strong>
                   </div>
-                  <div
-                    ><small>待办</small><strong>{{ item.pendingCount }}</strong></div
-                  >
-                  <div
-                    ><small>逾期待办</small
-                    ><strong :class="{ 'is-danger': item.overduePendingCount > 0 }">{{
-                      item.overduePendingCount
-                    }}</strong></div
-                  >
-                  <div
-                    ><small>SLA 达标</small><strong>{{ item.slaComplianceRate }}%</strong></div
-                  >
-                  <div
-                    ><small>P90 耗时</small><strong>{{ item.p90HandleHours }}h</strong></div
-                  >
-                </article>
-              </div>
-            </ElScrollbar>
+                  <span>{{ item.definitionName }}</span>
+                  <small v-if="item.slaMeasuredCount < state.bottleneck.minimumSampleSize">
+                    样本 {{ item.slaMeasuredCount }} 条，暂不评级
+                  </small>
+                </div>
+                <div
+                  ><small>待办</small><strong>{{ item.pendingCount }}</strong></div
+                >
+                <div
+                  ><small>逾期待办</small
+                  ><strong :class="{ 'is-danger': item.overduePendingCount > 0 }">{{
+                    item.overduePendingCount
+                  }}</strong></div
+                >
+                <div
+                  ><small>SLA 达标</small><strong>{{ item.slaComplianceRate }}%</strong></div
+                >
+                <div
+                  ><small>P90 耗时</small><strong>{{ item.p90HandleHours }}h</strong></div
+                >
+              </article>
+            </div>
           </ArtSectionCard>
 
-          <ArtSectionCard class="workflow-analytics__governance-card" preserve-content-structure>
-            <template #header
-              ><div class="workflow-analytics__heading">
-                <div>
-                  <ArtSectionTitle :show-line="false">审批负载</ArtSectionTitle>
-                  <p>用于发现工作量集中和代办承接压力，建议结合岗位与排班共同判断。</p>
-                </div>
-                <ElTag effect="plain" round>{{ state.bottleneck.approvers.length }} 位审批人</ElTag>
-              </div></template
-            >
+          <ArtSectionCard
+            class="workflow-analytics__governance-card"
+            title="审批负载"
+            subtitle="用于发现工作量集中和代办承接压力，建议结合岗位与排班共同判断。"
+            :show-marker="false"
+            scroll-max-height="min(360px, 42vh)"
+          >
+            <template #actions>
+              <ElTag effect="plain" round>{{ state.bottleneck.approvers.length }} 位审批人</ElTag>
+            </template>
 
             <ArtEmptyState
               v-if="!state.bottleneck.approvers.length"
@@ -201,34 +199,32 @@
               description="产生审批任务后会展示租户范围内的负载分布。"
               icon="ri:team-line"
             />
-            <ElScrollbar v-else max-height="min(360px, 42vh)">
-              <div class="workflow-analytics__approver-list">
-                <article v-for="item in state.bottleneck.approvers" :key="item.assigneeUserId">
-                  <div class="workflow-analytics__approver-name">
-                    <span>{{ getInitial(item.assigneeName) }}</span>
-                    <div>
-                      <strong>{{ item.assigneeName || '未命名审批人' }}</strong>
-                      <small v-if="item.delegatedCount || item.transferredCount">
-                        委托 {{ item.delegatedCount }} · 转交 {{ item.transferredCount }}
-                      </small>
-                      <small v-else>直接分配</small>
-                    </div>
+            <div v-else class="workflow-analytics__approver-list">
+              <article v-for="item in state.bottleneck.approvers" :key="item.assigneeUserId">
+                <div class="workflow-analytics__approver-name">
+                  <span>{{ getInitial(item.assigneeName) }}</span>
+                  <div>
+                    <strong>{{ item.assigneeName || '未命名审批人' }}</strong>
+                    <small v-if="item.delegatedCount || item.transferredCount">
+                      委托 {{ item.delegatedCount }} · 转交 {{ item.transferredCount }}
+                    </small>
+                    <small v-else>直接分配</small>
                   </div>
-                  <div
-                    ><small>当前待办</small><strong>{{ item.pendingCount }}</strong></div
-                  >
-                  <div
-                    ><small>已处理</small><strong>{{ item.handledCount }}</strong></div
-                  >
-                  <div
-                    ><small>SLA 达标</small><strong>{{ item.slaComplianceRate }}%</strong></div
-                  >
-                  <ElTag :type="riskMeta[item.riskLevel].type" effect="plain" size="small">
-                    {{ riskMeta[item.riskLevel].label }}
-                  </ElTag>
-                </article>
-              </div>
-            </ElScrollbar>
+                </div>
+                <div
+                  ><small>当前待办</small><strong>{{ item.pendingCount }}</strong></div
+                >
+                <div
+                  ><small>已处理</small><strong>{{ item.handledCount }}</strong></div
+                >
+                <div
+                  ><small>SLA 达标</small><strong>{{ item.slaComplianceRate }}%</strong></div
+                >
+                <ElTag :type="riskMeta[item.riskLevel].type" effect="plain" size="small">
+                  {{ riskMeta[item.riskLevel].label }}
+                </ElTag>
+              </article>
+            </div>
           </ArtSectionCard>
         </div>
       </ElTabPane>
@@ -686,15 +682,15 @@
     }
 
     &__governance-card {
+      --art-section-padding: var(--art-space-4);
+
       min-width: 0;
-      padding: 15px;
     }
 
     &__node-list,
     &__approver-list {
       display: grid;
       gap: 7px;
-      padding-right: 8px;
     }
 
     &__node-list article {
