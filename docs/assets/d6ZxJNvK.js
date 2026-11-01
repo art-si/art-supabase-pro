@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./EJJg8wt7.js";var i=n({name:`FinanceReceiptRefund`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`refund`}))}});export{i as default};

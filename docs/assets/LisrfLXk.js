@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./DbMqis6w.js";var i=n({name:`PmisInspectionSheet`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{mode:`sheet`}))}});export{i as default};

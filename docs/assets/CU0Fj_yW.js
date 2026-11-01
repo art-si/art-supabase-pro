@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./Dp2ca4E6.js";var i=n({name:`FinanceFinancialReceivable`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`financial`}))}});export{i as default};

@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./Dp2ca4E6.js";var i=n({name:`FinanceEstimatedReceivable`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`estimate`}))}});export{i as default};

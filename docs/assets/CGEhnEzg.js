@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./BayVnPPF.js";var i=n({name:`WmsSalesReturnDocument`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`return`}))}});export{i as default};

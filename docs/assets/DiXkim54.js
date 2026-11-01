@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./BbeZj9a9.js";var i=n({name:`SmisPermittedOperationItem`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{"catalog-type":`permitted_operation_item`}))}});export{i as default};

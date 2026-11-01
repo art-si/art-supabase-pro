@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./CfkaJLM8.js";var i=n({name:`MdmDataDistribution`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{"initial-view":`outbox`}))}});export{i as default};

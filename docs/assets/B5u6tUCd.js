@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./z7xFhRXc.js";var i=n({name:`FinanceRevenueCost`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`revenue`}))}});export{i as default};

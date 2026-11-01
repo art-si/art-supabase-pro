@@ -1,0 +1,1 @@
+import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./BfJ7dnZ0.js";var i=n({name:`FinanceAssetPayable`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`asset_payable`,"view-permission":`FinanceAssetPayable:View`,"action-permission":`FinanceAssetPayable:Approve`}))}});export{i as default};

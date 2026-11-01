@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./6slmSIor.js";var i=n({name:`SmisWorkItem`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{"catalog-type":`work_item`}))}});export{i as default};
