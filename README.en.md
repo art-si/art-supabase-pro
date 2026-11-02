@@ -17,7 +17,7 @@
 
 ![Transportation operations dashboard](screenshots/02-dashboard.png)
 
-> Historical showcase screenshot dated September 22, 2026. The running dashboard and its data may differ.
+> The platform workspace shows operational metrics, vehicle and driver certificate risks, live transport, and fleet health. Figures and data vary by environment.
 
 ## Overview
 
@@ -51,6 +51,20 @@ This overview reflects committed implementation as of **November 2, 2026**. Avai
 | Operations | Supabase operations workspace, backup/restore and delivery tools, pinned module manifests, project snapshots, and separate CloudBase build configuration |
 
 Some MES shop-floor collection and cross-system traceability remain incomplete. Purchase-request conversion into MES plans and a unified WMS-to-TMS handover contract are still pending. Each module README describes its implemented scope and remaining boundaries.
+
+## Connected Business Workflows
+
+```text
+MDM master data and production setup → SCM quotations, sales and purchasing → WMS stock
+                  └→ MES work orders, scheduling and reporting ────────────────↑
+
+TMS orders and dispatch → Driver field execution → FMS receivables, payables and settlement
+          └→ VMS vehicles, certificates and maintenance
+
+PMIS equipment · HR people · SMIS safety · Platform workflows, data and AI
+```
+
+These are business relationships; document conversion, stock posting and state changes depend on the server contracts already connected in each environment. See the [documentation site](https://art-si.github.io/art-supabase-doc/) and individual module READMEs for details.
 
 ## Repository Ecosystem
 
@@ -91,6 +105,18 @@ The companion [driver H5 / WeChat Mini Program](https://gitee.com/art-si/supabas
 Purchase orders and receiving notices can feed WMS receipts; delivery notices feed sales stock-out; MES connects material requisitions and finished-goods receipts. Stock balances follow actual WMS posting. Manufacturing and equipment-maintenance events retain their own states, permissions, and audit records.
 
 ## Product Highlights
+
+The screenshots below show platform and domain workspaces. Screens, permissions, and data depend on the deployed version and environment. The login and driver screenshots are earlier examples.
+
+### Master data, warehousing, and manufacturing
+
+The MDM overview organizes master records and completeness by business domain. The WMS workspace brings receiving, inventory, material requests, transfers, counts, and serial traceability together. The MES workspace presents the production execution stages and integration status.
+
+![MDM governance overview](screenshots/17-mdm-governance.png)
+
+![WMS operations workspace](screenshots/18-wms-workbench.png)
+
+![MES manufacturing workspace](screenshots/19-mes-workbench.png)
 
 ### AI-assisted order entry
 
@@ -145,6 +171,12 @@ HR connects organizations, positions, employee identities, employment status, ac
 The H5 and WeChat Mini Program driver app brings the assigned vehicle, active task, transport milestones, remaining mileage, and field actions into one mobile workspace backed by controlled TMS lifecycle contracts.
 
 ![TMS driver workspace](screenshots/16-driver-mobile-home.png)
+
+### Order entry and SQL workspace
+
+![Transportation order entry](screenshots/03-smart-order.png)
+
+![SQL workspace](screenshots/10-ai-sql-workbench.png)
 
 ## Technology Stack
 
