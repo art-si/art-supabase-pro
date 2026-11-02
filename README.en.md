@@ -2,7 +2,7 @@
   <img src="./src/assets/images/common/logo.webp" width="96" alt="Yiqi Workshop Logo" />
   <h1>Yiqi Workshop · 亿企工场</h1>
   <p><strong>A modular enterprise business platform powered by Vue 3 and Supabase</strong></p>
-  <p>One shared platform for transportation, fleet, finance, HR, safety, driver operations, workflows, and governed AI.</p>
+  <p>One shared platform for supply chain, manufacturing, warehouse, transportation, equipment, finance, HR, safety, and governed AI.</p>
 
   <p>
     <a href="https://gitee.com/art-si/art-supabase-pro">Gitee</a>
@@ -30,25 +30,65 @@ The project currently includes:
 - Vehicle lifecycle management: archives, approval, insurance, inspection, maintenance, accidents, mileage, routine checks, parts, suppliers, and expiry reminders.
 - Finance: transportation settlement, receivables, treasury, accounting, invoices, tax, fixed assets, payroll, and financial reporting.
 - Human resources: organizations, positions, employee lifecycle, recruitment, workforce planning, attendance, compensation, performance, talent, and employee services.
-- Safety management: equipment ledgers, qualifications and training, emergency response, anti-violation programs, PPE, tools, and accident management.
+- Safety management: dual prevention, special operations, hazardous waste, equipment ledgers, qualifications and training, emergency response, anti-violation programs, PPE, and accident management.
+- Master data: cross-application governance, quality remediation and controlled changes, materials and numbering rules, BOMs, document types, production organizations, factory calendars, work centers, and process routes.
+- Supply chain and warehouse: quotations, contracts, sales and purchase orders, delivery notices, stock movements, batches, transfers, inventory counts, and source tracing.
+- Manufacturing and equipment operations: work orders, scheduling, shop-floor tasks, production reporting and review, packing, finished-goods receipt integration, inspections, maintenance, and repairs.
 - Approval workflows: versioned definitions, conditional nodes, tasks, transfer, delegation, reminders, monitoring, callback compensation, and full audit trails.
 - Governed AI capabilities: intelligent order entry, SQL assistant, project assistant, dispatch recommendations, transport anomaly analysis, cost review, profit diagnostics, receivables risk, vehicle health, OCR, and AI operations.
 
+## Recent Improvements
+
+This overview reflects committed implementation as of **November 2, 2026**. Availability depends on the target environment's backend contracts, configuration, and role permissions.
+
+| Area | Current improvements |
+| --- | --- |
+| Supply chain and stock | Purchase-source conversion, partial receipts, sales stock posting, production material issues and returns, finished-goods receipts and returns, and packing-source tracing |
+| Receivables and payables | Payable documents, payment conditions, settlement, automatic write-off, credit documents, red/blue offset previews, linked vouchers, and approvals |
+| SQL workspace | Supabase, PostgreSQL, MySQL 8, and Dameng DM8 connections; lazy metadata, multiple tabs, search, sorting, charts, statistics, comparisons, and Excel/JSON exports; query cancellation is supported except DM8, which currently relies on timeouts |
+| Authorized query APIs | Fixed read-only SQL, typed parameters, tenant-local account grants, cancellation, personal parameter presets, request examples, and OpenAPI 3.1 exports |
+| Shared business UI | Configuration-driven ArtForm, consistent list/detail workspaces, field and column permissions, reference-aware master-data deletion, and persistent appearance preferences |
+| Operations | Supabase operations workspace, backup/restore and delivery tools, pinned module manifests, project snapshots, and separate CloudBase build configuration |
+
+Some MES shop-floor collection and cross-system traceability remain incomplete. Purchase-request conversion into MES plans and a unified WMS-to-TMS handover contract are still pending. Each module README describes its implemented scope and remaining boundaries.
+
 ## Repository Ecosystem
 
-| Repository | Responsibility | Dev port |
-| --- | --- | --: |
-| [`art-supabase-pro`](https://gitee.com/art-si/art-supabase-pro) | Platform host, shared runtime, workflows, data center, and AI governance | `3006` |
-| [`art-supabase-tms`](https://gitee.com/art-si/art-supabase-tms) | Transportation management and execution | `3016` |
-| [`art-supabase-vms`](https://gitee.com/art-si/art-supabase-vms) | Vehicle lifecycle management | `3015` |
-| [`art-supabase-fms`](https://gitee.com/art-si/art-supabase-fms) | Transportation finance and enterprise accounting | `3012` |
-| [`art-supabase-hr`](https://gitee.com/art-si/art-supabase-hr) | Human resources and talent operations | `3013` |
-| [`art-supabase-smis`](https://gitee.com/art-si/art-supabase-smis) | Safety management and equipment governance | `3014` |
-| [`supabase-mobile-tms-driver`](https://gitee.com/art-si/supabase-mobile-tms-driver) | Driver-facing H5 and WeChat Mini Program | — |
-| [`art-supabase-doc`](https://gitee.com/art-si/art-supabase-doc) | Product, development, deployment, and operations documentation | `5173` |
-| [`art-supabase-site`](https://gitee.com/art-si/art-supabase-site) | Independent official website and product ecosystem | `3022` |
+| Repository | Responsibility | Dev port | Mirror |
+| --- | --- | --: | --- |
+| [art-supabase-pro](https://gitee.com/art-si/art-supabase-pro) | Platform host, shared runtime, workflows, data center, and AI governance | `3006` | [GitHub](https://github.com/art-si/art-supabase-pro) |
+| [art-supabase-fms](https://gitee.com/art-si/art-supabase-fms) | Accounting, receivables, payables, and transport settlement | `3012` | [GitHub](https://github.com/art-si/art-supabase-fms) |
+| [art-supabase-hr](https://gitee.com/art-si/art-supabase-hr) | Human resources and talent operations | `3013` | [GitHub](https://github.com/art-si/art-supabase-hr) |
+| [art-supabase-smis](https://gitee.com/art-si/art-supabase-smis) | Safety, training, and equipment governance | `3014` | [GitHub](https://github.com/art-si/art-supabase-smis) |
+| [art-supabase-vms](https://gitee.com/art-si/art-supabase-vms) | Vehicle lifecycle management | `3015` | [GitHub](https://github.com/art-si/art-supabase-vms) |
+| [art-supabase-tms](https://gitee.com/art-si/art-supabase-tms) | Transportation, dispatching, and execution | `3016` | [GitHub](https://github.com/art-si/art-supabase-tms) |
+| [art-supabase-mdm](https://gitee.com/art-si/art-supabase-mdm) | Master-data governance and production configuration | `3017` | [GitHub](https://github.com/art-si/art-supabase-mdm) |
+| [art-supabase-wms](https://gitee.com/art-si/art-supabase-wms) | Warehousing, stock movements, and traceability | `3018` | [GitHub](https://github.com/art-si/art-supabase-wms) |
+| [art-supabase-mes](https://gitee.com/art-si/art-supabase-mes) | Manufacturing execution, work orders, scheduling, and reporting | `3019` | [GitHub](https://github.com/art-si/art-supabase-mes) |
+| [art-supabase-pmis](https://gitee.com/art-si/art-supabase-pmis) | Equipment inspections, maintenance, and repairs | `3020` | [GitHub](https://github.com/art-si/art-supabase-pmis) |
+| [art-supabase-scm](https://gitee.com/art-si/art-supabase-scm) | Quotations, sales, and procurement | `3021` | [GitHub](https://github.com/art-si/art-supabase-scm) |
+| [art-supabase-site](https://gitee.com/art-si/art-supabase-site) | Independent website and product ecosystem | `3022` | [GitHub](https://github.com/art-si/art-supabase-site) |
+| [art-supabase-doc](https://gitee.com/art-si/art-supabase-doc) | Product, development, deployment, and operations documentation | `5173` | [GitHub](https://github.com/art-si/art-supabase-doc) |
 
 The main repository pins domain applications with Git submodules and supplies authentication, tenancy, navigation, permissions, layout, shared components, and the Supabase client. Domain repositories own their pages, APIs, types, and business rules. The driver app joins the same TMS execution lifecycle through controlled server contracts.
+
+The companion [driver H5 / WeChat Mini Program](https://gitee.com/art-si/supabase-mobile-tms-driver) is maintained separately from these 12 submodules. See the [documentation site](https://art-si.github.io/art-supabase-doc/) for usage, development, and deployment guidance.
+
+## Business Modules
+
+| Module | Implemented scope |
+| --- | --- |
+| MDM | Source-governance directory, quality remediation, changes, golden records and distribution, material/warehouse master data, numbering, BOMs, document/business types, calendars, work centers, process routes, and accessory-processing lists |
+| SCM | Sales and project quotations, contracts, orders, delivery notices and loading, purchase requests, contracts, orders, receiving notices, and subcontracting |
+| WMS | Purchase/sales stock documents, production issues/returns, finished-goods receipts/returns, transfers, counts, batches, serial numbers, stock ledgers, and movement reports |
+| MES | Work orders, process/BOM snapshots, scheduling and Gantt views, shop-floor tasks, reporting/review, packing, quality, and production analysis |
+| PMIS | Equipment inspection, patrol, preventive maintenance, servicing, and repair plans, tasks, records, dashboards, and analysis |
+| TMS / VMS | Transport order-to-delivery operations, return trips, commissions, certificate gates, 15 operational/business reports, mobile execution, vehicle lifecycle records, and fuel/electricity cards |
+| FMS | Transport settlement, receivables/payables, treasury, accounting, invoices, tax, fixed assets, payroll, and reports |
+| HR / SMIS | Employee and organization operations; safety master data, dual prevention, special operations, training, emergency response, PPE, and hazardous-waste management |
+| Platform | System administration, approvals, recognition/review, AI governance, data tools, and operational command dashboards |
+
+Purchase orders and receiving notices can feed WMS receipts; delivery notices feed sales stock-out; MES connects material requisitions and finished-goods receipts. Stock balances follow actual WMS posting. Manufacturing and equipment-maintenance events retain their own states, permissions, and audit records.
 
 ## Product Highlights
 
@@ -113,22 +153,24 @@ The H5 and WeChat Mini Program driver app brings the assigned vehicle, active ta
 | Frontend             | Vue 3, TypeScript, Vite, Vue Router, Pinia                         |
 | UI and visualization | Element Plus, SCSS, Tailwind CSS, ECharts, Vue Flow                |
 | Backend and data     | Supabase, PostgreSQL, RLS, Realtime, Storage, Edge Functions       |
-| Editors and files    | Monaco Editor, Tiptap, XLSX, File Viewer, XGPlayer                 |
+| Editors and files    | Monaco Editor, Tiptap, ExcelJS, File Viewer, XGPlayer              |
 | Quality              | ESLint, Prettier, Stylelint, vue-tsc, Playwright, Node Test Runner |
 
 ## Quick Start
 
 Requirements:
 
-- Node.js `>= 22.0.0`
-- pnpm `>= 11.9.0`
-- A Supabase project
+- Node.js `>= 22.13.0`
+- pnpm `>= 11.28.2` (currently pinned to `11.28.2`)
+- A Supabase project configured with the required business database, Auth, Storage, and Edge Functions; frontend installation does not provision the backend
 
 ```bash
 git clone --recurse-submodules https://gitee.com/art-si/art-supabase-pro.git
 cd art-supabase-pro
 pnpm install
 ```
+
+You can also clone the [GitHub mirror](https://github.com/art-si/art-supabase-pro). Submodule URLs in `.gitmodules` default to Gitee. For an existing non-recursive checkout, run `git submodule update --init --recursive`. Use `pnpm modules:install` to install module dependencies at the pinned revisions, or `pnpm modules:setup` for the complete preparation/build workflow.
 
 Configure `.env` or `.env.development`:
 
@@ -154,7 +196,35 @@ pnpm check
 pnpm build
 ```
 
-> Only expose the Supabase `anon` key to the frontend. Keep `service_role`, AI provider keys, and other server credentials behind database functions or Edge Functions, and enforce access with RLS.
+> Expose only a Supabase publishable key or compatible `anon` key to the frontend. Keep `service_role`, AI provider keys, and other server credentials behind database functions or Edge Functions, and enforce access with RLS.
+
+## Development and Publishing
+
+The host owns reusable utilities, composables, shared business components, authentication, tenancy, and permissions. Modules import shared implementations through `@/` and retain domain-specific rules. Menu URLs, menu component paths, and `src/views/**/index.vue` entries must align segment by segment.
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm sql:gateway` | Start the background executor for external read-only database connections |
+| `pnpm check:fast` | Icon, UI, reuse, dependency, permission, database-security, type, lint, and unit checks |
+| `pnpm check` | Add Stylelint to the fast checks |
+| `pnpm check:ci` | Full checks, coverage, project snapshot, production build, bundle budget, and browser regressions |
+| `pnpm modules:status` | Inspect the 12 submodule revisions |
+| `pnpm modules:check` | Run each module's declared checks |
+| `pnpm modules:build` | Build all modules |
+| `pnpm repo:pull` | Update the host and submodule branches |
+| `pnpm repo:publish -- "docs: refresh project overview"` | Build publication output and commit/push changed repositories |
+
+`repo:publish` includes all current workspace changes, builds affected `docs` output, commits modules before the host, updates the pinned module manifest, and regenerates the AI project snapshot. It pushes each repository's configured upstream; GitHub and Gitee mirrors require separate pushes.
+
+Host and business-module `docs/` directories contain published build output. In contrast, `modules/art-supabase-doc/docs/` contains documentation source. Preserve both, along with versioned tests and visual baselines. See [tests/README.md](tests/README.md) for test boundaries.
+
+## Permissions and Data Boundaries
+
+- Ordinary users and tenant administrators remain within their authenticated tenant. Only platform super administrators can switch tenant scope.
+- Platform-all reads across tenants; a concrete selection restricts reads to that tenant. New root records in platform-all default to the administrator's authenticated tenant, while existing-row mutations and child records use the record or parent tenant.
+- Enabled ordinary users can use authorized AI and create tenant-owned master data with the corresponding business `Add` permission. Other AI mutations, configuration, publishing, and workflow changes require platform-super checks in both UI and server boundaries.
+- Master-data deletion checks business references before confirmation and blocks failed or unauthorized checks. Server-side reference, tenant, and permission checks remain authoritative.
+- Raw SQL on the platform Supabase project requires platform-super authorization. Ordinary users access external read-only connections or fixed query APIs only through explicit tenant-local grants.
 
 ## License and Credits
 
