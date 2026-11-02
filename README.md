@@ -2,7 +2,7 @@
   <img src="./src/assets/images/common/logo.webp" width="96" alt="亿企工场 Logo" />
   <h1>亿企工场</h1>
   <p><strong>Vue 3 + Supabase 驱动的模块化企业业务平台</strong></p>
-  <p>统一平台底座，组合运输、车辆、财务、人力、安全生产、司机协同与可治理 AI。</p>
+  <p>统一平台底座，连接供应链、生产、仓储、运输、设备、财务、人力、安全生产与可治理 AI。</p>
 
   <p>
     <a href="https://gitee.com/art-si/art-supabase-pro">Gitee</a>
@@ -38,26 +38,49 @@
 - 车辆全生命周期：车辆档案、入档审核、保险、年检、维修、事故、里程、例检、配件与到期提醒。
 - 财务管理：运输结算、应收账龄、资金、会计核算、票据、税务、固定资产、薪资与财务报表。
 - 人力资源：组织岗位、员工生命周期、招聘、编制、考勤、薪酬福利、绩效、人才与员工服务。
-- 安全生产：设备台账、资质培训、应急救援、反违章、劳保用品、工器具与事故管理。
+- 安全生产：双重预防、特殊作业、危险废物、设备台账、资质培训、应急救援、反违章、劳保用品与事故管理。
+- 主数据与生产基础：跨应用主档目录、质量整改与变更治理、物料编码、BOM、单据类型、生产组织、工厂日历、工作中心与工艺路线。
+- 供应链与仓储：报价、销售合同与订单、采购申请与订单、收发货通知、出入库、库存批次、调拨、盘点与来源追溯。
+- 制造执行与设备运营：生产工单、排程、现场任务、报工审核、排包、完工入库联动，以及点巡检、保养、维修计划与任务。
 - 审批工作流：版本化流程、条件节点、任务处理、转交、委托、催办、监控、回调补偿与完整审计轨迹。
 - AI 业务能力：智能填单、SQL 助手、项目助手、调度推荐、运输异常研判、费用审核、利润诊断、回款风险、车辆健康、票据/OCR 与质量运营。
 
+## 近期完善的能力
+
+本轮说明按截至 **2026-11-02** 的已提交代码整理；业务是否可用仍取决于目标环境的后端契约、配置与角色授权。
+
+| 方向 | 当前改进 |
+| --- | --- |
+| 供应链与生产库存 | 采购来源下推、分批入库、销售出库审核记账、生产领退料、完工入退库、排包来源与库存流水关联 |
+| 应收与应付 | 应付款单、付款条件、结算、自动核销、红字与红蓝核销预览，以及关联凭证和审批处理 |
+| SQL 工作台 | Supabase / PostgreSQL / MySQL 8 / 达梦 DM8 数据源、按需元数据、多页签、结果搜索与排序、图表、统计、对比及 Excel / JSON 导出；支持查询取消，DM8 当前按超时结束 |
+| 授权查询 API | 固定只读 SQL、类型化参数、租户内账号授权、调用取消、个人参数方案、请求示例与 OpenAPI 3.1 导出 |
+| 通用业务体验 | 配置式 ArtForm、统一列表与详情工作区、字段和列权限、主数据删除引用检查、外观偏好持久化 |
+| 平台运维 | Supabase 运维入口、备份恢复与项目交付工具、子仓版本清单、发布快照，以及独立的 CloudBase 构建配置 |
+
+MES 的部分现场采集与跨系统全程追溯仍需完善；SCM 到 MES 的采购申请生成计划、WMS 到 TMS 的统一交接契约仍待接通。下文按已接入能力介绍各仓，详细业务边界见对应子仓 README。
+
 ## 项目全景
 
-| 仓库 | 定位 | 独立开发端口 |
-| --- | --- | --: |
-| [`art-supabase-pro`](https://gitee.com/art-si/art-supabase-pro) | 平台宿主、公共运行时、审批、数据中心与 AI 治理 | `3006` |
-| [`art-supabase-tms`](https://gitee.com/art-si/art-supabase-tms) | TMS 智慧运输与履约协同 | `3016` |
-| [`art-supabase-vms`](https://gitee.com/art-si/art-supabase-vms) | VMS 车辆全生命周期管理 | `3015` |
-| [`art-supabase-fms`](https://gitee.com/art-si/art-supabase-fms) | FMS 运输财务与企业核算 | `3012` |
-| [`art-supabase-hr`](https://gitee.com/art-si/art-supabase-hr) | HR 人力资源与人才运营 | `3013` |
-| [`art-supabase-smis`](https://gitee.com/art-si/art-supabase-smis) | SMIS 安全生产与设备治理 | `3014` |
-| [`art-supabase-scm`](https://gitee.com/art-si/art-supabase-scm) | SCM供应链管理：报价、合同、订单与发运 | `3021` |
-| [`supabase-mobile-tms-driver`](https://gitee.com/art-si/supabase-mobile-tms-driver) | 面向司机的 H5 / 微信小程序运输执行端 | — |
-| [`art-supabase-doc`](https://gitee.com/art-si/art-supabase-doc) | 使用、开发、部署与运维文档站 | `5173` |
-| [`art-supabase-site`](https://gitee.com/art-si/art-supabase-site) | 亿企工场独立官网与产品矩阵 | `3022` |
+| 仓库 | 定位 | 独立开发端口 | 代码镜像 |
+| --- | --- | --: | --- |
+| [art-supabase-pro](https://gitee.com/art-si/art-supabase-pro) | 平台宿主、公共运行时、审批、数据中心与 AI 治理 | `3006` | [GitHub](https://github.com/art-si/art-supabase-pro) |
+| [art-supabase-fms](https://gitee.com/art-si/art-supabase-fms) | 财务核算、应收应付与运输结算 | `3012` | [GitHub](https://github.com/art-si/art-supabase-fms) |
+| [art-supabase-hr](https://gitee.com/art-si/art-supabase-hr) | 人力资源、组织与人才运营 | `3013` | [GitHub](https://github.com/art-si/art-supabase-hr) |
+| [art-supabase-smis](https://gitee.com/art-si/art-supabase-smis) | 安全生产、资质培训与设备治理 | `3014` | [GitHub](https://github.com/art-si/art-supabase-smis) |
+| [art-supabase-vms](https://gitee.com/art-si/art-supabase-vms) | 车辆全生命周期管理 | `3015` | [GitHub](https://github.com/art-si/art-supabase-vms) |
+| [art-supabase-tms](https://gitee.com/art-si/art-supabase-tms) | 智慧运输、调度与履约协同 | `3016` | [GitHub](https://github.com/art-si/art-supabase-tms) |
+| [art-supabase-mdm](https://gitee.com/art-si/art-supabase-mdm) | 主数据治理与生产基础配置 | `3017` | [GitHub](https://github.com/art-si/art-supabase-mdm) |
+| [art-supabase-wms](https://gitee.com/art-si/art-supabase-wms) | 仓储、出入库、库存与追溯 | `3018` | [GitHub](https://github.com/art-si/art-supabase-wms) |
+| [art-supabase-mes](https://gitee.com/art-si/art-supabase-mes) | 制造执行、工单、排程与报工 | `3019` | [GitHub](https://github.com/art-si/art-supabase-mes) |
+| [art-supabase-pmis](https://gitee.com/art-si/art-supabase-pmis) | 设备点巡检、保养与维修运营 | `3020` | [GitHub](https://github.com/art-si/art-supabase-pmis) |
+| [art-supabase-scm](https://gitee.com/art-si/art-supabase-scm) | 供应链报价、销售与采购 | `3021` | [GitHub](https://github.com/art-si/art-supabase-scm) |
+| [art-supabase-site](https://gitee.com/art-si/art-supabase-site) | 独立官网与产品矩阵 | `3022` | [GitHub](https://github.com/art-si/art-supabase-site) |
+| [art-supabase-doc](https://gitee.com/art-si/art-supabase-doc) | 使用、开发、部署与运维文档站 | `5173` | [GitHub](https://github.com/art-si/art-supabase-doc) |
 
 主仓通过 Git submodule 固定各业务应用的提交，统一装载认证、租户、菜单、权限、布局、公共组件和 Supabase 客户端。业务仓保留领域页面、API、类型与规则的所有权；司机端通过受控服务端契约与 TMS 共享同一条运单履约链路。
+
+配套的 [司机 H5 / 微信小程序](https://gitee.com/art-si/supabase-mobile-tms-driver) 独立维护，不属于上述 12 个 Git 子模块。产品使用与开发说明见 [文档站](https://art-si.github.io/art-supabase-doc/)。
 
 ## 为什么值得关注
 
@@ -155,12 +178,27 @@
 
 ## 业务模块
 
+### MDM 主数据、SCM 供应链与 WMS 仓储
+
+- MDM：跨应用治理目录、质量整改、变更、黄金记录与分发治理；物料与仓储基础、编码规则、BOM、单据与业务类型、生产日历、工作中心、工艺路线与配件加工清单。
+- SCM：销售报价、项目报价、销售合同与订单、发货通知和装车，以及采购申请、合同、订单、收料通知和委外业务。
+- WMS：采购与销售出入库、生产领退料、完工入退库、调拨、盘点、批次与序列号、库存台账及物料收发明细。
+- 已接通的来源链路包括采购订单/收料通知下推入库、发货通知进入销售出库、MES 工单领料和完工实绩入库；库存以实际过账结果为准。
+
+### MES 制造执行与 PMIS 设备管理
+
+- MES：生产工单、工艺/BOM 快照、计划排程、甘特图、现场任务、生产报工与审核、排包，以及质量与生产分析入口。
+- 完工入库联动报工量、完全领料控制及质量状态；排包按确认与发布状态控制入库来源。
+- PMIS：设备点检、巡检、预防性维护、保养与维修的计划、任务、记录、看板和分析。
+- 生产报工与设备维护分别保留各自的权限、状态和审计；页面范围不代表所有现场采集与跨系统链路已完成。
+
 ### TMS 运输管理
 
 - 基础资料：客户、客户地址、客户价格、承运商、承运商价格、司机、货物、合同、站点。
 - 运输执行：智能开单、订单列表、待配载、已配载、配送签收、回单识别、异常工单、在途监控。
 - 财务结算：客户对账、承运商对账、收付款、核销、发票、运单费用、利润分析。
 - AI 辅助：填单、调度、异常研判、费用审核、利润诊断、回款风险、承运商评估、发票与凭证识别。
+- 经营运营：返程任务、司机提成、证件派车门禁，以及 15 个经营与运营报表入口；缺少核算来源或权限时保留待核算状态。
 
 ### FMS 财务管理
 
@@ -179,6 +217,7 @@
 - 安全基础与设备：岗位风险、安全责任、作业指导、场所、供应商、设备与特种设备台账。
 - 资质培训：课程、题库、考试、培训计划/记录/统计与各类安全资格证书。
 - 生产安全：应急预案与演练、反违章、制度文档、劳保用品、工器具和事故管理。
+- 双重预防与专项业务：风险辨识评价、分级管控、四色图、检查与隐患整改、特殊作业申请和预检，以及危废目录和出入库记录。
 
 ### 司机协同端
 
@@ -206,12 +245,15 @@
 - AI 生成 SQL 与错误修复，结合项目 Schema 摘要减少表名、字段名幻觉。
 - Supabase 项目对象浏览和只读项目助手。
 - AI 配置、提示词、运行记录、质量指标、用户反馈与问题闭环。
+- 多数据源只读查询、独立 SQL 执行端、授权查询 API 与结果分析工具；普通用户按连接或 API 授权使用，平台 Supabase 原始 SQL 执行仍仅限平台超级管理员。
+- 统一智能识别工作台、识别记录与人工复核入口，保留业务确认和受控写入边界。
+- 经营、财务风险、安全生产、车队合规、资产维护、人员、流程效率和数据治理等驾驶舱与指挥屏入口。
 
 ## 技术架构
 
 业务菜单由 Supabase `sys_menu` 提供。菜单的完整访问路径、`component` 路径与业务子仓 `src/views` 下的视图目录逐段对应；详情路由的 `:id` 等参数不进入文件目录。多个菜单共用一个实现时，每个访问路径仍有自己的视图入口，复用实现放在 `views/components`。
 
-2026-10-03 的路由目录核对覆盖 11 个应用的 449 个页面菜单，修正了 111 个组件路径；数据库复查时各应用的路径与组件不匹配数均为 0。更新前菜单路径与组件映射已保存在本次工作区的 `.artifacts/menu-route-audit.json`，并有对应的恢复 SQL。
+主仓负责通用工具、组合式能力和跨仓业务组件，子仓通过 `@/` 引用唯一实现；领域规则留在所属仓库。依赖、补丁、权限、复用与 UI 审计共同检查主子仓契约，避免复制公共运行时后独立漂移。
 
 ```text
 Vue 3 + TypeScript + Element Plus
@@ -223,7 +265,7 @@ Vue 3 + TypeScript + Element Plus
 │ Realtime      │ RPC / Functions  │ Edge Functions│
 └─────────────┬────────────────────────────────────┘
               │
-    TMS / 车辆 / 审批 / 财务 / AI 业务模块
+    MDM / SCM / MES / WMS / TMS / VMS / PMIS / FMS / HR / SMIS
 ```
 
 ## 技术栈
@@ -233,16 +275,16 @@ Vue 3 + TypeScript + Element Plus
 | 前端框架    | Vue 3、TypeScript、Vite、Vue Router、Pinia                         |
 | UI 与可视化 | Element Plus、SCSS、Tailwind CSS、ECharts、Vue Flow                |
 | 数据与后端  | Supabase、PostgreSQL、RLS、Realtime、Storage、Edge Functions       |
-| 编辑与文件  | Monaco Editor、Tiptap、XLSX、File Viewer、XGPlayer                 |
+| 编辑与文件  | Monaco Editor、Tiptap、ExcelJS、File Viewer、XGPlayer              |
 | 工程质量    | ESLint、Prettier、Stylelint、vue-tsc、Playwright、Node Test Runner |
 
 ## 快速开始
 
 ### 环境要求
 
-- Node.js `>= 22.0.0`
-- pnpm `>= 11.9.0`
-- 一个 Supabase 项目
+- Node.js `>= 22.13.0`
+- pnpm `>= 11.28.2`（当前锁定 `11.28.2`）
+- 已配置业务数据库、Auth、Storage 和所需 Edge Functions 的 Supabase 项目；安装前端依赖不会自动创建后端
 
 ### 1. 获取代码
 
@@ -251,6 +293,8 @@ git clone --recurse-submodules https://gitee.com/art-si/art-supabase-pro.git
 cd art-supabase-pro
 pnpm install
 ```
+
+也可使用 [GitHub 镜像](https://github.com/art-si/art-supabase-pro) 克隆主仓；`.gitmodules` 默认从 Gitee 获取子仓。已有非递归克隆执行 `git submodule update --init --recursive`。按主仓锁定版本安装业务依赖可用 `pnpm modules:install`，完整准备与构建可用 `pnpm modules:setup`。
 
 共享依赖补丁由主仓 `patches/` 维护。Element Plus 2.14.7 的补丁修复数字输入框解除禁用后 `aria-disabled` 不更新的问题，同时覆盖 ES Module 和 CommonJS。业务子仓保留相同补丁以支持独立安装；更新主仓补丁后运行 `pnpm dependencies:sync-patches` 同步副本，`pnpm dependencies:audit` 会检查配置和内容一致性。上游修复后，升级依赖时应移除对应补丁并重新验证表单禁用切换。
 
@@ -267,7 +311,7 @@ VITE_AMAP_KEY=your-amap-key
 VITE_AMAP_SECURITY_JS_CODE=your-amap-security-code
 ```
 
-> 前端只应使用 Supabase `anon` key。不要把 `service_role` key、AI Provider 密钥或其他服务端凭证放进 Vite 环境变量；权限安全必须由 RLS、数据库函数和 Edge Functions 在服务端边界保证。
+> 前端使用 Supabase 公开 publishable key 或兼容的 `anon` key。不要把 `service_role` key、AI Provider 密钥或其他服务端凭证放进 Vite 环境变量；权限安全必须由 RLS、数据库函数和 Edge Functions 在服务端边界保证。
 
 ### 3. 启动开发环境
 
@@ -291,6 +335,7 @@ pnpm build
 | 命令 | 说明 |
 | --- | --- |
 | `pnpm dev` | 启动开发服务器 |
+| `pnpm sql:gateway` | 启动外接数据库只读查询的本机后台执行端 |
 | `npm run dev:cloudbase` | 本地启动前端，连接 `.env.cloudbase` 配置的 CloudBase 后端 |
 | `pnpm check:fast` | 运行 UI、复用、权限与数据库静态审计、类型、ESLint 和单元测试 |
 | `pnpm check` | 在快速检查基础上增加 Stylelint |
@@ -300,12 +345,17 @@ pnpm build
 | `pnpm test:e2e:core` | 运行 1440 桌面与 390 移动端核心页面视觉回归 |
 | `pnpm test:e2e:install` | 安装 CI 所需的 Playwright Chromium |
 | `pnpm snapshot:check` | 校验 AI 项目快照是否与当前代码一致 |
+| `pnpm modules:status` | 查看全部子仓版本与初始化状态 |
+| `pnpm modules:check` | 运行各子仓声明的质量检查 |
+| `pnpm modules:build` | 构建全部子仓 |
 | `pnpm build` | 构建生产版本 |
 | `pnpm build:analyze` | 生成构建体积分析 |
 | `pnpm repo:pull` | 同步拉取主仓及全部 Git 子仓 |
 | `pnpm repo:publish -- "feat: 提交说明"` | 构建 docs，提交并推送主仓及有改动的子仓 |
 
 统一发布命令会先检查分支和上游状态，构建所有有改动子仓的 `docs`，再构建主仓 `docs`。提交和推送始终按照“子仓在前、主仓在后”的顺序执行；主仓先更新最终子仓版本清单，再生成并提交 AI 项目快照，结束时确认主仓与全部子仓均无未提交内容。若拉取后子仓版本领先于主仓记录，`repo:pull` 会保留新的 `gitlink`，确认后执行一次 `repo:publish` 即可提交主仓指针。
+
+`repo:publish` 会提交当前工作区的全部改动，并推送各仓当前配置的上游；运行前应整理待发布内容。GitHub 与 Gitee 的镜像同步需要分别推送，命令不会自动发现第二个平台。
 
 ## 项目结构
 
@@ -326,11 +376,15 @@ art-supabase-pro/
 │  ├─ art-supabase-doc/            # 官方 VitePress 文档站
 │  ├─ art-supabase-fms/            # FMS 财务管理应用
 │  ├─ art-supabase-hr/             # HR 人力资源应用
+│  ├─ art-supabase-mdm/            # 主数据治理与生产基础
+│  ├─ art-supabase-mes/            # MES 制造执行应用
+│  ├─ art-supabase-pmis/           # PMIS 设备管理应用
 │  ├─ art-supabase-scm/            # SCM 供应链管理子仓
 │  ├─ art-supabase-site/           # 亿企工场独立官网
 │  ├─ art-supabase-smis/           # SMIS 安全生产应用
 │  ├─ art-supabase-tms/            # TMS 智慧运输应用
-│  └─ art-supabase-vms/            # VMS 车辆管理应用
+│  ├─ art-supabase-vms/            # VMS 车辆管理应用
+│  └─ art-supabase-wms/            # WMS 仓储管理应用
 ├─ supabase/
 │  ├─ functions/                   # Edge Functions
 │  └─ migrations/                  # 历史说明；当前数据库变更直接执行并验证
@@ -345,9 +399,11 @@ art-supabase-pro/
 ## 安全与权限原则
 
 - 所有业务数据按租户隔离，数据库层启用 RLS。
+- 仅平台超级管理员可切换租户：全部租户读取跨租户数据，选定租户后按该租户读取。全部租户下新建根记录默认归属管理员认证租户；已有记录和子记录写入继承明确的记录/父记录租户。
 - 普通用户可以使用租户范围内、业务数据安全的只读 AI；具备对应业务 `Add` 权限时，也可通过 AI 创建本租户的主数据。
 - 其他 AI 业务修改、配置、发布、流程状态变更与受控写入仅允许平台超级管理员，且必须同时经过 UI 和服务端权限校验。
 - AI 历史、运行日志、生成物与反馈可作为审计数据保存，不得绕过业务写权限。
+- 主数据删除统一先检查业务引用，展示可识别的阻断记录和获准导航；检查失败时阻止删除，服务端继续执行引用、租户与权限约束。
 
 ## 开源与贡献
 
