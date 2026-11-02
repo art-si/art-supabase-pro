@@ -135,6 +135,52 @@ export function timedBackupSource(
   }
 }
 
+/** Keep the exported snapshot alive while external exports use its transaction. */
+export async function withBackupSourceHeartbeat<T>(
+  client: ReturnType<typeof postgres>,
+  sql: BackupSourceSql,
+  callback: () => Promise<T>,
+  intervalMs = 30_000
+): Promise<T> {
+  assertBackupSourceActive(client)
+  let stopped = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let heartbeat: Promise<void> | undefined
+  const schedule = () => {
+    if (stopped || backupSourceFailure(client)) return
+    timer = setTimeout(() => {
+      timer = undefined
+      heartbeat = ping()
+    }, intervalMs)
+  }
+  const ping = async () => {
+    try {
+      assertBackupSourceActive(client)
+      await withBackupSourceDeadline(client, sql.unsafe('select 1'))
+    } catch (cause) {
+      await abortBackupSource(client, cause)
+    } finally {
+      schedule()
+    }
+  }
+  schedule()
+  let result: T
+  try {
+    result = await callback()
+  } catch (cause) {
+    // Fence before waiting for a concurrent heartbeat: its teardown must not
+    // replace the callback's original failure with a closed-connection error.
+    await abortBackupSource(client, cause)
+    throw backupSourceFailure(client) || cause
+  } finally {
+    stopped = true
+    if (timer) clearTimeout(timer)
+    await heartbeat
+  }
+  assertBackupSourceActive(client)
+  return result
+}
+
 export async function connectBackupSource(
   connection: SourceConnection,
   password: string,
@@ -228,6 +274,10 @@ export function backupUpdateErrorMessage(cause: unknown): string {
     return '本地备份数据格式无法用于增量更新，请校验备份并查看更新报告；原完整备份保留。'
   if (['57014', 'BACKUP_SOURCE_READ_TIMEOUT'].includes(code))
     return '来源数据库读取超时，请稍后重试；若持续失败，请根据更新报告中的阶段和错误编号排查；原完整备份保留。'
+  if (code === '25P04')
+    return '来源数据库事务达到时间上限，备份更新已停止；请检查更新报告中的阶段与事务超时设置后重试；原完整备份保留。'
+  if (code === '25P03')
+    return '来源数据库事务因等待导出而空闲超时；请检查执行端保活与导出状态后重试；原完整备份保留。'
   if (['28P01', '28000', 'SASL_SIGNATURE_MISMATCH'].includes(code))
     return '来源数据库身份验证未通过，请重新填写来源数据库密码后重试；原完整备份保留。'
   if (

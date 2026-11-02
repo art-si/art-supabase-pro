@@ -11,6 +11,7 @@ import {
   backupUpdateErrorMessage,
   backupUpdateErrorCode,
   withBackupSourceDeadline,
+  withBackupSourceHeartbeat,
   timedBackupSource,
   assertBackupSourceActive,
   backupSourceFailure,
@@ -135,7 +136,7 @@ async function readSourceTransaction<T>(
     callbackStarted = true
     entered()
     try {
-      return await callback(transaction)
+      return await withBackupSourceHeartbeat(client, transaction, () => callback(transaction))
     } finally {
       completed()
     }
@@ -553,7 +554,7 @@ async function readMetadata(sql: BackupSourceSql): Promise<Record<string, unknow
 
 export async function runBackupUpdate(
   input: UpdateInput,
-  run: UpdateCommand = runUpdateCommand,
+  runCommand: UpdateCommand = runUpdateCommand,
   connectSource: (
     connection: SourceConnection,
     password: string,
@@ -588,6 +589,14 @@ export async function runBackupUpdate(
     ]
   }
   let database: ReturnType<typeof postgres> | undefined
+  // An export can finish after the snapshot connection was lost. Fence both
+  // sides of every subprocess so its late result cannot start more work.
+  const run: UpdateCommand = async (...args) => {
+    if (database) assertBackupSourceActive(database)
+    const result = await runCommand(...args)
+    if (database) assertBackupSourceActive(database)
+    return result
+  }
   let releaseSession: (() => Promise<void>) | undefined
   let stage = '准备更新'
   const logStage = (message: string) => {
@@ -672,7 +681,11 @@ export async function runBackupUpdate(
         version = Number(snapshotRows[0]?.version)
       if (!/^[a-f\d-]{1,128}$/i.test(snapshot) || !Number.isSafeInteger(version))
         throw new Error('无法建立来源只读比较快照。')
-      if (version >= 170000) await sql.unsafe("set local transaction_timeout='15min'")
+      // One exported snapshot spans all changed tables and external dumps. A
+      // per-transaction 15-minute limit kills valid multi-component updates.
+      // Keep statement/read/subprocess deadlines and the idle-session limit;
+      // heartbeat queries protect only this live, read-only snapshot.
+      if (version >= 170000) await sql.unsafe('set local transaction_timeout=0')
       logStage('读取来源结构与策略指纹')
       const catalog = await readSourceCatalog(sql)
       const schemas = await readDataSchemas(sql, [

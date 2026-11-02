@@ -15,7 +15,8 @@ import {
   backupUpdateErrorMessage,
   connectBackupSource,
   timedBackupSource,
-  withBackupSourceDeadline
+  withBackupSourceDeadline,
+  withBackupSourceHeartbeat
 } from '../../scripts/lib/backup-update-connection'
 
 test('backup comparison trusts the official Supabase root while preserving TLS and hostname verification', () => {
@@ -319,6 +320,143 @@ test('read deadlines fence later queries and preserve their first error through 
   assert.equal(end.mock.callCount(), 1, 'teardown is shared by deadline and outer failure cleanup')
 })
 
+test('snapshot heartbeats continue during long external work and stop when it completes', async (t) => {
+  const { client, query, end } = sourceClient(t)
+  let complete!: (value: string) => void
+  const exported = new Promise<string>((resolve) => {
+    complete = resolve
+  })
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = withBackupSourceHeartbeat(client, client, () => exported)
+  for (let interval = 0; interval < 32; interval++) {
+    t.mock.timers.tick(30_000)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
+  assert.equal(
+    query.mock.callCount(),
+    32,
+    'external exports may legitimately exceed fifteen minutes'
+  )
+  complete('verified export')
+  assert.equal(await pending, 'verified export')
+  t.mock.timers.tick(900_000)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(query.mock.callCount(), 32, 'completed callbacks must leave no heartbeat timer')
+  assert.equal(end.mock.callCount(), 0, 'the successful transaction owner closes its client')
+})
+
+test('snapshot heartbeats never overlap and completion awaits the in-flight read', async (t) => {
+  const { client, end } = sourceClient(t)
+  let complete!: () => void
+  let reply!: (value: never[]) => void
+  const exported = new Promise<void>((resolve) => {
+    complete = resolve
+  })
+  const read = t.mock.method(
+    client,
+    'unsafe',
+    () =>
+      new Promise<never[]>((resolve) => {
+        reply = resolve
+      })
+  )
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let settled = false
+  const pending = withBackupSourceHeartbeat(client, client, () => exported, 10).finally(() => {
+    settled = true
+  })
+  t.mock.timers.tick(10)
+  t.mock.timers.tick(1000)
+  assert.equal(read.mock.callCount(), 1)
+  complete()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(settled, false, 'the read must finish before COMMIT can be sent')
+  reply([])
+  await pending
+  t.mock.timers.tick(1000)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(read.mock.callCount(), 1)
+  assert.equal(end.mock.callCount(), 0)
+})
+
+test('a failed heartbeat fences later source work and cannot return a successful export', async (t) => {
+  const failure = connectionFailure('25P04')
+  const { client, query, end } = sourceClient(t, failure)
+  let complete!: () => void
+  const exported = new Promise<void>((resolve) => {
+    complete = resolve
+  })
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = withBackupSourceHeartbeat(client, client, () => exported, 10)
+  t.mock.timers.tick(10)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(backupSourceFailure(client), failure)
+  assert.throws(
+    () => timedBackupSource(client, client).unsafe('select 1'),
+    (cause) => cause === failure
+  )
+  complete()
+  await assert.rejects(pending, (cause) => cause === failure)
+  t.mock.timers.tick(1000)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(query.mock.callCount(), 1)
+  assert.equal(end.mock.callCount(), 1)
+})
+
+test('an export failure stops heartbeats and keeps its cause through an in-flight read failure', async (t) => {
+  const { client, end } = sourceClient(t)
+  const exportFailure = connectionFailure('BACKUP_COPY_FORMAT')
+  let failExport!: (cause: Error) => void
+  let failRead!: (cause: Error) => void
+  const exported = new Promise<never>((_resolve, reject) => {
+    failExport = reject
+  })
+  const read = t.mock.method(
+    client,
+    'unsafe',
+    () =>
+      new Promise<never>((_resolve, reject) => {
+        failRead = reject
+      })
+  )
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = withBackupSourceHeartbeat(client, client, () => exported, 10)
+  const rejected = assert.rejects(pending, (cause) => cause === exportFailure)
+  t.mock.timers.tick(10)
+  failExport(exportFailure)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(backupSourceFailure(client), exportFailure)
+  failRead(connectionFailure('CONNECTION_CLOSED'))
+  await rejected
+  t.mock.timers.tick(1000)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(read.mock.callCount(), 1)
+  assert.equal(end.mock.callCount(), 1)
+  assert.equal(backupSourceFailure(client), exportFailure)
+})
+
+test('a silent heartbeat has a bounded deadline and fences the snapshot', async (t) => {
+  const { client, end } = sourceClient(t)
+  const read = t.mock.method(client, 'unsafe', () => new Promise<never>(() => {}))
+  let complete!: () => void
+  const exported = new Promise<void>((resolve) => {
+    complete = resolve
+  })
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = withBackupSourceHeartbeat(client, client, () => exported, 10)
+  t.mock.timers.tick(10)
+  t.mock.timers.tick(150_000)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(backupUpdateErrorCode(backupSourceFailure(client)), 'BACKUP_SOURCE_READ_TIMEOUT')
+  complete()
+  await assert.rejects(
+    pending,
+    (cause) => backupUpdateErrorCode(cause) === 'BACKUP_SOURCE_READ_TIMEOUT'
+  )
+  assert.equal(read.mock.callCount(), 1)
+  assert.equal(end.mock.callCount(), 1)
+})
+
 async function stalledPostgres(
   t: TestContext,
   options: { completePreflight?: boolean; encrypted?: boolean; rejectAuth?: boolean } = {}
@@ -529,9 +667,18 @@ test('backup failure messages distinguish credentials, TLS, and reachability wit
   assert.match(backupUpdateErrorMessage(failure('57014')), /读取超时/)
   assert.match(backupUpdateErrorMessage(failure('BACKUP_SOURCE_CONNECT_TIMEOUT')), /无法连接/)
   assert.match(backupUpdateErrorMessage(failure('BACKUP_SOURCE_READ_TIMEOUT')), /读取超时/)
+  assert.match(backupUpdateErrorMessage(failure('25P04')), /事务达到时间上限.*超时设置/)
+  assert.match(backupUpdateErrorMessage(failure('25P03')), /空闲超时.*保活/)
   assert.match(backupUpdateErrorMessage(failure('CONNECTION_CLOSED')), /读取期间中断/)
   assert.match(backupUpdateErrorMessage(failure('BACKUP_COPY_FORMAT')), /本地备份数据格式/)
-  for (const code of ['28P01', 'SELF_SIGNED_CERT_IN_CHAIN', 'ETIMEDOUT', 'unknown']) {
+  for (const code of [
+    '28P01',
+    'SELF_SIGNED_CERT_IN_CHAIN',
+    'ETIMEDOUT',
+    '25P04',
+    '25P03',
+    'unknown'
+  ]) {
     assert.doesNotMatch(
       backupUpdateErrorMessage(failure(code)),
       /private-test-password|private-host|postgres:\/\//

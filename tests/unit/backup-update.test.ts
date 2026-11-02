@@ -44,6 +44,9 @@ async function fixture(t: TestContext) {
   const contents = {
     'database/data.sql': dump('public'),
     'database/migration-history-data.sql': dump('supabase_migrations'),
+    'database/schema.sql': '-- fixture schema\n',
+    'database/roles.sql': '-- fixture roles\n',
+    'database/managed-project-objects.sql': '-- fixture managed objects\n',
     'metadata/functions.json': '[]',
     'metadata/database-connection.json': JSON.stringify({
       Host: `db.${BACKUP_SOURCE_PROJECT}.supabase.co`,
@@ -122,6 +125,7 @@ function unchangedSource(t: TestContext): ReturnType<typeof postgres> {
   // transaction is intercepted, and an unexpected SQL shape fails this test.
   const sql = postgres({ host: '127.0.0.1', port: 1, ssl: false, max: 1, prepare: false })
   t.mock.method(sql, 'unsafe', async (query: string, parameters: unknown[] = []) => {
+    if (query === 'select 1') return []
     if (query.startsWith('set local ')) return []
     if (query.includes('pg_export_snapshot()'))
       return [{ snapshot: '00000001-00000001-1', version: '160000' }]
@@ -153,13 +157,135 @@ function unchangedSource(t: TestContext): ReturnType<typeof postgres> {
   t.mock.method(
     sql,
     'begin',
-    async (mode: string, callback: (transaction: ReturnType<typeof postgres>) => Promise<void>) => {
+    async (
+      mode: string,
+      callback: (transaction: ReturnType<typeof postgres>) => Promise<unknown>
+    ) => {
       assert.match(mode, /read only/)
-      await callback(sql)
+      return await callback(sql)
     }
   )
   return sql
 }
+
+function sourceWithSchemaChanges(t: TestContext) {
+  const sql = unchangedSource(t)
+  const query = sql.unsafe
+  const settings: string[] = []
+  let heartbeats = 0
+  t.mock.method(sql, 'unsafe', async (text: string, parameters: unknown[] = []) => {
+    if (text.startsWith('set local ')) settings.push(text)
+    if (text === 'select 1') heartbeats++
+    if (text.includes('pg_export_snapshot()'))
+      return [{ snapshot: '00000001-00000001-1', version: '170000' }]
+    if (text.includes('with ns as'))
+      return [
+        {
+          schema: 'b'.repeat(32),
+          roles: 'b'.repeat(32),
+          managed: catalogHash,
+          migration: catalogHash
+        }
+      ]
+    if (
+      text.includes('from storage.buckets') ||
+      text.includes('from storage.objects group by') ||
+      text.includes('from pg_publication_tables')
+    )
+      return []
+    return query(text, parameters)
+  })
+  return { sql, settings, heartbeats: () => heartbeats }
+}
+
+test(
+  'multi-component exports longer than fifteen minutes retain one live read-only snapshot',
+  options,
+  async (t) => {
+    const state = await fixture(t)
+    const source = sourceWithSchemaChanges(t)
+    const started = Array.from({ length: 2 }, () => Promise.withResolvers<void>())
+    let exports = 0
+    const run: UpdateCommand = async (command, args, options) => {
+      if (command !== 'supabase' || !args.includes('dump')) return state.run(command, args, options)
+      assert.ok(source.settings.includes('set local transaction_timeout=0'))
+      assert.ok(source.settings.some((query) => query.includes("statement_timeout='120s'")))
+      assert.ok(
+        source.settings.some((query) =>
+          query.includes("idle_in_transaction_session_timeout='15min'")
+        )
+      )
+      assert.equal(options?.timeoutMs, 15 * 60_000, 'each export retains its own deadline')
+      const index = exports++
+      const completed = new Promise<void>((resolve) => setTimeout(resolve, 8 * 60_000))
+      started[index].resolve()
+      await completed
+      assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
+      const destination = args[args.indexOf('--file') + 1]
+      await writeFile(destination, index === 0 ? '-- fixture schema\n' : '-- fixture roles\n')
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const pending = runBackupUpdate(state.input, run, () => source.sql)
+    for (const signal of started) {
+      await signal.promise
+      for (let tick = 0; tick < 16; tick++) {
+        t.mock.timers.tick(30_000)
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
+    }
+    const report = await pending
+    state.caches.add(cachePath(report.backupPath))
+    assert.equal(report.status, 'updated', report.error || '')
+    assert.equal(exports, 2)
+    assert.ok(source.heartbeats() >= 30, 'snapshot stays active throughout external work')
+    assert.ok(report.historyPath, 'verified changes commit after the source transaction ends')
+    assert.equal(state.input.DbPassword, '')
+  }
+)
+
+test(
+  'a heartbeat failure during export stops later exports and preserves the original backup',
+  options,
+  async (t) => {
+    const state = await fixture(t)
+    const source = sourceWithSchemaChanges(t)
+    const query = source.sql.unsafe
+    t.mock.method(source.sql, 'unsafe', async (text: string, parameters: unknown[] = []) => {
+      if (text === 'select 1')
+        throw Object.assign(new Error('private transport detail'), { code: 'CONNECTION_CLOSED' })
+      return query(text, parameters)
+    })
+    const started = Promise.withResolvers<void>()
+    const finishExport = Promise.withResolvers<void>()
+    let exports = 0
+    const run: UpdateCommand = async (command, args, options) => {
+      if (command !== 'supabase' || !args.includes('dump')) return state.run(command, args, options)
+      exports++
+      started.resolve()
+      await finishExport.promise
+      await writeFile(args[args.indexOf('--file') + 1], '-- fixture schema\n')
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const pending = runBackupUpdate(state.input, run, () => source.sql)
+    await started.promise
+    t.mock.timers.tick(30_000)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    finishExport.resolve()
+    const report = await pending
+    assert.equal(report.status, 'failed')
+    assert.equal(report.errorCode, 'CONNECTION_CLOSED')
+    assert.equal(report.errorStage, '校对结构文件 schema.sql')
+    assert.equal(exports, 1, 'a late successful child result must not start another export')
+    assert.equal(report.historyPath, undefined)
+    assert.equal(report.resultManifestSha256, undefined)
+    assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
+    assert.equal(report.backupPath, state.root)
+    assert.doesNotMatch(JSON.stringify(report), /private transport detail|fixture-only/)
+    assert.equal(state.input.DbPassword, '')
+  }
+)
 
 test(
   'apply with no remote changes still refreshes the directory and preserves its data',

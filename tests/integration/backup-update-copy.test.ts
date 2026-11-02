@@ -5,7 +5,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
 import postgres from 'postgres'
+import {
+  timedBackupSource,
+  withBackupSourceHeartbeat
+} from '../../scripts/lib/backup-update-connection'
 import {
   fingerprintSourceTable,
   readCopyInventory,
@@ -32,11 +37,12 @@ function docker(args: string[], input?: string): string {
 test(
   'COPY fingerprint matches real pg_dump text for PostgreSQL output types',
   { timeout: 180_000 },
-  async () => {
+  async (t) => {
     const container = `codex-copy-${randomUUID().replaceAll('-', '').slice(0, 12)}`
     const root = await mkdtemp(join(tmpdir(), 'backup-copy-pg17-'))
     let started = false
     let sourceSql: ReturnType<typeof postgres> | undefined
+    const queries: string[] = []
     try {
       docker([
         'run',
@@ -115,6 +121,7 @@ test(
         max: 1,
         prepare: false,
         fetch_types: false,
+        debug: (_connection, query) => queries.push(query),
         onnotice: () => {}
       })
       await sourceSql.unsafe(
@@ -148,6 +155,76 @@ test(
       assert.notDeepEqual(await fingerprintSourceTable(sourceSql, table), remoteFingerprint)
       psql('DELETE FROM public.copy_fixture WHERE id = 2')
       assert.equal((await fingerprintSourceTable(sourceSql, table)).rows, '2')
+
+      const client = sourceSql
+      await t.test(
+        'read-only backup snapshots survive external work and restore local timeouts',
+        async () => {
+          const baseline = await client.unsafe(
+            "select current_setting('transaction_timeout') transaction_timeout, current_setting('idle_in_transaction_session_timeout') idle_timeout, current_setting('server_version_num') version"
+          )
+          assert.ok(Number(baseline[0].version) >= 170000)
+          await client.unsafe("set transaction_timeout='100ms'")
+          try {
+            await client.begin('isolation level repeatable read read only', async (transaction) => {
+              const sql = timedBackupSource(client, transaction)
+              await sql.unsafe(
+                "set local transaction_timeout=0; set local idle_in_transaction_session_timeout='200ms'"
+              )
+              const before = await sql.unsafe(
+                "select pg_export_snapshot() snapshot, txid_current_snapshot()::text data_snapshot, pg_backend_pid() pid, current_setting('transaction_timeout') transaction_timeout, current_setting('idle_in_transaction_session_timeout') idle_timeout, current_setting('transaction_read_only') read_only, (select count(*)::text from public.copy_fixture) rows"
+              )
+              assert.equal(before[0].transaction_timeout, '0')
+              assert.equal(before[0].idle_timeout, '200ms')
+              assert.equal(before[0].read_only, 'on')
+              assert.match(String(before[0].snapshot), /^[a-f\d-]+$/i)
+              const pingsBefore = queries.filter((query) => query === 'select 1').length
+              await withBackupSourceHeartbeat(
+                client,
+                sql,
+                async () => {
+                  // External dumps and local verification keep the exported snapshot
+                  // open longer than either former server-side timeout.
+                  await delay(450)
+                  const after = await sql.unsafe(
+                    'select pg_export_snapshot() snapshot, txid_current_snapshot()::text data_snapshot, pg_backend_pid() pid, (select count(*)::text from public.copy_fixture) rows'
+                  )
+                  assert.equal(after[0].pid, before[0].pid)
+                  assert.equal(after[0].data_snapshot, before[0].data_snapshot)
+                  assert.equal(after[0].rows, before[0].rows)
+                  assert.match(String(after[0].snapshot), /^[a-f\d-]+$/i)
+                },
+                30
+              )
+              assert.ok(
+                queries.filter((query) => query === 'select 1').length > pingsBefore,
+                'real PostgreSQL must receive snapshot heartbeat queries during external work'
+              )
+            })
+            const after = await client.unsafe(
+              "select current_setting('transaction_timeout') transaction_timeout, current_setting('idle_in_transaction_session_timeout') idle_timeout"
+            )
+            assert.equal(
+              after[0].transaction_timeout,
+              '100ms',
+              'LOCAL must preserve the session limit'
+            )
+            assert.equal(after[0].idle_timeout, baseline[0].idle_timeout)
+            const queryCount = queries.length
+            await delay(90)
+            assert.equal(
+              queries.length,
+              queryCount,
+              'heartbeat must stop before the transaction exits'
+            )
+          } finally {
+            await client.unsafe('select set_config($1, $2, false)', [
+              'transaction_timeout',
+              String(baseline[0].transaction_timeout)
+            ])
+          }
+        }
+      )
     } finally {
       await sourceSql?.end({ timeout: 1 })
       if (started) spawnSync('docker', ['stop', container], { encoding: 'utf8', timeout: 30_000 })
