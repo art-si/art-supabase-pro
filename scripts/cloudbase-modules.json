@@ -2,61 +2,61 @@
   {
     "path": "modules/art-supabase-vms",
     "url": "https://gitee.com/art-si/art-supabase-vms.git",
-    "ref": "0237b27142d534c94f9f8e8a2503db0561963e5c"
+    "ref": "464af104b21e4454c2e18670a6ba20c54c34d1a5"
   },
   {
     "path": "modules/art-supabase-fms",
     "url": "https://gitee.com/art-si/art-supabase-fms.git",
-    "ref": "b9ba3601162d70ffc8936e4fcbcc3b4cd294ca76"
+    "ref": "9a1b32a8230ad828d65d3e8dd2d6df40209e07ad"
   },
   {
     "path": "modules/art-supabase-hr",
     "url": "https://gitee.com/art-si/art-supabase-hr.git",
-    "ref": "661bbe4230f739614082f5f1ef3802c5bdaee95b"
+    "ref": "83a6342de5371887bdbeded1a4068057adffaeb5"
   },
   {
     "path": "modules/art-supabase-smis",
     "url": "https://gitee.com/art-si/art-supabase-smis.git",
-    "ref": "c6f78653fca6887496e1cd75576df66fe421a038"
+    "ref": "ea12a47bab5dce85825c28026d26815eac8912ed"
   },
   {
     "path": "modules/art-supabase-tms",
     "url": "https://gitee.com/art-si/art-supabase-tms.git",
-    "ref": "912384af231f2c8e1485b80901957648952de0af"
+    "ref": "2df97a6bd80c0238a71fa98b10f07246acc1377f"
   },
   {
     "path": "modules/art-supabase-doc",
     "url": "https://gitee.com/art-si/art-supabase-doc.git",
-    "ref": "4f3b9afde5a7e7a01b6fd85da13a2a159fc98f45"
+    "ref": "1611eeb66e4086d8dc65db00e8120c5c528cc352"
   },
   {
     "path": "modules/art-supabase-mdm",
     "url": "https://gitee.com/art-si/art-supabase-mdm.git",
-    "ref": "2e5457ff5558e116de1ab5f9597978aae3d77c4c"
+    "ref": "4d955b1a7d05f5fe6a04193474016909d9990f38"
   },
   {
     "path": "modules/art-supabase-wms",
     "url": "https://gitee.com/art-si/art-supabase-wms.git",
-    "ref": "e45ac86f33fb836c02ead372684e72348b0bf74c"
+    "ref": "6cfa17112ce9e66ff98ad8ee2e86e649f0d1cc20"
   },
   {
     "path": "modules/art-supabase-mes",
     "url": "https://gitee.com/art-si/art-supabase-mes.git",
-    "ref": "42b574deebd8c80b972002bbba24b33d52526fe6"
+    "ref": "79904360080379c1e92769e17442f6b27e9ed09c"
   },
   {
     "path": "modules/art-supabase-pmis",
     "url": "https://gitee.com/art-si/art-supabase-pmis.git",
-    "ref": "e90eadb5cd4b514fa6dd50a3e1f27e4651269bf3"
+    "ref": "d5dd043cee26d4ead3b148f299e70eb543363797"
   },
   {
     "path": "modules/art-supabase-scm",
     "url": "https://gitee.com/art-si/art-supabase-scm.git",
-    "ref": "90d04324f7e07d35a9d6668921c22cdb04a259c6"
+    "ref": "e939d97d6b83d3daa0a8a44972a8dee3d8d5c8c1"
   },
   {
     "path": "modules/art-supabase-site",
     "url": "https://gitee.com/art-si/art-supabase-site.git",
-    "ref": "6200bf8226972937ea90e33bd67c1240e407ed90"
+    "ref": "c8877bfca46bdc1c3a6e7887b45b0bd01f9da950"
   }
 ]

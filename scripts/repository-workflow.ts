@@ -164,7 +164,8 @@ function ensureBranchAndUpstream(repository: Repository): { branch: string; upst
 function ensureNotBehind(repository: Repository): void {
   const { upstream } = ensureBranchAndUpstream(repository)
   const remote = upstream.split('/')[0]
-  git(repository, ['fetch', remote], true)
+  // Each module is checked and pushed separately; the host preflight only needs its own ref.
+  git(repository, ['-c', 'fetch.recurseSubmodules=false', 'fetch', remote], true)
   const divergence = gitOutput(repository, [
     'rev-list',
     '--left-right',
