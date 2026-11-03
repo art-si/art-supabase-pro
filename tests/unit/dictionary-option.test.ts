@@ -1,6 +1,28 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { toDictionaryOption, toNameCodeOption } from '../../src/utils/form/option'
+import {
+  getDictionaryDisplayLabel,
+  toDictionaryOption,
+  toNameCodeOption
+} from '../../src/utils/form/option'
+
+test('dictionary display translates labels and never exposes unresolved codes', () => {
+  assert.equal(getDictionaryDisplayLabel({ label: '自营车辆' }, 'self_operated'), '自营车辆')
+  assert.equal(
+    getDictionaryDisplayLabel({ label: ' ', name: '停用历史选项' }, 'retired'),
+    '停用历史选项'
+  )
+  assert.equal(getDictionaryDisplayLabel(undefined, 'domestic'), '待核对')
+  assert.equal(getDictionaryDisplayLabel({ label: '', name: '' }, 'yellow'), '待核对')
+  assert.equal(getDictionaryDisplayLabel(undefined, 0), '待核对')
+  assert.equal(getDictionaryDisplayLabel(undefined, false), '待核对')
+  assert.equal(getDictionaryDisplayLabel(undefined, null), '--')
+  assert.equal(getDictionaryDisplayLabel(undefined, '', { emptyText: '' }), '')
+  assert.equal(
+    getDictionaryDisplayLabel(undefined, 'missing', { unknownText: '状态待核对' }),
+    '状态待核对'
+  )
+})
 
 test('dictionary options preserve values and leave availability filtering to callers', () => {
   const source = [
@@ -20,6 +42,10 @@ test('dictionary options preserve values and leave availability filtering to cal
   ])
   assert.deepEqual(source, before)
   assert.deepEqual(toDictionaryOption({ name: '否', value: false }), { label: '否', value: false })
+  assert.deepEqual(toDictionaryOption({ name: '', label: '', value: 'unmapped' }), {
+    label: '待核对',
+    value: 'unmapped'
+  })
 })
 
 test('reference labels omit absent names and codes without changing identity or input', () => {

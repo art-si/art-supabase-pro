@@ -18,6 +18,9 @@ export interface ElectricCard {
   vehicleId: string
   plateNo: string
   companyName: string | null
+  vehicleOwnership: string | null
+  carrierName: string | null
+  driverPhone: string | null
   cardNo: string
   issuer: string
   imagePath: string | null
@@ -42,6 +45,12 @@ export interface ElectricCardEntry {
   cardNo: string
   vehicleId: string
   plateNo: string
+  companyName: string | null
+  vehicleOwnership: string | null
+  carrierName: string | null
+  vehicleDriverName: string | null
+  vehicleDriverPhone: string | null
+  sourceCostNo: string | null
   cardStatus: ElectricCardStatus
   driverId: string | null
   driverName: string | null
@@ -76,12 +85,18 @@ export interface ElectricCardEntry {
 }
 
 export interface ElectricCardFilters {
+  vehicleId?: string
+  vehicleOwnership?: string
+  vehicleType?: string
   keyword?: string
   status?: ElectricCardStatus
   cardId?: string
 }
 
 export interface ElectricCardEntryFilters {
+  vehicleId?: string
+  vehicleOwnership?: string
+  vehicleType?: string
   cardId?: string
   entryType?: ElectricCardEntryType
   occurredFrom?: string
@@ -136,6 +151,11 @@ function readOptionalText(row: Record<string, unknown>, key: string): string | n
   return readText(row, key)
 }
 
+function readRelatedText(row: Record<string, unknown>, key: string): string | null {
+  if (row[key] === undefined) return null
+  return readOptionalText(row, key)
+}
+
 function readNumber(row: Record<string, unknown>, key: string): number {
   if (typeof row[key] !== 'number' || !Number.isFinite(row[key])) {
     throw new Error('电卡金额格式异常，请刷新后重试')
@@ -177,6 +197,9 @@ function parseCard(row: Record<string, unknown>): ElectricCard {
     vehicleId: readText(row, 'vehicleId'),
     plateNo: readText(row, 'plateNo'),
     companyName: readOptionalText(row, 'companyName'),
+    vehicleOwnership: readRelatedText(row, 'vehicleOwnership'),
+    carrierName: readRelatedText(row, 'carrierName'),
+    driverPhone: readRelatedText(row, 'driverPhone'),
     cardNo: readText(row, 'cardNo'),
     issuer: readText(row, 'issuer'),
     imagePath: readOptionalText(row, 'imagePath'),
@@ -216,6 +239,12 @@ function parseEntry(row: Record<string, unknown>): ElectricCardEntry {
     cardNo: readText(row, 'cardNo'),
     vehicleId: readText(row, 'vehicleId'),
     plateNo: readText(row, 'plateNo'),
+    companyName: readRelatedText(row, 'companyName'),
+    vehicleOwnership: readRelatedText(row, 'vehicleOwnership'),
+    carrierName: readRelatedText(row, 'carrierName'),
+    vehicleDriverName: readRelatedText(row, 'vehicleDriverName'),
+    vehicleDriverPhone: readRelatedText(row, 'vehicleDriverPhone'),
+    sourceCostNo: readRelatedText(row, 'sourceCostNo'),
     cardStatus: readStatus(row, 'cardStatus'),
     driverId: readOptionalText(row, 'driverId'),
     driverName: readOptionalText(row, 'driverName'),
@@ -256,7 +285,10 @@ export async function fetchElectricCards(
   const { from, to } = buildSupabasePageRange(params)
   const { data } = await responseHandle<unknown>(
     () =>
-      supabase.rpc('vms_list_electric_cards_secure', {
+      supabase.rpc('vms_list_electric_cards_secure_v2', {
+        p_vehicle_id: params.vehicleId || null,
+        p_vehicle_ownership: params.vehicleOwnership || null,
+        p_vehicle_type: params.vehicleType || null,
         p_from: from,
         p_to: to,
         p_keyword: normalizeNullableText(params.keyword),
@@ -274,7 +306,10 @@ export async function fetchElectricCardEntries(
   const { from, to } = buildSupabasePageRange(params)
   const { data } = await responseHandle<unknown>(
     () =>
-      supabase.rpc('vms_list_electric_card_entries_secure', {
+      supabase.rpc('vms_list_electric_card_entries_secure_v2', {
+        p_vehicle_id: params.vehicleId || null,
+        p_vehicle_ownership: params.vehicleOwnership || null,
+        p_vehicle_type: params.vehicleType || null,
         p_from: from,
         p_to: to,
         p_card_id: params.cardId || null,

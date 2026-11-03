@@ -50,6 +50,15 @@
       </div>
     </header>
 
+    <div
+      v-if="$slots.toolbar"
+      class="business-workspace-header__toolbar"
+      role="group"
+      aria-label="页面操作行"
+    >
+      <slot name="toolbar" />
+    </div>
+
     <div v-if="metrics.length" class="business-workspace-header__metrics" aria-label="业务概览">
       <component
         :is="metric.interactive ? 'button' : 'article'"
@@ -174,6 +183,16 @@
       );
     }
 
+    &__toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 0;
+      padding: 0 24px 18px;
+    }
+
     &__identity,
     &__copy {
       min-width: 0;
@@ -214,6 +233,10 @@
       .business-workspace-header__hero {
         gap: 16px;
         padding: 14px 18px 13px;
+      }
+
+      .business-workspace-header__toolbar {
+        padding: 0 18px 13px;
       }
 
       .business-workspace-header__brand {
@@ -470,6 +493,10 @@
         padding: 18px;
       }
 
+      &__toolbar {
+        padding: 0 18px 18px;
+      }
+
       &__aside {
         flex-direction: column;
         align-items: flex-start;
@@ -523,6 +550,10 @@
         .business-workspace-header__hero {
           gap: 10px;
           padding: 14px;
+        }
+
+        .business-workspace-header__toolbar {
+          padding: 0 14px 14px;
         }
 
         .business-workspace-header__aside {

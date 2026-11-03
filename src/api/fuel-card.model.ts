@@ -52,6 +52,11 @@ function nullableText(row: Record<string, unknown>, key: string): string | null 
   return value
 }
 
+function relatedText(row: Record<string, unknown>, key: string): string | null {
+  if (row[key] === undefined) return null
+  return nullableText(row, key)
+}
+
 function nullableNumber(row: Record<string, unknown>, key: string): number | null {
   if (row[key] === null) return null
   return number(row, key)
@@ -87,6 +92,9 @@ function parseCard(row: Record<string, unknown>): FuelCard {
     vehicleId: text(row, 'vehicleId'),
     plateNo: text(row, 'plateNo'),
     companyName: nullableText(row, 'companyName'),
+    vehicleOwnership: relatedText(row, 'vehicleOwnership'),
+    carrierName: relatedText(row, 'carrierName'),
+    driverPhone: relatedText(row, 'driverPhone'),
     issuer: text(row, 'issuer'),
     imagePath: nullableText(row, 'imagePath'),
     fuelType: fuelType(text(row, 'fuelType')),
@@ -130,6 +138,10 @@ function parseEntry(row: Record<string, unknown>): FuelCardEntry {
     vehicleId: text(row, 'vehicleId'),
     plateNo: text(row, 'plateNo'),
     companyName: nullableText(row, 'companyName'),
+    vehicleOwnership: relatedText(row, 'vehicleOwnership'),
+    carrierName: relatedText(row, 'carrierName'),
+    vehicleDriverName: relatedText(row, 'vehicleDriverName'),
+    vehicleDriverPhone: relatedText(row, 'vehicleDriverPhone'),
     cardStatus: cardStatus(text(row, 'cardStatus')),
     driverId: nullableText(row, 'driverId'),
     driverName: nullableText(row, 'driverName'),

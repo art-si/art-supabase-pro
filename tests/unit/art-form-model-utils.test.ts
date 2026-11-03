@@ -1,11 +1,23 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { reactive, ref, toRefs } from 'vue'
 import {
+  cloneModelValue,
   updateFormFieldValue,
   sanitizeFormValue,
   type FormRecord
 } from '../../src/components/core/forms/art-form/model-utils'
 
+test('克隆由 reactive 和 toRefs 组合的表单模型时解包字段值', () => {
+  const source = reactive({ cardNo: 'FUEL-001', amount: 100 })
+  const selectedCardId = ref('card-001')
+  const form = reactive({ ...toRefs(source), cardId: selectedCardId })
+
+  const result = cloneModelValue(form)
+
+  assert.deepEqual(result, { cardNo: 'FUEL-001', amount: 100, cardId: 'card-001' })
+  assert.notEqual(result, form)
+})
 test('清洗嵌套表单时保留日期与文件控件值，仍移除空字段', () => {
   const date = new Date('2026-10-03T08:00:00Z')
   const file = new Blob(['测试附件'], { type: 'text/plain' })
