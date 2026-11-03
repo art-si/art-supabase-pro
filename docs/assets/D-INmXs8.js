@@ -1,1 +1,0 @@
-var e=new Map;function t(t,n){t.forEach(t=>e.set(t,n))}function n(t){return e.get(t)}export{n,t};

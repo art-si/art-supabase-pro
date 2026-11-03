@@ -1,1 +1,0 @@
-function e(e){let t=!1;return{dismiss:async()=>{await e.value?.handleClose(!0)},setPrerequisiteLoading:n=>{t=n,e.value?.setLoading(n),e.value?.setConfirmLoading(n)},finishLoading:()=>{t||e.value?.setLoading(!1)}}}export{e as t};

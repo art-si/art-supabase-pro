@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./Yi7yg77S.js";var i=n({name:`WmsMaterialReceiptIssue`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`receipt-issue`}))}});export{i as default};

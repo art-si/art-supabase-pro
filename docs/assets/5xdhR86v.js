@@ -1,2 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/BoHnNKsl.js","assets/BLGRbUDN.js","assets/SN_OyxRp.js"])))=>i.map(i=>d[i]);
-import{r as e}from"./C0FnF6B9.js";import{_ as t}from"./eW602KJU.js";var n=e({openFileViewerPrintMaskDesignerAsync:()=>r}),r=async e=>{let{openFileViewerPrintMaskDesigner:n}=await t(async()=>{let{openFileViewerPrintMaskDesigner:e}=await import(`./BoHnNKsl.js`);return{openFileViewerPrintMaskDesigner:e}},__vite__mapDeps([0,1,2]));return n(e)};export{n as t};

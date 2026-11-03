@@ -1,1 +1,0 @@
-function e(e,t,n){return!!(t&&n&&e.enabled&&e.documentTypeIds?.includes(t)&&e.menuIds?.includes(n))}export{e as t};

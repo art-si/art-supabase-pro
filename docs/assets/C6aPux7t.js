@@ -1,1 +1,0 @@
-function e(e){return e?.lifecycleLimitsMasked?`***`:e?.warrantyMode===`vehicle`?`随整车质保`:[e?.warrantyMileage?`${e.warrantyMileage}公里`:``,e?.warrantyDuration?`${e.warrantyDuration}个月`:``].filter(Boolean).join(` / `)||`--`}export{e as t};

@@ -1,1 +1,0 @@
-function e(e,t){if(!e.length||e.some(e=>!/^[a-z_][a-z0-9_]*$/i.test(e)))throw Error(`搜索字段配置不正确`);let n=`%${t}%`.replace(/\\/g,`\\\\`).replace(/"/g,`\\"`);return e.map(e=>`${e}.ilike."${n}"`).join(`,`)}export{e as t};

@@ -1,1 +1,0 @@
-import{Gn as e,hn as t}from"./1wCw6UuY.js";function n(n){let r;function i(){let e=r;r=void 0,e?.abort()}async function a(){i();let e=new AbortController;r=e;try{let t=await n(e.signal);return r!==e||e.signal.aborted?void 0:[t.longitude,t.latitude]}catch(t){if(r===e&&!e.signal.aborted)throw t}finally{r===e&&(r=void 0)}}return t(i),e(i),{resolveCenter:a,cancel:i}}export{n as t};

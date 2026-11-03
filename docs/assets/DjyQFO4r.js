@@ -1,1 +1,0 @@
-import{n as e,t}from"./DCl9bqUy.js";var n=(e,t)=>t?.signal?e.abortSignal(t.signal):e,r=e=>{if(e===!0||e===`true`)return!0;if(e===!1||e===`false`)return!1},i=(n,r,i,a={})=>{let[o,s]=i??[],c=n;return o&&(c=c.gte(r,a.startOfDay?e(o):o)),s&&(c=c.lte(r,a.endOfDay?t(s):s)),c},a=(e,t)=>i(e,`create_time`,t,{startOfDay:!0,endOfDay:!0});export{n as i,i as n,r,a as t};

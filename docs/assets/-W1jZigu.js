@@ -1,1 +1,0 @@
-import{n as e}from"./DsF7k-Jl.js";var t=class{constructor(e){this.init=e,this.records=this.init()}reset(){this.records=this.init()}},n=(e(t,`ImperativeState`),t);export{n as t};

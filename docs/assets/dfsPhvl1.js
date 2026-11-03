@@ -1,1 +1,0 @@
-function e(e,t,n,r){return e===`self`?`自有`:t?(e===`supplier`?n:e===`customer`?r:[]).find(e=>e.id===t)?.name||`货主资料不可用`:`—`}export{e as t};

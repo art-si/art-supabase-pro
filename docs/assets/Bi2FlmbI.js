@@ -1,1 +1,0 @@
-function e(e,{precision:t=2,emptyText:n=`—`,trimZeros:r=!1}={}){if(e==null||!Number.isFinite(e)||e<0)return n;let i=Number.isFinite(t)?Math.min(20,Math.max(0,Math.trunc(t))):2,a=[`B`,`KB`,`MB`,`GB`],o=e,s=0;for(;o>=1024&&s<a.length-1;)o/=1024,s++;let c=s===0?String(o):o.toFixed(i);return`${r?Number(c):c} ${a[s]}`}export{e as t};

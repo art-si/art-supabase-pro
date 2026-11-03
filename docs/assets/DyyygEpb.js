@@ -1,1 +1,0 @@
-var e={accountSet:`暂无可用账套，请先创建并启用账套`,chooseAccountSet:`请先选择账套`,fiscalYear:`当前账套尚未生成会计年度`,accountingPeriod:`当前账套暂无可用会计期间`,openAccountingPeriod:`当前账套暂无开放会计期间`,subject:`当前账套暂无会计科目`,assetCategory:`当前账套暂无资产类别`,auxiliaryType:`当前账套暂无辅助核算类型`,auxiliaryItem:`当前辅助类型暂无核算项目`};export{e as t};

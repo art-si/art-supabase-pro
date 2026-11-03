@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./BMq3TTiO.js";var i=n({name:`ScmShippingNotice`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`shipping_notice`}))}});export{i as default};

@@ -1,1 +1,0 @@
-function e(e,t){return t?e.filter(e=>e.key!==`tenantId`):e}export{e as t};

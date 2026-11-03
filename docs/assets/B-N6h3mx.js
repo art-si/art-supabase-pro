@@ -1,1 +1,0 @@
-function e(e){return e.map(e=>({value:e.id,label:e.name,nickName:e.name,secondaryText:e.employeeNo||`未设置工号`,disabled:!e.enabled}))}export{e as t};

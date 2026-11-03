@@ -1,1 +1,0 @@
-function e(e,t=!0,n=Date.now()){if(!e)return null;let r=new Date(e).getTime();if(!Number.isFinite(r)||!Number.isFinite(n))return null;let i=(n-r)/315576e5;return Number((t?Math.max(0,i):i).toFixed(1))}export{e as t};

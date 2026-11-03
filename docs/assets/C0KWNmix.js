@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./DGd4Pv8e.js";var i=n({name:`WmsOtherOutbound`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`other_outbound`}))}});export{i as default};

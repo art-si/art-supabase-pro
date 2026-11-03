@@ -1,1 +1,0 @@
-import{g as e,l as t,o as n,s as r}from"./monaco-CPpiPLQj.js";t.config({monaco:e}),self.MonacoEnvironment={getWorker(e,t){return t===`json`?new n:new r}};

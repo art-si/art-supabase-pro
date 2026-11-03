@@ -1,1 +1,0 @@
-function e(e,t){return!e||!t||e.tenantId&&e.tenantId!==t?[]:[{id:e.id,tenantId:t,employeeNo:e.employeeNo??e.code??``,employeeName:e.employeeName??e.name??`未命名员工`,jobTitle:e.jobTitle,employmentStatus:``}]}export{e as t};

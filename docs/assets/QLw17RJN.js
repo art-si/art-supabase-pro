@@ -1,1 +1,0 @@
-var e=new Set([`tenant`,`tenantid`,`tenantids`,`tenantname`,`tenantcode`,`tenantidentity`]),t=e=>e.replaceAll(`_`,``).replaceAll(`-`,``).toLowerCase(),n=n=>typeof n.label==`string`&&n.label.includes(`租户`)?!0:[n.key,n.prop].some(n=>typeof n==`string`&&n.split(`.`).some(n=>e.has(t(n)))),r=(e,t)=>t?e:e.filter(e=>!n(e));export{n,r as t};

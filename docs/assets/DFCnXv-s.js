@@ -1,1 +1,0 @@
-import{Gn as e,Ht as t,Yn as n,dn as r,er as i,hn as a,p as o}from"./1wCw6UuY.js";var s=n(new Map);function c(t){let n=o(),c=Symbol(`assistant-page`),l=n.path,u=()=>{s.set(c,{path:l,read:()=>i(t)})};u(),r(u),a(()=>s.delete(c)),e(()=>s.delete(c))}function l(){let e=o();return t(()=>[...s.values()].filter(t=>t.path===e.path).map(e=>e.read()))}export{l as n,c as t};

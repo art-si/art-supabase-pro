@@ -1,1 +1,0 @@
-function e(e){let t=String(e??``).trim();return/^(?:null|undefined)$/i.test(t)?``:t}export{e as t};

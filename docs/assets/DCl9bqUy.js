@@ -1,1 +1,0 @@
-function e(e){return e?`${e}T00:00:00`:null}function t(e){return e?`${e}T23:59:59.999`:null}export{e as n,t};

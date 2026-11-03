@@ -1,1 +1,0 @@
-var e={draft:{label:`草稿`,type:`info`},pending_review:{label:`待审核`,type:`warning`},confirmed:{label:`已确认`,type:`primary`},partially_settled:{label:`部分结算`,type:`warning`},settled:{label:`已结清`,type:`success`},voided:{label:`已作废`,type:`danger`}},t=t=>e[t]??{label:t||`未知状态`,type:`info`};export{t};

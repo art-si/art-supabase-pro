@@ -1,1 +1,0 @@
-function e(e){return e.parentSerialId?e.parent?.serialNo||`父件资料不可用`:`独立件 / 主机`}export{e as t};

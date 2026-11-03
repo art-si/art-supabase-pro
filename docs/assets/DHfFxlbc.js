@@ -1,1 +1,0 @@
-var e={purchase:`采购`,purchased:`采购`,self_made:`自制`,outsourcing:`委外`};function t(t){return t?e[t]||`未识别来源`:`—`}export{t};

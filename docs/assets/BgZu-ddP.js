@@ -1,1 +1,0 @@
-import{Wt as e,bn as t,en as n}from"./1wCw6UuY.js";import{t as r}from"./Btmwh79E.js";var i=n({name:`MesShiftAchievement`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{mode:`shift`}))}});export{i as default};
