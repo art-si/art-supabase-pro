@@ -20,9 +20,11 @@
                 ? 'danger'
                 : state.loading
                   ? 'info'
-                  : unresolvedCount
-                    ? 'warning'
-                    : 'success'
+                  : state.summary.deadLetter
+                    ? 'danger'
+                    : unresolvedCount
+                      ? 'warning'
+                      : 'success'
             "
             effect="plain"
             round
@@ -32,9 +34,11 @@
                 ? '队列状态暂不可用'
                 : state.loading
                   ? '正在检查队列'
-                  : unresolvedCount
-                    ? `${unresolvedCount} 条待处理`
-                    : '队列运行正常'
+                  : state.summary.deadLetter
+                    ? `${state.summary.deadLetter} 条死信待核对`
+                    : unresolvedCount
+                      ? `${unresolvedCount} 条待处理`
+                      : '队列运行正常'
             }}
           </ElTag>
           <small>{{ isPlatformSuper ? '平台全局队列' : '本租户只读' }}</small>
@@ -54,6 +58,16 @@
         </template>
       </ElAlert>
 
+      <ElAlert
+        v-if="state.retryError"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="人工补偿未完成"
+      >
+        {{ state.retryError }}
+      </ElAlert>
+
       <section class="workflow-callback-outbox__metrics" :aria-busy="state.loading">
         <button
           v-for="metric in metricCards"
@@ -63,6 +77,7 @@
           :class="[`is-${metric.tone}`, { 'is-active': state.status === metric.filter }]"
           :aria-pressed="state.status === metric.filter"
           :aria-label="`筛选${metric.label}，共 ${metric.value} 条`"
+          :disabled="state.loading || !!state.error"
           @click="handleMetricFilter(metric.filter)"
         >
           <span :class="`is-${metric.tone}`"><ArtSvgIcon :icon="metric.icon" /></span>
@@ -91,6 +106,7 @@
                 placeholder="全部状态"
                 clearable
                 class="workflow-callback-outbox__status-filter"
+                :disabled="state.loading"
                 @change="loadData"
               >
                 <ElOption
@@ -145,7 +161,7 @@
   type CallbackTone = 'success' | 'warning' | 'danger' | 'info'
 
   interface DrawerOpenData {
-    focusFailures?: boolean
+    initialStatus?: 'dead_letter' | 'retry_wait'
   }
   interface CallbackState {
     loading: boolean
@@ -154,6 +170,7 @@
     items: CallbackRow[]
     summary: Api.Workflow.WorkflowCallbackSummary
     retryingId: string
+    retryError: string
   }
 
   const emit = defineEmits<{ (event: 'change'): void }>()
@@ -165,7 +182,8 @@
     status: '',
     items: [],
     summary: { pending: 0, processing: 0, retryWait: 0, succeeded: 0, deadLetter: 0 },
-    retryingId: ''
+    retryingId: '',
+    retryError: ''
   })
 
   const statusOptions = computed(() => [
@@ -181,7 +199,11 @@
       : state.items
   )
   const emptyText = computed(() =>
-    state.status ? '当前筛选条件下没有回调事件' : '暂时没有业务回调事件'
+    state.error
+      ? '回调队列加载失败，请重新加载'
+      : state.status
+        ? '当前筛选条件下没有回调事件'
+        : '暂时没有业务回调事件'
   )
   const metricCards = computed(() => [
     {
@@ -309,6 +331,7 @@
             icon="ri:restart-line"
             label="人工补偿"
             loading={state.retryingId === row.id}
+            disabled={Boolean(state.retryingId) && state.retryingId !== row.id}
             onClick={() => handleRetry(row)}
           />
         ) : (
@@ -326,6 +349,7 @@
     const currentRequestId = ++requestId
     state.loading = true
     state.error = null
+    state.retryError = ''
     try {
       const fetchStatus = state.status === 'unresolved' ? null : state.status || null
       const result = await fetchWorkflowCallbackOutbox(fetchStatus, 100)
@@ -334,6 +358,14 @@
       Object.assign(state.summary, result.summary)
     } catch (error) {
       if (currentRequestId !== requestId) return
+      state.items = []
+      Object.assign(state.summary, {
+        pending: 0,
+        processing: 0,
+        retryWait: 0,
+        succeeded: 0,
+        deadLetter: 0
+      })
       state.error = createFriendlySupabaseError(error, '业务回调队列加载失败，请稍后重试')
     } finally {
       if (currentRequestId === requestId) state.loading = false
@@ -346,7 +378,7 @@
   }
 
   async function handleRetry(row: CallbackRow): Promise<void> {
-    if (!isPlatformSuper.value) return
+    if (!isPlatformSuper.value || state.retryingId) return
 
     try {
       await confirmAction(
@@ -362,17 +394,24 @@
       return
     }
     state.retryingId = row.id
+    state.retryError = ''
     try {
       await retryWorkflowBusinessCallback(row.id)
       await loadData()
       emit('change')
+    } catch (error) {
+      state.retryError = createFriendlySupabaseError(
+        error,
+        '人工补偿未完成，请核对业务单据后重试'
+      ).message
     } finally {
       state.retryingId = ''
     }
   }
 
   async function handleOpen(data: DrawerOpenData = {}): Promise<void> {
-    state.status = data.focusFailures ? 'dead_letter' : ''
+    state.status = data.initialStatus ?? ''
+    state.retryError = ''
     await drawerRef.value?.handleOpen(data, {
       title: '业务回调队列',
       contentHeight: 'calc(100vh - 150px)',
@@ -478,6 +517,12 @@
           outline: none;
           border-color: color-mix(in srgb, var(--theme-color) 34%, var(--art-card-border));
           box-shadow: var(--art-themed-action-focus-shadow);
+        }
+
+        &:disabled {
+          cursor: not-allowed;
+          box-shadow: none;
+          opacity: 0.55;
         }
 
         &.is-active {

@@ -11,6 +11,7 @@ import {
   matchesColumnCatalog
 } from '../../src/utils/table/column-profile'
 import type { ColumnOption } from '../../src/types/component'
+import { createWmsPackCompositionColumns } from '../../modules/art-supabase-wms/src/views/shared/wms-pack-composition-columns'
 
 const file =
   'modules/art-supabase-wms/src/views/inventory-trace/shared/inventory-report-workspace.vue'
@@ -73,7 +74,8 @@ function columnsFor(
     {
       props: { kind },
       search: { value: { summaryValues } },
-      hasAuth: () => transferAllowed
+      hasAuth: () => transferAllowed,
+      createWmsPackCompositionColumns
     },
     { timeout: 1000 }
   )
@@ -106,6 +108,10 @@ for (const kind of Object.keys(routes) as Kind[]) {
     assert.ok(catalog)
     const keys = catalog.columns.map((column) => column.key)
     const complete = columnsFor(kind, allValues)
+    for (const field of ['packNo', 'packArea', 'packBoardNo', 'packLengthMm', 'packPieces']) {
+      assert.ok(keys.includes(field), `${kind} catalog must include ${field}`)
+      assert.ok(complete.some((column) => column.prop === field))
+    }
     const groupKeys = complete.filter((column) => column.children?.length).map(getColumnKey)
     for (const selected of [
       allValues,

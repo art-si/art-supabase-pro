@@ -11,22 +11,20 @@ for (const mode of ['users', 'roles', 'delegations']) {
       await page.route('**/rest/v1/**', (route) => {
         const url = new URL(route.request().url())
         expect(url.pathname).toBe(
-          `/rest/v1/${mode === 'delegations' ? 'wf_delegation' : mode === 'users' ? 'sys_user' : 'sys_role'}`
-        )
-        if (mode !== 'delegations') expect(url.searchParams.get('tenant_id')).toBe('eq.tenant-a')
-        expect(url.searchParams.get('order')).toBe(
-          mode === 'delegations'
-            ? 'create_time.desc,id.asc'
-            : `${mode === 'users' ? 'user_name' : 'role_name'}.asc,id.asc`
+          `/rest/v1/${mode === 'delegations' ? 'wf_delegation' : mode === 'users' ? 'rpc/list_workflow_user_options_secure' : 'sys_role'}`
         )
         if (mode === 'users') {
-          expect(url.searchParams.get('status')).toBe('eq.1')
-          expect(url.searchParams.get('deleted_at')).toBe('is.null')
-        } else if (mode === 'roles') expect(url.searchParams.get('enabled')).toBe('eq.true')
-        else
+          expect(route.request().postDataJSON()).toEqual({ p_tenant_id: 'tenant-a' })
+        } else if (mode === 'roles') {
+          expect(url.searchParams.get('tenant_id')).toBe('eq.tenant-a')
+          expect(url.searchParams.get('order')).toBe('role_name.asc,id.asc')
+          expect(url.searchParams.get('enabled')).toBe('eq.true')
+        } else {
+          expect(url.searchParams.get('order')).toBe('create_time.desc,id.asc')
           expect(url.searchParams.get('or')).toBe(
             '(delegator_user_id.eq.user-a,delegate_user_id.eq.user-a)'
           )
+        }
         expect(route.request().headers().prefer).toContain('count=exact')
         expect(url.searchParams.get('limit')).toBe('500')
         const offset = Number(url.searchParams.get('offset'))

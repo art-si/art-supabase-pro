@@ -51,7 +51,10 @@ ${body}
           BACKUP_ENTRY_SCRIPT: backupEntryPath,
           BACKUP_TRANSFER_HELPER: transferHelperPath,
           BACKUP_TEST_NODE: process.execPath,
-          BACKUP_TEST_ROOT: directory
+          BACKUP_TEST_ROOT: directory,
+          BACKUP_UPDATE_FUNCTIONS_HELPER: fileURLToPath(
+            new URL('../../supabase/update-backup-functions.ps1', import.meta.url)
+          )
         }
       }
     )
@@ -506,6 +509,43 @@ Write-Output ('BACKUP_TEST_RESULT=' + ($summary | ConvertTo-Json -Compress -Dept
   assert.equal(result.outside_preserved, true)
 })
 
+test('已有快照更新复用已安装函数包，原暂存目录不存在时也只下载变化函数', () => {
+  const result = runPowerShellFixture(String.raw`
+$projectRef='ckbftoopuyophiebamwy'
+$backup=Join-Path $env:BACKUP_TEST_ROOT 'old'
+$stage=Join-Path $env:BACKUP_TEST_ROOT 'stage'
+foreach($root in @($backup,$stage)) {
+  New-Item -ItemType Directory -Path (Join-Path $root 'metadata'),(Join-Path $root 'functions/retained/_bundle/retained') -Force | Out-Null
+  Set-Content -LiteralPath (Join-Path $root 'functions/retained/_bundle/retained/index.ts') -Value '// existing immutable bundle' -Encoding UTF8
+  Set-Content -LiteralPath (Join-Path $root 'config.toml') -Value '[project]' -Encoding UTF8
+}
+$old=@([pscustomobject]@{slug='retained';id='id-1';version=1;ezbr_sha256=('a'*64);verify_jwt=$true;entrypoint_path=$null;import_map=$null})
+$latest=@($old[0],[pscustomobject]@{slug='new-function';id='id-2';version=1;ezbr_sha256=('b'*64);verify_jwt=$true;entrypoint_path=$null;import_map=$null})
+ConvertTo-Json -InputObject $old -Depth 8 | Set-Content -LiteralPath (Join-Path $backup 'metadata/functions.json') -Encoding UTF8
+$metadata=Join-Path $env:BACKUP_TEST_ROOT 'latest.json'
+ConvertTo-Json -InputObject $latest -Depth 8 | Set-Content -LiteralPath $metadata -Encoding UTF8
+$global:downloaded=New-Object System.Collections.Generic.List[string]
+function global:supabase {
+  if($args[0] -ne 'functions' -or $args[1] -ne 'download' -or $args[2] -ne 'new-function') {throw 'Unexpected fixture download.'}
+  $global:downloaded.Add([string]$args[2])
+  $target=Join-Path (Get-Location).Path 'supabase/functions/new-function'
+  New-Item -ItemType Directory -Path $target -Force | Out-Null
+  Set-Content -LiteralPath (Join-Path $target 'index.ts') -Value '// downloaded once' -Encoding UTF8
+  $global:LASTEXITCODE=0
+}
+$noOriginalCache=-not (Test-Path -LiteralPath ($backup+'.incomplete'))
+& $env:BACKUP_UPDATE_FUNCTIONS_HELPER -BackupPath $backup -StagePath $stage -FunctionMetadataPath $metadata
+& $env:BACKUP_UPDATE_FUNCTIONS_HELPER -BackupPath $backup -StagePath $stage -FunctionMetadataPath $metadata
+$layout=Get-Content -LiteralPath (Join-Path $stage 'metadata/function-layout.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$same=(Get-FileHash -LiteralPath (Join-Path $backup 'functions/retained/_bundle/retained/index.ts')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $stage 'functions/retained/_bundle/retained/index.ts')).Hash
+Write-Output ('BACKUP_TEST_RESULT='+(@{downloaded=@($global:downloaded.ToArray());no_original_cache=$noOriginalCache;same=$same;layout_count=@($layout.functions).Count}|ConvertTo-Json -Compress))
+`)
+  assert.deepEqual(result.downloaded, ['new-function'])
+  assert.equal(result.no_original_cache, true)
+  assert.equal(result.same, true)
+  assert.equal(result.layout_count, 2)
+})
+
 test('真实备份入口可从阶段记录续跑到完整 manifest，所有外部命令均由临时沙箱拦截', () => {
   const result = runPowerShellFixture(String.raw`
 $projectRef = 'ckbftoopuyophiebamwy'
@@ -629,8 +669,10 @@ $global:reverseFunctionList = $false
 $global:metadataListCalls = 0
 $global:driftOnRecheck = $false
 $firstFailedAtSecondFunction = $false
+$firstFailureReason = ''
 try { & (Join-Path $supabaseRoot 'backup-supabase.ps1') -ProjectRef $projectRef -ResumeBackupPath $backup -DbPassword $password }
 catch {
+  $firstFailureReason = $_.Exception.Message
   $firstFailedAtSecondFunction = @($global:stubCalls | Where-Object { $_ -eq 'function:resume-second' }).Count -gt 0 -and
     -not (Test-Path -LiteralPath (Join-Path $backup 'manifest.json'))
 }
@@ -639,7 +681,7 @@ $firstFunction = [pscustomobject]@{
   verify_jwt = $true; entrypoint_path = $null; import_map = $null
 }
 $firstCheckpoint = Read-BackupFunctionCheckpoint -BackupPath $backup -ProjectRef $projectRef -Function $firstFunction
-$firstCacheValid = $null -ne $firstCheckpoint -and $firstCheckpoint.source_path -like '*resume-test*'
+$firstCacheValid = $null -ne $firstCheckpoint -and (Test-Path -LiteralPath (Join-Path $firstCheckpoint.source_path 'resume-test/index.ts') -PathType Leaf)
 $downloadedFirstBeforeResume = @($global:stubCalls | Where-Object { $_ -eq 'function:resume-test' }).Count
 $global:failSecondDownload = $false
 $global:reverseFunctionList = $true
@@ -707,6 +749,7 @@ $summary = @{
   manifest_resumed = [bool]$manifest.consistency.resumed
   manifest_files = @($manifest.files).Count
   first_failed_at_second_function = $firstFailedAtSecondFunction
+  first_failure_reason = $firstFailureReason
   old_whole_cache_valid = $oldWholeCacheValid
   old_layout_absent = $oldLayoutAbsent
   new_layout_exists = Test-Path -LiteralPath (Join-Path $backup 'metadata/function-layout.json') -PathType Leaf
@@ -754,7 +797,7 @@ Write-Output ('BACKUP_TEST_RESULT=' + ($summary | ConvertTo-Json -Compress -Dept
   )
   assert.deepEqual(result.all_complete, [true, true, true, true, true, true])
   assert.equal(result.manifest_resumed, true)
-  assert.equal(result.first_failed_at_second_function, true)
+  assert.equal(result.first_failed_at_second_function, true, String(result.first_failure_reason))
   assert.equal(result.old_whole_cache_valid, true)
   assert.equal(result.old_layout_absent, true)
   assert.equal(result.new_layout_exists, true)

@@ -220,7 +220,7 @@
             code: row.feature,
             status: '1',
             value: row.feature,
-            label: featureLabels[row.feature] ?? row.feature
+            label: featureLabels[row.feature] ?? '未识别类型'
           } satisfies Api.DataCenter.DictListItem)
         return <ArtDictDisplay item={dictItem} dictCode="aiOcrFeature" display="tag" />
       }

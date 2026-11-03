@@ -10,6 +10,16 @@ const recordReferences: Record<string, RecordReferenceMeta> = {
     routeName: 'TmsOrderQueryDetail',
     statusDictCode: 'tmsOrderStatus'
   },
+  tms_customer_price: {
+    label: '客户协议价',
+    routeName: 'TmsCustomerPrice',
+    statusDictCode: 'tmsPriceAgreementStatus'
+  },
+  tms_carrier_price: {
+    label: '承运商协议价',
+    routeName: 'TmsCarrierPrice',
+    statusDictCode: 'tmsPriceAgreementStatus'
+  },
   fms_receipt_document: {
     label: '收款单',
     routeName: 'FinanceReceipt',
@@ -211,7 +221,10 @@ const recordReferences: Record<string, RecordReferenceMeta> = {
   vehicle_routine_inspection_record: { label: '车辆例检记录' },
   vehicle_inspection: { label: '车辆年检记录' },
   vehicle_insurance: { label: '车辆保险记录' },
-  tms_driver_blacklist: { label: '司机黑名单记录' },
+  tms_driver_blacklist: {
+    label: '司机黑名单记录',
+    statusDictCode: 'tmsDriverBlacklistStatus'
+  },
   tms_electronic_contract: { label: '电子合同' },
   tms_service_case: { label: '投诉咨询记录' },
   tms_transport_agreement: { label: '运输协议' },
@@ -258,7 +271,10 @@ const recordReferences: Record<string, RecordReferenceMeta> = {
   tms_cash_allocation: { label: '客户回款核销' },
   tms_carrier_cash_allocation: { label: '承运商付款核销' },
   tms_carrier_payment_application_item: { label: '承运商付款申请明细' },
-  tms_invoice_statement_link: { label: '发票对账关联' },
+  tms_invoice_statement_link: {
+    label: '发票对账关联',
+    statusDictCode: 'tmsInvoiceStatus'
+  },
   wms_adjustment_document: { label: '库存调整单' },
   wms_assembly_component: { label: '组装拆卸组件' },
   wms_assembly_document: { label: '组装拆卸单' },

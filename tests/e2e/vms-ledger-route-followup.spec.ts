@@ -177,11 +177,11 @@ for (const kind of ['fuel', 'electric'] as const) {
       releaseA = resolve
     })
     const cardEndpoint =
-      kind === 'fuel' ? 'vms_list_fuel_cards_secure' : 'vms_list_electric_cards_secure'
+      kind === 'fuel' ? 'vms_list_fuel_cards_secure' : 'vms_list_electric_cards_secure_v2'
     const entryEndpoint =
       kind === 'fuel'
         ? 'vms_list_fuel_card_entries_secure'
-        : 'vms_list_electric_card_entries_secure'
+        : 'vms_list_electric_card_entries_secure_v2'
     const cardLabel = kind === 'fuel' ? '油卡' : '电卡'
     page.on('pageerror', (error) => pageErrors.push(error.message))
     page.on('response', (response) => {
@@ -315,6 +315,8 @@ test('自有车任务筛选已接单，实际时间及空值对应各自列', as
   await page.route('**/rest/v1/**', (route) => {
     const request = route.request()
     const endpoint = new URL(request.url()).pathname.split('/').at(-1)
+    if (endpoint === 'get_table_column_runtime')
+      return route.fulfill({ json: { enabled: false, profiles: [] } })
     if (endpoint === 'vms_list_own_vehicle_tasks_secure') {
       const payload = request.postDataJSON() as Record<string, unknown>
       statuses.push(payload.p_status)

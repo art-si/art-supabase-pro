@@ -11,6 +11,15 @@ DECLARE
   workshop_id uuid := 'aba62324-9491-468d-a43b-708fa5c71c10';
   v jsonb; ledger jsonb; created uuid; reminder_count integer;
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid='public.vehicle_maintenance_record'::regclass
+      AND conname='vehicle_maintenance_required_service_fields_check'
+      AND pg_get_constraintdef(oid) LIKE '%service_date IS NOT NULL%'
+      AND pg_get_constraintdef(oid) LIKE '%current_odometer_km IS NOT NULL%'
+  ) THEN
+    RAISE EXCEPTION 'Maintenance date and odometer required constraint is missing';
+  END IF;
   PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',actor,'role','authenticated')::text,true);
   PERFORM set_config('request.headers','{}',true);
 

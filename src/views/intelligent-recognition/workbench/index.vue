@@ -193,7 +193,12 @@
   ]
   const recentColumns: ColumnOption<Artifact>[] = [
     { prop: 'title', label: '任务', minWidth: 190, formatter: (row) => getArtifactTitle(row) },
-    { prop: 'feature', label: '类型', width: 120, formatter: (row) => featureLabels[row.feature] },
+    {
+      prop: 'feature',
+      label: '类型',
+      width: 120,
+      formatter: (row) => featureLabels[row.feature] ?? '未识别类型'
+    },
     {
       prop: 'confidence',
       label: '可信度',

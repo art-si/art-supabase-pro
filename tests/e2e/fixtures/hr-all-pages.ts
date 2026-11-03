@@ -1,20 +1,34 @@
-import { createApp, defineAsyncComponent, h } from 'vue'
+import { createApp, defineAsyncComponent, h, type Component } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import { setupGlobDirectives } from '@/directives'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
-const pages = import.meta.glob('../../../modules/art-supabase-hr/src/views/**/index.vue')
+const pages = import.meta.glob<Component>(
+  '../../../modules/art-supabase-hr/src/views/**/index.vue',
+  { import: 'default' }
+)
 const page = new URLSearchParams(location.search).get('page')
 const loader = pages[`../../../modules/art-supabase-hr/src/views/${page}/index.vue`]
 if (!page || !loader) throw new Error('Unknown HR page fixture')
 document.documentElement.style.setProperty('--art-full-height', 'calc(100vh - 32px)')
 const component = defineAsyncComponent(loader)
+const themeParam = new URLSearchParams(location.search).get('theme')
+if (themeParam) {
+  const theme = themeParam === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+  useSettingStore(store).setGlobalTheme(theme, theme)
+  initializeTheme()
+}
 const scopeControls = new URLSearchParams(location.search).has('scope-test')
+const routeControls = new URLSearchParams(location.search).has('route-test')
+let routeQueryVersion = 0
 const tenantScope = useTenantScopeStore(store)
 const homeTenant = '11111111-1111-4111-8111-111111111111'
 const otherTenant = '22222222-2222-4222-8222-222222222222'
@@ -42,6 +56,23 @@ const app = createApp({
                 '切换业务租户'
               )
             ])
+          ]
+        : []),
+      ...(routeControls
+        ? [
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: () =>
+                  void router.replace({
+                    path: router.currentRoute.value.path,
+                    query: { ...router.currentRoute.value.query, race: String(++routeQueryVersion) }
+                  })
+              },
+              '切换同页查询'
+            ),
+            h('output', { 'data-testid': 'hr-route-full-path' }, router.currentRoute.value.fullPath)
           ]
         : [])
     ])

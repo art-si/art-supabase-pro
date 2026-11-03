@@ -227,6 +227,7 @@ export async function readStorageObjects(sql: BackupSourceSql): Promise<StorageO
     coalesce((metadata->>'size')::bigint,0)::text size,updated_at::text,
     metadata->>'mimetype' content_type,metadata->>'cacheControl' cache_control
     from storage.objects order by bucket_id,name`)
+  const seen = new Set<string>()
   return rows.map((row) => {
     if (
       typeof row.id !== 'string' ||
@@ -234,16 +235,24 @@ export async function readStorageObjects(sql: BackupSourceSql): Promise<StorageO
       !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(row.bucket_id) ||
       typeof row.name !== 'string' ||
       !row.name ||
-      row.name
-        .split('/')
-        .some(
-          (part: string) =>
-            !part || part === '.' || part === '..' || part.includes('\\') || part.includes(':')
-        ) ||
+      [row.bucket_id, ...row.name.split('/')].some(
+        (part: string) =>
+          !part ||
+          part === '.' ||
+          part === '..' ||
+          /[<>:"\\|?*]/.test(part) ||
+          [...part].some((char) => char.charCodeAt(0) < 32) ||
+          /[. ]$/.test(part) ||
+          /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(part)
+      ) ||
       !Number.isSafeInteger(Number(row.size)) ||
       Number(row.size) < 0
     )
       throw new Error('Storage 对象清单包含无法安全保存的路径或大小。')
+    const key = `${row.bucket_id}/${row.name}`.toLowerCase()
+    if (seen.has(key))
+      throw new Error('Storage 存在仅大小写不同的重名路径，无法安全保存到 Windows。')
+    seen.add(key)
     const optional = (key: string) => (typeof row[key] === 'string' ? String(row[key]) : null)
     return {
       id: row.id,

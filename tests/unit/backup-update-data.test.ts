@@ -4,12 +4,26 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { buildDataDump, readCopyInventory } from '../../scripts/lib/backup-update-data'
+import {
+  buildDataDump,
+  readCopyInventory,
+  normalizeSequenceStatements
+} from '../../scripts/lib/backup-update-data'
 
 const header =
   "SET client_encoding = 'UTF8';\nSELECT pg_catalog.set_config('search_path', '', false);\n"
 const copy = (rows: string[]) =>
   `COPY "public"."weird.name" ("value", "flag") FROM stdin;\n${rows.join('\n')}${rows.length ? '\n' : ''}\\.\n`
+
+test('sequence comparison normalizes quoted pg_dump names and preserves changed state', () => {
+  const old = ["SELECT pg_catalog.setval('public.seq'::regclass, 42, true);"]
+  const fresh = [`SELECT pg_catalog.setval('"public"."seq"', 42, true);`]
+  assert.equal(normalizeSequenceStatements(old), normalizeSequenceStatements(fresh))
+  assert.notEqual(
+    normalizeSequenceStatements(old),
+    normalizeSequenceStatements([`SELECT pg_catalog.setval('"public"."seq"', 43, true);`])
+  )
+})
 
 test('COPY inventory fingerprints changes, deletions, duplicates, and ignores row order', async () => {
   const root = await mkdtemp(join(tmpdir(), 'backup-update-data-'))
@@ -26,7 +40,7 @@ test('COPY inventory fingerprints changes, deletions, duplicates, and ignores ro
       const path = join(root, `${index}.sql`)
       await writeFile(
         path,
-        `${header}${copy(variants[index])}\nSELECT pg_catalog.setval('public.seq'::regclass, 42, true);\n-- PostgreSQL database dump complete\n`
+        `\uFEFF${header}${copy(variants[index])}\nSELECT pg_catalog.setval('public.seq'::regclass, 42, true);\n-- PostgreSQL database dump complete\nRESET ALL;\n`
       )
       inventories.push(await readCopyInventory(path))
     }

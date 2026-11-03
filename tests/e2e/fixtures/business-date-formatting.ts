@@ -4,7 +4,7 @@ import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
 import { setupGlobDirectives } from '@/directives'
-import VehicleSummary from '@vms/views/vehicle-query/modules/vehicle-query-summary.vue'
+import VehicleArchivePanel from '@vms/views/vehicle-query/modules/archive-panel.vue'
 import ReceiptPanel from '@tms/views/delivery-management/modules/waybill-receipt-ocr-panel.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
@@ -24,7 +24,7 @@ const app = createApp({
         },
         '切换日期样本'
       ),
-      h(VehicleSummary, {
+      h(VehicleArchivePanel, {
         vehicle: {
           plateNo: '测试车辆',
           vehicleType: '',
@@ -49,7 +49,7 @@ setupGlobDirectives(app)
 useUserStore(store).setUserInfo({
   userId: 'format-test',
   tenantId: 'test-tenant',
-  platformSuper: false
+  platformSuper: true
 })
 await router.push('/')
 await router.isReady()

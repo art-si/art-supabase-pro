@@ -3,6 +3,14 @@ export interface UnitDisplayOption {
   tenantId: string
   unitCode: string
   unitName: string
+  symbol?: string | null
+}
+
+export interface UnitDisplayAlias {
+  tenantId?: string
+  value: string
+  label?: string
+  name: string
 }
 
 export type UnitDisplayIndex = Map<string, Map<string, string>>
@@ -20,14 +28,29 @@ export function formatUnitDisplayName(value?: string | null, emptyValue = '—')
   return unitNameAliases.get(value.trim().toLowerCase()) || value
 }
 
-export function createUnitDisplayIndex(units: UnitDisplayOption[]): UnitDisplayIndex {
+export function createUnitDisplayIndex(
+  units: UnitDisplayOption[],
+  aliases: UnitDisplayAlias[] = []
+): UnitDisplayIndex {
   const index: UnitDisplayIndex = new Map()
   for (const unit of units) {
     const names = index.get(unit.tenantId) ?? new Map<string, string>()
-    for (const key of [unit.id, unit.unitCode, unit.unitName]) {
-      if (key) names.set(key, unit.unitName)
+    const label = formatUnitDisplayName(unit.unitName)
+    for (const key of [unit.id, unit.unitCode, unit.unitName, unit.symbol]) {
+      if (key) {
+        names.set(key, label)
+        names.set(key.toLowerCase(), label)
+      }
     }
     index.set(unit.tenantId, names)
+  }
+  for (const alias of aliases) {
+    if (!alias.tenantId || !alias.value) continue
+    const names = index.get(alias.tenantId) ?? new Map<string, string>()
+    const label = formatUnitDisplayName(alias.label || alias.name)
+    names.set(alias.value, label)
+    names.set(alias.value.toLowerCase(), label)
+    index.set(alias.tenantId, names)
   }
   return index
 }
@@ -38,6 +61,6 @@ export function resolveUnitDisplayName(
   value?: string | null
 ): string {
   if (!value) return '—'
-  const name = index.get(tenantId)?.get(value) || value
-  return formatUnitDisplayName(name)
+  const names = index.get(tenantId)
+  return names?.get(value) || names?.get(value.toLowerCase()) || formatUnitDisplayName(value)
 }

@@ -5,8 +5,12 @@ export function isBackupUpdateReport(value: unknown): value is BackupUpdateRepor
   if (
     !isObjectRecord(value) ||
     value.formatVersion !== 1 ||
-    !['preview', 'apply'].includes(String(value.mode)) ||
-    !['planned', 'unchanged', 'updated', 'failed'].includes(String(value.status)) ||
+    typeof value.mode !== 'string' ||
+    !['preview', 'apply'].includes(value.mode) ||
+    typeof value.status !== 'string' ||
+    !['planned', 'unchanged', 'updated', 'failed'].includes(value.status) ||
+    (value.mode === 'preview' && value.status === 'updated') ||
+    (value.mode === 'apply' && value.status === 'planned') ||
     typeof value.backupPath !== 'string' ||
     !value.backupPath ||
     value.backupPath.length > 2048 ||
@@ -35,6 +39,8 @@ export function isBackupUpdateReport(value: unknown): value is BackupUpdateRepor
     !value.items.every(
       (item: unknown) =>
         isObjectRecord(item) &&
+        typeof item.kind === 'string' &&
+        typeof item.status === 'string' &&
         [
           'table',
           'schema',
@@ -44,8 +50,8 @@ export function isBackupUpdateReport(value: unknown): value is BackupUpdateRepor
           'function',
           'storage',
           'metadata'
-        ].includes(String(item.kind)) &&
-        ['added', 'changed', 'removed', 'unchanged', 'check'].includes(String(item.status)) &&
+        ].includes(item.kind) &&
+        ['added', 'changed', 'removed', 'unchanged', 'check'].includes(item.status) &&
         typeof item.key === 'string' &&
         item.key.length <= 2048 &&
         typeof item.label === 'string' &&

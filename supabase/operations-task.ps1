@@ -41,6 +41,7 @@ try {
     $scripts = @{
       syncFunctions='sync-supabase-functions.ps1'; backup='backup-supabase.ps1'; resumeBackup='backup-supabase.ps1'
       previewBackupUpdate='backup-supabase.ps1'; updateBackup='backup-supabase.ps1'
+      updateBackupFunctions='update-backup-functions.ps1'
       verify='restore-local-supabase.ps1'; package='package-supabase-backup.ps1'; download='download-supabase-backup.ps1'
       restoreLocal='restore-local-supabase.ps1'; resumeLocal='restore-local-supabase.ps1'; restoreRemote='restore-supabase.ps1'
       publish='publish-supabase-backup.ps1'; setLocalLogin='set-local-login.ps1'

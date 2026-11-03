@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { pickDefinedPayload } from '../../modules/art-supabase-tms/src/api/modules/payload'
+import { pickDefinedPayload } from '../../src/utils/form/pick-defined-payload'
 
-test('TMS payload whitelists fields while preserving explicit empty business values', () => {
+test('write payload whitelists fields while preserving explicit empty business values', () => {
   const source = Object.freeze({
     code: 'A',
     count: 0,

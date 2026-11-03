@@ -39,6 +39,13 @@
           >使用此计划准备更新</ElButton
         >
         <ElButton
+          v-if="report.mode === 'apply' && report.status === 'failed' && report.items.length"
+          v-auth="'SupabaseOperations:UpdateBackup'"
+          type="primary"
+          @click="emit('prepare-update', report)"
+          >使用同一计划重试</ElButton
+        >
+        <ElButton
           v-if="report.status === 'failed'"
           v-auth="'SupabaseOperations:PreviewUpdate'"
           plain
@@ -66,26 +73,32 @@
             value="changed" /><ElOption label="只看跳过" value="unchanged"
         /></ElSelect>
       </div>
-      <ArtTable
-        :data="rows"
-        :columns="columns"
-        :pagination="{ current: page, size: pageSize, total: rows.length }"
-        client-pagination
-        :max-height="360"
-        row-key="rowKey"
-        size="small"
-        empty-text="当前筛选下没有项目"
-        empty-description="可切换到全部项目查看跳过的内容。"
-        @pagination:current-change="page = $event"
-        @pagination:size-change="pageSizeChanged"
+      <div
+        class="min-w-0"
+        :style="{
+          height: `${Math.min(320, Math.max(160, Math.min(rows.length, pageSize) * 40 + 48)) + 110}px`
+        }"
       >
-        <template #kind="{ row }">{{ kindLabels[row.kind as ItemKind] }}</template>
-        <template #status="{ row }"
-          ><ElTag :type="statusTypes[row.status as ItemStatus]" size="small">{{
-            statusLabels[row.status as ItemStatus]
-          }}</ElTag></template
+        <ArtTable
+          :data="rows"
+          :columns="columns"
+          :pagination="{ current: page, size: pageSize, total: rows.length }"
+          client-pagination
+          row-key="rowKey"
+          size="small"
+          empty-text="当前筛选下没有项目"
+          empty-description="可切换到全部项目查看跳过的内容。"
+          @pagination:current-change="page = $event"
+          @pagination:size-change="pageSizeChanged"
         >
-      </ArtTable>
+          <template #kind="{ row }">{{ kindLabels[row.kind as ItemKind] }}</template>
+          <template #status="{ row }"
+            ><ElTag :type="statusTypes[row.status as ItemStatus]" size="small">{{
+              statusLabels[row.status as ItemStatus]
+            }}</ElTag></template
+          >
+        </ArtTable>
+      </div>
       <div class="rounded-lg bg-g-100 p-3 text-xs leading-6 text-g-700"
         ><ul class="list-inside list-disc"
           ><li v-for="warning in report.warnings" :key="warning">{{ warning }}</li></ul
@@ -98,7 +111,7 @@
     <ElAlert
       v-else
       title="此任务没有可显示的更新报告"
-      description="请重新连接执行端后查看；旧执行端需要重新启动才能返回新的报告格式。"
+      description="请先查看执行日志中的失败原因，再重新检查。若执行端版本较旧，请重新启动执行端。"
       type="warning"
       show-icon
       :closable="false"

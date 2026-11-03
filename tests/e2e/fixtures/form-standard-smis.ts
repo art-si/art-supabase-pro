@@ -308,6 +308,11 @@ const entries: Record<string, Entry> = {
       import('@smis/views/dual-control-system/hidden-hazard-governance/hidden-hazard-governance-tracking/modules/hazard-detail-drawer.vue'),
     data: { row: hazardGovernance }
   },
+  'hazard-workflow-icon': {
+    load: () =>
+      import('@smis/views/dual-control-system/hidden-hazard-governance/hidden-hazard-governance-tracking/modules/hazard-workflow-dialog.vue'),
+    data: { mode: 'approve', row: { ...hazardGovernance, status: 'pending_approval' } }
+  },
   'rectification-detail': {
     load: () =>
       import('@smis/views/dual-control-system/hidden-hazard-governance/hidden-hazard-inspection-rectification/modules/inspection-rectification-detail-dialog.vue'),
@@ -544,6 +549,7 @@ const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThem
 settings.setGlobalTheme(theme, theme)
 initializeTheme()
 useTheme().switchThemeStyles(theme)
+document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
 await router.push('/')
 await router.isReady()
 app.mount('#app')

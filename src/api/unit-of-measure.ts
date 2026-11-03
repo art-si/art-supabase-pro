@@ -25,7 +25,7 @@ export async function fetchUnitDisplayOptions(tenantIds: string[]): Promise<Unit
         () =>
           supabase
             .from('mdm_unit_of_measure')
-            .select('id,tenant_id,unit_code,unit_name')
+            .select('id,tenant_id,unit_code,unit_name,symbol')
             .in('tenant_id', tenants.slice(offset, offset + 100))
             .order('id')
             .range(from, to),

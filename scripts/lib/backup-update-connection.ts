@@ -270,6 +270,11 @@ export async function connectBackupSource(
 
 export function backupUpdateErrorMessage(cause: unknown): string {
   const code = isObjectRecord(cause) && typeof cause.code === 'string' ? cause.code : ''
+  if (code === '42501') return '来源数据库权限不足，请使用具备备份读取权限的数据库账号。'
+  if (code === 'ENOSPC') return '本机磁盘空间不足，请清理空间后使用同一计划重试。'
+  if (['EACCES', 'EPERM', 'EBUSY'].includes(code))
+    return '本机文件被占用或没有写入权限，请关闭占用程序后重试。'
+  if (code === 'ENOENT') return '需要的本机文件不存在，请检查原备份目录和本机依赖后重试。'
   if (code === 'BACKUP_COPY_FORMAT')
     return '本地备份数据格式无法用于增量更新，请校验备份并查看更新报告；原完整备份保留。'
   if (['57014', 'BACKUP_SOURCE_READ_TIMEOUT'].includes(code))
@@ -293,7 +298,10 @@ export function backupUpdateErrorMessage(cause: unknown): string {
     return '来源数据库安全证书校验未通过，请检查本机时间、可信证书和网络代理后重试；原完整备份保留。'
   if (code === 'CONNECTION_CLOSED')
     return '来源数据库连接在读取期间中断，请检查网络后重新更新；原完整备份保留。'
-  if (transientConnectionCodes.includes(code))
+  if (
+    transientConnectionCodes.includes(code) ||
+    /^(?:08|CONNECT_|CONNECTION_|ECONN|ETIMEDOUT|EHOST|ENET)/.test(code)
+  )
     return '无法连接来源数据库，请检查网络、DNS 和 5432 端口后重试；原完整备份保留。'
   if (
     cause instanceof Error &&

@@ -1,12 +1,30 @@
 <template>
   <div class="workflow-task-board">
+    <div v-if="tasks.length" class="workflow-task-board__toolbar">
+      <span>
+        共 {{ tasks.length }} 项任务
+        <strong>{{ pendingCount }} 项待处理</strong>
+      </span>
+      <div class="workflow-task-board__filter">
+        <span>只看待处理</span>
+        <ElSwitch v-model="onlyPending" size="small" aria-label="只看待处理审批任务" />
+      </div>
+    </div>
     <ArtEmptyState
       v-if="!taskGroups.length"
-      title="流程尚未生成审批任务"
-      description="启动审批后，待办任务会在此按节点展示。"
+      :title="tasks.length ? '当前没有待处理任务' : '流程尚未生成审批任务'"
+      :description="
+        tasks.length
+          ? '可以查看全部任务，核对审批意见与委托、转交记录。'
+          : '启动审批后，待办任务会在此按节点展示。'
+      "
       size="compact"
       :visual-size="72"
-    />
+    >
+      <ElButton v-if="tasks.length" type="primary" plain @click="onlyPending = false">
+        查看全部任务
+      </ElButton>
+    </ArtEmptyState>
 
     <section
       v-for="group in taskGroups"
@@ -19,7 +37,7 @@
           <span>{{ group.nodeOrder.toString().padStart(2, '0') }}</span>
           <div>
             <div>
-              <strong>{{ group.nodeName }}</strong>
+              <strong :title="group.nodeName">{{ group.nodeName }}</strong>
               <ElTag :type="group.tone" size="small" effect="plain">
                 {{ group.statusLabel }}
               </ElTag>
@@ -34,7 +52,7 @@
 
         <div class="workflow-task-board__progress">
           <div>
-            <span>办理进度</span>
+            <span>已结束任务</span>
             <strong>{{ group.completedCount }}/{{ group.tasks.length }}</strong>
           </div>
           <ElProgress
@@ -59,17 +77,19 @@
         <article v-for="task in visibleTasks(group)" :key="task.id" :class="`is-${task.status}`">
           <div class="workflow-task-board__member-heading">
             <span class="workflow-task-board__avatar">
-              {{ formatAvatarInitials(task.assigneeNameSnapshot, '待') }}
+              {{ formatAvatarInitials(task.assigneeNameSnapshot, '审') }}
             </span>
             <div>
-              <strong :title="task.assigneeNameSnapshot">{{ task.assigneeNameSnapshot }}</strong>
+              <strong :title="task.assigneeNameSnapshot">
+                {{ task.assigneeNameSnapshot || '未记录审批人' }}
+              </strong>
               <span
                 v-if="task.assignmentSource !== 'direct'"
                 class="workflow-task-board__assignment"
               >
                 <ArtSvgIcon icon="ri:user-shared-line" />{{ assignmentLabel(task) }}
               </span>
-              <small>{{ getTaskTimeLabel(task) }}</small>
+              <small :title="getTaskTimeLabel(task)">{{ getTaskTimeLabel(task) }}</small>
             </div>
             <ArtDictDisplay dict-code="workflowTaskStatus" :value="task.status" display="tag" />
           </div>
@@ -82,7 +102,7 @@
       </div>
 
       <ElButton
-        v-if="group.tasks.length > initialVisibleCount"
+        v-if="group.displayTasks.length > initialVisibleCount"
         class="workflow-task-board__expand"
         text
         type="primary"
@@ -90,8 +110,8 @@
       >
         {{
           expandedNodeKeys.has(group.nodeKey)
-            ? '收起审批人'
-            : `查看其余 ${group.tasks.length - initialVisibleCount} 位审批人`
+            ? '收起更多任务'
+            : `查看其余 ${group.displayTasks.length - initialVisibleCount} 项任务`
         }}
         <ArtSvgIcon
           :icon="
@@ -104,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-  import { groupBy, uniqBy } from 'lodash-es'
+  import { groupBy, orderBy, uniqBy } from 'lodash-es'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
@@ -124,6 +144,7 @@
     nodeName: string
     nodeOrder: number
     tasks: Api.Workflow.WorkflowTaskRecord[]
+    displayTasks: Api.Workflow.WorkflowTaskRecord[]
     ruleLabel: string
     ruleDescription: string
     approvedCount: number
@@ -138,6 +159,10 @@
 
   const props = defineProps<Props>()
   const initialVisibleCount = 6
+  const onlyPending = ref(false)
+  const pendingCount = computed(
+    () => props.tasks.filter((task) => task.status === 'pending').length
+  )
   const expandedNodeKeys = reactive(new Set<string>())
 
   const taskGroups = computed<TaskGroup[]>(() => {
@@ -145,9 +170,9 @@
       (a, b) => a.nodeOrder - b.nodeOrder || a.createTime.localeCompare(b.createTime)
     )
     const grouped = groupBy(orderedTasks, 'nodeKey')
-    return uniqBy(orderedTasks, 'nodeKey').map((task) =>
-      createTaskGroup(task.nodeKey, grouped[task.nodeKey])
-    )
+    return uniqBy(orderedTasks, 'nodeKey')
+      .map((task) => createTaskGroup(task.nodeKey, grouped[task.nodeKey]))
+      .filter((group) => group.displayTasks.length > 0)
   })
 
   function createTaskGroup(nodeKey: string, tasks: Api.Workflow.WorkflowTaskRecord[]): TaskGroup {
@@ -159,12 +184,20 @@
     const progressPercentage = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0
     const ruleMeta = getRuleMeta(firstTask)
     const statusMeta = getGroupStatusMeta({ approvedCount, rejectedCount, pendingCount })
+    const orderedTasks = orderBy(
+      tasks,
+      [(task) => (task.status === 'pending' ? 0 : 1), 'createTime'],
+      ['asc', 'desc']
+    )
 
     return {
       nodeKey,
       nodeName: firstTask?.nodeName || '审批节点',
       nodeOrder: firstTask?.nodeOrder ?? 0,
       tasks,
+      displayTasks: onlyPending.value
+        ? orderedTasks.filter((task) => task.status === 'pending')
+        : orderedTasks,
       ...ruleMeta,
       approvedCount,
       rejectedCount,
@@ -210,22 +243,22 @@
     statusLabel: string
     progressStatus: ProgressStatus
   } {
-    if (counts.rejectedCount) {
-      return { tone: 'danger', statusLabel: '已驳回', progressStatus: 'exception' }
-    }
     if (counts.pendingCount) {
-      return { tone: 'warning', statusLabel: '处理中', progressStatus: 'warning' }
+      return { tone: 'warning', statusLabel: '待处理', progressStatus: 'warning' }
+    }
+    if (counts.rejectedCount) {
+      return { tone: 'danger', statusLabel: '含驳回记录', progressStatus: 'exception' }
     }
     if (counts.approvedCount) {
-      return { tone: 'success', statusLabel: '已完成', progressStatus: 'success' }
+      return { tone: 'success', statusLabel: '任务已结束', progressStatus: 'success' }
     }
-    return { tone: 'info', statusLabel: '已结束', progressStatus: undefined }
+    return { tone: 'info', statusLabel: '任务已结束', progressStatus: undefined }
   }
 
   function visibleTasks(group: TaskGroup): Api.Workflow.WorkflowTaskRecord[] {
     return expandedNodeKeys.has(group.nodeKey)
-      ? group.tasks
-      : group.tasks.slice(0, initialVisibleCount)
+      ? group.displayTasks
+      : group.displayTasks.slice(0, initialVisibleCount)
   }
 
   function toggleGroup(nodeKey: string): void {
@@ -256,6 +289,34 @@
     display: grid;
     gap: 14px;
     min-width: 0;
+
+    &__toolbar,
+    &__filter {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    &__toolbar {
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+
+      > span {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      strong {
+        color: var(--el-text-color-primary);
+      }
+    }
+
+    &__filter {
+      color: var(--el-text-color-regular);
+    }
 
     &__group {
       min-width: 0;
@@ -317,7 +378,7 @@
         > small {
           display: flex;
           flex-wrap: wrap;
-          gap: 5px;
+          gap: var(--art-control-icon-gap);
           align-items: center;
           color: var(--el-text-color-secondary);
 
@@ -357,7 +418,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 9px;
-        font-size: 11px;
+        font-size: 12px;
 
         .is-approved {
           color: var(--el-color-success);
@@ -414,7 +475,7 @@
           color: var(--el-text-color-regular);
 
           &.is-empty {
-            color: var(--el-text-color-placeholder);
+            color: var(--el-text-color-secondary);
           }
 
           span {
@@ -449,7 +510,7 @@
         }
 
         small {
-          font-size: 10px;
+          font-size: 12px;
           color: var(--el-text-color-secondary);
         }
       }
@@ -460,7 +521,7 @@
       place-items: center;
       width: 34px;
       height: 34px;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 700;
       color: var(--theme-color);
       text-transform: uppercase;
@@ -476,7 +537,7 @@
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
-      font-size: 10px;
+      font-size: 12px;
       color: var(--el-color-warning-dark-2);
       white-space: nowrap;
 

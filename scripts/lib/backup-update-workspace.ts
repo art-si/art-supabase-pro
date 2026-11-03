@@ -256,6 +256,29 @@ export async function refreshBackupDirectoryTimestamp(
   }
 }
 
+/** Only a successfully committed, owned temp workspace may be discarded. */
+export async function cleanBackupUpdateWorkspace(
+  workspaceRoot: string,
+  backupPath: string,
+  planId: string
+): Promise<void> {
+  const directory = path.resolve(workspaceRoot)
+  if (
+    path.dirname(directory) !== path.resolve(tmpdir()) ||
+    !/^abu-[a-f\d]{16}$/.test(path.basename(directory))
+  )
+    throw new Error('更新暂存清理路径不安全。')
+  await noLinks(directory)
+  const owner = await readJson(path.join(directory, 'owner.json'))
+  if (
+    !isObjectRecord(owner) ||
+    owner.backupPath !== path.resolve(backupPath) ||
+    owner.planId !== planId
+  )
+    throw new Error('更新暂存身份不匹配，已保留目录。')
+  await rm(directory, { recursive: true, force: true })
+}
+
 export async function createBackupUpdateWorkspace(
   backupPath: string,
   planId: string
@@ -339,7 +362,10 @@ function readJournal(value: unknown, root: string): Journal {
     value.backupPath !== root ||
     value.phase !== 'committing' ||
     typeof value.historyPath !== 'string' ||
-    !value.historyPath.toLowerCase().startsWith((root + '.history' + path.sep).toLowerCase()) ||
+    !path
+      .resolve(value.historyPath)
+      .toLowerCase()
+      .startsWith((root + '.history' + path.sep).toLowerCase()) ||
     typeof value.oldManifestSha256 !== 'string' ||
     !HASH.test(value.oldManifestSha256) ||
     typeof value.newManifestSha256 !== 'string' ||
@@ -379,7 +405,12 @@ async function restoreJournal(root: string, journal: Journal, file: string): Pro
   if ((await fileHash(archivedManifest)) !== journal.oldManifestSha256.toLowerCase())
     throw new Error('旧版本归档清单损坏，不能自动恢复。')
   const oldByPath = new Map(journal.oldFiles.map((entry) => [relativePath(entry.path), entry]))
-  for (const relative of [...journal.changed, ...journal.additions, 'manifest.json'])
+  for (const relative of [
+    ...journal.changed,
+    ...journal.additions,
+    ...journal.removals,
+    'manifest.json'
+  ])
     for (const phase of ['c', 'r'])
       await rm(inside(root, relative) + `.update-${phase}-${journal.nonce}.tmp`, { force: true })
   for (const relative of [...journal.changed, ...journal.removals]) {
@@ -452,6 +483,14 @@ export async function commitBackupUpdate(
     if (old.project_ref !== fresh.project_ref) throw new Error('新旧快照来源项目不一致。')
     const oldFiles = new Map(old.files.map((entry) => [relativePath(entry.path), entry]))
     const newFiles = new Map(fresh.files.map((entry) => [relativePath(entry.path), entry]))
+    const oldNames = new Map([...oldFiles.keys()].map((name) => [name.toLowerCase(), name]))
+    for (const name of newFiles.keys()) {
+      const oldName = oldNames.get(name.toLowerCase())
+      if (oldName && oldName !== name)
+        throw new Error(
+          '更新文件存在仅大小写变化的路径，Windows 不能安全替换；请调整来源名称后重试。'
+        )
+    }
     const changed = [...newFiles]
       .filter(
         ([rel, entry]) =>

@@ -32,12 +32,23 @@ const app = createApp({
       if (darkTheme) switchThemeStyles(SystemThemeEnum.DARK)
     })
     return () =>
-      h('main', { class: 'art-page-view', style: { padding: '16px', minWidth: 0 } }, [
-        h('button', { type: 'button', onClick: () => scope.setTenantScope(tenantB) }, '切换租户 B'),
-        scenario === 'dashboard'
-          ? h(InspectionDashboardWorkspace)
-          : h(CalendarWorkspace, { kind: 'inspection', mode })
-      ])
+      h(
+        'main',
+        {
+          class: 'art-page-view',
+          style: { padding: '16px', minWidth: 0, '--art-full-height': 'calc(100dvh - 56px)' }
+        },
+        [
+          h(
+            'button',
+            { type: 'button', onClick: () => scope.setTenantScope(tenantB) },
+            '切换租户 B'
+          ),
+          scenario === 'dashboard'
+            ? h(InspectionDashboardWorkspace)
+            : h(CalendarWorkspace, { kind: 'inspection', mode })
+        ]
+      )
   }
 })
 app.use(store)

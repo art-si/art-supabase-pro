@@ -6,6 +6,9 @@ import { store } from '@/store'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { SystemThemeEnum } from '@/enums/app-enum'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import FundTransferDetailDrawer from '../../../modules/art-supabase-fms/src/views/treasury/fund-transfer/modules/fund-transfer-detail-drawer.vue'
 import BankReconciliationDetailDrawer from '../../../modules/art-supabase-fms/src/views/treasury/bank-reconciliation/modules/bank-reconciliation-detail-drawer.vue'
 import AccountingPeriodDrawer from '../../../modules/art-supabase-fms/src/views/accounting/account-set/modules/accounting-period-drawer.vue'
@@ -17,7 +20,18 @@ import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 const tenantId = '11111111-1111-4111-8111-111111111111'
+const otherTenantId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const accountSetId = '33333333-3333-4333-8333-333333333333'
+const fixtureParams = new URLSearchParams(location.search)
+const bankContext = fixtureParams.has('bank-context')
+const bankOrdinary = fixtureParams.has('bank-ordinary')
+const bankPermissions = [
+  'FinanceBankReconciliation:AutoMatch',
+  'FinanceBankReconciliation:Complete',
+  'FinanceBankReconciliation:Void',
+  'FinanceBankReconciliation:Ignore',
+  'FinanceBankReconciliation:Unmatch'
+]
 
 const transfer: Api.Fms.FundTransferRecord = {
   id: '44444444-4444-4444-8444-444444444444',
@@ -62,6 +76,11 @@ const bankBatch: Api.Fms.BankReconciliationBatchRecord = {
   unmatchedCount: 0,
   fieldAccess: { statementAmounts: 'read' }
 }
+const bankBatchB: Api.Fms.BankReconciliationBatchRecord = {
+  ...bankBatch,
+  id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  batchNo: 'TEST-BANK-002'
+}
 
 const accountSet: Api.Fms.AccountSetRecord = {
   id: accountSetId,
@@ -95,6 +114,14 @@ const commercialBill: Api.Fms.CommercialBillRecord = {
   fieldAccess: { billAmounts: 'read', billParties: 'read', billReferences: 'read' }
 }
 
+const router = createRouter({
+  history: createMemoryHistory(),
+  routes: [
+    { path: '/', component: { template: '<div />' } },
+    { path: '/other', component: { template: '<div />' } }
+  ]
+})
+
 const Preview = defineComponent({
   setup() {
     const transferDrawer = ref<InstanceType<typeof FundTransferDetailDrawer> | null>(null)
@@ -104,6 +131,7 @@ const Preview = defineComponent({
     const closeDrawer = ref<InstanceType<typeof PeriodCloseDetailDrawer> | null>(null)
     const transferDialog = ref<InstanceType<typeof FundTransferDialog> | null>(null)
     const billDialog = ref<InstanceType<typeof CommercialBillDialog> | null>(null)
+    const bankChanged = ref(0)
     return () =>
       h('main', [
         ...(new URLSearchParams(location.search).has('currency')
@@ -135,6 +163,45 @@ const Preview = defineComponent({
           { type: 'button', onClick: () => void bankDrawer.value?.handleOpen(bankBatch) },
           '打开银行对账详情'
         ),
+        ...(bankContext
+          ? [
+              h(
+                'output',
+                { 'data-testid': 'bank-context' },
+                `${router.currentRoute.value.path}:${useTenantScopeStore(store).effectiveTenantId ?? 'all'}`
+              ),
+              h('output', { 'data-testid': 'bank-changed' }, String(bankChanged.value)),
+              h('output', { 'data-testid': 'bank-auth' }, bankOrdinary ? 'ordinary' : 'super'),
+              h(
+                'output',
+                { 'data-testid': 'bank-grants' },
+                String(useMenuStore(store).buttonList.length)
+              ),
+              h(
+                'button',
+                { type: 'button', onClick: () => void bankDrawer.value?.handleOpen(bankBatchB) },
+                '打开银行对账详情 B'
+              ),
+              h(
+                'button',
+                { type: 'button', onClick: () => void router.push('/other') },
+                '切换测试路由'
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  onClick: () => useTenantScopeStore(store).setTenantScope(otherTenantId)
+                },
+                '切换测试租户'
+              ),
+              h(
+                'button',
+                { type: 'button', onClick: () => useMenuStore(store).setButtonList([]) },
+                '撤销银行权限'
+              )
+            ]
+          : []),
         h(
           'button',
           { type: 'button', onClick: () => void periodDrawer.value?.handleOpen(accountSet) },
@@ -164,7 +231,10 @@ const Preview = defineComponent({
         ),
         h(PeriodCloseDetailDrawer, { ref: closeDrawer }),
         h(FundTransferDetailDrawer, { ref: transferDrawer }),
-        h(BankReconciliationDetailDrawer, { ref: bankDrawer }),
+        h(BankReconciliationDetailDrawer, {
+          ref: bankDrawer,
+          onChanged: () => (bankChanged.value += 1)
+        }),
         h(AccountingPeriodDrawer, { ref: periodDrawer }),
         h(CommercialBillDetailDrawer, { ref: billDrawer })
       ])
@@ -173,23 +243,32 @@ const Preview = defineComponent({
 
 const app = createApp(Preview)
 app.use(store)
-app.use(
-  createRouter({
-    history: createMemoryHistory(),
-    routes: [{ path: '/', component: { template: '<div />' } }]
-  })
-)
+app.use(router)
 app.use(language)
 setupGlobDirectives(app)
+const settings = useSettingStore(store)
+settings.systemThemeType =
+  fixtureParams.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+settings.systemThemeMode = settings.systemThemeType
+settings.boxBorderMode = fixtureParams.get('box') !== 'shadow'
+initializeTheme()
+document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
 
 const userStore = useUserStore(store)
 userStore.setUserInfo({
   userId: '22222222-2222-4222-8222-222222222222',
   tenantId,
   tenant: { tenantCode: 'visual-test', tenantName: '视觉验收业务租户' },
-  platformSuper: false
+  platformSuper: bankContext && !bankOrdinary
 })
-useTenantScopeStore(store).selectedTenantId = tenantId
+const tenantScope = useTenantScopeStore(store)
+tenantScope.selectedTenantId = tenantId
+if (bankContext) {
+  tenantScope.tenantOptions = [
+    { id: tenantId, tenantCode: 'A', tenantName: '测试租户 A' },
+    { id: otherTenantId, tenantCode: 'B', tenantName: '测试租户 B' }
+  ]
+}
 if (new URLSearchParams(location.search).has('readability')) {
   useMenuStore(store).setButtonList([
     {
@@ -199,6 +278,11 @@ if (new URLSearchParams(location.search).has('readability')) {
       meta: { title: '手工匹配' }
     }
   ])
+}
+if (bankContext) {
+  useMenuStore(store).setButtonList(
+    bankPermissions.map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
+  )
 }
 
 app.mount('#fms-detail-preview')

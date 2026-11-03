@@ -1,6 +1,7 @@
 <template>
   <div class="art-full-height workflow-workbench business-workspace-page">
     <BusinessWorkspaceHeader
+      density="compact"
       eyebrow="APPROVAL WORKSPACE"
       title="审批工作台"
       description="统一处理跨业务审批任务，跟踪我发起的流程，并通过完整轨迹快速还原每次决策。"
@@ -26,9 +27,12 @@
             <ArtSectionTitle :show-line="false">{{ workspaceTitle }}</ArtSectionTitle>
             <p>{{ activeTabDescription }}</p>
           </div>
-          <ElTag :type="activeTab === 'global' ? 'warning' : 'primary'" effect="plain" round>
-            {{ activeTab === 'global' ? '平台超管全局视角' : '数据按当前租户隔离' }}
-          </ElTag>
+          <div class="workflow-workbench__workspace-actions">
+            <ElTag :type="activeTab === 'global' ? 'warning' : 'primary'" effect="plain" round>
+              {{ activeTab === 'global' ? '平台超管全局视角' : '数据按当前租户隔离' }}
+            </ElTag>
+            <BusinessTableWorkspaceActions :table="activeTableRef" />
+          </div>
         </header>
       </template>
 
@@ -43,6 +47,7 @@
           <ArtTableQuery
             ref="pendingTableRef"
             focusable
+            v-model:focus-mode="focusMode.pending"
             v-model="pendingTable.searchQuery"
             :search-items="pendingTable.searchItems"
             :api-fn="fetchPendingData"
@@ -58,7 +63,7 @@
               <ElBadge :value="globalPendingCount" :max="99" />
             </span>
           </template>
-          <div class="workflow-workbench__override-guidance">
+          <div v-show="!focusMode.global" class="workflow-workbench__override-guidance">
             <ArtSvgIcon icon="ri:shield-user-line" />
             <span>
               仅用于跨租户应急代办。每次通过或驳回都必须填写干预原因，并记录实际操作人与原审批人。
@@ -67,6 +72,7 @@
           <ArtTableQuery
             ref="globalTableRef"
             focusable
+            v-model:focus-mode="focusMode.global"
             v-model="globalTable.searchQuery"
             :search-items="globalTable.searchItems"
             :api-fn="fetchGlobalPendingData"
@@ -84,6 +90,7 @@
           <ArtTableQuery
             ref="handledTableRef"
             focusable
+            v-model:focus-mode="focusMode.handled"
             v-model="handledTable.searchQuery"
             :search-items="handledTable.searchItems"
             :api-fn="fetchHandledData"
@@ -101,6 +108,7 @@
           <ArtTableQuery
             ref="initiatedTableRef"
             focusable
+            v-model:focus-mode="focusMode.initiated"
             v-model="initiatedTable.searchQuery"
             :search-items="initiatedTable.searchItems"
             :api-fn="fetchInitiatedData"
@@ -152,12 +160,14 @@
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
+  import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { createDateTimeFormatter, formatDateTimeValue as formatDate } from '@/utils/ui/format'
   import { navigateToApplication } from '@/utils/application-navigation'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useLazyComponent } from '@/hooks/core/useLazyComponent'
   import { useUserStore } from '@/store/modules/user'
   import {
@@ -226,6 +236,12 @@
   const route = useRoute()
   const router = useRouter()
   const activeTab = ref<ActiveTab>('pending')
+  const focusMode = reactive<Record<ActiveTab, boolean>>({
+    pending: false,
+    global: false,
+    handled: false,
+    initiated: false
+  })
   const pendingTableRef = ref<ArtTableQueryExpose>()
   const globalTableRef = ref<ArtTableQueryExpose>()
   const handledTableRef = ref<ArtTableQueryExpose>()
@@ -329,9 +345,13 @@
             {instance?.businessTitle || '--'}
           </a>
         ) : (
-          <strong>{instance?.businessTitle || '--'}</strong>
+          <strong title={instance?.businessTitle || undefined}>
+            {instance?.businessTitle || '--'}
+          </strong>
         )}
-        <small>{instance?.definition?.name || instance?.businessId || '--'}</small>
+        <small title={instance?.definition?.name || instance?.businessId || undefined}>
+          {instance?.definition?.name || instance?.businessId || '--'}
+        </small>
       </div>
     )
   }
@@ -447,7 +467,7 @@
         width: 210,
         fixed: 'right',
         formatter: (row) => (
-          <div class="workflow-workbench__actions">
+          <BusinessTableRowActions>
             <ArtButtonTable
               type="sign"
               label="通过审批"
@@ -470,7 +490,7 @@
               label="查看详情"
               onClick={() => openInstance(row.instanceId)}
             />
-          </div>
+          </BusinessTableRowActions>
         )
       }
     ]
@@ -491,8 +511,12 @@
           minWidth: 150,
           formatter: (row) => (
             <div class="workflow-workbench__tenant-cell">
-              <strong>{row.tenant?.tenantName || '--'}</strong>
-              <small>{row.tenant?.tenantCode || '--'}</small>
+              <strong title={row.tenant?.tenantName || undefined}>
+                {row.tenant?.tenantName || '--'}
+              </strong>
+              <small title={row.tenant?.tenantCode || undefined}>
+                {row.tenant?.tenantCode || '--'}
+              </small>
             </div>
           )
         },
@@ -504,7 +528,9 @@
           formatter: (row) => (
             <div class="workflow-workbench__assignee-cell">
               <strong>{row.pendingAssigneeCount} 个待处理席位</strong>
-              <small>{row.assigneeNames.join('、') || '--'}</small>
+              <small title={row.assigneeNames?.join('、') || undefined}>
+                {row.assigneeNames?.join('、') || '--'}
+              </small>
             </div>
           )
         },
@@ -515,7 +541,7 @@
           width: 220,
           fixed: 'right',
           formatter: (row) => (
-            <div class="workflow-workbench__actions">
+            <BusinessTableRowActions>
               <ArtButtonTable
                 type="sign"
                 label="代为通过"
@@ -538,7 +564,7 @@
                 label="查看详情"
                 onClick={() => openInstance(row.instanceId)}
               />
-            </div>
+            </BusinessTableRowActions>
           )
         }
       ] as ColumnOption<NodeTask>[]
@@ -675,7 +701,7 @@
         width: 115,
         fixed: 'right',
         formatter: (row) => (
-          <div class="workflow-workbench__actions">
+          <BusinessTableRowActions>
             <ArtButtonTable type="view" label="查看详情" onClick={() => openInstance(row.id)} />
             <ArtButtonTable
               type="delete"
@@ -684,7 +710,7 @@
               disabled={row.status !== 'running'}
               onClick={() => handleWithdraw(row)}
             />
-          </div>
+          </BusinessTableRowActions>
         )
       }
     ]
@@ -831,6 +857,7 @@
     if (activeTab.value === 'initiated') return initiatedTableRef
     return pendingTableRef
   }
+  const activeTableRef = computed(() => getActiveTableRef().value ?? null)
 
   async function refreshCurrent(): Promise<void> {
     await Promise.all([loadSummary(), getActiveTableRef().value?.getData()])
@@ -879,15 +906,27 @@
     ])
   }
   async function handleWithdraw(row: Instance): Promise<void> {
-    await confirmAction(`撤回“${row.businessTitle}”后，当前待办将取消且本次流程不可恢复。`, {
-      title: '撤回审批申请',
-      confirmButtonText: '继续填写原因',
-      type: 'warning'
-    })
-    const reason = await promptReason('请说明撤回原因，原因将写入审计轨迹。', '撤回原因', {
-      maxLength: 200
-    })
-    await withdrawWorkflow(row.id, reason)
+    let reason: string
+    try {
+      await confirmAction(`撤回“${row.businessTitle}”后，当前待办将取消且本次流程不可恢复。`, {
+        title: '撤回审批申请',
+        confirmButtonText: '继续填写原因',
+        type: 'warning'
+      })
+      reason = await promptReason('请说明撤回原因，原因将写入审计轨迹。', '撤回原因', {
+        maxLength: 200
+      })
+    } catch (error) {
+      if (error === 'cancel' || error === 'close') return
+      notifyFriendlyError(error, '撤回原因未能提交，请重试')
+      return
+    }
+    try {
+      await withdrawWorkflow(row.id, reason)
+    } catch {
+      // API provider already displays the mutation error.
+      return
+    }
     await Promise.all([initiatedTableRef.value?.getData(), loadSummary()])
   }
 
@@ -1076,15 +1115,31 @@
 
     &__workspace-header {
       display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
       align-items: flex-start;
       justify-content: space-between;
       margin-bottom: 2px;
+    }
+
+    &__workspace-header > div:first-child {
+      min-width: 0;
     }
 
     &__workspace-header p {
       margin: 5px 0 0;
       font-size: 12px;
       color: var(--art-gray-500);
+    }
+
+    &__workspace-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 0;
+      margin-left: auto;
     }
 
     &__tabs {
@@ -1182,11 +1237,6 @@
       }
     }
 
-    :deep(.workflow-workbench__actions) {
-      display: flex;
-      align-items: center;
-    }
-
     :deep(.workflow-workbench__due.is-overdue) {
       font-weight: 600;
       color: var(--el-color-danger);
@@ -1258,8 +1308,14 @@
       padding: 14px;
     }
 
-    .workflow-workbench__workspace-header > .el-tag {
+    .workflow-workbench__workspace-actions > .el-tag {
       display: none;
+    }
+
+    .workflow-workbench__workspace-actions {
+      justify-content: flex-start;
+      width: 100%;
+      margin-left: 0;
     }
   }
 </style>

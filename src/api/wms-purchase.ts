@@ -1,5 +1,6 @@
 import { fetchWmsInventoryOrganizationOptions } from './wms-inventory-organization'
 import { useSupabase } from '@/hooks/core/useSupabase'
+import type { ApiFeedbackOptions } from '@/types/api/request'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { buildSupabasePageRange, fetchAllRangePages } from '@/utils/supabase/pagination'
 import { loadAllDocumentPages } from '@/utils/business/document-detail-list'
@@ -334,7 +335,8 @@ export async function saveWmsPurchaseDocument(payload: WmsPurchasePayload): Prom
 
 export async function changeWmsPurchaseStatus(
   id: string,
-  action: 'submit' | 'approve' | 'withdraw' | 'delete'
+  action: 'submit' | 'approve' | 'withdraw' | 'delete',
+  feedback: ApiFeedbackOptions = {}
 ): Promise<void> {
   await responseHandle(
     () =>
@@ -344,6 +346,9 @@ export async function changeWmsPurchaseStatus(
       }),
     {
       ...writeOptions,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      showReferenceFeedback: feedback.showErrorMessage !== false,
       message:
         action === 'withdraw'
           ? '单据已撤回，可继续修改'

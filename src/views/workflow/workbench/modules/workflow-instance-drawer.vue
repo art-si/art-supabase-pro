@@ -1,6 +1,6 @@
 <template>
   <ArtDrawer
-    :loading="state.loading || state.snapshotLoading"
+    :loading="state.loading"
     ref="drawerRef"
     size="xl"
     :show-footer="false"
@@ -31,11 +31,12 @@
                   state.detail.version?.versionNo || '-'
                 }}</small
               >
-              <h2>{{ state.detail.businessTitle }}</h2>
+              <h2 :title="state.detail.businessTitle">{{ state.detail.businessTitle }}</h2>
               <p
                 >{{ businessTypeLabel }} ·
                 {{ state.detail.initiatorNameSnapshot || '发起人待确认' }}</p
               >
+              <p>当前节点：{{ currentNodeLabel }}</p>
             </div>
           </div>
           <div class="workflow-instance__hero-status">
@@ -51,14 +52,12 @@
         <ElTabs v-model="activeTab" class="min-w-0">
           <ElTabPane name="overview" label="业务与概览" :lazy="false"
             ><div class="grid min-w-0 gap-4">
-              <ArtAsyncState
-                v-if="state.snapshotError"
+              <WorkflowBusinessSnapshot
+                :snapshot="state.snapshot"
+                :loading="state.snapshotLoading"
                 :error="state.snapshotError"
-                error-title="业务资料暂时不可用"
-                :min-height="132"
                 @retry="loadSnapshot"
               />
-              <WorkflowBusinessSnapshot v-else-if="state.snapshot" :snapshot="state.snapshot" />
 
               <ArtSectionCard class="workflow-instance__section" preserve-content-structure>
                 <template #header
@@ -91,7 +90,7 @@
                 <template #header
                   ><div class="workflow-instance__section-heading">
                     <ArtSectionTitle>审批任务</ArtSectionTitle>
-                    <span>{{ taskNodeCount }} 个节点 · {{ sortedTasks.length }} 位审批人</span>
+                    <span>{{ taskNodeCount }} 个节点 · {{ sortedTasks.length }} 项任务</span>
                   </div></template
                 >
                 <WorkflowTaskBoard :tasks="sortedTasks" />
@@ -158,6 +157,7 @@
     snapshotLoading: false,
     snapshotError: null
   })
+  let detailRequestId = 0
   let snapshotRequestId = 0
 
   const sortedTasks = computed(() =>
@@ -178,6 +178,11 @@
     createWorkflowActionTimelineItems(state.detail?.actions)
   )
   const businessTypeLabel = computed(() => getWorkflowBusinessTypeLabel(state.detail?.businessType))
+  const currentNodeLabel = computed(
+    () =>
+      state.detail?.currentNodeName ||
+      (state.detail?.status === 'running' ? '当前节点待确认' : '流程已结束')
+  )
 
   const descriptionItems = computed<ArtDescriptionItem<Api.Workflow.WorkflowInstanceRecord>[]>(
     () => [
@@ -190,8 +195,7 @@
       {
         key: 'currentNode',
         label: '当前节点',
-        value: (detail: Api.Workflow.WorkflowInstanceRecord) =>
-          detail.currentNodeName || '流程已结束'
+        value: () => currentNodeLabel.value
       },
       {
         key: 'finishedAt',
@@ -207,17 +211,21 @@
     ]
   )
   async function loadDetail(): Promise<void> {
-    if (!state.instanceId) return
+    const instanceId = state.instanceId
+    if (!instanceId) return
+    const requestId = ++detailRequestId
     state.loading = true
     state.error = null
     void loadSnapshot()
     try {
-      const detailResponse = await fetchWorkflowInstanceDetail(state.instanceId)
+      const detailResponse = await fetchWorkflowInstanceDetail(instanceId)
+      if (requestId !== detailRequestId || state.instanceId !== instanceId) return
       state.detail = detailResponse.data
     } catch (error) {
+      if (requestId !== detailRequestId || state.instanceId !== instanceId) return
       state.error = createFriendlySupabaseError(error, '审批实例加载失败，请稍后重试')
     } finally {
-      state.loading = false
+      if (requestId === detailRequestId) state.loading = false
     }
   }
 
@@ -246,6 +254,8 @@
   }
 
   async function handleOpen(instanceId: string): Promise<void> {
+    detailRequestId += 1
+    snapshotRequestId += 1
     activeTab.value = 'overview'
     state.instanceId = instanceId
     state.detail = null
@@ -305,6 +315,7 @@
 
     &__hero {
       display: flex;
+      flex-wrap: wrap;
       gap: 20px;
       align-items: center;
       justify-content: space-between;
@@ -341,20 +352,16 @@
 
       h2 {
         margin: 4px 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
         font-size: 19px;
         color: var(--art-gray-900);
-        white-space: nowrap;
+        overflow-wrap: anywhere;
       }
 
       p {
-        margin: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        margin: 2px 0 0;
         font-size: 12px;
         color: var(--art-gray-600);
-        white-space: nowrap;
+        overflow-wrap: anywhere;
       }
     }
 

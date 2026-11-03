@@ -8,6 +8,7 @@ import {
 import type { MasterDataDeleteDependencyMeta } from './index.vue'
 import { fetchPurchasePayableDeleteDestination } from '@/api/purchase-payable'
 import { fetchSettlementDeleteDestination } from '@/api/payable-settlement'
+import { financePaths } from '@/router/business-paths'
 
 const purchaseReferenceRoutes: Record<string, string> = {
   initial_inbound: 'WmsInitialPurchaseInbound',
@@ -95,6 +96,26 @@ export function createRecordReferenceNavigation(
       ...permitted('TmsOrderQuery:View'),
       routeParams: (record) => ({ id: record.targetId })
     },
+    tms_customer_price: {
+      routeName: 'TmsCustomerPrice',
+      ...permitted('TmsCustomerPrice:View')
+    },
+    tms_carrier_price: {
+      routeName: 'TmsCarrierPrice',
+      ...permitted('TmsCarrierPrice:View')
+    },
+    tms_cash_allocation: {
+      routeName: 'FinanceCashTransaction',
+      applicationCode: 'fms',
+      routePath: financePaths.cashTransaction,
+      ...permitted('FinanceCashTransaction:View')
+    },
+    tms_invoice_statement_link: {
+      routeName: 'FinanceInvoiceManagement',
+      applicationCode: 'fms',
+      routePath: financePaths.invoiceManagement,
+      ...permitted('FinanceInvoiceManagement:View')
+    },
     vehicle_fuel_card: {
       routeName: 'FuelCardArchive',
       applicationCode: 'vms',
@@ -123,7 +144,8 @@ export function createRecordReferenceNavigation(
     },
     tms_driver_blacklist: {
       routeName: 'TmsDriverBlacklist',
-      ...permitted('TmsDriverBlacklist:View')
+      ...permitted('TmsDriverBlacklist:View'),
+      routeQuery: (record) => ({ recordId: record.targetId, driverId: record.resourceId })
     },
     tms_electronic_contract: {
       routeName: 'TmsElectronicContract',

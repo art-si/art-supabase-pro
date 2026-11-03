@@ -33,7 +33,7 @@ for (const mode of ['supplier', 'service']) {
         main: '标准序列',
         parallel: '配置的并行序列',
         named: '备用序列名称',
-        unknown: 'future',
+        unknown: '待核对',
         null: '—',
         empty: '—',
         absent: '—',
@@ -44,11 +44,11 @@ for (const mode of ['supplier', 'service']) {
       JSON.stringify({
         known: '已配置标签',
         unknown: '未知回退',
-        blank: '',
+        blank: '空标签名称',
         zero: '零值标签',
         null: '空值回退',
         absent: '空值回退',
-        legacy: ''
+        legacy: '待核对'
       })
     )
     const displayContract = page.getByTestId('display-label-contract')
@@ -56,7 +56,7 @@ for (const mode of ['supplier', 'service']) {
       JSON.stringify({
         known: '已配置标签',
         blank: '空标签名称',
-        unknown: 'unknown',
+        unknown: '待核对',
         zero: '零值标签',
         null: '—',
         absent: '—',
@@ -72,12 +72,14 @@ for (const mode of ['supplier', 'service']) {
     await expect(drawer).toBeVisible()
     if (mode === 'supplier') {
       await expect(drawer.getByText('测试供应商类别', { exact: true })).toBeVisible()
-      await expect(drawer).toContainText('unknown-type')
+      await expect(drawer).not.toContainText('unknown-type')
+      await expect(drawer).toContainText('待核对')
       await expect(drawer).toContainText('—')
     } else {
       await expect(drawer.getByText('测试工单状态', { exact: true })).toBeVisible()
       await expect(drawer).toContainText('测试优先级')
-      await expect(drawer).toContainText('unknown-channel')
+      await expect(drawer).not.toContainText('unknown-channel')
+      await expect(drawer).toContainText('待核对')
     }
     await page.screenshot({
       path: info.outputPath('dictionary-detail.png'),

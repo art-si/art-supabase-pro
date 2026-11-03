@@ -94,6 +94,19 @@ for (const [name, rpc] of [
     await actions.scrollIntoViewIfNeeded()
     await expect(actions.getByRole('button', { name: '查看附件', exact: true })).toBeVisible()
     await expect(actions.getByRole('button', { name: '下载附件', exact: true })).toBeVisible()
+    await expect(actions.getByRole('button', { name: '删除附件', exact: true })).toHaveCount(0)
+    await expect(actions.getByRole('button', { name: '移除附件', exact: true })).toHaveCount(0)
+    await page.evaluate(() => {
+      window.open = (url) => {
+        document.body.dataset.attachmentNamePreviewUrl = String(url)
+        return window
+      }
+    })
+    await page.getByRole('button', { name: '测试附件.pdf', exact: true }).click()
+    await expect(page.locator('body')).toHaveAttribute(
+      'data-attachment-name-preview-url',
+      /file-preview\?key=/
+    )
     const geometry = await actions.evaluate((element) => {
       const buttons = [...element.querySelectorAll('button')].map((button) =>
         button.getBoundingClientRect()

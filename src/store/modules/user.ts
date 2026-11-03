@@ -47,7 +47,7 @@ import { fetchCurrentUserInfo, logout } from '@/api/auth'
 import { groupBy } from 'lodash-es'
 import { hasPlatformSuperAccess } from '@/utils/platform-super-access'
 import { isDictionaryCacheFresh } from './dictionary-cache-policy'
-import { toDictionaryOption } from '@/utils/form/option'
+import { getDictionaryDisplayLabel } from '@/utils/form/option'
 /**
  * 用户状态管理
  * 管理用户登录状态、个人信息、语言设置、搜索历史、锁屏状态等
@@ -236,13 +236,16 @@ export const useUserStore = defineStore(
       localStorage.removeItem(StorageConfig.LAST_USER_ID_KEY)
     }
 
-    /** Missing labels use the caller's fallback; configured empty labels stay empty. */
+    /** Legacy text consumers share the display policy; a raw-code fallback is never a label. */
     const getDictLabelByValue = (
       dictCode: keyof DictMap | string,
       value?: string | number | null,
       fallback = ''
     ): string => {
-      return getDictItemByValue(dictCode, value ?? undefined)?.label ?? fallback
+      return getDictionaryDisplayLabel(getDictDisplayItemByValue(String(dictCode), value), value, {
+        emptyText: fallback,
+        unknownText: fallback && fallback !== String(value ?? '') ? fallback : undefined
+      })
     }
 
     const getDictItemByValue = (
@@ -290,14 +293,13 @@ export const useUserStore = defineStore(
       }
     }
 
-    /** Option labels use the dictionary name when the configured label is empty. */
+    /** Keep legacy display callers on the same label/name and unknown-value policy. */
     const getDictDisplayLabelByValue = (
       dictCode: keyof DictMap | string,
       value?: string | number | null,
-      fallback = value === undefined || value === null ? '' : String(value)
+      fallback = ''
     ): string => {
-      const item = getDictItemByValue(dictCode, value)
-      return item ? toDictionaryOption(item).label || fallback : fallback
+      return getDictLabelByValue(dictCode, value, fallback)
     }
 
     const getDictTagTypeByValue = (

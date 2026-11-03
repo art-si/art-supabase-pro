@@ -83,6 +83,14 @@ const platformSuperAllowlist = new Map<string, string>([
     'controlled vehicle-document OCR form write; server also validates platform-super authority'
   ],
   [
+    'modules/art-supabase-pmis/src/views/components/plan-workspace.vue',
+    'cross-tenant plan import target selection; Add and Import permissions still gate the actions'
+  ],
+  [
+    'modules/art-supabase-pmis/src/views/components/plan-dialog.vue',
+    'cross-tenant plan form write-target validation; Add and Edit permissions still gate saving'
+  ],
+  [
     'modules/art-supabase-scm/src/views/sales-document/scm-document-workspace.vue',
     'cross-tenant document selector and tenant column'
   ],
@@ -129,6 +137,10 @@ const platformSuperAllowlist = new Map<string, string>([
   [
     'modules/art-supabase-tms/src/views/basic-data/favorite-route/index.vue',
     'cross-tenant favorite-route context'
+  ],
+  [
+    'modules/art-supabase-tms/src/views/alert-center/index.vue',
+    'cross-tenant alert tenant column only; ordinary alert reads retain the same TmsAlertCenter:View permission'
   ],
   [
     'modules/art-supabase-tms/src/views/basic-data/favorite-route/modules/favorite-route-dialog.vue',

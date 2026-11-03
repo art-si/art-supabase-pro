@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 import { installFixtures, meta, tenantId } from './support/inventory-fixtures'
 import { mockApplicationMenus } from './support/menu-rpc'
 
@@ -341,4 +342,211 @@ for (const serialManaged of [false, true]) {
         })
     })
   }
+}
+
+type ReturnQuantityScenario = {
+  title: string
+  returns: Array<{ quantity: number; return_display_quantity: number }>
+  quantity: string
+  expectedDisplay: string
+}
+
+async function prepareReturnQuantityScenario(page: Page, scenario: ReturnQuantityScenario) {
+  await installFixtures(page)
+  const unexpectedRpcs: string[] = []
+  const writes: Record<string, unknown>[] = []
+  await page.route('**/rest/v1/rpc/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1) || ''
+    if (
+      [
+        'current_is_super',
+        'get_accessible_applications',
+        'get_organization_list_secure',
+        'mdm_list_warehouses_secure',
+        'wms_storage_overview_secure'
+      ].includes(name)
+    )
+      return route.fallback()
+    unexpectedRpcs.push(name)
+    return route.abort()
+  })
+  await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
+  await page.route('**/rest/v1/rpc/get_login_default_language', (route) =>
+    route.fulfill({ json: 'zh' })
+  )
+  await page.route('**/rest/v1/rpc/current_user_role_names', (route) => route.fulfill({ json: [] }))
+  await page.route('**/rest/v1/rpc/material_unit_compatibility_options', (route) =>
+    route.fulfill({ json: [] })
+  )
+  await page.route('**/rest/v1/sys_user?*', (route) =>
+    route.fulfill({
+      json: {
+        id: 'return-quantity-user',
+        auth_user_id: '705ddd8d-4959-4dc1-aeb0-08caed7ab51a',
+        user_name: '退货业务用户',
+        user_email: 'return@example.invalid',
+        user_type: '2',
+        user_roles: ['R_USER'],
+        status: '1',
+        tenant_id: tenantId,
+        tenant: { id: tenantId, tenant_code: 'DEMO', tenant_name: '示例工厂' }
+      }
+    })
+  )
+  await page.route('**/rpc/get_accessible_applications', (route) =>
+    route.fulfill({
+      json: [
+        { code: 'platform', name: '测试平台', baseUrl: '/' },
+        { code: 'wms', name: 'WMS', baseUrl: '/wms/' }
+      ]
+    })
+  )
+  const root = {
+    id: 'wms-return-quantity-root',
+    parentId: null,
+    name: 'WmsWarehouseManagement',
+    path: '/wms',
+    component: '/index/index',
+    type: 'folder',
+    sort: 1,
+    meta: meta('WMS')
+  }
+  const menu = {
+    id: 'wms-return-quantity-menu',
+    parentId: root.id,
+    name: 'WmsSalesReturn',
+    path: 'receipt-issue/sales-return',
+    component: '/wms/receipt-issue/sales-return',
+    type: 'menu',
+    sort: 1,
+    meta: meta('销售退货入库')
+  }
+  await mockApplicationMenus(page, {
+    wms: [
+      root,
+      menu,
+      ...(['View', 'Receive'] as const).map((action) => ({
+        id: `wms-return-quantity-${action}`,
+        parentId: menu.id,
+        name: `WmsSalesReturn:${action}`,
+        path: '',
+        component: '',
+        type: 'button',
+        sort: 1,
+        meta: meta(action)
+      }))
+    ]
+  })
+  await page.route('**/rest/v1/wms_sales_outbound_allocation?*', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'return-quantity-allocation',
+          tenant_id: tenantId,
+          quantity: 3,
+          created_at: '2026-10-01T01:02:03Z',
+          serial_ids: [],
+          outbound_display_quantity: 1.000001,
+          displayUnit: { unit_code: 'm2', unit_name: '平方米' },
+          returns: scenario.returns.map((row) => ({ ...row, serial_ids: [] })),
+          shippingNotice: { document_no: 'SHIP-QUANTITY-001', project_id: null },
+          batch: {
+            batch_no: 'RETURN-QUANTITY-BATCH',
+            project_id: null,
+            material: { material_name: '测试退货板材' }
+          }
+        }
+      ],
+      headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
+    })
+  )
+  await page.route('**/rest/v1/mdm_warehouse?*', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'return-quantity-warehouse',
+          tenant_id: tenantId,
+          warehouse_code: 'RETURN-QTY',
+          warehouse_name: '测试退货仓库',
+          status: 'enabled',
+          enable_locations: false
+        }
+      ]
+    })
+  )
+  await page.route('**/rest/v1/rpc/wms_receive_sales_return_secure', (route) => {
+    writes.push(route.request().postDataJSON() as Record<string, unknown>)
+    return route.fulfill({ json: 'return-quantity-result' })
+  })
+  return { writes, unexpectedRpcs }
+}
+
+for (const scenario of [
+  {
+    title: '部分退货六位Decimal舍入',
+    returns: [],
+    quantity: '1.5',
+    expectedDisplay: '0.500001'
+  },
+  {
+    title: '全部剩余退货扣减两次历史展示量',
+    returns: [
+      { quantity: 1, return_display_quantity: 0.333334 },
+      { quantity: 1, return_display_quantity: 0.333334 }
+    ],
+    quantity: '1',
+    expectedDisplay: '0.333333'
+  }
+] satisfies ReturnQuantityScenario[]) {
+  test(`销售退货${scenario.title}预览及原基本数量提交`, async ({ page }, testInfo) => {
+    const state = await prepareReturnQuantityScenario(page, scenario)
+    const appearance = {
+      theme: testInfo.project.name.includes('dark') ? 'dark' : 'light',
+      boxBorderMode: !testInfo.project.name.includes('shadow')
+    } as const
+    await prepareAppearance(page, appearance)
+    await page.goto('#/wms/receipt-issue/sales-return')
+    await expect(page.getByRole('heading', { name: '销售退货入库', exact: true })).toBeVisible()
+    await assertAppearance(page, appearance)
+    await page.getByRole('textbox', { name: '按发货通知单号选择', exact: true }).click()
+    const picker = page.getByRole('dialog', { name: '选择原销售出库', exact: true })
+    await picker
+      .locator('.el-table__body')
+      .getByText('SHIP-QUANTITY-001 · 测试退货板材 · RETURN-QUANTITY-BATCH', {
+        exact: true
+      })
+      .click()
+    await picker.getByRole('button', { name: '确定', exact: true }).click()
+    const review = page.locator('.art-section-card').filter({
+      has: page.getByText('退货核对', { exact: true })
+    })
+    await page.getByRole('spinbutton', { name: /本次退货数量/ }).fill(scenario.quantity)
+    await expect(
+      review.getByText(`${scenario.expectedDisplay} 平方米`, { exact: true }).last()
+    ).toBeVisible()
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+    ).toBeLessThanOrEqual(1)
+    await review.screenshot({
+      path: testInfo.outputPath(`return-quantity-${scenario.quantity.replace('.', '-')}.png`),
+      animations: 'disabled'
+    })
+    await page.getByRole('combobox', { name: /退货入库仓库/ }).click()
+    await page.getByRole('option', { name: '测试退货仓库 · RETURN-QTY', exact: true }).click()
+    await page.getByRole('textbox', { name: /退货单号/ }).fill('RETURN-QUANTITY-001')
+    await page.getByRole('button', { name: '确认退货入库', exact: true }).click()
+    await expect.poll(() => state.writes.length).toBe(1)
+    expect(state.writes[0]).toMatchObject({
+      p_payload: {
+        outbound_allocation_id: 'return-quantity-allocation',
+        warehouse_id: 'return-quantity-warehouse',
+        quantity: Number(scenario.quantity),
+        reference_no: 'RETURN-QUANTITY-001'
+      }
+    })
+    const payload = state.writes[0].p_payload as Record<string, unknown>
+    expect(payload).not.toHaveProperty('outbound_display_quantity')
+    expect(payload).not.toHaveProperty('return_display_quantity')
+    expect(state.unexpectedRpcs).toEqual([])
+  })
 }

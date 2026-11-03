@@ -24,6 +24,7 @@ Common defaults live in `defaults.ts`; keep array defaults as factories so insta
 - For tree data, use `children-key` and `disabled-key`; disabled nodes remain readable as grouping context but cannot be selected.
 - When a selected value may not exist in the current page of results, provide `selected-data` so its label and description remain available.
 - Remote loaders use `api-fn` and should return a list plus an optional total. Loading, empty, selected, and pagination states are owned by the component.
+- Set `show-table-header` when users need to compare named columns in the picker; compact pickers hide it by default.
 - Table variants can receive a `navigation` object for a reusable left-side hierarchy. Pass flat records plus the row, parent, label, and description keys; selecting a node adds its key to `api-fn` filters under `navigation.filterKey`. Keep descendant-expansion rules in the provider, where tenant and permission scope can be enforced.
 
 ## Request lifecycle and recovery

@@ -6,13 +6,14 @@ import { createModuleViteConfig } from '../../scripts/module-vite-config.mjs'
 
 const projectRoot = process.cwd()
 const moduleImporters = {
+  fms: 'specialized-accounting/payroll/modules/payroll-line-dialog.vue',
   mdm: 'production/work-center/modules/qr-dialog.vue',
   mes: 'components/manufacturing/modules/work-order-qr-label-sheet.vue',
   smis: 'equipment-ledger/equipment-ledger/index.vue',
   tms: 'modules/waybill-print.ts'
 }
 
-test('integrated QR and HTML sanitization callers resolve one host dependency', async () => {
+test('integrated QR, sanitization, arithmetic and export callers resolve one host dependency', async () => {
   const server = await createServer({
     mode: 'e2e',
     logLevel: 'silent',
@@ -21,7 +22,7 @@ test('integrated QR and HTML sanitization callers resolve one host dependency', 
   })
   try {
     const resolver = server.environments.client.pluginContainer
-    for (const dependency of ['qrcode.vue', 'dompurify']) {
+    for (const dependency of ['qrcode.vue', 'dompurify', 'decimal.js-light', 'file-saver']) {
       const canonical = await resolver.resolveId(dependency, path.join(projectRoot, 'src/App.vue'))
       assert.ok(canonical)
       for (const [code, importer] of Object.entries(moduleImporters)) {

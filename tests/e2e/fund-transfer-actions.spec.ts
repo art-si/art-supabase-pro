@@ -4,6 +4,17 @@ import { prepareIsolatedSession } from './support/isolated-session'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(90_000)
 
+const tenantId = '11111111-1111-4111-8111-111111111111'
+const accountSetId = '33333333-3333-4333-8333-333333333333'
+const statusLabels = {
+  draft: '草稿',
+  pending_review: '待审批',
+  approved: '已审批',
+  rejected: '已驳回',
+  completed: '已完成',
+  reversed: '已冲销'
+} as const
+
 for (const action of [
   {
     key: 'submit',
@@ -56,6 +67,27 @@ for (const action of [
   ] as const) {
     test(`资金调拨${action.label} ${mode}`, async ({ page }, testInfo) => {
       await prepareIsolatedSession(page)
+      await page.route('**/rest/v1/rpc/current_is_super**', (route) =>
+        route.fulfill({ json: false })
+      )
+      await page.route('**/rest/v1/sys_dictionary?*', (route) => {
+        const type = new URL(route.request().url()).searchParams.get('dict_type_table.code')
+        return route.fulfill({
+          json:
+            type === 'eq.fmsFundTransferStatus'
+              ? Object.entries(statusLabels).map(([value, label], index) => ({
+                  id: `transfer-status-${index}`,
+                  type_id: 'fund-transfer-status',
+                  code: value,
+                  value,
+                  label,
+                  status: '1',
+                  sort: index,
+                  dict_type_table: { code: 'fmsFundTransferStatus', name: '资金调拨状态' }
+                }))
+              : []
+        })
+      })
       const id = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
       let submissions = 0
       let status: string = action.initial
@@ -69,16 +101,21 @@ for (const action of [
             records: [
               {
                 id,
+                tenantId,
+                accountSetId,
                 transferNo: 'TRANSFER-001',
                 status,
                 transferDate: '2026-10-07',
                 amount: 100,
                 feeAmount: mode === 'missing-fee' ? null : 0,
                 sourceAccountName: '测试付款账户',
-                version: 1
+                currencyCode: 'CNY',
+                version: 1,
+                fieldAccess: { transferAccounts: 'read', transferAmounts: 'read' }
               }
             ],
-            total: 1
+            total: 1,
+            fieldAccess: { transferAccounts: 'read', transferAmounts: 'read' }
           }
         })
       )
@@ -104,7 +141,7 @@ for (const action of [
           json: { code: 'XX000', message: 'database unavailable' }
         })
       })
-      await page.goto('/tests/e2e/fixtures/record-delete-context.html?target=fund-transfer')
+      await page.goto('/tests/e2e/fixtures/fms-fund-transfer-context.html?ordinary')
       const body = page.locator('.el-table__body-wrapper').first()
       await expect(body).toContainText('TRANSFER-001')
       await expect(page.getByRole('button', { name: /^全部调拨 1(?:\s|$)/ })).toBeVisible()
@@ -122,10 +159,14 @@ for (const action of [
       }
       if (action.reason && mode !== 'cancel')
         await confirmation.getByRole('textbox').fill('业务核验原因')
-      if (mode === 'revoked')
+      if (mode === 'revoked') {
         await page
-          .getByTestId('revoke-delete-permission')
+          .getByTestId(`revoke-${action.key}`)
           .evaluate((button: HTMLButtonElement) => button.click())
+        await expect(page.getByTestId('permission-state')).not.toContainText(
+          `FinanceFundTransfer:${action.key[0].toUpperCase()}${action.key.slice(1)}`
+        )
+      }
       await confirmation
         .getByRole('button', {
           name: mode === 'cancel' ? '取消' : action.reason ? '确定' : action.label,
@@ -158,7 +199,7 @@ for (const action of [
           })
           release()
         }
-        await expect(body).toContainText(action.next)
+        await expect(body).toContainText(statusLabels[action.next])
         expect(submissions).toBe(1)
       }
       if (mode === 'failure' || mode === 'cancel') {

@@ -312,6 +312,27 @@ for (const item of cases) {
   })
 }
 
+for (const item of cases.filter((item) =>
+  ['accident', 'maintenance', 'inspection', 'annual-inspection'].includes(item.name)
+)) {
+  test(`车辆详情附件数组为空时保留表内空态 ${item.name}`, async ({ page }) => {
+    await prepareDetailSession(page)
+    const access = Object.fromEntries(Object.keys(item.groups).map((group) => [group, 'read']))
+    await page.route(`**/rest/v1/rpc/${item.rpc}`, (route) =>
+      route.fulfill({ json: { ...payload(item, access), attachments: [] } })
+    )
+    await page.goto(`/tests/e2e/fixtures/date-format-reuse.html?vehicle=${item.name}&detailLayout`)
+    const root = page.locator(`.${item.root}`)
+    const emptyTable = root.locator('.art-table.is-empty')
+    await expect(emptyTable).toHaveCount(1)
+    await expect(emptyTable).toContainText('暂无数据')
+    expect(
+      await emptyTable.evaluate((element) => element.getBoundingClientRect().height)
+    ).toBeGreaterThanOrEqual(180)
+    await expect(root.getByRole('button', { name: '受控附件.pdf' })).toHaveCount(0)
+  })
+}
+
 test('例检附件和零部件寿命保留脱敏显示', async ({ page }) => {
   await prepareDetailSession(page)
   for (const name of ['inspection', 'part']) {

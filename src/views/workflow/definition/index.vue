@@ -9,6 +9,7 @@
 
   <div v-else class="art-full-height workflow-definition business-workspace-page">
     <BusinessWorkspaceHeader
+      density="compact"
       eyebrow="WORKFLOW GOVERNANCE"
       title="审批流程设计"
       description="用版本化配置复用审批能力，发布中的版本保持不可变，所有流转动作完整留痕。"
@@ -108,7 +109,6 @@
 
 <script setup lang="tsx">
   import { useMediaQuery } from '@vueuse/core'
-  import { ElTag } from 'element-plus'
   import type { ComputedRef, UnwrapNestedRefs } from 'vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
@@ -351,16 +351,20 @@
       {
         prop: 'version',
         label: '版本与节点',
-        width: 132,
+        width: 148,
         formatter: (row) => {
           const version = getCurrentVersion(row)
           return (
             <div class="workflow-definition__version-cell">
-              {version ? <ElTag effect="plain">V{version.versionNo}</ElTag> : <span>--</span>}
-              <small>{version?.config.nodes.length ?? 0} 个审批节点</small>
-              <button type="button" onClick={() => void openVersionHistory(row)}>
-                查看版本
+              <button
+                type="button"
+                aria-label={`查看“${row.name}”的版本记录`}
+                onClick={() => void openVersionHistory(row)}
+              >
+                {version ? `版本 V${version.versionNo}` : '查看版本'}
+                <ArtSvgIcon icon="ri:arrow-right-s-line" />
               </button>
+              <small>{version?.config.nodes.length ?? 0} 个审批节点</small>
             </div>
           )
         }
@@ -836,17 +840,27 @@
     }
 
     :deep(.workflow-definition__version-cell button) {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
       width: fit-content;
       padding: 0;
-      font-size: 11px;
+      font-size: 12px;
+      font-weight: 600;
       color: var(--el-color-primary);
       cursor: pointer;
       background: transparent;
       border: 0;
     }
 
-    :deep(.workflow-definition__version-cell button:hover) {
+    :deep(.workflow-definition__version-cell button:hover),
+    :deep(.workflow-definition__version-cell button:focus-visible) {
       text-decoration: underline;
+    }
+
+    :deep(.workflow-definition__version-cell button:focus-visible) {
+      outline: 2px solid var(--theme-color);
+      outline-offset: 2px;
     }
 
     :deep(.workflow-definition__tenant-cell) {

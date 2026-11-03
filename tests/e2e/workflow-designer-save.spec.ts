@@ -44,11 +44,12 @@ for (const phase of ['save', 'publish']) {
             versions: [{ id: 'version-a', version_no: 1, status: 'draft', config }]
           }
         })
-      const data = path.endsWith('/sys_user')
-        ? [{ id: 'member-a', user_name: '审批成员 A', user_email: 'test@example.invalid' }]
-        : path.endsWith('/sys_tenant')
-          ? [{ id: 'tenant-a', tenant_code: 'test', tenant_name: '测试租户' }]
-          : []
+      const data =
+        path.endsWith('/list_workflow_user_options_secure') || path.endsWith('/sys_user')
+          ? [{ id: 'member-a', user_name: '审批成员 A', user_email: 'test@example.invalid' }]
+          : path.endsWith('/sys_tenant')
+            ? [{ id: 'tenant-a', tenant_code: 'test', tenant_name: '测试租户' }]
+            : []
       return route.fulfill({
         headers: {
           'content-range': data.length ? '0-0/1' : '*/0',
@@ -127,17 +128,21 @@ test('设计器审批对象读取失败零写入且重试保留草稿', async ({
         }
       })
     }
-    if (path.endsWith('/sys_user') && failed) {
+    if (
+      (path.endsWith('/list_workflow_user_options_secure') || path.endsWith('/sys_user')) &&
+      failed
+    ) {
       return route.fulfill({
         status: 503,
         json: { code: 'XX000', message: 'synthetic option failure' }
       })
     }
-    const data = path.endsWith('/sys_user')
-      ? [{ id: 'member-a', user_name: '审批成员 A', user_email: 'test@example.invalid' }]
-      : path.endsWith('/sys_tenant')
-        ? [{ id: 'tenant-a', tenant_code: 'test', tenant_name: '测试租户' }]
-        : []
+    const data =
+      path.endsWith('/list_workflow_user_options_secure') || path.endsWith('/sys_user')
+        ? [{ id: 'member-a', user_name: '审批成员 A', user_email: 'test@example.invalid' }]
+        : path.endsWith('/sys_tenant')
+          ? [{ id: 'tenant-a', tenant_code: 'test', tenant_name: '测试租户' }]
+          : []
     return route.fulfill({
       headers: {
         'content-range': data.length ? '0-0/1' : '*/0',

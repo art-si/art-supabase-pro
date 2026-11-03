@@ -11,6 +11,8 @@ DECLARE
   approved_vehicle uuid;
   pending_vehicle uuid;
   card_id uuid;
+  second_card_id uuid;
+  generated_no text;
   recharge_id uuid;
   record_id uuid;
   result jsonb;
@@ -38,7 +40,7 @@ BEGIN
   WHERE tenant_id = own_tenant AND auth_user_id IS NOT NULL
     AND coalesce(array_length(user_roles, 1), 0) = 0 LIMIT 1;
   SELECT id INTO approved_vehicle FROM public.mdm_vehicle
-  WHERE tenant_id = own_tenant AND audit_status = 'approved' LIMIT 1;
+  WHERE tenant_id = own_tenant AND audit_status = 'approved' AND is_new_energy IS FALSE LIMIT 1;
   SELECT id INTO pending_vehicle FROM public.mdm_vehicle
   WHERE tenant_id = qa_tenant AND audit_status <> 'approved' LIMIT 1;
   IF platform_user IS NULL OR ordinary_user IS NULL OR no_role_user IS NULL
@@ -56,21 +58,23 @@ BEGIN
   IF NOT rejected THEN RAISE EXCEPTION 'Pending vehicle was accepted'; END IF;
 
   card_id := public.vms_create_fuel_card('QA-FUEL-ROLLBACK', approved_vehicle, 'QA', 'Rollback only', 100);
+  SELECT card_no INTO generated_no FROM public.vms_fuel_card WHERE id = card_id;
+  IF generated_no !~ ('^YK' || to_char(now() AT TIME ZONE 'Asia/Shanghai', 'YYYY') || '[0-9]{3}$') THEN
+    RAISE EXCEPTION 'Fuel-card automatic number is invalid: %', generated_no;
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.get_governed_delete_dependency_details('vehicle', ARRAY[approved_vehicle]) dependency
     WHERE dependency.dependency_code = 'vehicle_fuel_card'
       AND dependency.record_id = card_id
-      AND dependency.record_no = 'QA-FUEL-ROLLBACK'
+      AND dependency.record_no = generated_no
       AND dependency.cleanup_allowed IS FALSE
   ) THEN
     RAISE EXCEPTION 'Vehicle delete guard omitted the linked fuel card';
   END IF;
-  rejected := false;
-  BEGIN
-    PERFORM public.vms_create_fuel_card('qa-fuel-rollback', approved_vehicle);
-  EXCEPTION WHEN unique_violation THEN rejected := true;
-  END;
-  IF NOT rejected THEN RAISE EXCEPTION 'Case-variant duplicate card number was accepted'; END IF;
+  second_card_id := public.vms_create_fuel_card('qa-fuel-rollback', approved_vehicle);
+  IF (SELECT card_no FROM public.vms_fuel_card WHERE id = second_card_id) = generated_no THEN
+    RAISE EXCEPTION 'Fuel-card sequence reused a number';
+  END IF;
   IF (SELECT count(*) FROM public.vms_fuel_card_entry e WHERE e.card_id = fuel_test.card_id AND e.entry_type = 'opening') <> 1 THEN
     RAISE EXCEPTION 'Opening balance entry is missing';
   END IF;

@@ -234,7 +234,7 @@ const contracts: Record<string, WorkflowBusinessContract> = {
     menuName: 'TmsContract',
     domain: 'transport',
     riskLevel: 'high',
-    owner: '合同管理',
+    owner: '运输合同',
     fields: [
       { key: 'businessContractType', label: '业务合同分类', valueType: 'text' },
       { key: 'contractCategory', label: '合同类别', valueType: 'text' },

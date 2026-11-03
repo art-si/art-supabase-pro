@@ -141,6 +141,7 @@ async function parseCopyInventory(file: string): Promise<CopyInventory> {
     rows: bigint
   } | null = null
   let sawCopy = false
+  let completed = false
   let pending = Buffer.alloc(0)
   let position = 0
 
@@ -151,7 +152,8 @@ async function parseCopyInventory(file: string): Promise<CopyInventory> {
     if (end && raw[end - 1] === 10) end--
     if (end && raw[end - 1] === 13) end--
     const lineBytes = raw.subarray(0, end)
-    const line = lineBytes.toString('utf8')
+    const decoded = lineBytes.toString('utf8')
+    const line = start === 0 ? decoded.replace(/^\uFEFF/, '') : decoded
     if (current) {
       if (line === '\\.') {
         const key = JSON.stringify([current.schema, current.name])
@@ -187,6 +189,7 @@ async function parseCopyInventory(file: string): Promise<CopyInventory> {
       return
     }
     if (line === '' || line.startsWith('--')) {
+      if (line === '-- PostgreSQL database dump complete') completed = true
       if (!sawCopy) prefixLines.push(raw)
       return
     }
@@ -198,6 +201,7 @@ async function parseCopyInventory(file: string): Promise<CopyInventory> {
     if (
       line === 'RESET ALL;' ||
       /^SET [A-Za-z_][A-Za-z0-9_]* = [^;]*;$/.test(line) ||
+      line === 'RESET ALL;' ||
       /^SELECT pg_catalog\.set_config\('search_path', '', false\);$/.test(line)
     ) {
       if (sawCopy) extraStatements.push(line)
@@ -218,7 +222,7 @@ async function parseCopyInventory(file: string): Promise<CopyInventory> {
   }
   if (pending.length) processLine(pending)
   if (current) throw new Error('Database COPY block ended without \\. terminator')
-  if (tables.length === 0 && sequenceStatements.length === 0)
+  if (tables.length === 0 && sequenceStatements.length === 0 && !completed)
     throw new Error('No supported database data found')
   return {
     tables,
