@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
+      GIT_TERMINAL_PROMPT: '0'
       VITE_OUT_DIR: docs
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
