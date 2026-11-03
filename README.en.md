@@ -244,11 +244,11 @@ The host owns reusable utilities, composables, shared business components, authe
 | `pnpm modules:check` | Run each module's declared checks |
 | `pnpm modules:build` | Build all modules |
 | `pnpm repo:pull` | Update the host and submodule branches |
-| `pnpm repo:publish -- "docs: refresh project overview"` | Build publication output and commit/push changed repositories |
+| `pnpm repo:publish -- "docs: refresh project overview"` | Build and verify host docs locally, then commit/push host source and changed module sources and docs |
 
-`repo:publish` includes all current workspace changes, builds affected `docs` output, commits modules before the host, updates the pinned module manifest, and regenerates the AI project snapshot. It pushes each repository's configured upstream; GitHub and Gitee mirrors require separate pushes.
+`repo:publish` includes current workspace changes except host `docs/`, builds affected module `docs` output, and builds the host `docs` locally to verify its entry point. Module `docs` remain versioned for their independent sites; host `docs` are not committed. If host `docs/` is still Git-tracked, the command stops before building and asks for tracking to be removed. GitHub Actions rebuilds the host and deploys its artifact to GitHub Pages. The command commits modules before the host, updates the pinned module manifest, and regenerates the AI project snapshot. It pushes each repository's configured upstream; GitHub and Gitee mirrors require separate pushes.
 
-Host and business-module `docs/` directories contain published build output. In contrast, `modules/art-supabase-doc/docs/` contains documentation source. Preserve both, along with versioned tests and visual baselines. See [tests/README.md](tests/README.md) for test boundaries.
+Host `docs/` is ignored local build output used for verification; GitHub Pages receives an Actions artifact. Business-module `docs/` directories remain versioned publication output for independent sites. In contrast, `modules/art-supabase-doc/docs/` contains documentation source. Preserve module output and documentation source, along with versioned tests and visual baselines. See [tests/README.md](tests/README.md) for test boundaries.
 
 ## Permissions and Data Boundaries
 

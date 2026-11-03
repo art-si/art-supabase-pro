@@ -181,6 +181,19 @@ function ensureNotBehind(repository: Repository): void {
   }
 }
 
+function hasUnpushedCommits(repository: Repository): boolean {
+  const { upstream } = ensureBranchAndUpstream(repository)
+  const [ahead] = gitOutput(repository, [
+    'rev-list',
+    '--left-right',
+    '--count',
+    `HEAD...${upstream}`
+  ])
+    .split(/\s+/)
+    .map(Number)
+  return (ahead ?? 0) > 0
+}
+
 function runPnpm(repository: Repository, args: string[], env = process.env): void {
   // 发布只验证现有依赖；构建时自动安装会改写子仓锁文件并依赖远端归档可用性。
   const publishArgs = ['--config.verify-deps-before-run=warn', ...args]
@@ -240,8 +253,23 @@ function buildDocs(repository: Repository): void {
 
 function commit(repository: Repository, message: string): void {
   console.log(`\n[commit] ${repository.name}`)
+  // The host verifies its local docs build, while GitHub Pages publishes an Actions artifact.
+  // Business modules still commit their own docs output for their independent sites.
   git(repository, ['add', '--all'])
   if (repository.path === projectRoot) {
+    const stagedDocs = gitOutput(repository, [
+      'diff',
+      '--cached',
+      '--name-only',
+      '--diff-filter=ACMRT',
+      '--',
+      'docs'
+    ])
+    if (stagedDocs) {
+      throw new Error(
+        '主仓 docs 是本地构建校验产物，不应提交；请移除已暂存的 docs 新增或修改文件。'
+      )
+    }
     run(process.execPath, ['scripts/cloudbase-modules.mjs', 'write'], projectRoot)
     git(repository, ['add', '--', 'scripts/cloudbase-modules.json'])
     // 快照包含子仓版本清单，必须在最终 gitlink 和清单落定后生成。
@@ -283,6 +311,12 @@ function parseCommitMessage(args: string[]): string {
   return message
 }
 
+function ensureRootDocsUntracked(): void {
+  if (gitOutput(rootRepository, ['ls-files', '--cached', '--', 'docs'])) {
+    throw new Error('主仓 docs 仍被 Git 跟踪；请先完成主仓 docs 停止跟踪，再执行 repo:publish。')
+  }
+}
+
 function publish(message: string): void {
   const modules = readModules()
   const initializedModules = modules.filter(isInitialized)
@@ -292,15 +326,19 @@ function publish(message: string): void {
       `以下子仓尚未初始化，请先执行 pnpm repo:pull：${missingModules.map((item) => item.name).join('、')}`
     )
   }
+  ensureRootDocsUntracked()
 
   const changedModules = initializedModules.filter((module) => status(module, false))
+  const modulesToPush = initializedModules.filter(
+    (module) => changedModules.includes(module) || hasUnpushedCommits(module)
+  )
   const rootChanged = Boolean(status(rootRepository, true))
-  if (!rootChanged && changedModules.length === 0) {
+  if (!rootChanged && modulesToPush.length === 0 && !hasUnpushedCommits(rootRepository)) {
     console.log('[publish] 主仓和全部子仓均无改动，无需构建或发布。')
     return
   }
 
-  const repositoriesToPublish = [...changedModules, rootRepository]
+  const repositoriesToPublish = [...modulesToPush, rootRepository]
   console.log(
     `[publish] 本次仓库：${repositoriesToPublish.map((repository) => repository.name).join('、')}`
   )
@@ -317,12 +355,12 @@ function publish(message: string): void {
   ensureClean(rootRepository, true)
 
   // 远端也按子仓在前、主仓在后发布，避免主仓引用尚不存在的子仓提交。
-  for (const repository of changedModules) push(repository)
+  for (const repository of modulesToPush) push(repository)
   push(rootRepository)
 
   for (const repository of initializedModules) ensureClean(repository, false)
   ensureClean(rootRepository, true)
-  console.log('\n[publish] docs、源码和子仓指针均已提交并推送，整个工作区状态干净。')
+  console.log('\n[publish] 子仓 docs、源码和子仓指针已提交并推送；主仓 docs 仅用于本地构建校验。')
 }
 
 function checkoutPullBranch(repository: Repository, preferredBranch?: string): void {
@@ -385,7 +423,7 @@ function printUsage(): void {
       快进拉取主仓，初始化并拉取全部子仓的配置分支。
 
   pnpm repo:publish -- "feat: 提交说明"
-      构建有改动子仓的 docs，同时构建主仓 docs；依次提交、推送并检查工作区干净。
+      构建并提交有改动子仓的 docs；主仓 docs 仅本地构建校验，不提交；依次推送并检查工作区干净。
 `)
 }
 

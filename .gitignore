@@ -2,6 +2,8 @@ node_modules
 .DS_Store
 dist
 dist-ssr
+# Main application output is deployed as a GitHub Pages Actions artifact.
+/docs/
 .artifacts/
 playwright/.auth/
 playwright-report/

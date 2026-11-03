@@ -16,10 +16,11 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
 const projectRoot = fileURLToPath(new URL('../../', import.meta.url))
-const tsx = resolve(projectRoot, 'node_modules/tsx/dist/cli.mjs')
+const tsx =
+  process.env.REPOSITORY_FIXTURE_TSX || resolve(projectRoot, 'node_modules/tsx/dist/cli.mjs')
 
 test(
-  'publish pins committed child revisions before generating the final root snapshot and pushing both local remotes',
+  'publish pins child revisions, commits module docs, and keeps host docs out of the root commit',
   { timeout: 120_000 },
   () => {
     assert.ok(
@@ -119,7 +120,7 @@ test(
           }
         })
       )
-      writeFileSync(join(root, '.gitignore'), 'node_modules/\n.artifacts/\n')
+      writeFileSync(join(root, '.gitignore'), 'node_modules/\n.artifacts/\ndocs/\n')
       writeFileSync(
         join(root, '.gitmodules'),
         '[submodule "fixture-child"]\n\tpath = modules/fixture-child\n\turl = https://gitee.com/art-si/fixture-child.git\n\tbranch = main\n'
@@ -173,6 +174,9 @@ test(
         childHead
       )
       assert.equal(git(root, ['rev-parse', ':modules/fixture-child']), childHead)
+      assert.ok(existsSync(join(root, 'docs/index.html')))
+      assert.equal(git(root, ['ls-files', '--', 'docs']), '')
+      assert.equal(git(child, ['ls-files', '--', 'docs/index.html']), 'docs/index.html')
       const recorded: unknown = JSON.parse(
         readFileSync(join(root, 'scripts/cloudbase-modules.json'), 'utf8')
       )
@@ -198,6 +202,28 @@ test(
       assert.equal(checked.status, 0, `${checked.stdout}${checked.stderr}`)
       assert.equal(evidence.rootStatus, '')
       assert.equal(evidence.childStatus, '')
+
+      // A clean child with a committed but unpushed revision must reach its remote first.
+      writeFileSync(join(child, 'source.ts'), 'export const childValue = 3\n')
+      git(child, ['add', 'source.ts'])
+      git(child, ['commit', '--quiet', '-m', 'committed child revision'])
+      const committedChild = git(child, ['rev-parse', 'HEAD'])
+      assert.notEqual(committedChild, childHead)
+      assert.equal(git(child, ['status', '--porcelain=v1', '--untracked-files=all']), '')
+      const republished = runNode([
+        tsx,
+        'scripts/repository-workflow.ts',
+        'publish',
+        'test: push committed child before root'
+      ])
+      evidence.republishExit = republished.status
+      assert.equal(republished.status, 0, `${republished.stdout}${republished.stderr}`)
+      assert.equal(
+        git(child, ['ls-remote', 'origin', 'refs/heads/main']).split(/\s+/)[0],
+        committedChild
+      )
+      assert.equal(git(root, ['rev-parse', ':modules/fixture-child']), committedChild)
+      assert.equal(git(root, ['ls-files', '--', 'docs']), '')
     } finally {
       writeFileSync(`${artifact}.json`, `${JSON.stringify(evidence, null, 2)}\n`)
       // Only the unique mkdtemp directory directly inside the resolved OS temp root
