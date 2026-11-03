@@ -1,0 +1,73 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      VITE_OUT_DIR: docs
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - name: Check out the exact source revision
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check out pinned business modules
+        run: |
+          git -c http.version=HTTP/1.1 submodule update --init --recursive --depth 1 --jobs 2
+          node scripts/cloudbase-modules.mjs check
+      - name: Set up pnpm from package.json
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install locked host dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify production deployment configuration
+        run: pnpm exec tsx --test tests/unit/deployment-isolation.test.ts
+      - name: Build the production application
+        run: pnpm build --mode production
+      - name: Verify the generated site
+        run: |
+          test -s docs/index.html
+          test -d docs/assets
+      - name: Upload the site without committing generated files
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+
+  deploy:
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Read the existing Pages configuration
+        uses: actions/configure-pages@v5
+      - name: Deploy the verified site
+        id: deployment
+        uses: actions/deploy-pages@v4
