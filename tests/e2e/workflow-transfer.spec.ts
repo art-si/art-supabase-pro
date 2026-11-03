@@ -68,8 +68,11 @@ test('审批人失败可重试且保留转交原因', async ({ page }, testInfo)
   let writes = 0
   await page.route('**/rest/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname
-    if (path.includes('/rpc/')) writes += 1
-    if (path.endsWith('/sys_user') && failed) {
+    if (path.endsWith('/transfer_workflow_task')) writes += 1
+    if (
+      (path.endsWith('/list_workflow_user_options_secure') || path.endsWith('/sys_user')) &&
+      failed
+    ) {
       return route.fulfill({
         status: 503,
         json: { code: 'XX000', message: 'synthetic unavailable' }
@@ -112,7 +115,10 @@ test('审批转交旧租户失败不覆盖新任务', async ({ page }) => {
   let returned = false
   await page.route('**/rest/v1/**', async (route) => {
     const url = new URL(route.request().url())
-    if (url.searchParams.get('tenant_id') === 'eq.tenant-a') {
+    if (
+      url.pathname.endsWith('/rpc/list_workflow_user_options_secure') &&
+      route.request().postDataJSON()?.p_tenant_id === 'tenant-a'
+    ) {
       pending = true
       await held
       await route.fulfill({

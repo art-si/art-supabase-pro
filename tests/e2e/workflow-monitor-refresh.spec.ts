@@ -266,7 +266,7 @@ test('回调队列重新打开后旧查询不会覆盖最新指标', async ({ pa
   await expect(drawer).toBeVisible()
   await expect.poll(() => callbackRequests).toBe(1)
   await expect(drawer.locator('[inert]')).toHaveCount(1)
-  await drawer.getByRole('button', { name: /关闭此对话框|Close this dialog/, exact: true }).click()
+  await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
   await expect(drawer).toBeHidden()
   await page.getByRole('button', { name: '查看回调队列' }).click()
   await expect(drawer).toBeVisible()

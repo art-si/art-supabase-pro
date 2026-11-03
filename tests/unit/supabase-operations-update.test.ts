@@ -107,7 +107,7 @@ test(
         'fixture-user'
       )
       for (let count = 0; runner.busy && count < 200; count++) await delay(100)
-      assert.equal(run.status, 'succeeded', run.error)
+      assert.equal(run.status, 'succeeded', run.error || '')
       assert.equal(run.parameters.UpdateBackupPath, latestPath)
       assert.equal(getOperationBackupPath(run), latestPath)
       assert.ok(!run.artifacts?.some((item) => item.value === originalPath))

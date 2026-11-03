@@ -161,6 +161,10 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
     const url = new URL(route.request().url())
     const endpoint = url.pathname.split('/').at(-1)
     const payload = route.request().postDataJSON?.() || {}
+    if (endpoint === 'get_table_column_runtime')
+      return route.fulfill({ json: { enabled: false, profiles: [] } })
+    if (endpoint === 'vms_list_vehicle_archive_navigation_secure')
+      return route.fulfill({ json: [] })
     if (endpoint === 'vms_create_fuel_card') {
       const vehicle = cards.find((card) => card.vehicleId === payload.p_vehicle_id)
       const created = {
@@ -278,6 +282,10 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
           ['recharge', '充值'],
           ['consume', '消费'],
           ['reversal', '冲正']
+        ],
+        vmsCardViewMode: [
+          ['list', '按明细'],
+          ['cards', '按卡片']
         ]
       }
       return route.fulfill({
@@ -314,12 +322,12 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
   await expect(page.getByText('按车辆管理油卡绑定')).toBeVisible()
   await page.getByRole('button', { name: '新增油卡' }).click()
   await expect(page.getByText('绑定已审批车辆')).toBeVisible()
-  await expect(page.getByPlaceholder('请输入卡面号码')).toBeVisible()
+  await expect(page.getByPlaceholder('请输入油卡号')).toBeVisible()
   await page.screenshot({ path: info.outputPath('fuel-card-create-dialog.png'), fullPage: true })
   const createDialog = page.getByRole('dialog', { name: '新增油卡' })
-  await createDialog.getByPlaceholder('请输入卡面号码').fill('QA-CARD-003')
+  await createDialog.getByPlaceholder('请输入油卡号').fill('QA-CARD-003')
   await createDialog.locator('.art-data-select__single-input').click()
-  const vehiclePicker = page.getByRole('dialog', { name: '选择已审批车辆' })
+  const vehiclePicker = page.getByRole('dialog', { name: '选择已审批燃油车' })
   await vehiclePicker.getByRole('row').filter({ hasText: '测A·10001' }).first().click()
   await vehiclePicker.getByRole('button', { name: /确.*定/ }).click()
   await createDialog.locator('.el-input-number input').fill('80')

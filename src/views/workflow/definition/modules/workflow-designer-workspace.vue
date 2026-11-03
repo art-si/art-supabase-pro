@@ -1,6 +1,7 @@
 <template>
   <ArtPageShell
     class="workflow-designer-page"
+    :class="{ 'is-focus-mode': focusMode }"
     full-height
     :loading="page.loading"
     loading-mode="skeleton"
@@ -13,6 +14,7 @@
 
     <div class="workflow-designer-page__layout">
       <ArtPageHeader
+        v-show="!focusMode"
         class="workflow-designer-page__header"
         :title="form.data.name || '未命名流程'"
         :subtitle="isEdit ? '编辑草稿并发布不可变的新版本' : '从业务模板创建可复用审批流程'"
@@ -29,9 +31,10 @@
           <i>·</i>
           <span>{{ form.data.config.nodes.length + 2 }} 个流程节点</span>
           <i>·</i>
-          <span>手动保存</span>
+          <span :class="{ 'is-unsaved': hasUnsavedChanges }">{{ saveStatusLabel }}</span>
         </template>
 
+        <BusinessWorkspaceFocusToggle v-model="focusMode" title="展开审批画布；按 Esc 可退出" />
         <ElButton :disabled="!currentDefinition" @click="openVersionHistory">版本</ElButton>
         <ElButton :disabled="!form.data.config.nodes.length" @click="openSimulator">
           试运行
@@ -55,7 +58,38 @@
         </ElButton>
       </ArtPageHeader>
 
-      <nav class="workflow-designer-page__steps art-card-xs" aria-label="流程设计步骤">
+      <div v-show="focusMode" class="workflow-designer-page__focus-bar art-card-xs">
+        <div class="workflow-designer-page__focus-identity">
+          <ArtSvgIcon icon="ri:flow-chart" aria-hidden="true" />
+          <div>
+            <strong>{{ form.data.name || '未命名流程' }}</strong>
+            <span>审批流程画布 · {{ form.data.config.nodes.length }} 个审批节点</span>
+          </div>
+        </div>
+        <div class="workflow-designer-page__focus-actions">
+          <span
+            class="workflow-designer-page__save-status"
+            :class="{ 'is-unsaved': hasUnsavedChanges }"
+          >
+            {{ saveStatusLabel }}
+          </span>
+          <ElButton
+            v-if="canSave"
+            :loading="page.saving"
+            :disabled="page.publishing || assigneeChecking"
+            @click="saveDraft"
+          >
+            保存草稿
+          </ElButton>
+          <BusinessWorkspaceFocusToggle v-model="focusMode" />
+        </div>
+      </div>
+
+      <nav
+        v-show="!focusMode"
+        class="workflow-designer-page__steps art-card-xs"
+        aria-label="流程设计步骤"
+      >
         <button
           v-for="step in designerSteps"
           :key="step.key"
@@ -328,23 +362,14 @@
                     </div>
                     <footer class="workflow-designer-page__diagnostic-actions">
                       <ElButton
-                        v-if="diagnostic.nodeKey"
                         size="small"
                         plain
                         :type="getDiagnosticActionType(diagnostic.severity)"
-                        @click="locateDiagnosticNode(diagnostic.nodeKey)"
+                        @click="locateDiagnostic(diagnostic)"
                       >
                         {{ getDiagnosticActionLabel(diagnostic.severity) }}
                         <ArtSvgIcon icon="ri:arrow-right-line" />
                       </ElButton>
-                      <ElTag
-                        v-else
-                        :type="getDiagnosticActionType(diagnostic.severity)"
-                        size="small"
-                        effect="light"
-                      >
-                        {{ getDiagnosticLabel(diagnostic.severity) }}
-                      </ElTag>
                     </footer>
                   </article>
                 </div>
@@ -378,6 +403,8 @@
   import ArtPageShell from '@/components/core/layouts/art-page-shell/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import BusinessWorkspaceFocusToggle from '@/components/business/business-workspace-focus-toggle/index.vue'
+  import { useWorkspaceFocus } from '@/hooks/core/useWorkspaceFocus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useUserStore } from '@/store/modules/user'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -423,6 +450,7 @@
 
   interface WorkflowCanvasExpose {
     selectNode: (nodeKey: string) => void
+    fitCanvas: () => Promise<void>
   }
 
   interface SimulatorDialogExpose {
@@ -467,8 +495,21 @@
   const simulatorDialogRef = ref<SimulatorDialogExpose>()
   const versionHistoryRef = ref<VersionHistoryExpose>()
   const activeStep = ref<1 | 2 | 3 | 4>(1)
+  const { focusMode } = useWorkspaceFocus()
+  watch(focusMode, async (focused) => {
+    if (focused) activeStep.value = 3
+    await nextTick()
+    // Vue Flow receives the resized canvas through ResizeObserver after the first frame.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => void workflowCanvasRef.value?.fitCanvas())
+    })
+  })
+  watch(activeStep, (step) => {
+    if (step !== 3) focusMode.value = false
+  })
   const identityLocked = ref(false)
   const currentDefinition = shallowRef<Api.Workflow.WorkflowDefinitionRecord>()
+  const lastSavedPayload = shallowRef<DesignerForm | null>(null)
   const page = reactive<PageGroup>({ loading: false, saving: false, publishing: false, error: '' })
   const assigneeChecking = ref(false)
   const assigneeError = shallowRef<Error | null>(null)
@@ -497,6 +538,14 @@
   const diagnostics = computed<WorkflowDiagnostic[]>(() =>
     inspectWorkflowConfig(form.data.config, contextFields.value)
   )
+  const hasUnsavedChanges = computed(
+    () => !lastSavedPayload.value || !isEqual(normalizePayload(), lastSavedPayload.value)
+  )
+  const saveStatusLabel = computed(() => {
+    if (page.publishing) return '发布中'
+    if (page.saving) return '保存中'
+    return hasUnsavedChanges.value ? '有未保存更改' : '已保存'
+  })
   const errorCount = computed(
     () => diagnostics.value.filter((item) => item.severity === 'error').length
   )
@@ -675,6 +724,14 @@
     workflowCanvasRef.value?.selectNode(nodeKey)
   }
 
+  async function locateDiagnostic(diagnostic: WorkflowDiagnostic): Promise<void> {
+    if (diagnostic.nodeKey) {
+      await locateDiagnosticNode(diagnostic.nodeKey)
+      return
+    }
+    activeStep.value = diagnostic.code === 'AUTO_APPROVE_ENABLED' ? 4 : 3
+  }
+
   function getFieldIcon(valueType: Api.Workflow.WorkflowContextField['valueType']): string {
     const icons: Record<Api.Workflow.WorkflowContextField['valueType'], string> = {
       text: 'ri:text',
@@ -713,12 +770,9 @@
     return severity === 'error' ? '修复配置' : severity === 'warning' ? '检查配置' : '查看详情'
   }
 
-  function getDiagnosticLabel(severity: WorkflowDiagnosticSeverity): string {
-    return severity === 'error' ? '需修复' : severity === 'warning' ? '需确认' : '提示'
-  }
-
   function normalizePayload(): DesignerForm {
-    const payload = cloneDeep(toRaw(form.data))
+    // 保存状态也复用此快照，需读取响应式模型以追踪节点等深层编辑。
+    const payload = cloneDeep(form.data)
     payload.code = trim(payload.code)
     payload.name = trim(payload.name)
     payload.description = normalizeNullableText(payload.description)
@@ -825,7 +879,7 @@
     }
     const firstError = diagnostics.value.find((item) => item.severity === 'error')
     if (firstError) {
-      activeStep.value = firstError.nodeKey ? 3 : 4
+      await locateDiagnostic(firstError)
       ElMessage.warning(firstError.description)
       return false
     }
@@ -849,6 +903,7 @@
       const saved = response.data
       const definitionId = saved?.definitionId || form.data.id
       if (!definitionId) return null
+      lastSavedPayload.value = { ...payload, id: definitionId }
       ElMessage.success('流程草稿已保存')
       if (!isEqual(payload, normalizePayload())) {
         ElMessage.warning('草稿已保存，保存期间的新修改仍保留在页面，请再次保存')
@@ -928,6 +983,7 @@
       if (!definitionId) return
       if (revision !== assigneeRevision) return
       draftSaved = true
+      lastSavedPayload.value = { ...payload, id: definitionId }
       if (!isEqual(payload, normalizePayload())) {
         form.data.id = definitionId
         ElMessage.warning('草稿已保存，内容已变化，请重新核验后发布')
@@ -1017,6 +1073,7 @@
     }
     form.data.config.allowAutoApprove = form.data.config.allowAutoApprove ?? false
     form.data.config.nodes = form.data.config.nodes.map(normalizeLoadedNode)
+    lastSavedPayload.value = normalizePayload()
     await nextTick()
     baseFormRef.value?.clearValidate()
   }
@@ -1025,6 +1082,7 @@
     page.loading = true
     page.error = ''
     currentDefinition.value = undefined
+    lastSavedPayload.value = null
     identityLocked.value = false
     activeStep.value = 1
     try {
@@ -1078,6 +1136,106 @@
       min-height: 0;
     }
 
+    &.is-focus-mode {
+      :deep(> .art-async-state) {
+        grid-template-rows: minmax(0, 1fr);
+        overflow: hidden;
+      }
+
+      .workflow-designer-page__layout {
+        grid-template-rows: auto minmax(0, 1fr);
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .workflow-designer-page__content {
+        display: grid;
+        grid-template-rows: minmax(0, 1fr);
+        height: 100%;
+        min-height: 0;
+        padding-bottom: 0;
+
+        > .workflow-canvas-editor {
+          height: 100%;
+          min-height: 0;
+        }
+      }
+
+      .workflow-designer-page__scrollbar {
+        height: 100%;
+      }
+
+      .workflow-designer-page__scrollbar :deep(.el-scrollbar__view) {
+        height: 100%;
+        min-height: 0;
+      }
+
+      :deep(.workflow-canvas-editor__workspace) {
+        min-height: 0;
+      }
+    }
+
+    &__focus-bar {
+      display: flex;
+      gap: var(--art-space-4);
+      align-items: center;
+      justify-content: space-between;
+      min-width: 0;
+      min-height: 58px;
+      padding: var(--art-space-2) var(--art-space-4);
+    }
+
+    &__focus-identity,
+    &__focus-actions {
+      display: flex;
+      gap: var(--art-space-3);
+      align-items: center;
+      min-width: 0;
+    }
+
+    &__focus-identity {
+      > svg {
+        flex: none;
+        font-size: 20px;
+        color: var(--theme-color);
+      }
+
+      > div {
+        display: grid;
+        min-width: 0;
+      }
+
+      strong,
+      span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      strong {
+        color: var(--art-gray-900);
+      }
+
+      span {
+        font-size: 12px;
+        color: var(--art-gray-600);
+      }
+    }
+
+    &__focus-actions {
+      flex: none;
+    }
+
+    &__save-status {
+      font-size: 12px;
+      color: var(--art-gray-600);
+      white-space: nowrap;
+
+      &.is-unsaved {
+        color: var(--el-color-warning-dark-2);
+      }
+    }
+
     &__header {
       :deep(.art-page-header__meta) {
         display: flex;
@@ -1088,6 +1246,10 @@
         i {
           font-style: normal;
           color: var(--art-gray-400);
+        }
+
+        .is-unsaved {
+          color: var(--el-color-warning-dark-2);
         }
       }
     }
@@ -1157,8 +1319,10 @@
           border-color: var(--el-color-success-light-5);
         }
 
-        &:hover,
-        &:focus-visible,
+        &:hover:not(.is-active) {
+          background: color-mix(in srgb, var(--theme-color) 3%, transparent);
+        }
+
         &.is-active {
           color: var(--theme-color);
           background: color-mix(in srgb, var(--theme-color) 5%, transparent);
@@ -1631,6 +1795,15 @@
 
   @media (width <= 640px) {
     .workflow-designer-page {
+      &__focus-bar {
+        flex-wrap: wrap;
+      }
+
+      &__focus-actions {
+        justify-content: space-between;
+        width: 100%;
+      }
+
       &__steps {
         grid-template-columns: 1fr;
         padding: 0;

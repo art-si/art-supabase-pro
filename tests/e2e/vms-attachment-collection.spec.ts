@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
@@ -7,6 +7,35 @@ test.setTimeout(120_000)
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const otherTenantId = '22222222-2222-4222-8222-222222222222'
 const sharedUrl = 'https://example.invalid/shared.pdf'
+
+async function expectAttachmentActionsInTableViewport(
+  row: Locator,
+  buttonNames: string[]
+): Promise<void> {
+  await expect
+    .poll(() =>
+      row.evaluate((element, names) => {
+        const viewport = element.closest('.el-table')?.getBoundingClientRect()
+        if (!viewport) return []
+        return names.map((name) => {
+          const button = [...element.querySelectorAll('button[aria-label]')].find(
+            (candidate) => candidate.getAttribute('aria-label') === name
+          )
+          const bounds = button?.getBoundingClientRect()
+          return {
+            name,
+            fullyVisible: Boolean(
+              bounds &&
+              bounds.width > 0 &&
+              bounds.left >= viewport.left - 1 &&
+              bounds.right <= viewport.right + 1
+            )
+          }
+        })
+      }, buttonNames)
+    )
+    .toEqual(buttonNames.map((name) => ({ name, fullyVisible: true })))
+}
 
 test('车辆保险重复选取资源不新增，移除只删选中行', async ({ page }, info) => {
   const errors: string[] = []
@@ -319,6 +348,7 @@ for (const { scenario, title, attachmentTitle, nameLabel, nameRequiredMessage } 
       await expect(attachmentDialog).toBeHidden()
       const addedRow = recordDialog.getByRole('row').filter({ hasText: '自定义附件' })
       await expect(addedRow).toHaveCount(1)
+      await expectAttachmentActionsInTableViewport(addedRow, ['查看附件', '下载附件', '删除附件'])
       await addedRow.scrollIntoViewIfNeeded()
       await recordDialog.screenshot({
         path: info.outputPath(`${scenario}-${appearance}-attachment-added.png`)
@@ -383,8 +413,10 @@ test('事故记录只读附件保留查看下载但不显示上传和删除', as
   await page.goto('/tests/e2e/fixtures/vms-attachment-collection.html?scenario=accident-readonly')
   await page.getByRole('button', { name: '查看只读事故记录' }).click()
   const dialog = page.getByRole('dialog', { name: '编辑事故记录' })
+  await dialog.getByRole('tab', { name: '事故附件' }).click()
   const row = dialog.getByRole('row').filter({ hasText: '只读附件' })
   await expect(row).toBeVisible()
+  await expectAttachmentActionsInTableViewport(row, ['查看附件', '下载附件'])
   await expect(dialog.getByRole('columnheader', { name: '事故附件名称' })).toBeVisible()
   await expect(row.getByRole('button', { name: '查看附件' })).toBeEnabled()
   await expect(row.getByRole('button', { name: '下载附件' })).toBeEnabled()

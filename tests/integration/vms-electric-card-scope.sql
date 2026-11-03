@@ -13,6 +13,7 @@ declare
   direct_cards integer;
   direct_entries integer;
   temporary_card uuid;
+  created_cards uuid[] := '{}'::uuid[];
   opening_balance numeric;
   fuel_before numeric;
   fuel_after numeric;
@@ -60,6 +61,10 @@ begin
       and r.enabled=true)
   order by u.id limit 1;
   if super_actor is null then raise exception 'Platform super actor unavailable';end if;
+  perform set_config('request.jwt.claim.sub',super_actor::text,true);
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',super_actor,'role','authenticated')::text,true);
+  perform set_config('request.headers','{}',true);
+  perform public.vms_update_vehicle_archive_secure(qa_vehicle,'{"is_new_energy":true}'::jsonb);
   execute 'set local role authenticated';
   for scenario in select value from jsonb_array_elements(jsonb_build_array(
     jsonb_build_object('name','platform_all','uid',super_actor,'header',null,'expected',2),
@@ -122,8 +127,12 @@ begin
     else
       temporary_card:=public.vms_create_electric_card(
         'VMS-ELEC-ROLLBACK-'||case_name,qa_vehicle,'',null,null,null,50,'scope test');
+      created_cards:=array_append(created_cards,temporary_card);
       if (select tenant_id from public.vms_electric_card where id=temporary_card)<>qa_tenant then
         raise exception '% wrote to wrong tenant',case_name;end if;
+      if (select card_no from public.vms_electric_card where id=temporary_card)
+         !~ ('^DK'||to_char(now() at time zone 'Asia/Shanghai','YYYY')||'[0-9]{3}$') then
+        raise exception '% generated electric-card number is invalid',case_name;end if;
       if case_name='ordinary_own' then
         select coalesce(sum(signed_amount),0) into fuel_before
         from public.vms_fuel_card_entry where tenant_id=qa_tenant;
@@ -168,7 +177,7 @@ begin
     end if;
   end loop;
   if (select count(*) from public.vms_electric_card where vehicle_id=qa_vehicle
-      and card_no like 'VMS-ELEC-ROLLBACK-%')<3 then
+      and id=any(created_cards))<3 then
     raise exception 'Vehicle was limited to one electric card';end if;
   execute 'reset role';
 end $test$;

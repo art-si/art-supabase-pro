@@ -60,9 +60,15 @@
     () => {
       parseRequest += 1
       isParsing.value = false
+      if (fileInputRef.value) fileInputRef.value.value = ''
     },
     { flush: 'sync' }
   )
+  onDeactivated(() => {
+    parseRequest += 1
+    isParsing.value = false
+    if (fileInputRef.value) fileInputRef.value.value = ''
+  })
   onBeforeUnmount(() => {
     parseRequest += 1
     isParsing.value = false
@@ -107,8 +113,10 @@
         error instanceof Error ? error : new Error('导入文件解析失败', { cause: error })
       )
     } finally {
-      input.value = ''
-      if (request === parseRequest) isParsing.value = false
+      if (request === parseRequest) {
+        input.value = ''
+        isParsing.value = false
+      }
     }
   }
 </script>

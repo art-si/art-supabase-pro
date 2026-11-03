@@ -24,6 +24,7 @@ declare global {
         config: Api.Workflow.WorkflowConfig
       }
       definition?: Api.Workflow.WorkflowDefinitionRecord
+      definitionB?: Api.Workflow.WorkflowDefinitionRecord
     }
   }
 }
@@ -42,7 +43,7 @@ const open = async () => {
     if (mode === 'capability') await capability.value?.handleOpen({ edgeFunctions: null })
     else if (mode === 'simulator' && input.simulator)
       await simulator.value?.handleOpen(input.simulator)
-    else if (mode === 'versions' && input.definition)
+    else if ((mode === 'versions' || mode === 'versions-context') && input.definition)
       await versions.value?.handleOpen(input.definition, { canManage: true })
   } catch (cause) {
     error.value = String(cause)
@@ -52,6 +53,73 @@ const app = createApp({
   render: () =>
     h('main', { class: 'min-h-screen min-w-0 p-4' }, [
       h('button', { onClick: open }, '打开公开入口'),
+      ...(mode === 'versions-context'
+        ? [
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'open-definition-b',
+                onClick: () => {
+                  if (input.definitionB)
+                    void versions.value?.handleOpen(input.definitionB, { canManage: true })
+                }
+              },
+              '打开流程 B'
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'mutate-caller-definition',
+                onClick: () => {
+                  if (!input.definition) return
+                  input.definition.name = '外部已修改流程'
+                  if (input.definition.versions?.[1]?.config.nodes[0])
+                    input.definition.versions[1].config.nodes[0].name = '外部已修改节点'
+                }
+              },
+              '外部更新原流程对象'
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'switch-version-route',
+                onClick: () => void router.replace('/other')
+              },
+              '切换路由'
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'switch-version-tenant',
+                onClick: () =>
+                  useUserStore(store).setUserInfo({
+                    userId: '22222222-2222-4222-8222-222222222222',
+                    tenantId: '33333333-3333-4333-8333-333333333333',
+                    platformSuper: false
+                  })
+              },
+              '切换租户'
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'revoke-version-edit',
+                onClick: () => useMenuStore(store).setButtonList([])
+              },
+              '撤销编辑权限'
+            ),
+            h(
+              'output',
+              { 'data-testid': 'version-context' },
+              `${router.currentRoute.value.path}:${useTenantScopeStore(store).effectiveTenantId ?? 'all'}:${useMenuStore(store).buttonList.length}`
+            )
+          ]
+        : []),
       h('output', { 'data-testid': 'open-error' }, error.value),
       h('output', { 'data-testid': 'analyze' }, analyzed.value),
       h('output', { 'data-testid': 'successes' }, String(successes.value)),
@@ -76,7 +144,10 @@ app.use(store)
 app.use(language)
 const router = createRouter({
   history: createMemoryHistory(),
-  routes: [{ path: '/', component: {} }]
+  routes: [
+    { path: '/', component: {} },
+    { path: '/other', component: {} }
+  ]
 })
 app.use(router)
 setupGlobDirectives(app)
@@ -86,7 +157,9 @@ useUserStore(store).setUserInfo({
   platformSuper: false
 })
 useTenantScopeStore(store).selectedTenantId = '11111111-1111-4111-8111-111111111111'
-useMenuStore(store).setButtonList([{ name: 'WorkflowDefinition:Edit', path: '', type: 'button' }])
+useMenuStore(store).setButtonList([
+  { name: 'WorkflowDefinition:Edit', path: '', type: 'button', meta: { title: '恢复版本' } }
+])
 const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
 useSettingStore(store).setGlobalTheme(theme, theme)
 initializeTheme()

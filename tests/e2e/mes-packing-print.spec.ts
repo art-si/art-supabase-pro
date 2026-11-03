@@ -130,7 +130,7 @@ test('排包表格铺满面板，小按钮与整包打印预览', async ({ page 
     waitUntil: 'domcontentloaded',
     timeout: 120_000
   })
-  await page.getByText('包含已排包和已发布', { exact: true }).click()
+  await expect(page.getByRole('checkbox', { name: '包含已发布工单' })).not.toBeChecked()
   await page.getByRole('button', { name: /QA-MO-001/ }).click()
   const results = page.locator('.packing-page__results')
   await expect(results.locator('.el-table__body-wrapper tbody tr')).toHaveCount(2)

@@ -49,6 +49,7 @@
             :button-props="getHeaderActionButtonProps(action)"
             :disabled="isHeaderActionDisabled(action)"
             :icon="getHeaderActionIcon(action)"
+            :context-key="props.importContextKey"
             @import-success="handleHeaderActionImportSuccess(action, $event)"
             @import-error="handleHeaderActionImportError(action, $event)"
           >
@@ -185,6 +186,7 @@
                         :button-props="getSelectionActionButtonProps(action)"
                         :disabled="isHeaderActionDisabled(action, 'selection')"
                         :icon="getHeaderActionIcon(action)"
+                        :context-key="props.importContextKey"
                         @import-success="
                           handleHeaderActionImportSuccess(action, $event, 'selection')
                         "
@@ -346,7 +348,7 @@
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { useUserStore } from '@/store/modules/user'
-  import { toDictionaryOption } from '@/utils/form/option'
+  import { getDictionaryDisplayLabel } from '@/utils/form/option'
   import { isPlainObjectRecord } from '@/utils/type-guards'
   import { getFriendlySupabaseErrorMessage, wasErrorUserNotified } from '@/utils/supabase'
   import {
@@ -760,6 +762,8 @@
     columnsFactory?: () => ColumnOption[]
     /** 列工厂依赖的业务上下文；变化时重新生成列。 */
     columnsContextKey?: string | number
+    /** 导入解析、转换与提交所对应的业务上下文；变化后旧批次停止继续派发。 */
+    importContextKey?: object | string | number
     /** 透传给 ArtSearchBar 的额外配置，例如 labelWidth、span、showExpand。 */
     searchBarProps?: ArtTableQuerySearchBarProps
     /** 透传给 ArtTableHeader 的额外配置，例如 layout、showBorder。 */
@@ -805,6 +809,15 @@
   const showTableToolbar = defineModel<boolean>('showTableToolbar', { default: false })
   const focusMode = defineModel<boolean>('focusMode', { default: false })
   const importPending = ref(false)
+  let importVersion = 0
+  watch(
+    () => props.importContextKey,
+    () => {
+      importVersion += 1
+      importPending.value = false
+    },
+    { flush: 'sync' }
+  )
   const pendingActionKey = ref<string | null>(null)
   const initialSearchModel = ref<Record<string, unknown>>({})
   const rootRef = ref<HTMLElement>()
@@ -1379,9 +1392,7 @@
                 ? (_value: unknown, row: TableQueryRecord) => {
                     const value = getExcelDictionaryValue(column, row)
                     const item = userStore.getDictDisplayItemByValue(column.dict!.code, value)
-                    return item
-                      ? toDictionaryOption(item).label || String(value ?? '')
-                      : String(value ?? '')
+                    return getDictionaryDisplayLabel(item, value, { emptyText: '' })
                   }
                 : column.formatter
                   ? (_value: unknown, row: TableQueryRecord) => {
@@ -1528,11 +1539,15 @@
     scope: ArtTableQueryHeaderActionContext['scope'] = 'default'
   ): Promise<void> => {
     if (importPending.value) return
+    const contextKey = props.importContextKey
+    const version = ++importVersion
+    const isCurrent = () => version === importVersion && props.importContextKey === contextKey
     importPending.value = true
     const ctx = createHeaderActionContext(action, undefined, scope)
     let submitted = false
     try {
       emit('header-action-click', action, ctx)
+      if (!isCurrent()) return
       const rows =
         action.importApi ||
         action.importTransformer ||
@@ -1540,6 +1555,7 @@
         action.importColumns
           ? await resolveImportRows(action, data, ctx)
           : data
+      if (!isCurrent()) return
 
       if (action.importApi) {
         if (!rows.length) {
@@ -1547,14 +1563,17 @@
           return
         }
         await action.importApi(rows as Array<TableQueryRecord>, ctx)
+        if (!isCurrent()) return
         submitted = true
         if (isManaged.value) {
           await managedTable.refreshCreate()
+          if (!isCurrent()) return
         }
       }
 
       await action.onImportSuccess?.(rows, ctx)
     } catch (error) {
+      if (!isCurrent()) return
       const fallback = submitted
         ? '导入已提交，但界面更新失败，请刷新查看结果'
         : '导入失败，请检查数据后重试'
@@ -1566,10 +1585,11 @@
           ElMessage.error(getFriendlySupabaseErrorMessage(importError, fallback))
         }
       } catch (handlerError) {
-        ElMessage.error(getFriendlySupabaseErrorMessage(handlerError, '导入失败，请稍后重试'))
+        if (isCurrent())
+          ElMessage.error(getFriendlySupabaseErrorMessage(handlerError, '导入失败，请稍后重试'))
       }
     } finally {
-      importPending.value = false
+      if (version === importVersion) importPending.value = false
     }
   }
 
@@ -1933,6 +1953,8 @@
   useEventListener(document, 'keydown', handleFocusEscape)
 
   onDeactivated(() => {
+    importVersion += 1
+    importPending.value = false
     measurementActive = false
     stopHeaderTopMeasurement()
     focusScrollPositions = []
@@ -1940,6 +1962,8 @@
     restoreFocusLayout()
   })
   onBeforeUnmount(() => {
+    importVersion += 1
+    importPending.value = false
     focusScrollPositions = []
     restoreFocusLayout()
   })

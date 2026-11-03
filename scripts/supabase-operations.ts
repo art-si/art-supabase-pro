@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createHash } from 'node:crypto'
-import { callPlatformIdentity } from './lib/platform-identity'
+import { callPlatformIdentity, PlatformIdentityError } from './lib/platform-identity'
 import path from 'node:path'
 import { loadEnv } from 'vite'
 import {
@@ -117,7 +117,7 @@ async function authorize(
   cacheRead = false
 ): Promise<string> {
   const token = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9._-]+)$/)?.[1]
-  if (!token) throw new Error('请先登录平台账号。')
+  if (!token) throw new PlatformIdentityError('请先登录平台账号。', 401, 'PLATFORM_AUTH_REQUIRED')
   const fingerprint = createHash('sha256').update(token).digest('hex')
   const cacheKey = `${fingerprint}:${permission}`
   const cached = readAuthorizations.get(cacheKey)
@@ -171,7 +171,10 @@ const server = createServer(async (request, response) => {
     return
   }
   if (!request.headers.authorization?.startsWith('Bearer ')) {
-    send(response, 401, { message: '请先登录平台管理员账号，再连接本机执行端。' })
+    send(response, 401, {
+      message: '请先登录平台管理员账号，再连接本机执行端。',
+      code: 'PLATFORM_AUTH_REQUIRED'
+    })
     return
   }
   try {
@@ -285,7 +288,8 @@ const server = createServer(async (request, response) => {
     }
     send(response, 404, { message: '找不到该运维接口。' })
   } catch (error) {
-    send(response, 400, {
+    send(response, error instanceof PlatformIdentityError ? error.status : 400, {
+      ...(error instanceof PlatformIdentityError ? { code: error.code } : {}),
       message:
         error instanceof Error && /[\u4e00-\u9fff]/.test(error.message)
           ? error.message

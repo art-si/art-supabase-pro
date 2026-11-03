@@ -120,6 +120,7 @@ begin
  result:=public.vms_list_electric_card_waybill_options_secure(card1,0,19,null);
  if (result->>'total')::integer<1 then raise exception 'Platform-all lost electric waybills';end if;
  execute 'reset role';
+ perform public.vms_update_vehicle_archive_secure('7a3d9ca0-7a71-4c41-a8da-c67a2951ba0f','{"is_new_energy":true}'::jsonb);
  closed_card:=public.vms_create_electric_card('VMS-ELEC-CTX-ROLLBACK-CLOSED',
    '7a3d9ca0-7a71-4c41-a8da-c67a2951ba0f','',null,null,null,10,'回滚验证');
  execute 'set local role authenticated';

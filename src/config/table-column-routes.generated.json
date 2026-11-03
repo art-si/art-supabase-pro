@@ -305,6 +305,7 @@
   "/system/system-param",
   "/system/tenant",
   "/system/user",
+  "/tms/alert-center",
   "/tms/basic-data/cargo",
   "/tms/basic-data/carrier",
   "/tms/basic-data/carrier-price",

@@ -1,11 +1,12 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿[CmdletBinding()]
+param([Parameter(Mandatory=$true)][string]$BackupPath,[Parameter(Mandatory=$true)][string]$StagePath,[Parameter(Mandatory=$true)][string]$FunctionMetadataPath)
+$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'transfer-common.ps1')
 . (Join-Path $PSScriptRoot 'backup-progress.ps1')
 . (Join-Path $PSScriptRoot 'backup-functions.ps1')
-$inputValues = [Console]::In.ReadToEnd() | ConvertFrom-Json
-$backup = [IO.Path]::GetFullPath([string]$inputValues.BackupPath)
-$stage = [IO.Path]::GetFullPath([string]$inputValues.StagePath)
-$metadataPath = [IO.Path]::GetFullPath([string]$inputValues.FunctionMetadataPath)
+$backup = [IO.Path]::GetFullPath([string]$BackupPath)
+$stage = [IO.Path]::GetFullPath([string]$StagePath)
+$metadataPath = [IO.Path]::GetFullPath([string]$FunctionMetadataPath)
 foreach ($path in @($backup, $stage, $metadataPath)) { Assert-BackupPathWithoutLinks -Path $path }
 $projectRef = 'ckbftoopuyophiebamwy'
 $functions = @(ConvertFrom-SupabaseJsonArray -Text (Get-Content -LiteralPath $metadataPath -Raw -Encoding UTF8) -Description 'updated function deployment list')

@@ -6,20 +6,32 @@
         <div>
           <strong>转交当前审批待办</strong>
           <small>{{ state.task?.instance?.businessTitle || '--' }}</small>
+          <span class="workflow-transfer__meta">
+            {{ state.task?.nodeName || '审批节点待确认' }} · {{ taskSourceLabel }}
+          </span>
         </div>
       </section>
 
       <div class="workflow-transfer__seat">
         <div>
           <small>当前处理人</small>
-          <strong>{{ state.task?.assigneeNameSnapshot || '--' }}</strong>
+          <strong :title="state.task?.assigneeNameSnapshot || undefined">{{
+            state.task?.assigneeNameSnapshot || '--'
+          }}</strong>
         </div>
         <ArtSvgIcon icon="ri:arrow-right-line" />
         <div>
           <small>原审批席位</small>
-          <strong>{{
-            state.task?.originalAssigneeNameSnapshot || state.task?.assigneeNameSnapshot || '--'
-          }}</strong>
+          <strong
+            :title="
+              state.task?.originalAssigneeNameSnapshot ||
+              state.task?.assigneeNameSnapshot ||
+              undefined
+            "
+            >{{
+              state.task?.originalAssigneeNameSnapshot || state.task?.assigneeNameSnapshot || '--'
+            }}</strong
+          >
         </div>
       </div>
 
@@ -125,6 +137,11 @@
 
   const displayName = (user: Api.Workflow.WorkflowUserOption) =>
     user.nickName || user.userName || user.userEmail
+  const taskSourceLabel = computed(() => {
+    if (state.task?.assignmentSource === 'delegation') return '委托待办'
+    if (state.task?.assignmentSource === 'transfer') return '转交待办'
+    return '直接分配'
+  })
 
   const toUserSelectOption = (user: Api.Workflow.WorkflowUserOption): ArtUserSelectOption => ({
     value: user.id,
@@ -261,10 +278,15 @@
       }
 
       small {
-        overflow: hidden;
-        text-overflow: ellipsis;
         color: var(--art-gray-500);
-        white-space: nowrap;
+        overflow-wrap: anywhere;
+      }
+
+      .workflow-transfer__meta {
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--art-gray-600);
+        overflow-wrap: anywhere;
       }
     }
 

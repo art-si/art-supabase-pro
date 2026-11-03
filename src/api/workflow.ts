@@ -135,7 +135,11 @@ export async function fetchWorkflowUserOptions(
         return responseHandle<Api.Workflow.WorkflowUserOption[]>(
           () =>
             supabase
-              .rpc('list_workflow_user_options_secure', { p_tenant_id: params.tenantId })
+              .rpc(
+                'list_workflow_user_options_secure',
+                { p_tenant_id: params.tenantId },
+                { count: 'exact' }
+              )
               .range(from, to),
           { showErrorMessage: options.showErrorMessage ?? true }
         )
@@ -521,12 +525,15 @@ export async function retryWorkflowBusinessCallback(outboxId: string) {
   )
 }
 
-export async function startWorkflow(params: {
-  businessType: string
-  businessId: string
-  businessTitle: string
-  context?: Record<string, unknown>
-}) {
+export async function startWorkflow(
+  params: {
+    businessType: string
+    businessId: string
+    businessTitle: string
+    context?: Record<string, unknown>
+  },
+  options: { showErrorMessage?: boolean } = {}
+) {
   return await responseHandle<string>(
     () =>
       supabase.rpc('start_workflow', {
@@ -536,7 +543,12 @@ export async function startWorkflow(params: {
         p_context: params.context ?? {},
         p_idempotency_key: crypto.randomUUID()
       }),
-    { showMessage: true, breakReturn: true, message: '已提交审批' }
+    {
+      showMessage: true,
+      showErrorMessage: options.showErrorMessage ?? true,
+      breakReturn: true,
+      message: '已提交审批'
+    }
   )
 }
 

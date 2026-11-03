@@ -31,16 +31,17 @@ for (const failed of [true, false]) {
           json: { code: 'XX000', message: 'synthetic refresh failure' }
         })
       }
-      const data = path.endsWith('/sys_user')
-        ? [
-            {
-              id: 'colleague',
-              user_name: '同事 B',
-              nick_name: '同事 B',
-              user_email: 'test@example.invalid'
-            }
-          ]
-        : []
+      const data =
+        path.endsWith('/list_workflow_user_options_secure') || path.endsWith('/sys_user')
+          ? [
+              {
+                id: 'colleague',
+                user_name: '同事 B',
+                nick_name: '同事 B',
+                user_email: 'test@example.invalid'
+              }
+            ]
+          : []
       return route.fulfill({
         headers: {
           'content-range': data.length ? '0-0/1' : '*/0',
@@ -241,16 +242,18 @@ test('委托旧用户加载失败不覆盖新用户内容', async ({ page }) => 
       returned = true
       return
     }
-    const data = url.pathname.endsWith('/sys_user')
-      ? [
-          {
-            id: 'colleague',
-            user_name: '同事 B',
-            nick_name: '同事 B',
-            user_email: 'test@example.invalid'
-          }
-        ]
-      : []
+    const data =
+      url.pathname.endsWith('/list_workflow_user_options_secure') ||
+      url.pathname.endsWith('/sys_user')
+        ? [
+            {
+              id: 'colleague',
+              user_name: '同事 B',
+              nick_name: '同事 B',
+              user_email: 'test@example.invalid'
+            }
+          ]
+        : []
     await route.fulfill({
       headers: {
         'content-range': data.length ? '0-0/1' : '*/0',
@@ -282,7 +285,11 @@ test('取消撤销委托不写入且不产生异常', async ({ page }) => {
   page.on('pageerror', (error) => errors.push(error.name))
   await page.route('**/rest/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname
-    if (path.includes('/rpc/')) writes += 1
+    if (
+      path.endsWith('/create_workflow_delegation') ||
+      path.endsWith('/revoke_workflow_delegation')
+    )
+      writes += 1
     const data = path.endsWith('/wf_delegation')
       ? [
           {
@@ -318,7 +325,7 @@ test('取消撤销委托不写入且不产生异常', async ({ page }) => {
   await expect(page.locator('.el-message')).toHaveCount(0)
 })
 
-for (const failedTable of ['sys_user', 'wf_delegation']) {
+for (const failedTable of ['list_workflow_user_options_secure', 'wf_delegation']) {
   test(`委托 ${failedTable} 失败阻止提交且重试保留原因`, async ({ page }, testInfo) => {
     let failed = true
     let writes = 0
@@ -326,23 +333,28 @@ for (const failedTable of ['sys_user', 'wf_delegation']) {
     page.on('pageerror', (error) => errors.push(error.name))
     await page.route('**/rest/v1/**', (route) => {
       const path = new URL(route.request().url()).pathname
-      if (path.includes('/rpc/')) writes += 1
+      if (
+        path.endsWith('/create_workflow_delegation') ||
+        path.endsWith('/revoke_workflow_delegation')
+      )
+        writes += 1
       if (failed && path.endsWith(`/${failedTable}`)) {
         return route.fulfill({
           status: 503,
           json: { code: 'XX000', message: 'synthetic unavailable' }
         })
       }
-      const data = path.endsWith('/sys_user')
-        ? [
-            {
-              id: 'colleague',
-              user_name: '同事 B',
-              nick_name: '同事 B',
-              user_email: 'test@example.invalid'
-            }
-          ]
-        : []
+      const data =
+        path.endsWith('/list_workflow_user_options_secure') || path.endsWith('/sys_user')
+          ? [
+              {
+                id: 'colleague',
+                user_name: '同事 B',
+                nick_name: '同事 B',
+                user_email: 'test@example.invalid'
+              }
+            ]
+          : []
       return route.fulfill({
         headers: {
           'content-range': data.length ? '0-0/1' : '*/0',

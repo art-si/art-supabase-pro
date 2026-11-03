@@ -69,6 +69,10 @@ function Invoke-PsqlRestore {
   try {
     $env:PGPASSWORD = $Password
     $ErrorActionPreference = 'Continue'
+    $projectObjectArguments = @()
+    if (Test-Path -LiteralPath (Join-Path $BackupPath 'database/managed-project-objects.sql') -PathType Leaf) {
+      $projectObjectArguments = @('--file', '/backup/database/managed-project-objects.sql')
+    }
     & docker run --rm -v "${BackupPath}:/backup:ro" -e PGPASSWORD postgres:17-alpine `
       psql "host=$($Connection.Host) port=$($Connection.Port) dbname=$($Connection.Database) user=$($Connection.User) sslmode=require" `
       --single-transaction --variable ON_ERROR_STOP=1 `
@@ -77,7 +81,7 @@ function Invoke-PsqlRestore {
       --command 'SET session_replication_role = replica' `
       --file /backup/database/data.sql `
       --file /backup/database/migration-history-schema.sql `
-      --file /backup/database/migration-history-data.sql
+      --file /backup/database/migration-history-data.sql @projectObjectArguments
     $exitCode = $LASTEXITCODE
   }
   finally {

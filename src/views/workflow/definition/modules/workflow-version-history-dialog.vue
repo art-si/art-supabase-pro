@@ -52,6 +52,8 @@
               v-if="state.canManage && selectedVersion.status !== 'draft'"
               type="primary"
               plain
+              :loading="restoreBusy"
+              :disabled="restoreBusy"
               @click="restoreSelectedVersion"
             >
               <ArtSvgIcon icon="ri:history-line" />恢复为草稿
@@ -177,7 +179,8 @@
 
 <script setup lang="ts">
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
-  import { ElTabs, ElTabPane } from 'element-plus'
+  import { ElMessage, ElTabs, ElTabPane } from 'element-plus'
+  import { unref } from 'vue'
   import { cloneDeep } from 'lodash-es'
   import { createDateTimeFormatter } from '@/utils/ui/format'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -185,7 +188,9 @@
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { cloneOverlayData, useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { saveWorkflowDefinition } from '@/api/workflow'
   import { useAuth } from '@/hooks/core/useAuth'
   import { diffWorkflowConfigs } from '../../modules/workflow-version-diff'
@@ -197,6 +202,9 @@
   const activeTab = ref('changes')
   const { confirmAction } = useArtFeedback()
   const { hasAuth } = useAuth()
+  const captureOperation = useTenantOperationGuard('WorkflowDefinition:Edit')
+  const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
+  const restoreBusy = ref(false)
   const state = reactive<{
     definition?: Api.Workflow.WorkflowDefinitionRecord
     selectedVersionId: string
@@ -258,19 +266,15 @@
   }
 
   async function restoreSelectedVersion(): Promise<void> {
-    if (!state.canManage || !hasAuth('WorkflowDefinition:Edit')) return
+    if (restoreBusy.value || !state.canManage || !hasAuth('WorkflowDefinition:Edit')) return
     const definition = state.definition
     const version = selectedVersion.value
-    if (!definition || !version) return
-    await confirmAction(
-      `将 V${version.versionNo} 恢复为草稿后，仍需再次发布才会影响新实例；当前运行实例不受影响。`,
-      {
-        title: '恢复历史版本',
-        confirmButtonText: '确认生成草稿',
-        type: 'warning'
-      }
-    )
-    await saveWorkflowDefinition({
+    if (!definition || !version || version.status === 'draft') return
+
+    const operationCurrent = captureOperation()
+    const requestVersion = session.version.value
+    const selectedVersionId = version.id
+    const payload: Api.Workflow.WorkflowDefinitionSavePayload = {
       id: definition.id,
       code: definition.code,
       name: definition.name,
@@ -279,17 +283,49 @@
       tenantId: definition.tenantId,
       changeNote: `从 V${version.versionNo} 恢复为草稿`,
       config: cloneDeep(version.config)
-    })
-    emit('success')
-    dialogRef.value?.handleClose()
+    }
+    const isCurrent = () =>
+      operationCurrent() &&
+      session.isCurrent(requestVersion) &&
+      state.canManage &&
+      state.definition?.id === definition.id &&
+      state.definition.tenantId === definition.tenantId &&
+      state.selectedVersionId === selectedVersionId &&
+      selectedVersion.value?.status !== 'draft'
+
+    if (!isCurrent()) return
+    restoreBusy.value = true
+    try {
+      await confirmAction(
+        `将 V${version.versionNo} 恢复为草稿后，仍需再次发布才会影响新实例；当前运行实例不受影响。`,
+        {
+          title: '恢复历史版本',
+          confirmButtonText: '确认生成草稿',
+          type: 'warning'
+        }
+      )
+      if (!isCurrent()) return
+      await saveWorkflowDefinition(payload, { showMessage: false, showErrorMessage: false })
+      if (!isCurrent()) return
+      ElMessage.success('操作成功')
+      emit('success')
+      await dialogRef.value?.handleClose()
+    } catch (error) {
+      if (error === 'cancel' || error === 'close') return
+      if (isCurrent()) notifyFriendlyError(error, '流程草稿恢复失败，请稍后重试')
+    } finally {
+      if (session.isCurrent(requestVersion)) restoreBusy.value = false
+    }
   }
 
   async function handleOpen(
     definition: Api.Workflow.WorkflowDefinitionRecord,
     options: { canManage?: boolean } = {}
   ): Promise<void> {
+    session.invalidate()
+    restoreBusy.value = false
     activeTab.value = 'changes'
-    state.definition = definition
+    state.definition = cloneOverlayData(definition)
     state.canManage = Boolean(options.canManage)
     state.selectedVersionId =
       definition.currentVersionId ||
@@ -300,7 +336,13 @@
       subtitle: '对比节点、审批人、条件、会签规则与 SLA 变化。',
       contentMaxHeight: '78vh',
       showFooter: false,
+      onClose: (): void => {
+        session.invalidate()
+        restoreBusy.value = false
+      },
       onReset: () => {
+        session.invalidate()
+        restoreBusy.value = false
         state.definition = undefined
         state.selectedVersionId = ''
       }

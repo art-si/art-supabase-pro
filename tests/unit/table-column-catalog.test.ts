@@ -97,14 +97,13 @@ test('material reference menus include their complete route-specific columns wit
 
 test('operational master field loops register only table fields from the current route', () => {
   const variants = {
+    // Customer contacts are 1:N child records, not columns of the customer master list.
     '/mdm/sales-master/customer': [
       'customerCode',
       'customerName',
       'groupId',
       'industry',
       'customerLevel',
-      'contactName',
-      'contactPhone',
       'region',
       'addressDetail',
       'enabled',
@@ -178,6 +177,11 @@ test('operational master field loops register only table fields from the current
       ['__selection__', '__globalIndex__', ...keys, 'updateTime', 'operation'],
       route
     )
+    if (route === '/mdm/sales-master/customer') {
+      assert.ok(
+        !catalog.columns.some((column) => ['contactName', 'contactPhone'].includes(column.key))
+      )
+    }
   }
 })
 

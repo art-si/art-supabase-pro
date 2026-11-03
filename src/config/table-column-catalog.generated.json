@@ -738,7 +738,7 @@
         "key": "area",
         "label": "区域",
         "visible": true,
-        "width": 62,
+        "minWidth": 120,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -837,7 +837,7 @@
         "key": "packNo",
         "label": "包号",
         "visible": true,
-        "minWidth": 190,
+        "minWidth": 120,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -848,7 +848,7 @@
         "key": "inboundStatus",
         "label": "入库状态",
         "visible": true,
-        "width": 86,
+        "width": 120,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -859,7 +859,7 @@
         "key": "inboundAreaSqm",
         "label": "入库面积 ㎡",
         "visible": true,
-        "width": 106,
+        "minWidth": 120,
         "fixed": false,
         "align": "right",
         "sortable": false,
@@ -868,7 +868,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "00833c82922312d8"
+    "revision": "bc383c8e0c635aaf"
   },
   {
     "menuId": "02893930-8f02-465a-8b59-34622a1c06ed",
@@ -1679,7 +1679,7 @@
         "align": "left",
         "sortable": false,
         "locked": true,
-        "groups": ["itemColumns", "attachmentColumns"]
+        "groups": ["itemColumns", "VehicleAttachmentTable"]
       },
       {
         "key": "itemName",
@@ -1756,7 +1756,7 @@
         "align": "left",
         "sortable": false,
         "locked": false,
-        "groups": ["attachmentColumns"]
+        "groups": ["VehicleAttachmentTable"]
       },
       {
         "key": "fileType",
@@ -1767,7 +1767,7 @@
         "align": "left",
         "sortable": false,
         "locked": false,
-        "groups": ["attachmentColumns"]
+        "groups": ["VehicleAttachmentTable"]
       },
       {
         "key": "fileSize",
@@ -1778,22 +1778,21 @@
         "align": "left",
         "sortable": false,
         "locked": false,
-        "groups": ["attachmentColumns"]
+        "groups": ["VehicleAttachmentTable"]
       },
       {
         "key": "operation",
         "label": "操作",
         "visible": true,
-        "width": 104,
         "fixed": "right",
         "align": "left",
         "sortable": false,
         "locked": true,
-        "groups": ["attachmentColumns"]
+        "groups": ["VehicleAttachmentTable"]
       }
     ],
     "searchKeys": [],
-    "revision": "8a7dfe87c89b7086"
+    "revision": "07473d754077dffe"
   },
   {
     "menuId": "0c481995-8941-437d-b82d-79278ebdc2b8",
@@ -2424,6 +2423,26 @@
         "locked": false
       },
       {
+        "key": "cargoCode",
+        "label": "货物编码",
+        "visible": true,
+        "minWidth": 140,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "specModel",
+        "label": "规格型号",
+        "visible": true,
+        "minWidth": 140,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "quantity",
         "label": "数量",
         "visible": true,
@@ -2464,6 +2483,38 @@
         "locked": false
       },
       {
+        "key": "sourceContract",
+        "label": "来源合同",
+        "visible": true,
+        "minWidth": 210,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "unitPrice",
+        "label": "协议单价（元）",
+        "visible": true,
+        "minWidth": 135,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "optional": true,
+        "locked": false
+      },
+      {
+        "key": "freight",
+        "label": "货物运费（元）",
+        "visible": true,
+        "minWidth": 135,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "optional": true,
+        "locked": false
+      },
+      {
         "key": "splitTransportFee",
         "label": "拆分运费(元)",
         "visible": true,
@@ -2498,7 +2549,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "5a8b809c20bda1a8"
+    "revision": "aadff4542c1efd7f"
   },
   {
     "menuId": "0e2a520f-861d-4fca-807d-8b62f2505166",
@@ -3533,6 +3584,56 @@
         "locked": false
       },
       {
+        "key": "packNo",
+        "label": "包号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packArea",
+        "label": "区域",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packBoardNo",
+        "label": "编号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packLengthMm",
+        "label": "长度 mm",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packPieces",
+        "label": "块数",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "projectName",
         "label": "项目全称",
         "visible": true,
@@ -3644,7 +3745,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "23d506b6efad4bdb"
+    "revision": "3d1fb73492f7b072"
   },
   {
     "menuId": "154db6f4-d787-45c2-8fec-f34c40430345",
@@ -10377,7 +10478,7 @@
         "key": "version",
         "label": "版本与节点",
         "visible": true,
-        "width": 132,
+        "width": 148,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -10406,7 +10507,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "a2bf6ed5b338cc10"
+    "revision": "0404eecdcfa2c3d2"
   },
   {
     "menuId": "2eb99c6c-3618-497e-bc3d-cf80d2f05258",
@@ -13765,6 +13866,26 @@
         "locked": false
       },
       {
+        "key": "region",
+        "label": "省市区",
+        "visible": true,
+        "minWidth": 170,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "addressDetail",
+        "label": "详细地址",
+        "visible": true,
+        "minWidth": 200,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "managerName",
         "label": "负责人",
         "visible": true,
@@ -13806,7 +13927,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "8b9c25cd51fbf8f5"
+    "revision": "02f389947700bcc9"
   },
   {
     "menuId": "39f78148-247c-485f-b68f-7d207aec55e5",
@@ -17184,6 +17305,56 @@
         "locked": false
       },
       {
+        "key": "packNo",
+        "label": "包号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packArea",
+        "label": "区域",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packBoardNo",
+        "label": "编号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packLengthMm",
+        "label": "长度 mm",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packPieces",
+        "label": "块数",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "projectName",
         "label": "项目全称",
         "visible": true,
@@ -17295,7 +17466,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "23d506b6efad4bdb"
+    "revision": "3d1fb73492f7b072"
   },
   {
     "menuId": "4e654fc0-6254-4078-be7b-1af5661119bc",
@@ -23232,6 +23403,56 @@
         "locked": false
       },
       {
+        "key": "packNo",
+        "label": "包号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packArea",
+        "label": "区域",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packBoardNo",
+        "label": "编号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packLengthMm",
+        "label": "长度 mm",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packPieces",
+        "label": "块数",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "projectName",
         "label": "项目全称",
         "visible": true,
@@ -23354,7 +23575,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "474ed6d000c12cb8"
+    "revision": "868af71368d51e1d"
   },
   {
     "menuId": "699f29ce-3c8e-4dd7-8555-83c7b2023e17",
@@ -24135,6 +24356,231 @@
         ]
       },
       {
+        "key": "constructionNo",
+        "label": "施工号",
+        "visible": true,
+        "minWidth": 130,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "baseQuantity",
+        "label": "基本数量",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "baseUnitName",
+        "label": "基本单位",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "auxiliaryQuantity",
+        "label": "辅助数量",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "auxiliaryUnitName",
+        "label": "辅助单位",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "auxiliaryQuantity2",
+        "label": "辅助数量2",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "auxiliaryUnit2Name",
+        "label": "辅助单位2",
+        "visible": true,
+        "minWidth": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "keeperName",
+        "label": "仓管员",
+        "visible": true,
+        "minWidth": 115,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "inboundQuantity",
+        "label": "已入库数量",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "pendingInboundQuantity",
+        "label": "未入库数量",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packNo",
+        "label": "包号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packArea",
+        "label": "区域",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packBoardNo",
+        "label": "编号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packLengthMm",
+        "label": "长度 mm",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packPieces",
+        "label": "块数",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
         "key": "inventoryUnitName",
         "label": "库存单位",
         "visible": true,
@@ -24196,7 +24642,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "436d06931c7936de"
+    "revision": "22411def2d70a091"
   },
   {
     "menuId": "6d646d00-0000-4000-8000-000000000001",
@@ -25220,6 +25666,56 @@
         "locked": false
       },
       {
+        "key": "vehicleOwnership",
+        "label": "车辆归属",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "vehicleDriverName",
+        "label": "司机（电话）",
+        "visible": true,
+        "minWidth": 170,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrierName",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "companyName",
+        "label": "所属公司",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "sourceCostNo",
+        "label": "费用单号",
+        "visible": true,
+        "minWidth": 165,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "stationName",
         "label": "充电站",
         "visible": true,
@@ -25231,7 +25727,7 @@
       },
       {
         "key": "waybillNo",
-        "label": "关联运单",
+        "label": "运单号",
         "visible": true,
         "minWidth": 170,
         "fixed": false,
@@ -25321,7 +25817,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "9a2db1ecce7eb92d"
+    "revision": "3b73e131e2f9a610"
   },
   {
     "menuId": "778a12a1-5711-4b6e-8f01-419796df07e9",
@@ -27075,6 +27571,46 @@
         "locked": false
       },
       {
+        "key": "vehicleOwnership",
+        "label": "车辆归属",
+        "visible": true,
+        "width": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "driverName",
+        "label": "司机(电话)",
+        "visible": true,
+        "minWidth": 210,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrierName",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 200,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "waybillNo",
+        "label": "运单号",
+        "visible": true,
+        "minWidth": 180,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "startTime",
         "label": "开始时间",
         "visible": true,
@@ -27131,7 +27667,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "1002653e4db2daa9"
+    "revision": "63617c7d10785c22"
   },
   {
     "menuId": "7f3c5b65-ecaf-49cc-ab03-120700a6d0fa",
@@ -28076,6 +28612,66 @@
         "locked": false
       },
       {
+        "key": "vehicleOwnership",
+        "label": "车辆归属",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "vehicleDriverName",
+        "label": "司机（电话）",
+        "visible": true,
+        "minWidth": 170,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrierName",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "companyName",
+        "label": "所属公司",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "sourceCostNo",
+        "label": "费用单号",
+        "visible": true,
+        "minWidth": 165,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "waybillNo",
+        "label": "运单号",
+        "visible": true,
+        "minWidth": 165,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "entryType",
         "label": "类型",
         "visible": true,
@@ -28167,12 +28763,12 @@
       }
     ],
     "searchKeys": [],
-    "revision": "7cbab79f92957399"
+    "revision": "7de606297c4b5aab"
   },
   {
     "menuId": "828c67ce-2ef1-44c2-9c57-c64d01b5ba03",
     "routePath": "/vms/vehicle-manage/vehicle-inspection-detail",
-    "sourceFile": "modules/art-supabase-vms/src/views/vehicle-manage/vehicle-inspection-detail/index.vue",
+    "sourceFile": "modules/art-supabase-vms/src/views/vehicle-manage/vehicle-attachment-table.vue",
     "columns": [
       {
         "key": "__globalIndex__",
@@ -28218,7 +28814,6 @@
         "key": "operation",
         "label": "操作",
         "visible": true,
-        "width": 104,
         "fixed": "right",
         "align": "left",
         "sortable": false,
@@ -28226,7 +28821,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "5ae89fdbc5f4b9c2"
+    "revision": "102453d0c53b1e8d"
   },
   {
     "menuId": "83d286c3-4b67-4104-b394-20c4eb6c9c72",
@@ -32861,7 +33456,27 @@
         "locked": false
       },
       {
-        "key": "contractStatus",
+        "key": "paperContractNo",
+        "label": "纸质合同编号",
+        "visible": true,
+        "minWidth": 150,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "mnemonicCode",
+        "label": "助记码",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "lifecycleStatus",
         "label": "合同状态",
         "visible": true,
         "width": 110,
@@ -32872,9 +33487,39 @@
       },
       {
         "key": "businessContractType",
-        "label": "业务分类",
+        "label": "业务合同分类",
         "visible": true,
         "width": 145,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "transportMode",
+        "label": "运输方式",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrier",
+        "label": "承运商",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "customer",
+        "label": "客户",
+        "visible": true,
+        "minWidth": 160,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -32921,10 +33566,80 @@
         "locked": false
       },
       {
+        "key": "contactName",
+        "label": "联系人",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "customerSignatory",
+        "label": "客户签约人",
+        "visible": true,
+        "width": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "signTime",
+        "label": "签订日期",
+        "visible": true,
+        "width": 150,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "effectiveDate",
+        "label": "生效日期",
+        "visible": true,
+        "width": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "expiryDate",
         "label": "到期日期",
         "visible": true,
         "width": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "shipperName",
+        "label": "发货方",
+        "visible": true,
+        "minWidth": 130,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "consigneeName",
+        "label": "收货方",
+        "visible": true,
+        "minWidth": 130,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "payerName",
+        "label": "付款方",
+        "visible": true,
+        "minWidth": 130,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -32942,7 +33657,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "8c9187514d2e1122"
+    "revision": "1325a14b1fc6aa30"
   },
   {
     "menuId": "992c0c45-0dae-46b9-9e89-20429ac09a27",
@@ -33749,7 +34464,7 @@
         "key": "documentNo",
         "label": "领用单号",
         "visible": true,
-        "minWidth": 210,
+        "width": 150,
         "fixed": "left",
         "align": "left",
         "sortable": false,
@@ -33765,18 +34480,62 @@
         "align": "left",
         "sortable": false,
         "locked": false,
-        "groups": ["PartIssueWorkspace", "InstalledPartsWorkspace"]
+        "groups": ["PartIssueWorkspace", "columnsFactory", "InstalledPartsWorkspace"]
       },
       {
-        "key": "driverName",
-        "label": "领用司机",
+        "key": "vehicleOwnership",
+        "label": "车辆归属",
         "visible": true,
-        "minWidth": 120,
+        "minWidth": 110,
         "fixed": false,
         "align": "left",
         "sortable": false,
         "locked": false,
-        "groups": ["PartIssueWorkspace"]
+        "groups": ["PartIssueWorkspace", "columnsFactory"]
+      },
+      {
+        "key": "isNewEnergy",
+        "label": "是否新能源车",
+        "visible": true,
+        "width": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": ["PartIssueWorkspace", "columnsFactory"]
+      },
+      {
+        "key": "driverName",
+        "label": "领用司机(电话)",
+        "visible": true,
+        "minWidth": 170,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": ["PartIssueWorkspace", "columnsFactory"]
+      },
+      {
+        "key": "carrierName",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": ["PartIssueWorkspace", "columnsFactory"]
+      },
+      {
+        "key": "companyName",
+        "label": "所属公司",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": ["PartIssueWorkspace", "columnsFactory", "InstalledPartsWorkspace"]
       },
       {
         "key": "lineCount",
@@ -33805,6 +34564,28 @@
         "label": "已归还",
         "visible": true,
         "width": 96,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": ["PartIssueWorkspace"]
+      },
+      {
+        "key": "lostQty",
+        "label": "丢失",
+        "visible": true,
+        "width": 80,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": ["PartIssueWorkspace"]
+      },
+      {
+        "key": "damagedQty",
+        "label": "损坏",
+        "visible": true,
+        "width": 80,
         "fixed": false,
         "align": "right",
         "sortable": false,
@@ -33977,17 +34758,6 @@
         "groups": ["InstalledPartsWorkspace"]
       },
       {
-        "key": "companyName",
-        "label": "所属公司",
-        "visible": true,
-        "minWidth": 150,
-        "fixed": false,
-        "align": "left",
-        "sortable": false,
-        "locked": false,
-        "groups": ["InstalledPartsWorkspace"]
-      },
-      {
         "key": "partType",
         "label": "零部件类型",
         "visible": true,
@@ -34106,7 +34876,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "d19b1aa75d29f41d"
+    "revision": "205dfb226b8cc915"
   },
   {
     "menuId": "9de7e2ba-aacc-4f65-b386-01479f2bfe1b",
@@ -34321,11 +35091,61 @@
       },
       {
         "key": "quoteNo",
-        "label": "报价单号",
+        "label": "协议价编号",
         "visible": true,
         "width": 180,
         "fixed": "left",
         "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "contractName",
+        "label": "关联合同名称",
+        "visible": true,
+        "minWidth": 190,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "contractNo",
+        "label": "关联合同编号",
+        "visible": true,
+        "minWidth": 155,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "agreementStatus",
+        "label": "协议状态",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "effectivePeriod",
+        "label": "有效期",
+        "visible": true,
+        "minWidth": 210,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "distanceKm",
+        "label": "线路里程",
+        "visible": true,
+        "width": 125,
+        "fixed": false,
+        "align": "right",
         "sortable": false,
         "locked": false
       },
@@ -34473,7 +35293,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "261444e3765ed470"
+    "revision": "9437cd9a0ae238bd"
   },
   {
     "menuId": "9e8ad4e2-116f-45ff-b063-891f4e6bc20b",
@@ -44398,7 +45218,7 @@
   {
     "menuId": "afb84be8-9006-4949-9c72-45fdc56d02bb",
     "routePath": "/vms/vehicle-manage/accident-record-detail",
-    "sourceFile": "modules/art-supabase-vms/src/views/vehicle-manage/accident-record-detail/index.vue",
+    "sourceFile": "modules/art-supabase-vms/src/views/vehicle-manage/vehicle-attachment-table.vue",
     "columns": [
       {
         "key": "__globalIndex__",
@@ -44444,7 +45264,6 @@
         "key": "operation",
         "label": "操作",
         "visible": true,
-        "width": 104,
         "fixed": "right",
         "align": "left",
         "sortable": false,
@@ -44452,7 +45271,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "5ae89fdbc5f4b9c2"
+    "revision": "102453d0c53b1e8d"
   },
   {
     "menuId": "b040e571-6d8e-4e05-8100-4c42ad857f06",
@@ -44478,6 +45297,16 @@
         "align": "left",
         "sortable": false,
         "locked": true
+      },
+      {
+        "key": "imagePath",
+        "label": "卡图片",
+        "visible": true,
+        "width": 82,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
       },
       {
         "key": "cardNo",
@@ -44511,9 +45340,39 @@
       },
       {
         "key": "driverName",
-        "label": "司机",
+        "label": "司机（电话）",
+        "visible": true,
+        "minWidth": 170,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "vehicleOwnership",
+        "label": "车辆归属",
         "visible": true,
         "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrierName",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "companyName",
+        "label": "所属公司",
+        "visible": true,
+        "minWidth": 160,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -44581,7 +45440,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "0c045a1595783240"
+    "revision": "2685f4293173775e"
   },
   {
     "menuId": "b0ac90fa-13b4-41db-af3b-d26948c5462c",
@@ -45293,6 +46152,95 @@
     ],
     "searchKeys": [],
     "revision": "2de2e4ad43e2bcc6"
+  },
+  {
+    "menuId": "b2000000-0000-4000-8000-000000000004",
+    "routePath": "/tms/alert-center",
+    "sourceFile": "modules/art-supabase-tms/src/views/alert-center/index.vue",
+    "columns": [
+      {
+        "key": "__globalIndex__",
+        "label": "序号",
+        "visible": true,
+        "width": 70,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": true
+      },
+      {
+        "key": "contractNo",
+        "label": "运输合同",
+        "visible": true,
+        "minWidth": 235,
+        "fixed": "left",
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "partyName",
+        "label": "客户 / 承运商",
+        "visible": true,
+        "minWidth": 180,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "tenantName",
+        "label": "所属租户",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "lifecycleStatus",
+        "label": "合同状态",
+        "visible": true,
+        "width": 105,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "alertStatus",
+        "label": "预警状态",
+        "visible": true,
+        "width": 105,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "expiryDate",
+        "label": "到期日期",
+        "visible": true,
+        "width": 125,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "lastDeliveredAt",
+        "label": "最近站内提醒",
+        "visible": true,
+        "width": 165,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      }
+    ],
+    "searchKeys": [],
+    "revision": "34bc2358350a2dee"
   },
   {
     "menuId": "b272c16e-a363-4c38-b824-eece36206c7b",
@@ -46620,6 +47568,56 @@
         "locked": false
       },
       {
+        "key": "packNo",
+        "label": "包号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packArea",
+        "label": "区域",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packBoardNo",
+        "label": "编号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packLengthMm",
+        "label": "长度 mm",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packPieces",
+        "label": "块数",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "projectName",
         "label": "项目全称",
         "visible": true,
@@ -46731,7 +47729,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "a6edd9910f2a9534"
+    "revision": "e90ac93f31dd56f3"
   },
   {
     "menuId": "b7528dab-2417-4981-9b6c-9ce7673a2e24",
@@ -47086,6 +48084,56 @@
         "locked": false
       },
       {
+        "key": "contractName",
+        "label": "关联合同名称",
+        "visible": true,
+        "minWidth": 190,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "contractNo",
+        "label": "关联合同编号",
+        "visible": true,
+        "minWidth": 155,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "agreementStatus",
+        "label": "协议状态",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "effectivePeriod",
+        "label": "有效期",
+        "visible": true,
+        "minWidth": 210,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "distanceKm",
+        "label": "线路里程",
+        "visible": true,
+        "width": 125,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "shippingInfo",
         "label": "发货信息",
         "visible": true,
@@ -47198,7 +48246,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "8e81f71e13708e34"
+    "revision": "c4d790d1166080de"
   },
   {
     "menuId": "b9bebab8-3bec-4a2d-b5a4-ea8822c65ab2",
@@ -47344,24 +48392,32 @@
   {
     "menuId": "ba04c71c-c48d-4e1b-8013-0d0de908a329",
     "routePath": "/tms/basic-data/carrier-price-edit",
-    "sourceFile": "modules/art-supabase-tms/src/views/basic-data/carrier-price-edit/index.vue",
+    "sourceFile": "modules/art-supabase-tms/src/views/basic-data/modules/agreement-cargo-editor.vue",
     "columns": [
       {
         "key": "__globalIndex__",
         "label": "序号",
         "visible": true,
-        "groups": ["variant-1", "variant-2"],
-        "width": 70,
+        "width": 58,
         "fixed": false,
         "align": "left",
         "sortable": false,
         "locked": true
       },
       {
-        "key": "orderNo",
-        "label": "订单编号",
+        "key": "cargoName",
+        "label": "货物名称",
         "visible": true,
-        "groups": ["variant-1", "variant-2"],
+        "minWidth": 180,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "cargoCode",
+        "label": "货物编码",
+        "visible": true,
         "width": 130,
         "fixed": false,
         "align": "left",
@@ -47369,33 +48425,20 @@
         "locked": false
       },
       {
-        "key": "originRegion",
-        "label": "始发地",
+        "key": "specModel",
+        "label": "规格型号",
         "visible": true,
-        "groups": ["variant-1", "variant-2"],
-        "minWidth": 170,
+        "minWidth": 150,
         "fixed": false,
         "align": "left",
         "sortable": false,
         "locked": false
       },
       {
-        "key": "destinationRegion",
-        "label": "目的地",
+        "key": "packageType",
+        "label": "计量单位",
         "visible": true,
-        "groups": ["variant-1", "variant-2"],
-        "minWidth": 170,
-        "fixed": false,
-        "align": "left",
-        "sortable": false,
-        "locked": false
-      },
-      {
-        "key": "cargoName",
-        "label": "货物名称",
-        "visible": true,
-        "groups": ["variant-1", "variant-2"],
-        "minWidth": 160,
+        "width": 140,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -47405,32 +48448,9 @@
         "key": "quantity",
         "label": "数量",
         "visible": true,
-        "groups": ["variant-1", "variant-2"],
-        "width": 110,
-        "fixed": false,
-        "align": "right",
-        "sortable": false,
-        "locked": false
-      },
-      {
-        "key": "unit",
-        "label": "单位",
-        "visible": true,
-        "groups": ["variant-1", "variant-2"],
-        "width": 100,
+        "width": 140,
         "fixed": false,
         "align": "left",
-        "sortable": false,
-        "locked": false
-      },
-      {
-        "key": "volumeM3",
-        "label": "体积（m³）",
-        "visible": true,
-        "groups": ["variant-1", "variant-2"],
-        "width": 130,
-        "fixed": false,
-        "align": "right",
         "sortable": false,
         "locked": false
       },
@@ -47438,10 +48458,39 @@
         "key": "weightKg",
         "label": "重量（kg）",
         "visible": true,
-        "groups": ["variant-1", "variant-2"],
+        "width": 140,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "volumeM3",
+        "label": "体积（方）",
+        "visible": true,
+        "width": 140,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "unitPrice",
+        "label": "合同单价（元）",
+        "visible": true,
+        "width": 145,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "freight",
+        "label": "运费（元）",
+        "visible": true,
         "width": 130,
         "fixed": false,
-        "align": "right",
+        "align": "left",
         "sortable": false,
         "locked": false
       },
@@ -47449,10 +48498,9 @@
         "key": "splitTransportFee",
         "label": "分摊运费（元）",
         "visible": true,
-        "groups": ["variant-2"],
         "width": 140,
         "fixed": false,
-        "align": "right",
+        "align": "left",
         "sortable": false,
         "locked": false
       },
@@ -47460,10 +48508,9 @@
         "key": "loadingFee",
         "label": "装卸费（元）",
         "visible": true,
-        "groups": ["variant-2"],
-        "width": 130,
+        "width": 140,
         "fixed": false,
-        "align": "right",
+        "align": "left",
         "sortable": false,
         "locked": false
       },
@@ -47471,16 +48518,35 @@
         "key": "packageFee",
         "label": "包装费（元）",
         "visible": true,
-        "groups": ["variant-2"],
-        "width": 130,
+        "width": 140,
         "fixed": false,
-        "align": "right",
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "sourceContractNo",
+        "label": "来源合同",
+        "visible": true,
+        "minWidth": 150,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "remark",
+        "label": "备注",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
         "sortable": false,
         "locked": false
       }
     ],
     "searchKeys": [],
-    "revision": "855ed2563d47f070"
+    "revision": "f376c4e6702259ef"
   },
   {
     "menuId": "ba2659a4-f48e-4118-9e32-92d287a9ceb4",
@@ -47875,10 +48941,80 @@
         "locked": true
       },
       {
+        "key": "portraitUrl",
+        "label": "照片",
+        "visible": true,
+        "width": 72,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "driverName",
         "label": "姓名",
         "visible": true,
         "minWidth": 180,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "driverOwnership",
+        "label": "司机归属",
+        "visible": true,
+        "width": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "companyName",
+        "label": "所属公司",
+        "visible": true,
+        "minWidth": 210,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "registrationStatus",
+        "label": "注册状态",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "identityAuthStatus",
+        "label": "身份证状态",
+        "visible": true,
+        "width": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "licenseAuthStatus",
+        "label": "驾驶证状态",
+        "visible": true,
+        "width": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "qualificationAuthStatus",
+        "label": "从业资格证状态",
+        "visible": true,
+        "width": 140,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -47967,6 +49103,28 @@
         "locked": false
       },
       {
+        "key": "emergencyContactName",
+        "label": "紧急联系人",
+        "visible": true,
+        "minWidth": 125,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "optional": true,
+        "locked": false
+      },
+      {
+        "key": "emergencyContactPhone",
+        "label": "紧急联系人电话",
+        "visible": true,
+        "width": 155,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "optional": true,
+        "locked": false
+      },
+      {
         "key": "enabled",
         "label": "状态",
         "visible": true,
@@ -47998,7 +49156,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "131b573de883b575"
+    "revision": "84f2ddc696a9878a"
   },
   {
     "menuId": "bee1086a-59f0-4f42-8df3-ba470db8e4d9",
@@ -56806,6 +57964,16 @@
         "locked": false
       },
       {
+        "key": "waypointStationIds",
+        "label": "途经/返程",
+        "visible": true,
+        "width": 150,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "estimatedMinutes",
         "label": "预计时长",
         "visible": true,
@@ -56847,7 +58015,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "4245493b2b9178b3"
+    "revision": "d9ecb147e4f37827"
   },
   {
     "menuId": "ce2ed2b6-7035-411b-abc8-05a3c0c46d72",
@@ -58991,16 +60159,6 @@
     "sourceFile": "modules/art-supabase-tms/src/views/basic-data/driver-blacklist/index.vue",
     "columns": [
       {
-        "key": "__selection__",
-        "label": "选择",
-        "visible": true,
-        "width": 50,
-        "fixed": "left",
-        "align": "left",
-        "sortable": false,
-        "locked": true
-      },
-      {
         "key": "__globalIndex__",
         "label": "序号",
         "visible": true,
@@ -59009,6 +60167,16 @@
         "align": "left",
         "sortable": false,
         "locked": true
+      },
+      {
+        "key": "portraitUrl",
+        "label": "照片",
+        "visible": true,
+        "width": 72,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
       },
       {
         "key": "driverName",
@@ -59031,10 +60199,60 @@
         "locked": false
       },
       {
-        "key": "organizationName",
-        "label": "所属组织",
+        "key": "driverOwnership",
+        "label": "司机归属",
         "visible": true,
-        "minWidth": 210,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "driverType",
+        "label": "司机类型",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrierName",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 170,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "companyName",
+        "label": "所属公司",
+        "visible": true,
+        "minWidth": 170,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "plateNo",
+        "label": "车牌号",
+        "visible": true,
+        "minWidth": 135,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "status",
+        "label": "状态",
+        "visible": true,
+        "width": 110,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -59094,7 +60312,7 @@
         "key": "operation",
         "label": "操作",
         "visible": true,
-        "width": 92,
+        "width": 170,
         "fixed": "right",
         "align": "left",
         "sortable": false,
@@ -59102,7 +60320,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "9c38208c01e8eede"
+    "revision": "33c214544a0850bc"
   },
   {
     "menuId": "daa4d42b-0d7e-4f16-952a-654d85e2a4c9",
@@ -60468,6 +61686,26 @@
         "locked": false
       },
       {
+        "key": "warehousedQuantity",
+        "label": "已入库数量",
+        "visible": true,
+        "width": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "pendingInboundQuantity",
+        "label": "未入库数量",
+        "visible": true,
+        "width": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "plannedEndDate",
         "label": "计划结束",
         "visible": true,
@@ -60539,7 +61777,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "450fe8efb799fc1f"
+    "revision": "cb997e442015d6bb"
   },
   {
     "menuId": "e1000000-0000-4000-8000-000000000004",
@@ -66641,10 +67879,120 @@
         "locked": false
       },
       {
+        "key": "vehiclePhotoUrl",
+        "label": "图片",
+        "visible": true,
+        "width": 88,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "vehicleOwnership",
+        "label": "车辆归属",
+        "visible": true,
+        "width": 112,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "primaryDriver",
+        "label": "主司机",
+        "visible": true,
+        "minWidth": 148,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrier",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 190,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "companyName",
         "label": "所属公司",
         "visible": true,
         "minWidth": 170,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "plateColor",
+        "label": "车牌颜色",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "specLengthM",
+        "label": "规格/车长(米)",
+        "visible": true,
+        "width": 128,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "volumeM3",
+        "label": "容积(立方米)",
+        "visible": true,
+        "width": 118,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "loadTons",
+        "label": "载重(吨)",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "defaultTrailerPlateNo",
+        "label": "默认挂车",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "purchaseDate",
+        "label": "购置时间",
+        "visible": true,
+        "width": 124,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "vehicleAge",
+        "label": "车辆年限",
+        "visible": true,
+        "width": 112,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -66732,7 +68080,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "248646f1b1b8a172"
+    "revision": "c59832eb57ffe7a6"
   },
   {
     "menuId": "e2bc79e5-d062-447b-8044-9e631dbb8505",
@@ -66931,6 +68279,231 @@
         ]
       },
       {
+        "key": "constructionNo",
+        "label": "施工号",
+        "visible": true,
+        "minWidth": 130,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "baseQuantity",
+        "label": "基本数量",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "baseUnitName",
+        "label": "基本单位",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "auxiliaryQuantity",
+        "label": "辅助数量",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "auxiliaryUnitName",
+        "label": "辅助单位",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "auxiliaryQuantity2",
+        "label": "辅助数量2",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "auxiliaryUnit2Name",
+        "label": "辅助单位2",
+        "visible": true,
+        "minWidth": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "keeperName",
+        "label": "仓管员",
+        "visible": true,
+        "minWidth": 115,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "inboundQuantity",
+        "label": "已入库数量",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "pendingInboundQuantity",
+        "label": "未入库数量",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packNo",
+        "label": "包号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packArea",
+        "label": "区域",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packBoardNo",
+        "label": "编号",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packLengthMm",
+        "label": "长度 mm",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
+        "key": "packPieces",
+        "label": "块数",
+        "visible": true,
+        "minWidth": 100,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "locked": false,
+        "groups": [
+          "displayMode.value=line",
+          "displayMode.value=document",
+          "displayMode.value=__other__"
+        ]
+      },
+      {
         "key": "inventoryUnitName",
         "label": "库存单位",
         "visible": true,
@@ -66992,7 +68565,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "feb526a57115f4c8"
+    "revision": "d2190a0b1350c0a4"
   },
   {
     "menuId": "e35e3a3e-b024-4cac-89ea-6fb6866a0c75",
@@ -67041,9 +68614,19 @@
       },
       {
         "key": "companyName",
-        "label": "所属组织",
+        "label": "所属公司",
         "visible": true,
         "minWidth": 150,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrierName",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 160,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -67143,7 +68726,7 @@
         "key": "operation",
         "label": "操作",
         "visible": true,
-        "width": 100,
+        "width": 108,
         "fixed": "right",
         "align": "left",
         "sortable": false,
@@ -67151,7 +68734,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "dc3b7e5f21b35451"
+    "revision": "8d986c33aa617926"
   },
   {
     "menuId": "e4993779-4e32-4f55-995f-409bd9220a03",
@@ -67996,26 +69579,6 @@
         "locked": false
       },
       {
-        "key": "contactName",
-        "label": "姓名",
-        "visible": true,
-        "minWidth": 120,
-        "fixed": false,
-        "align": "left",
-        "sortable": false,
-        "locked": false
-      },
-      {
-        "key": "contactPhone",
-        "label": "联系电话",
-        "visible": true,
-        "minWidth": 150,
-        "fixed": false,
-        "align": "left",
-        "sortable": false,
-        "locked": false
-      },
-      {
         "key": "region",
         "label": "省市区",
         "visible": true,
@@ -68077,7 +69640,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "cf10bf76a61d9271"
+    "revision": "0169b22a8720f8c2"
   },
   {
     "menuId": "e873d732-9966-4552-973e-a170eb0e2f70",
@@ -73607,6 +75170,26 @@
         "locked": false
       },
       {
+        "key": "cargoCode",
+        "label": "货物编码",
+        "visible": true,
+        "minWidth": 140,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "specModel",
+        "label": "规格型号",
+        "visible": true,
+        "minWidth": 140,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "quantity",
         "label": "数量",
         "visible": true,
@@ -73645,10 +75228,42 @@
         "align": "right",
         "sortable": false,
         "locked": false
+      },
+      {
+        "key": "sourceContract",
+        "label": "来源合同",
+        "visible": true,
+        "minWidth": 210,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "unitPrice",
+        "label": "协议单价（元）",
+        "visible": true,
+        "minWidth": 135,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "optional": true,
+        "locked": false
+      },
+      {
+        "key": "freight",
+        "label": "货物运费（元）",
+        "visible": true,
+        "minWidth": 135,
+        "fixed": false,
+        "align": "right",
+        "sortable": false,
+        "optional": true,
+        "locked": false
       }
     ],
     "searchKeys": [],
-    "revision": "555c5f7417834ade"
+    "revision": "8054a5b00f75e810"
   },
   {
     "menuId": "fbb671c5-9e30-4890-9c21-bfc6d430e093",
@@ -73676,10 +75291,120 @@
         "locked": false
       },
       {
-        "key": "ownership",
-        "label": "资产归属",
+        "key": "companyName",
+        "label": "所属公司",
         "visible": true,
         "minWidth": 190,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "vehiclePhotoUrl",
+        "label": "图片",
+        "visible": true,
+        "width": 88,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "vehicleOwnership",
+        "label": "车辆归属",
+        "visible": true,
+        "width": 112,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "primaryDriver",
+        "label": "主司机",
+        "visible": true,
+        "minWidth": 148,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrier",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 190,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "plateColor",
+        "label": "车牌颜色",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "specLengthM",
+        "label": "规格/车长(米)",
+        "visible": true,
+        "width": 128,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "volumeM3",
+        "label": "容积(立方米)",
+        "visible": true,
+        "width": 118,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "loadTons",
+        "label": "载重(吨)",
+        "visible": true,
+        "width": 110,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "defaultTrailerPlateNo",
+        "label": "默认挂车",
+        "visible": true,
+        "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "purchaseDate",
+        "label": "购置时间",
+        "visible": true,
+        "width": 124,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "vehicleAge",
+        "label": "车辆年限",
+        "visible": true,
+        "width": 112,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -73747,7 +75472,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "3e96cfb5f12ff97b"
+    "revision": "3933a3df2da1bd45"
   },
   {
     "menuId": "fbbda8dd-c3de-44b1-bbea-c90d84b291a5",
@@ -73763,6 +75488,16 @@
         "align": "left",
         "sortable": false,
         "locked": true
+      },
+      {
+        "key": "imagePath",
+        "label": "卡图片",
+        "visible": true,
+        "width": 82,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
       },
       {
         "key": "cardNo",
@@ -73796,9 +75531,39 @@
       },
       {
         "key": "driverName",
-        "label": "司机",
+        "label": "司机（电话）",
+        "visible": true,
+        "minWidth": 170,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "vehicleOwnership",
+        "label": "车辆归属",
         "visible": true,
         "minWidth": 120,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "carrierName",
+        "label": "所属承运商",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "companyName",
+        "label": "所属公司",
+        "visible": true,
+        "minWidth": 160,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -73856,7 +75621,7 @@
       }
     ],
     "searchKeys": [],
-    "revision": "b1ff15cc118dbbea"
+    "revision": "36b035f150d464db"
   },
   {
     "menuId": "fbe7b90a-101d-4d09-8af0-1573c6e5aac1",
@@ -75337,13 +77102,13 @@
   {
     "menuId": "febe1920-a8a1-4c1f-86dd-69d902938764",
     "routePath": "/tms/basic-data/customer-price-edit",
-    "sourceFile": "modules/art-supabase-tms/src/views/basic-data/customer-price-edit/index.vue",
+    "sourceFile": "modules/art-supabase-tms/src/views/basic-data/modules/agreement-cargo-editor.vue",
     "columns": [
       {
         "key": "__globalIndex__",
         "label": "序号",
         "visible": true,
-        "width": 70,
+        "width": 58,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -75360,30 +77125,40 @@
         "locked": false
       },
       {
+        "key": "cargoCode",
+        "label": "货物编码",
+        "visible": true,
+        "width": 130,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "specModel",
+        "label": "规格型号",
+        "visible": true,
+        "minWidth": 150,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "packageType",
+        "label": "计量单位",
+        "visible": true,
+        "width": 140,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
         "key": "quantity",
         "label": "数量",
         "visible": true,
-        "width": 150,
-        "fixed": false,
-        "align": "left",
-        "sortable": false,
-        "locked": false
-      },
-      {
-        "key": "unit",
-        "label": "单位",
-        "visible": true,
-        "width": 150,
-        "fixed": false,
-        "align": "left",
-        "sortable": false,
-        "locked": false
-      },
-      {
-        "key": "volumeM3",
-        "label": "体积（m³）",
-        "visible": true,
-        "width": 170,
+        "width": 140,
         "fixed": false,
         "align": "left",
         "sortable": false,
@@ -75393,25 +77168,65 @@
         "key": "weightKg",
         "label": "重量（kg）",
         "visible": true,
-        "width": 170,
+        "width": 140,
         "fixed": false,
         "align": "left",
         "sortable": false,
         "locked": false
       },
       {
-        "key": "operation",
-        "label": "操作",
+        "key": "volumeM3",
+        "label": "体积（方）",
         "visible": true,
-        "width": 100,
-        "fixed": "right",
+        "width": 140,
+        "fixed": false,
         "align": "left",
         "sortable": false,
-        "locked": true
+        "locked": false
+      },
+      {
+        "key": "unitPrice",
+        "label": "合同单价（元）",
+        "visible": true,
+        "width": 145,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "freight",
+        "label": "运费（元）",
+        "visible": true,
+        "width": 130,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "sourceContractNo",
+        "label": "来源合同",
+        "visible": true,
+        "minWidth": 150,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
+      },
+      {
+        "key": "remark",
+        "label": "备注",
+        "visible": true,
+        "minWidth": 160,
+        "fixed": false,
+        "align": "left",
+        "sortable": false,
+        "locked": false
       }
     ],
     "searchKeys": [],
-    "revision": "30da867e530c32e6"
+    "revision": "050542900a4c1acc"
   },
   {
     "menuId": "fef0bd9c-19ad-4c08-bcd9-2dcaa058b78a",

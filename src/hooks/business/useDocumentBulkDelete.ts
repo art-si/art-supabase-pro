@@ -3,9 +3,11 @@ import { uniqBy } from 'lodash-es'
 import { ElMessage } from 'element-plus'
 import { useAuth } from '@/hooks/core/useAuth'
 import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
+import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
 import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
 import type { MasterDataDeleteResource } from '@/components/business/master-data-delete-guard/index.vue'
 import type { ArtTableQueryHeaderAction } from '@/components/core/tables/art-table-query/index.vue'
+import type { ApiFeedbackOptions } from '@/types/api/request'
 
 interface DocumentBulkDeleteOptions {
   permission: MaybeRefOrGetter<string>
@@ -14,7 +16,7 @@ interface DocumentBulkDeleteOptions {
   busy: MaybeRefOrGetter<boolean>
   canDelete?: (row: Record<string, unknown>) => boolean
   inspect: (resources: MasterDataDeleteResource[]) => Promise<boolean>
-  remove: (id: string) => Promise<unknown>
+  remove: (id: string, feedback?: ApiFeedbackOptions) => Promise<unknown>
   refresh: () => Promise<void>
   clearSelection: () => void
 }
@@ -24,6 +26,7 @@ export function useDocumentBulkDelete(options: DocumentBulkDeleteOptions) {
   const deleting = ref(false)
   const { hasAuth } = useAuth()
   const { confirmDelete } = useArtFeedback()
+  const captureOperation = useTenantOperationGuard()
   const action = (): ArtTableQueryHeaderAction => ({
     key: 'bulk-delete',
     icon: 'ri:delete-bin-line',
@@ -68,10 +71,14 @@ export function useDocumentBulkDelete(options: DocumentBulkDeleteOptions) {
         'id'
       )
       const assertScope = createTenantScopeReadGuard()
+      const operationCurrent = captureOperation()
+      const isCurrent = () =>
+        operationCurrent() && permission === toValue(options.permission) && hasAuth(permission)
       let removed = 0
       deleting.value = true
       try {
         if (await options.inspect(resources)) return
+        if (!isCurrent()) return
         assertScope()
         await confirmDelete(
           `确认删除 ${resources.length} 张${label}？\n${resources
@@ -81,31 +88,35 @@ export function useDocumentBulkDelete(options: DocumentBulkDeleteOptions) {
               '、'
             )}${resources.length > 8 ? ` 等 ${resources.length} 张` : ''}\n按明细勾选也会删除所属整张单据及全部明细，同一单据只删除一次。此操作不可恢复。`
         )
+        if (!isCurrent()) return
         for (const resource of resources) {
+          if (!isCurrent()) return
           assertScope()
-          if (!hasAuth(permission) || permission !== toValue(options.permission)) {
-            throw new Error('删除权限或单据类型已变化，请刷新后重试')
-          }
           try {
-            await options.remove(resource.id)
+            await options.remove(resource.id, { showMessage: false, showErrorMessage: false })
           } catch (error) {
+            if (!isCurrent()) return
             await options.inspect(resources.slice(removed))
+            if (!isCurrent()) return
             throw error
           }
           removed += 1
+          if (!isCurrent()) return
         }
         ElMessage.success(`已删除 ${removed} 张${label}`)
       } catch (error) {
-        if (error !== 'cancel' && error !== 'close') {
+        if (isCurrent() && error !== 'cancel' && error !== 'close') {
           notifyFriendlyError(error, '批量删除失败，请刷新列表后重试')
           if (removed) ElMessage.warning(`已删除 ${removed} 张，其余单据未删除，请刷新后重新勾选`)
         }
       } finally {
         try {
-          if (removed) {
+          if (removed && isCurrent()) {
             options.clearSelection()
-            await options.refresh()
+            if (isCurrent()) await options.refresh()
           }
+        } catch (error) {
+          if (isCurrent()) notifyFriendlyError(error, '单据已删除，但列表刷新失败，请点击查询重试')
         } finally {
           deleting.value = false
         }

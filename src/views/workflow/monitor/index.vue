@@ -21,6 +21,7 @@
       refreshable
       refresh-label="刷新审批监控数据"
       :refresh-loading="overview.loading"
+      @metric-click="handleMetricClick"
       @refresh="refreshAll"
     >
       <template #actions>
@@ -77,9 +78,17 @@
                 : '业务回调运行正常'
         }}</strong>
         <p v-if="callbackHealth.error">{{ callbackHealth.error.message }}</p>
+        <p v-else-if="callbackHealth.data.deadLetter">
+          {{ callbackHealth.data.deadLetter }} 条死信需核对业务单据后人工补偿；另有
+          {{ callbackHealth.data.retryWait }} 条等待自动重试。
+        </p>
+        <p v-else-if="callbackHealth.data.retryWait">
+          {{ callbackHealth.data.retryWait }} 条等待自动重试；待投递
+          {{ callbackHealth.data.pending }} 条，投递中 {{ callbackHealth.data.processing }} 条。
+        </p>
         <p v-else>
-          待投递 {{ callbackHealth.data.pending }} · 等待重试 {{ callbackHealth.data.retryWait }} ·
-          死信 {{ callbackHealth.data.deadLetter }} · 已成功
+          待投递 {{ callbackHealth.data.pending }} · 投递中 {{ callbackHealth.data.processing }} ·
+          已成功
           {{ callbackHealth.data.succeeded }}
         </p>
       </div>
@@ -91,11 +100,19 @@
         >重试健康度检查</ElButton
       >
       <ElButton
-        :type="callbackIssueCount ? 'danger' : 'primary'"
+        :type="callbackHealth.data.deadLetter ? 'danger' : 'primary'"
         plain
-        @click="openCallbackOutbox(callbackHealth.data.deadLetter > 0)"
+        @click="openCallbackOutbox()"
       >
-        <ArtSvgIcon icon="ri:inbox-archive-line" />查看回调队列
+        <ArtSvgIcon icon="ri:inbox-archive-line" />{{
+          callbackHealth.error
+            ? '查看回调队列'
+            : callbackHealth.data.deadLetter
+              ? '查看死信事件'
+              : callbackHealth.data.retryWait
+                ? '查看待重试事件'
+                : '查看回调队列'
+        }}
       </ElButton>
     </section>
 
@@ -106,9 +123,12 @@
             <ArtSectionTitle :show-line="false">流程实例</ArtSectionTitle>
             <p>超时按当前待办节点的截止时间实时计算；终止流程仅允许平台超级管理员操作。</p>
           </div>
-          <ElTag :type="isPlatformSuper ? 'warning' : 'info'" effect="plain" round>
-            <ArtSvgIcon icon="ri:timer-line" />优先处理超时实例
-          </ElTag>
+          <span class="workflow-monitor__scope-note">
+            {{ activeScopeLabel
+            }}{{
+              table.searchQuery.keyword || table.searchQuery.businessType ? ' · 已叠加检索条件' : ''
+            }}
+          </span>
         </header>
       </template>
 
@@ -121,7 +141,22 @@
         :columns-factory="table.columnsFactory"
         :search-bar-props="table.searchBarProps"
         :table-props="table.tableProps"
-      />
+      >
+        <template #header-left>
+          <div class="workflow-monitor__scope-actions" role="group" aria-label="实例范围">
+            <ElButton
+              v-for="scope in monitorScopes"
+              :key="scope.key"
+              size="small"
+              :type="activeScope === scope.key ? 'primary' : 'default'"
+              :plain="activeScope !== scope.key"
+              :aria-pressed="activeScope === scope.key"
+              @click="applyScope(scope.key)"
+              >{{ scope.label }}</ElButton
+            >
+          </div>
+        </template>
+      </ArtTableQuery>
     </ArtSectionCard>
 
     <component
@@ -153,7 +188,6 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { createFriendlySupabaseError } from '@/utils/supabase'
   import dayjs from 'dayjs'
-  import { ElTag } from 'element-plus'
   import { storeToRefs } from 'pinia'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
@@ -183,6 +217,7 @@
   defineOptions({ name: 'WorkflowMonitor' })
 
   type MonitorRow = Api.Workflow.WorkflowMonitorRecord
+  type MonitorScope = 'all' | 'running' | 'overdue' | 'custom'
   interface MonitorSearch {
     keyword: string
     businessType: string
@@ -218,7 +253,7 @@
     handleOpen: (instance: MonitorRow) => Promise<void>
   }
   interface CallbackOutboxDrawerExpose {
-    handleOpen: (data?: { focusFailures?: boolean }) => Promise<void>
+    handleOpen: (data?: { initialStatus?: 'dead_letter' | 'retry_wait' }) => Promise<void>
   }
 
   const { isPlatformSuper } = storeToRefs(useUserStore())
@@ -260,6 +295,11 @@
     error: null,
     data: { pending: 0, processing: 0, retryWait: 0, succeeded: 0, deadLetter: 0 }
   })
+  const monitorScopes: Array<{ key: Exclude<MonitorScope, 'custom'>; label: string }> = [
+    { key: 'all', label: '全部实例' },
+    { key: 'running', label: '运行中' },
+    { key: 'overdue', label: '已超时' }
+  ]
 
   const formatDuration = (hours: number) => {
     if (hours < 1) return `${Math.max(Math.round(hours * 60), 1)} 分钟`
@@ -434,40 +474,85 @@
   )
   const metricCards = computed<BusinessWorkspaceMetric[]>(() => [
     {
+      key: 'running',
       label: '运行中实例',
-      value: overview.data.runningCount,
-      description: '当前仍在流转的审批',
+      value: overview.loaded && !overview.error ? overview.data.runningCount : '—',
+      description: overview.error ? '概览暂不可用，请重新加载' : '当前仍在流转的审批',
       icon: 'ri:loader-2-line',
-      tone: 'primary'
+      tone: 'primary',
+      interactive: overview.loaded && !overview.error,
+      loading: overview.loading,
+      selected: activeScope.value === 'running'
     },
     {
+      key: 'overdue',
       label: '超时实例',
-      value: overview.data.overdueCount,
-      description: overview.data.overdueCount ? '需要立即关注或干预' : '当前节点时效正常',
+      value: overview.loaded && !overview.error ? overview.data.overdueCount : '—',
+      description: overview.error
+        ? '概览暂不可用，请重新加载'
+        : overview.data.overdueCount
+          ? '需要立即关注或干预'
+          : '当前节点时效正常',
       icon: 'ri:alarm-warning-line',
-      tone: overview.data.overdueCount ? 'danger' : 'success'
+      tone: overview.data.overdueCount ? 'danger' : 'success',
+      interactive: overview.loaded && !overview.error,
+      loading: overview.loading,
+      selected: activeScope.value === 'overdue'
     },
     {
       label: '近30日结束',
-      value: completed30dCount.value,
-      description: `通过 ${overview.data.approved30dCount} · 驳回 ${overview.data.rejected30dCount} · 终止 ${overview.data.cancelled30dCount}`,
+      value: overview.loaded && !overview.error ? completed30dCount.value : '—',
+      description: overview.error
+        ? '概览暂不可用，请重新加载'
+        : `通过 ${overview.data.approved30dCount} · 驳回 ${overview.data.rejected30dCount} · 终止 ${overview.data.cancelled30dCount}`,
       icon: 'ri:checkbox-circle-line',
-      tone: 'success'
+      tone: 'success',
+      loading: overview.loading
     },
     {
       label: '平均流转耗时',
       value:
-        overview.data.averageDurationHours > 0
+        overview.loaded && !overview.error && overview.data.averageDurationHours > 0
           ? formatDuration(overview.data.averageDurationHours)
           : '--',
-      description: '基于已结束流程计算',
+      description: overview.error ? '概览暂不可用，请重新加载' : '基于已结束流程计算',
       icon: 'ri:timer-flash-line',
-      tone: 'info'
+      tone: 'info',
+      loading: overview.loading
     }
   ])
   const callbackIssueCount = computed(
     () => callbackHealth.data.retryWait + callbackHealth.data.deadLetter
   )
+  const activeScope = computed<MonitorScope>(() => {
+    if (
+      table.searchQuery.slaStatus === 'overdue' &&
+      (!table.searchQuery.status || table.searchQuery.status === 'running')
+    )
+      return 'overdue'
+    if (table.searchQuery.status === 'running' && !table.searchQuery.slaStatus) return 'running'
+    if (table.searchQuery.status || table.searchQuery.slaStatus) return 'custom'
+    return 'all'
+  })
+  const activeScopeLabel = computed(() => {
+    if (activeScope.value === 'overdue') return '当前查看：已超时实例'
+    if (activeScope.value === 'running') return '当前查看：运行中实例'
+    if (activeScope.value === 'custom') return '当前查看：自定义实例范围'
+    return '当前查看：全部实例'
+  })
+
+  async function applyScope(scope: Exclude<MonitorScope, 'custom'>): Promise<void> {
+    table.searchQuery.status = scope === 'running' ? 'running' : ''
+    table.searchQuery.slaStatus = scope === 'overdue' ? 'overdue' : ''
+    await nextTick()
+    await tableRef.value?.getData()
+  }
+
+  async function handleMetricClick(metric: BusinessWorkspaceMetric): Promise<void> {
+    if (metric.key === 'running' || metric.key === 'overdue') {
+      await applyScope(metric.key)
+    }
+  }
 
   function fetchTableData(params: MonitorTableParams) {
     const { from, to } = buildSupabasePageRange(params)
@@ -518,9 +603,16 @@
     }
   }
 
-  async function openCallbackOutbox(focusFailures = false): Promise<void> {
+  async function openCallbackOutbox(): Promise<void> {
     await loadCallbackOutboxDrawer()
-    await callbackOutboxDrawerRef.value?.handleOpen({ focusFailures })
+    const initialStatus = callbackHealth.error
+      ? undefined
+      : callbackHealth.data.deadLetter
+        ? 'dead_letter'
+        : callbackHealth.data.retryWait
+          ? 'retry_wait'
+          : undefined
+    await callbackOutboxDrawerRef.value?.handleOpen({ initialStatus })
   }
 
   async function refreshAll(): Promise<void> {
@@ -618,6 +710,7 @@
 
     &__workspace-header {
       display: flex;
+      flex-wrap: wrap;
       gap: 16px;
       align-items: center;
       justify-content: space-between;
@@ -631,6 +724,23 @@
         margin: 4px 0 0;
         font-size: 12px;
         color: var(--art-gray-500);
+      }
+    }
+
+    &__scope-note {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--art-gray-700);
+    }
+
+    &__scope-actions {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+
+      :deep(.el-button + .el-button) {
+        margin-left: 0;
       }
     }
 

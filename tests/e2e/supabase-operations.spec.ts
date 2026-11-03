@@ -9,6 +9,123 @@ test.beforeEach(async ({ page }) => {
   await page.routeWebSocket(/^ws:\/\/(?:127\.0\.0\.1|localhost):\d+\//, (socket) => socket.close())
 })
 
+test('更新任务登录过期自动刷新，网络恢复后读取真实失败状态且不重发备份', async ({ page }, info) => {
+  test.setTimeout(240_000)
+  await prepareIsolatedSession(page)
+  let offline = false
+  let finished = false
+  let refreshes = 0
+  let posts = 0
+  const run: OperationRun = {
+    id: '77777777-7777-4777-8777-777777777777',
+    operationId: 'updateBackup',
+    title: '更新已有备份',
+    actorId: 'permission-test-auth',
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    lastOutputAt: new Date().toISOString(),
+    stage: '校对结构文件 schema.sql',
+    parameters: {},
+    logs: []
+  }
+  await page.goto('/tests/e2e/fixtures/supabase-operations.html')
+  const session = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('sb-ckbftoopuyophiebamwy-auth-token') || 'null')
+  )
+  const renewed = {
+    ...session,
+    access_token: session.access_token.replace(/[^.]+$/, 'refreshed-signature'),
+    expires_in: 7200,
+    expires_at: Math.floor(Date.now() / 1000) + 7200
+  }
+  await page.route('**/auth/v1/token**', (route) => {
+    refreshes++
+    return route.fulfill({ json: renewed })
+  })
+  await page.route('http://127.0.0.1:4318/**', (route) => {
+    if (route.request().method() === 'POST') posts++
+    if (offline)
+      return route.fulfill({
+        status: 503,
+        json: {
+          code: 'PLATFORM_IDENTITY_UNAVAILABLE',
+          message: '无法连接平台身份服务，请检查执行端网络和代理后重试'
+        }
+      })
+    if (route.request().headers().authorization !== `Bearer ${renewed.access_token}`)
+      return route.fulfill({
+        status: 401,
+        json: { code: 'PLATFORM_AUTH_REQUIRED', message: '平台登录已失效，请重新登录后重试' }
+      })
+    return route.fulfill({
+      json: {
+        projectRef: 'ckbftoopuyophiebamwy',
+        runs: [
+          finished
+            ? {
+                ...run,
+                status: 'failed',
+                endedAt: new Date().toISOString(),
+                error: '来源数据库连接在读取期间中断，请检查网络后重新更新；原完整备份保留。'
+              }
+            : run
+        ],
+        busy: !finished
+      }
+    })
+  })
+  await page.getByRole('button', { name: '连接并查看任务', exact: true }).click()
+  await expect(page.getByText('执行端已连接', { exact: true })).toBeVisible()
+  expect(refreshes).toBe(1)
+  offline = true
+  await page
+    .getByTestId('operations-task')
+    .getByRole('button', { name: '刷新', exact: true })
+    .click()
+  await expect(page.getByTestId('operations-connection')).toContainText('无法连接平台身份服务')
+  await expect(page.getByText('状态待确认', { exact: true }).first()).toBeVisible()
+  await page.screenshot({ path: info.outputPath('update-identity-offline.png') })
+  finished = true
+  offline = false
+  await expect(page.getByText('执行端已连接', { exact: true })).toBeVisible({ timeout: 40_000 })
+  await expect(page.getByTestId('operations-task')).toContainText('原完整备份保留')
+  expect(refreshes).toBe(1)
+  expect(posts).toBe(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true
+  )
+  await page.screenshot({ path: info.outputPath('update-identity-recovered-390.png') })
+})
+
+test('运维权限被拒绝后停止自动重连，不刷新登录或发起任务', async ({ page }) => {
+  test.setTimeout(120_000)
+  await prepareIsolatedSession(page)
+  let reads = 0
+  let refreshes = 0
+  await page.route('**/auth/v1/token**', (route) => {
+    refreshes++
+    return route.abort()
+  })
+  await page.route('http://127.0.0.1:4318/**', (route) => {
+    reads++
+    return route.fulfill({
+      status: 403,
+      json: {
+        code: 'PLATFORM_PERMISSION_DENIED',
+        message: '没有该运维操作权限，请联系平台管理员。'
+      }
+    })
+  })
+  await page.goto('/tests/e2e/fixtures/supabase-operations.html')
+  await page.clock.install()
+  await page.getByRole('button', { name: '连接并查看任务', exact: true }).click()
+  await expect(page.getByTestId('operations-connection')).toContainText('没有该运维操作权限')
+  await page.clock.fastForward(60_000)
+  expect(reads).toBe(1)
+  expect(refreshes).toBe(0)
+})
+
 test('刷新恢复原任务，离线显示待确认；连接查看不重复创建，外部导出阻止新任务', async ({
   page
 }, testInfo) => {

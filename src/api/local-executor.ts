@@ -59,7 +59,8 @@ export async function requestLocalExecutor(
   if (!local && !trusted.includes(endpoint.origin))
     throw new Error('远程执行端未列入应用可信地址，请由管理员配置 VITE_SQL_GATEWAY_ORIGINS 后重试')
   const { data, error } = await supabase.auth.getSession()
-  if (error || !data.session) throw new Error('请先登录项目账号，再连接执行端')
+  if (error || !data.session)
+    throw new LocalExecutorError('请先登录项目账号，再连接执行端', 401, 'PLATFORM_AUTH_REQUIRED')
   const send = async (token: string): Promise<Response> => {
     try {
       const request: RequestInit & { targetAddressSpace?: 'loopback' } = {
@@ -103,7 +104,11 @@ export async function requestLocalExecutor(
       response = await send(session.access_token)
       result = await response.json().catch(() => null)
     } else {
-      throw new Error('登录状态未能恢复，请检查网络后重试或重新登录')
+      throw new LocalExecutorError(
+        '登录状态未能恢复，请检查网络后重试或重新登录',
+        401,
+        'PLATFORM_AUTH_RECOVERY_FAILED'
+      )
     }
   }
   if (!response.ok) {

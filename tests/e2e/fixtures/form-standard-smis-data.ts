@@ -6,6 +6,7 @@ import type {
   SmisSpecialOperationPermit,
   SmisSpecialOperationType
 } from '@smis/api'
+import { mapValues } from 'lodash-es'
 
 export const tenantId = '11111111-1111-4111-8111-111111111111'
 export const recordId = '22222222-2222-4222-8222-222222222222'
@@ -15,7 +16,7 @@ export const itemId = '55555555-5555-4555-8555-555555555555'
 export const operationTypeId = '66666666-6666-4666-8666-666666666666'
 export const frequencyId = '77777777-7777-4777-8777-777777777777'
 export const timestamp = '2026-10-31T08:00:00+08:00'
-export const dictionaries: Record<
+const dictionaryOptions: Record<
   string,
   Array<{ label: string; value: string; remark?: string }>
 > = {
@@ -121,6 +122,17 @@ export const dictionaries: Record<
   smisEquipmentDepreciationStatus: [{ label: '启用', value: 'active' }],
   smisEmergencyDrillPlanStatus: [{ label: '已计划', value: 'planned' }]
 }
+
+export const dictionaries: Record<string, Api.DataCenter.DictListItem[]> = mapValues(
+  dictionaryOptions,
+  (options) =>
+    options.map((item) => ({
+      ...item,
+      name: item.label,
+      code: item.value,
+      status: '1'
+    }))
+)
 
 export const supplier = {
   id: recordId,

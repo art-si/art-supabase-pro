@@ -113,16 +113,15 @@ export async function verifyUpdateSnapshot(
       '-NoProfile',
       '-NonInteractive',
       '-File',
-      path.join(UPDATE_REPOSITORY_ROOT, 'supabase/restore-local-supabase.ps1'),
-      '-BackupPath',
-      root,
-      '-LocalRoot',
-      path.dirname(root),
-      '-VerifyBackupOnly',
-      '-VerificationReportPath',
-      reportFile
+      path.join(UPDATE_REPOSITORY_ROOT, 'supabase/operations-task.ps1'),
+      '-Operation',
+      'verify'
     ],
-    { timeoutMs: 180_000 }
+    {
+      timeoutMs: 180_000,
+      input: JSON.stringify({ BackupPath: root }) + '\n',
+      env: { SUPABASE_OPS_REPORT_PATH: reportFile }
+    }
   )
   if (!(await exists(reportFile))) throw new Error('本地备份校验没有生成报告，已停止更新。')
   const report = await readJson(reportFile)

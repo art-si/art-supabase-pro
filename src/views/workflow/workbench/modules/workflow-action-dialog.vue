@@ -23,7 +23,7 @@
                   : '驳回申请'
             }}
           </strong>
-          <small>
+          <small :title="state.task?.instance?.businessTitle || undefined">
             {{ state.task?.instance?.businessTitle || '--' }}
             <template v-if="state.platformOverride && state.task?.tenant?.tenantName">
               · {{ state.task.tenant.tenantName }}
@@ -46,14 +46,19 @@
         <article>
           <span><ArtSvgIcon icon="ri:node-tree" /></span>
           <div
-            ><small>当前节点</small><strong>{{ state.task?.nodeName || '--' }}</strong></div
+            ><small>当前节点</small
+            ><strong :title="state.task?.nodeName || undefined">{{
+              state.task?.nodeName || '--'
+            }}</strong></div
           >
         </article>
         <article>
           <span><ArtSvgIcon icon="ri:user-follow-line" /></span>
           <div>
             <small>审批席位</small>
-            <strong>{{ state.task?.assigneeNameSnapshot || '--' }}</strong>
+            <strong :title="state.task?.assigneeNameSnapshot || undefined">{{
+              state.task?.assigneeNameSnapshot || '--'
+            }}</strong>
           </div>
         </article>
         <article>
@@ -61,6 +66,13 @@
           <div
             ><small>决策规则</small><strong>{{ decisionRuleText }}</strong></div
           >
+        </article>
+        <article v-if="state.task?.dueAt">
+          <span><ArtSvgIcon icon="ri:time-line" /></span>
+          <div>
+            <small>审批时限</small>
+            <strong :class="deadlineTone">{{ deadlineText }}</strong>
+          </div>
         </article>
       </div>
       <ArtAsyncState
@@ -111,6 +123,8 @@
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
+  import { formatDateTimeValue } from '@/utils/ui/format'
+  import dayjs from 'dayjs'
   import type { FormRules } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -192,6 +206,16 @@
       return `${task.approvalThresholdPercent}% 比例会签`
     }
     return '或签（一人通过）'
+  })
+  const deadlineTone = computed(() => {
+    const dueAt = state.task?.dueAt
+    if (!dueAt) return ''
+    return dayjs(dueAt).isBefore(dayjs()) ? 'is-overdue' : ''
+  })
+  const deadlineText = computed(() => {
+    const dueAt = state.task?.dueAt
+    if (!dueAt) return '--'
+    return `${deadlineTone.value ? '已超时 · ' : ''}${formatDateTimeValue(dueAt, { format: 'MM-DD HH:mm' })}`
   })
   const actionNotice = computed(() => {
     if (state.platformOverride) {
@@ -386,8 +410,12 @@
 
     &__context {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
+
+      article:last-child:nth-child(3) {
+        grid-column: 1 / -1;
+      }
 
       article {
         display: flex;
@@ -432,6 +460,10 @@
         strong {
           font-size: 13px;
           color: var(--art-gray-900);
+
+          &.is-overdue {
+            color: var(--el-color-danger);
+          }
         }
       }
     }

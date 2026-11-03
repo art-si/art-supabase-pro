@@ -26,6 +26,7 @@ function workOrder(index: number, tenantId = tenantA) {
     material_name_snapshot: '测试物料',
     material_description: '测试物料',
     order_quantity: 10,
+    warehoused_quantity: index === 1 ? 4.25 : 0,
     unit_snapshot: '件',
     planned_end_date: '2026-11-30',
     status: pending ? 'pending' : 'confirmed',
@@ -194,6 +195,33 @@ async function expectUnknownMetrics(page: Page, mode: Mode) {
     await expect(metric(page, label)).toHaveText('—')
   }
 }
+
+test('MES 生产工单显示已过账入库及待入库数量', async ({ page }, testInfo) => {
+  const requests: RequestInfo[] = []
+  await prepareIsolatedSession(page)
+  await mockReads(page, 'order', requests)
+  await openFixture(
+    page,
+    'order',
+    { theme: 'light', boxBorderMode: true },
+    testInfo.project.use.viewport?.width ?? 1440
+  )
+
+  const row = page.locator('.el-table__body tr').filter({ hasText: 'WO-001' }).first()
+  await expect(row).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '已入库数量' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '未入库数量' })).toBeVisible()
+  await expect(row).toContainText('10.00 件')
+  await expect(row).toContainText('4.25 件')
+  await expect(row).toContainText('5.75 件')
+  const pendingQuantity = row.getByText('5.75 件', { exact: true })
+  await pendingQuantity.scrollIntoViewIfNeeded()
+  await expect(pendingQuantity).toBeInViewport()
+  await page.screenshot({
+    path: testInfo.outputPath('work-order-inbound-quantities.png'),
+    fullPage: true
+  })
+})
 
 for (const mode of ['order', 'task'] as const) {
   test(`MES ${mode} 列表失败重试及合法空态`, async ({ page }) => {
@@ -431,6 +459,12 @@ for (const mode of ['order', 'task'] as const) {
     expect(sheet.rowCount).toBe(26)
     expect(sheet.getCell('A2').text).toContain(mode === 'order' ? 'WO-001' : 'TASK-001')
     expect(sheet.getCell('A26').text).toContain(mode === 'order' ? 'WO-025' : 'TASK-025')
+    if (mode === 'order') {
+      expect(sheet.getCell('E1').text).toBe('已入库数量')
+      expect(sheet.getCell('F1').text).toBe('未入库数量')
+      expect(Number(sheet.getCell('E2').value)).toBe(4.25)
+      expect(Number(sheet.getCell('F2').value)).toBe(5.75)
+    }
     await expectMetrics(page, mode, 1)
     expect(requests.some((request) => request.limit === 500 && request.offset === 0)).toBe(true)
 

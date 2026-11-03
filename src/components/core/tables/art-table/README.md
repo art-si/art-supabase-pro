@@ -183,7 +183,9 @@ Table V2 会以排序处理覆盖 `headerCellProps.onClick`，适配层通过表
 
 `ArtTable` 和 `useTableColumns` 统一读取当前菜单的有效列方案。业务页面继续保留自己的列工厂、格式化、权限判断与数据查询；目录只记录展示元数据，不会生成未授权的业务列。
 
-从当前 `sys_menu` 导出菜单快照（`id/component/type/path/parent_id`）后运行 `pnpm exec tsx scripts/generate-table-column-catalog.ts <菜单快照.json>`，更新两个 `src/config/table-column-*.generated.json` 文件；不要手工维护目录。生成器跟踪实际路由、包装组件的静态 props、动态工作区、条件分支、循环及 `push/splice` 生成的列；运行期的权限、标签页与单据/明细模式保留所有可达列。同页多张主表通过 `groups` 分别匹配，分组子列通过 `parentKey` 关联，不能把子列数算进顶层主表匹配门槛。弹窗、抽屉、选择器、对象详情与附件表不作为主列表注册。
+生成器始终把目录和清单写入仓库根目录，输入快照路径则按调用时的工作目录解析。
+
+从当前 `sys_menu` 导出菜单快照（`id/component/type/path/parent_id`）后运行 `pnpm exec tsx scripts/generate-table-column-catalog.ts <菜单快照.json>`，更新两个 `src/config/table-column-*.generated.json` 文件；不要手工维护目录。必须显式传入当前快照；无参调用或无效快照会在写入前报错，避免自动使用旧备份覆盖新目录。生成器跟踪实际路由、包装组件的静态 props、动态工作区、条件分支、循环及 `push/splice` 生成的列；运行期的权限、标签页与单据/明细模式保留所有可达列。同页多张主表通过 `groups` 分别匹配，分组子列通过 `parentKey` 关联，不能把子列数算进顶层主表匹配门槛。弹窗、抽屉、选择器、对象详情与附件表不作为主列表注册。
 
 运行期选择条件按完整工厂生成各模式的分组，公共列同时属于对应分组；保留未显式比较的默认分支。字段权限控制的列标记为 `optional`，不计入主表必需列的覆盖率，但仍必须属于目录；实际可见列始终由业务工厂授权，保存的方案不能生成缺少权限的列。`operation` 以及标题为“操作”的 `action` 列受结构保护，不允许通过列方案隐藏。
 

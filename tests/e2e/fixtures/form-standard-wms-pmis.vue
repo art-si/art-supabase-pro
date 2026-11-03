@@ -40,7 +40,7 @@
       case 'plan':
         return {
           component: PlanDialog,
-          props: {},
+          props: { workspaceKind: kind },
           args: [
             {
               kind,

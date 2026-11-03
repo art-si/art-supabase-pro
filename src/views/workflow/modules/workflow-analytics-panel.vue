@@ -10,9 +10,20 @@
           @change="loadData"
         />
       </div>
-      <ElButton type="primary" plain :disabled="!exportReady" @click="exportCsv">
-        <ArtSvgIcon icon="ri:download-2-line" />{{ exportLabel }}
-      </ElButton>
+      <div class="workflow-analytics__toolbar-actions">
+        <span aria-live="polite">{{
+          state.loading
+            ? '正在更新统计…'
+            : state.error
+              ? '本次统计未更新'
+              : exportReady && state.data
+                ? `数据生成于 ${formatDate(activeGeneratedAt)}`
+                : '等待统计数据'
+        }}</span>
+        <ElButton type="primary" plain :disabled="!exportReady" @click="exportCsv">
+          <ArtSvgIcon icon="ri:download-2-line" />{{ exportLabel }}
+        </ElButton>
+      </div>
     </section>
 
     <ArtAsyncState
@@ -46,10 +57,10 @@
           <template #header
             ><div class="workflow-analytics__heading">
               <div>
-                <ArtSectionTitle :show-line="false">近 14 日发起趋势</ArtSectionTitle>
+                <ArtSectionTitle :show-line="false">每日发起趋势</ArtSectionTitle>
                 <p>柱高按当前区间最大日发起量归一化，仅用于快速识别峰值。</p>
               </div>
-              <span>生成于 {{ formatDate(state.data.generatedAt) }}</span>
+              <span>最近 {{ recentDaily.length }} 天</span>
             </div></template
           >
           <ElScrollbar>
@@ -320,7 +331,7 @@
       {
         label: '已通过',
         value: summary?.approvedCount ?? 0,
-        hint: '已完成业务回写'
+        hint: '流程结论为通过'
       },
       {
         label: '超时实例',
@@ -379,6 +390,9 @@
   )
   const exportLabel = computed(() =>
     state.activeTab === 'overview' ? '导出业务汇总' : '导出瓶颈明细'
+  )
+  const activeGeneratedAt = computed(() =>
+    state.activeTab === 'overview' ? state.data?.generatedAt : state.bottleneck?.generatedAt
   )
 
   const formatDate = createDateTimeFormatter({ format: 'YYYY-MM-DD HH:mm' })
@@ -486,13 +500,24 @@
 
       > div {
         display: flex;
+        flex-wrap: wrap;
         gap: 10px;
         align-items: center;
+        min-width: 0;
       }
 
       strong {
         font-size: 13px;
         color: var(--art-gray-700);
+      }
+    }
+
+    &__toolbar-actions {
+      justify-content: flex-end;
+
+      > span {
+        font-size: 11px;
+        color: var(--art-gray-600);
       }
     }
 

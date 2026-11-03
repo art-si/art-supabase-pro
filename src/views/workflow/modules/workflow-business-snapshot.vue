@@ -3,68 +3,86 @@
     class="workflow-business-snapshot"
     title="业务资料"
     :subtitle="snapshotSubtitle"
+    :loading="loading"
+    :error="error"
+    loading-mode="skeleton"
+    :skeleton-rows="3"
+    :empty="!hasContent"
+    empty-title="暂无业务摘要资料"
+    :empty-description="
+      sourceRoutePath
+        ? '当前业务未提供可展示的摘要，可打开业务原单核对资料。'
+        : '当前业务未提供可展示的摘要，请联系发起人核对业务资料。'
+    "
     aria-label="审批业务资料"
+    @retry="emit('retry')"
   >
     <template v-if="sourceRoutePath" #actions>
-      <RouterLink class="workflow-business-snapshot__source-link" :to="sourceRoutePath">
+      <RouterLink
+        class="workflow-business-snapshot__source-link art-icon-label"
+        :to="sourceRoutePath"
+      >
         查看业务原单<ArtSvgIcon icon="ri:arrow-right-up-line" aria-hidden="true" />
       </RouterLink>
     </template>
 
-    <div v-if="snapshot.warnings.length" class="workflow-business-snapshot__warnings">
-      <ElAlert
-        v-for="warning in snapshot.warnings"
-        :key="warning"
-        :title="warning"
-        type="warning"
-        :closable="false"
-        show-icon
+    <template v-if="snapshot">
+      <div v-if="snapshot.warnings.length" class="workflow-business-snapshot__warnings">
+        <ElAlert
+          v-for="warning in snapshot.warnings"
+          :key="warning"
+          :title="warning"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
+      </div>
+
+      <div v-if="snapshot.metrics.length" class="workflow-business-snapshot__metrics">
+        <article
+          v-for="metric in snapshot.metrics"
+          :key="metric.label"
+          :class="`is-${metric.tone || 'primary'}`"
+        >
+          <small>{{ metric.label }}</small>
+          <strong :title="`${metric.label}：${metric.value}`">{{ metric.value }}</strong>
+        </article>
+      </div>
+
+      <ArtDescriptions
+        v-if="displayFields.length"
+        :data="snapshot"
+        :items="displayFields"
+        :columns="2"
+        :tablet-columns="2"
+        :label-width="100"
+        empty-text="—"
       />
-    </div>
 
-    <div v-if="snapshot.metrics.length" class="workflow-business-snapshot__metrics">
-      <article
-        v-for="metric in snapshot.metrics"
-        :key="metric.label"
-        :class="`is-${metric.tone || 'primary'}`"
-      >
-        <small>{{ metric.label }}</small>
-        <strong>{{ metric.value }}</strong>
-      </article>
-    </div>
+      <div v-if="snapshot.attachments.length" class="workflow-business-snapshot__attachments">
+        <strong>业务附件（{{ snapshot.attachments.length }}）</strong>
+        <a
+          v-for="attachment in snapshot.attachments"
+          :key="`${attachment.name}-${attachment.url}`"
+          :href="attachment.url"
+          :title="attachment.name"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <ArtSvgIcon icon="ri:attachment-2" aria-hidden="true" />
+          <span>{{ attachment.name }}</span>
+          <small>{{ attachment.fileSize || attachment.fileType || '' }}</small>
+        </a>
+      </div>
 
-    <ArtDescriptions
-      v-if="displayFields.length"
-      :data="snapshot"
-      :items="displayFields"
-      :columns="2"
-      :tablet-columns="2"
-      :label-width="100"
-      empty-text="—"
-    />
-
-    <div v-if="snapshot.attachments.length" class="workflow-business-snapshot__attachments">
-      <strong>业务附件（{{ snapshot.attachments.length }}）</strong>
-      <a
-        v-for="attachment in snapshot.attachments"
-        :key="`${attachment.name}-${attachment.url}`"
-        :href="attachment.url"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <ArtSvgIcon icon="ri:attachment-2" aria-hidden="true" />
-        <span>{{ attachment.name }}</span>
-        <small>{{ attachment.fileSize || attachment.fileType || '' }}</small>
-      </a>
-    </div>
-
-    <OcrOriginalText
-      v-if="snapshot.ocrEvidence"
-      :text="snapshot.ocrEvidence.rawText"
-      title="原始识别内容"
-      description="审批依据：此内容由 OCR 在业务表单人工修正前生成并留存。"
-      :rows="6"
-    />
+      <OcrOriginalText
+        v-if="snapshot.ocrEvidence"
+        :text="snapshot.ocrEvidence.rawText"
+        title="原始识别内容"
+        description="审批依据：此内容由 OCR 在业务表单人工修正前生成并留存。"
+        :rows="6"
+      />
+    </template>
   </ArtSectionCard>
 </template>
 
@@ -81,17 +99,39 @@
 
   defineOptions({ name: 'WorkflowBusinessSnapshot' })
 
-  const props = defineProps<{ snapshot: Api.Workflow.WorkflowBusinessSnapshot }>()
+  const props = withDefaults(
+    defineProps<{
+      snapshot?: Api.Workflow.WorkflowBusinessSnapshot | null
+      loading?: boolean
+      error?: Error | null
+    }>(),
+    { snapshot: null, loading: false, error: null }
+  )
+  const emit = defineEmits<{ retry: [] }>()
 
   const sourceRoutePath = computed(() =>
-    getWorkflowBusinessSourcePath(
-      props.snapshot.businessType,
-      props.snapshot.businessId,
-      props.snapshot.routePath
+    props.snapshot
+      ? getWorkflowBusinessSourcePath(
+          props.snapshot.businessType,
+          props.snapshot.businessId,
+          props.snapshot.routePath
+        )
+      : ''
+  )
+  const businessContract = computed(() =>
+    getWorkflowBusinessContract(props.snapshot?.businessType || 'generic')
+  )
+  const hasContent = computed(() =>
+    Boolean(
+      props.snapshot?.fields.length ||
+      props.snapshot?.metrics.length ||
+      props.snapshot?.warnings.length ||
+      props.snapshot?.attachments.length ||
+      props.snapshot?.ocrEvidence?.rawText
     )
   )
-  const businessContract = computed(() => getWorkflowBusinessContract(props.snapshot.businessType))
   const snapshotSubtitle = computed(() => {
+    if (!props.snapshot) return '核对业务原单与审批依据'
     const parts = [businessContract.value.label]
     if (props.snapshot.businessNo) parts.push(props.snapshot.businessNo)
     else if (props.snapshot.subtitle && props.snapshot.subtitle !== props.snapshot.title) {
@@ -100,7 +140,7 @@
     return parts.join(' · ')
   })
   const displayFields = computed<ArtDescriptionItem<Api.Workflow.WorkflowBusinessSnapshot>[]>(() =>
-    props.snapshot.fields.map((field, index) => {
+    (props.snapshot?.fields || []).map((field, index) => {
       const metadata = businessContract.value.fields.find(
         (item) => item.key === field.label || item.label === field.label
       )
@@ -158,7 +198,7 @@
     &__source-link {
       display: inline-flex;
       flex: none;
-      gap: 4px;
+      gap: var(--art-control-icon-gap);
       align-items: center;
       padding: 5px 7px;
       font-size: 13px;

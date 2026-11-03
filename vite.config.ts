@@ -152,7 +152,9 @@ export default async ({ mode }: { mode: string }) => {
     },
     // 路径别名
     resolve: {
-      dedupe: [...new Set([...hostedModuleSharedDependencies, 'three'])],
+      dedupe: [
+        ...new Set([...hostedModuleSharedDependencies, 'three', 'decimal.js-light', 'file-saver'])
+      ],
       alias: [
         ...(enableCloudBaseSdk
           ? []

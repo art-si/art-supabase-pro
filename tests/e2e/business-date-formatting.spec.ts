@@ -13,7 +13,7 @@ test('车辆档案和运输回单复用日期格式且保留业务空值规则',
   })
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
   await page.goto('/tests/e2e/fixtures/business-date-formatting.html')
-  const vehicle = page.locator('.vehicle-query-summary')
+  const vehicle = page.locator('.vehicle-query-archive-panel')
   const invoice = vehicle
     .locator('td')
     .filter({ hasText: '购入开票日期' })

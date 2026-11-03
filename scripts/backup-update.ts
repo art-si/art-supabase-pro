@@ -33,7 +33,8 @@ import {
   commitBackupUpdate,
   recoverBackupUpdate,
   acquireBackupUpdateSession,
-  refreshBackupDirectoryTimestamp
+  refreshBackupDirectoryTimestamp,
+  cleanBackupUpdateWorkspace
 } from './lib/backup-update-workspace'
 import {
   BACKUP_SOURCE_PROJECT,
@@ -100,7 +101,6 @@ interface SavedUpdatePlan {
   backupPath: string
   baseManifestSha256: string
   shape: string
-  report: BackupUpdateReport
 }
 const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i
 const COPY_FINGERPRINT_ALGORITHM = 'copy-text-sha256-eight-lane-sum-v1'
@@ -204,15 +204,19 @@ function normalizeMetadata(value: unknown): unknown {
     })
   ) as unknown
 }
-async function writeMetadataIfChanged(file: string, value: unknown): Promise<boolean> {
+async function metadataMatches(file: string, value: unknown): Promise<boolean> {
   if (await exists(file)) {
     try {
       const old = parseCliArray(await readFile(file, 'utf8'))
-      if (isDeepStrictEqual(normalizeMetadata(old), normalizeMetadata(value))) return false
+      return isDeepStrictEqual(normalizeMetadata(old), normalizeMetadata(value))
     } catch {
       /* Verified non-array formats are intentionally replaced by current metadata. */
     }
   }
+  return false
+}
+async function writeMetadataIfChanged(file: string, value: unknown): Promise<boolean> {
+  if (await metadataMatches(file, value)) return false
   await writeJson(file, value)
   return true
 }
@@ -352,21 +356,25 @@ async function inspectStorage(
     }
   }
   await visit(path.join(root, 'storage'))
+  const folded = new Map([...files].map((key) => [key.toLowerCase(), key]))
   const items: UpdateItem[] = []
   for (const object of source) {
     const key = objectKey(object),
       target = path.join(root, 'storage', ...key.split('/'))
+    if (folded.has(key.toLowerCase()) && folded.get(key.toLowerCase()) !== key)
+      throw new Error('Storage 路径发生仅大小写变化，请先调整来源名称，再更新 Windows 备份。')
     const present = files.delete(key),
       old = prior.get(key)
     let equal = false
     if (present && (await stat(target)).size === object.size) {
       if (
         old &&
+        Boolean(object.version?.trim() || object.etag?.trim()) &&
         old.identity === storageIdentity(object) &&
         old.sha256 === (await fileHash(target))
       )
         equal = true
-      else if (object.etag && /^[a-f\d]{32}$/i.test(object.etag.replaceAll('"', '')))
+      else if (!old && object.etag && /^[a-f\d]{32}$/i.test(object.etag.replaceAll('"', '')))
         equal = (await fileHash(target, 'md5')) === object.etag.replaceAll('"', '').toLowerCase()
     }
     items.push({
@@ -457,7 +465,7 @@ async function dumpTable(
   // A stdin watcher terminates pg_dump if its owning Node/Docker client dies.
   // No user text is interpolated into this shell program; dump options are argv.
   const watcher =
-    'pg_dump "$@" & dump=$!; (cat >/dev/null; kill -TERM "$dump" 2>/dev/null) <&0 & guard=$!; wait "$dump"; code=$?; kill "$guard" 2>/dev/null || :; exit "$code"'
+    'exec 3<&0; pg_dump "$@" </dev/null & dump=$!; (while IFS= read -r line <&3; do :; done; kill -TERM "$dump" 2>/dev/null) & guard=$!; wait "$dump"; code=$?; kill "$guard" 2>/dev/null || :; exit "$code"'
   const result = await run(
     'docker',
     [
@@ -630,9 +638,15 @@ export async function runBackupUpdate(
     report.baseManifestSha256 = await fileHash(path.join(root, 'manifest.json'))
     const connection = await readJson(path.join(root, 'metadata/database-connection.json'))
     assertSourceConnection(connection)
-    const priorValue = (await exists(path.join(cacheRoot, 'index.json')))
-      ? await readJson(path.join(cacheRoot, 'index.json'))
-      : null
+    let priorValue: unknown = null
+    if (await exists(path.join(cacheRoot, 'index.json'))) {
+      try {
+        priorValue = await readJson(path.join(cacheRoot, 'index.json'))
+      } catch (cause) {
+        if (!(cause instanceof SyntaxError)) throw cause
+        report.warnings.push('本机比较索引无法读取，本次重新校对结构；原备份仍按完成清单验证。')
+      }
+    }
     const index =
       isUpdateIndex(priorValue) && priorValue.manifestSha256 === report.baseManifestSha256
         ? priorValue
@@ -643,6 +657,7 @@ export async function runBackupUpdate(
     if (
       input.PlanId &&
       (!isObjectRecord(storedValue) ||
+        storedValue.formatVersion !== 1 ||
         storedValue.baseManifestSha256 !== report.baseManifestSha256 ||
         storedValue.backupPath !== root)
     )
@@ -711,6 +726,30 @@ export async function runBackupUpdate(
       }
       const storage = await readStorageObjects(sql)
       const storageItems = await inspectStorage(root, storage, index)
+      const managedSql = await readManagedProjectSql(sql)
+      const managedFile = path.join(root, 'database/managed-project-objects.sql')
+      const managedPresent = await exists(managedFile)
+      const managedStatus = !managedPresent
+        ? 'added'
+        : (await readFile(managedFile, 'utf8')) === managedSql
+          ? 'unchanged'
+          : 'changed'
+      const metadata = { ...(await readMetadata(sql)), 'functions.json': latestFunctions.raw }
+      const metadataItems: UpdateItem[] = []
+      for (const [name, value] of Object.entries(metadata)) {
+        const file = path.join(root, 'metadata', name)
+        metadataItems.push({
+          kind: 'metadata',
+          key: name,
+          label: `元数据：${name}`,
+          status: (await metadataMatches(file, value))
+            ? 'unchanged'
+            : (await exists(file))
+              ? 'changed'
+              : 'added',
+          detail: '核对 Storage 桶、对象数量、函数部署描述和 Realtime 配置。'
+        })
+      }
       const oldFunctions = new Map(originalFunctions.map((item) => [item.slug, item]))
       const functionItems: UpdateItem[] = latestFunctions.functions.map((item) => {
         const old = oldFunctions.get(item.slug)
@@ -737,7 +776,15 @@ export async function runBackupUpdate(
         ...catalogItems(catalog, index),
         ...data.flatMap((part) => part.actions.map((action) => action.item)),
         ...functionItems,
-        ...storageItems
+        ...storageItems,
+        ...metadataItems,
+        {
+          kind: 'metadata',
+          key: 'managed-project-objects',
+          label: 'Auth / Storage 的项目策略与触发器',
+          status: managedStatus,
+          detail: '单独保存项目自定义对象，恢复时不覆盖 Supabase 平台基础表。'
+        }
       ]
       for (const part of data)
         report.items.push({
@@ -753,18 +800,17 @@ export async function runBackupUpdate(
       const shape = shapeOf(report.items)
       if (input.ApplyUpdate && isObjectRecord(storedValue) && storedValue.shape !== shape)
         throw new Error('执行时发现新的变更范围，请重新检查并核对更新计划。')
+      await writeJson(storedPlanFile, {
+        formatVersion: 1,
+        backupPath: root,
+        baseManifestSha256: report.baseManifestSha256,
+        shape
+      } satisfies SavedUpdatePlan)
       if (input.PlanOnly) {
         report.status =
           report.summary.added + report.summary.changed + report.summary.removed > 0
             ? 'planned'
             : 'unchanged'
-        await writeJson(storedPlanFile, {
-          formatVersion: 1,
-          backupPath: root,
-          baseManifestSha256: report.baseManifestSha256,
-          shape,
-          report
-        } satisfies SavedUpdatePlan)
         return
       }
       const changes = report.items.filter((item) => item.status !== 'unchanged')
@@ -787,24 +833,12 @@ export async function runBackupUpdate(
         if (normalizedDump(old) === normalizedDump(fresh)) component.status = 'unchanged'
         else await copyFile(temp, path.join(stage, 'database', component.key))
       }
-      if (
-        report.items.some((item) => item.kind === 'managedSchema' && item.status !== 'unchanged') ||
-        !(await exists(path.join(root, 'database/managed-project-objects.sql')))
-      ) {
-        const managedFile = path.join(stage, 'database/managed-project-objects.sql')
-        const managedSql = await readManagedProjectSql(sql)
-        const present = await exists(managedFile)
-        if (!present || (await readFile(managedFile, 'utf8')) !== managedSql) {
-          await writeFile(managedFile, managedSql, 'utf8')
-          report.items.push({
-            kind: 'metadata',
-            key: 'managed-project-objects',
-            label: '托管 schema 的项目策略与触发器',
-            status: present ? 'changed' : 'added',
-            detail: '单独保存项目自定义对象，恢复时不覆盖 Supabase 平台基础表。'
-          })
-        }
-      }
+      if (managedStatus !== 'unchanged')
+        await writeFile(
+          path.join(stage, 'database/managed-project-objects.sql'),
+          managedSql,
+          'utf8'
+        )
       const image = data.some((part) =>
         part.actions.some((action) => action.item.status !== 'unchanged')
       )
@@ -883,7 +917,9 @@ export async function runBackupUpdate(
             '-NoProfile',
             '-NonInteractive',
             '-File',
-            path.join(UPDATE_REPOSITORY_ROOT, 'supabase/update-backup-functions.ps1')
+            path.join(UPDATE_REPOSITORY_ROOT, 'supabase/operations-task.ps1'),
+            '-Operation',
+            'updateBackupFunctions'
           ],
           {
             input:
@@ -899,7 +935,6 @@ export async function runBackupUpdate(
         if (result.code !== 0)
           throw new Error('更新函数源码失败，已完成的缓存保留，可使用同一计划重试。')
       }
-      await writeMetadataIfChanged(path.join(stage, 'metadata/functions.json'), latestFunctions.raw)
       for (const item of storageItems) {
         if (item.status === 'unchanged') continue
         const target = path.join(stage, 'storage', ...item.key.split('/'))
@@ -937,29 +972,16 @@ export async function runBackupUpdate(
         )
           throw new Error('变化附件 ETag 校验未通过，请重新检查来源状态。')
       }
-      const metadata = await readMetadata(sql)
-      let metadataChanged = false
       for (const [name, value] of Object.entries(metadata))
-        metadataChanged =
-          (await writeMetadataIfChanged(path.join(stage, 'metadata', name), value)) ||
-          metadataChanged
+        await writeMetadataIfChanged(path.join(stage, 'metadata', name), value)
       if (
         storageItems.some((item) => item.status !== 'unchanged') ||
         (await exists(path.join(stage, 'metadata/storage-object-inventory.json')))
       )
-        metadataChanged =
-          (await writeMetadataIfChanged(
-            path.join(stage, 'metadata/storage-object-inventory.json'),
-            storage
-          )) || metadataChanged
-      if (metadataChanged)
-        report.items.push({
-          kind: 'metadata',
-          key: 'metadata',
-          label: '来源元数据清单',
-          status: 'changed',
-          detail: '同步函数、Storage 与 Realtime 的最新描述，文件内容已校验。'
-        })
+        await writeMetadataIfChanged(
+          path.join(stage, 'metadata/storage-object-inventory.json'),
+          storage
+        )
       const checkFunctions = await cliFunctions(run)
       if (
         digestValue(checkFunctions.functions.map(functionIdentity).sort()) !==
@@ -973,49 +995,66 @@ export async function runBackupUpdate(
         )
         return {
           catalog: await readSourceCatalog(check),
-          storage: await readStorageObjects(check)
+          storage: await readStorageObjects(check),
+          metadata: await readMetadata(check)
         }
       })
       if (
         digestValue(fresh.catalog) !== digestValue(catalog) ||
-        digestValue(fresh.storage) !== digestValue(storage)
+        digestValue(fresh.storage) !== digestValue(storage) ||
+        !isDeepStrictEqual(
+          normalizeMetadata(fresh.metadata),
+          normalizeMetadata(await readMetadata(sql))
+        )
       )
         throw new Error('导出期间结构、角色或附件发生变化，原备份保留，请重新检查变化。')
       // Stage progress is diagnostic only; the completed snapshot is authoritative.
       await rm(path.join(stage, 'metadata/backup-progress.json'), { force: true })
       await rm(path.join(stage, 'metadata/functions-progress.json'), { force: true })
-      await makeSnapshotManifest(stage, manifest, report.baseManifestSha256)
-      logStage('校验更新后的完整快照')
-      await verifyUpdateSnapshot(
-        stage,
-        path.join(workspace.root, `verify-stage-${randomUUID()}.json`),
-        run
-      )
       // Only expose local commit after both source transactions completed.
       // A disconnected driver's callback must never replace the original.
       commitPreparedUpdate = async () => {
+        await makeSnapshotManifest(stage, manifest, report.baseManifestSha256)
+        logStage('校验更新后的完整快照')
+        await verifyUpdateSnapshot(
+          stage,
+          path.join(workspace.root, `verify-stage-${randomUUID()}.json`),
+          run
+        )
         logStage('归档旧文件并提交更新，完成清单最后替换')
         assertBackupSourceActive(sourceSql)
         const committed = await commitBackupUpdate(root, stage, report.baseManifestSha256)
-        report.historyPath = committed.historyPath
+        if (committed.historyPath) report.historyPath = committed.historyPath
         report.resultManifestSha256 = await fileHash(path.join(root, 'manifest.json'))
-        const storageIndex: UpdateIndex['storage'] = []
-        for (const object of storage)
-          storageIndex.push({
-            key: objectKey(object),
-            identity: storageIdentity(object),
-            sha256: await fileHash(path.join(root, 'storage', ...objectKey(object).split('/')))
-          })
-        await writeJson(path.join(cacheRoot, 'index.json'), {
-          formatVersion: 1,
-          algorithm: COPY_FINGERPRINT_ALGORITHM,
-          manifestSha256: report.resultManifestSha256,
-          catalog,
-          storage: storageIndex
-        } satisfies UpdateIndex)
-        report.summary = summarize(report.items)
         report.status =
           committed.changedFiles + committed.removedFiles > 0 ? 'updated' : 'unchanged'
+        try {
+          const storageIndex: UpdateIndex['storage'] = []
+          for (const object of storage)
+            storageIndex.push({
+              key: objectKey(object),
+              identity: storageIdentity(object),
+              sha256: await fileHash(path.join(root, 'storage', ...objectKey(object).split('/')))
+            })
+          await writeJson(path.join(cacheRoot, 'index.json'), {
+            formatVersion: 1,
+            algorithm: COPY_FINGERPRINT_ALGORITHM,
+            manifestSha256: report.resultManifestSha256,
+            catalog,
+            storage: storageIndex
+          } satisfies UpdateIndex)
+        } catch {
+          report.warnings.push(
+            '更新已完成，但本机比较索引未保存；下次会重新校对结构，不影响已验证快照。'
+          )
+        }
+        try {
+          await cleanBackupUpdateWorkspace(workspace.root, root, planId)
+        } catch {
+          report.warnings.push(
+            '更新已完成，但本次暂存目录未能清理；可在关闭占用程序后清理本机临时文件。'
+          )
+        }
       }
     })
     assertBackupSourceActive(sourceSql)

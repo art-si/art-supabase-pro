@@ -133,7 +133,7 @@
   import { cloneDeep, uniq } from 'lodash-es'
   import { normalizeNullableNumber } from '@/utils/form/normalize'
   import { useUserStore } from '@/store/modules/user'
-  import { toDictionaryOption } from '@/utils/form/option'
+  import { getDictionaryDisplayLabel } from '@/utils/form/option'
   import {
     ElButton,
     ElCheckbox,
@@ -169,7 +169,9 @@
         const item = props.dictCode
           ? userStore.getDictDisplayItemByValue(props.dictCode, String(option.raw))
           : undefined
-        return item ? { ...option, label: toDictionaryOption(item).label || option.label } : option
+        return props.dictCode && option.value !== 'empty'
+          ? { ...option, label: getDictionaryDisplayLabel(item, option.raw) }
+          : option
       })
       .filter((option) =>
         option.label.toLocaleLowerCase().includes(optionSearch.value.trim().toLocaleLowerCase())

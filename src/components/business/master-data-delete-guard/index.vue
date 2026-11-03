@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef">
+  <ArtDialog ref="dialogRef" @close="invalidateDialogWork">
     <div v-if="inspectionError" class="master-delete-guard__error" role="alert">
       <span class="master-delete-guard__error-icon" aria-hidden="true">
         <ArtSvgIcon icon="ri:shield-cross-line" />
@@ -228,13 +228,19 @@
   import type { LocationQueryRaw, RouteLocationRaw } from 'vue-router'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
   import { formatSensitiveNumberWithAffix } from '@/utils/field-permission'
-  import { formatReferenceStatus } from './record-meta'
-  import { groupBy, uniq } from 'lodash-es'
+  import { formatReferenceStatus, getRecordReferenceMeta } from './record-meta'
+  import { cloneDeep, groupBy, uniq } from 'lodash-es'
   import { Loading } from '@element-plus/icons-vue'
   import { ElMessage, type MessageHandler, type CheckboxValueType } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { useUserStore } from '@/store/modules/user'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { createRecordReferenceNavigation } from './record-navigation'
   import { financeRouteNames } from '@/router/business-paths'
   import type { ApplicationCode } from '@/config/application'
   import { navigateToApplication } from '@/utils/application-navigation'
@@ -314,28 +320,77 @@
   const router = useRouter()
   const route = useRoute()
   const { confirmAction } = useArtFeedback()
+  const captureOperation = useTenantOperationGuard()
+  const tenantScope = useTenantScopeStore()
+  const userStore = useUserStore()
+  const { hasAuth } = useAuth()
+  const referenceNavigation = createRecordReferenceNavigation(hasAuth)
   const dialogRef = ref<ArtDialogExpose<Record<string, never>>>()
+  const {
+    version: dialogSession,
+    invalidate: invalidateDialogSession,
+    isCurrent: isDialogSessionCurrent
+  } = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const currentOptions = shallowRef<MasterDataDeleteGuardOpenOptions>()
   const dependencies = shallowRef<MasterDataDeleteDependencyDetail[]>([])
   const selectedRecordIds = ref<string[]>([])
   const cleanupLoading = ref(false)
   const inspectionError = ref('')
   let inspectionSequence = 0
+  let cleanupSequence = 0
+  let navigationSequence = 0
+  let active = true
   const checking = ref(false)
+  const resolvingDependency = ref(false)
   let progressMessage: MessageHandler | undefined
   const cancelInspection = () => {
     inspectionSequence += 1
     checking.value = false
     progressMessage?.close()
   }
-  onBeforeUnmount(cancelInspection)
-  onDeactivated(cancelInspection)
+  const invalidateDialogWork = () => {
+    cancelInspection()
+    invalidateDialogSession()
+    cleanupSequence += 1
+    navigationSequence += 1
+    cleanupLoading.value = false
+    resolvingDependency.value = false
+  }
+  const leaveContext = () => {
+    invalidateDialogWork()
+    currentOptions.value = undefined
+    dependencies.value = []
+    selectedRecordIds.value = []
+    inspectionError.value = ''
+    if (unref(dialogRef.value?.visible)) void dialogRef.value?.handleClose(true)
+  }
+  watch(
+    () => [
+      route.fullPath,
+      tenantScope.revision,
+      tenantScope.effectiveTenantId,
+      userStore.getUserInfo.userId
+    ],
+    leaveContext,
+    { flush: 'sync' }
+  )
+  onBeforeUnmount(() => {
+    active = false
+    invalidateDialogWork()
+  })
+  onDeactivated(() => {
+    active = false
+    leaveContext()
+  })
+  onActivated(() => {
+    active = true
+  })
 
   const dependencyMeta: Record<string, DependencyMeta> = {
     carrier_price: {
       label: '承运商价格方案',
       unit: '条',
-      description: '报价配置不属于业务历史，可按需勾选后直接清理。',
+      description: '请先到承运商协议价页面核对并处理报价配置，再重试删除。',
       actionLabel: '去处理报价',
       routeName: 'TmsCarrierPrice',
       order: 10
@@ -358,8 +413,112 @@
     },
     waybill: createWaybillMeta('关联运单', 40),
     driver_waybill: createWaybillMeta('司机关联运单', 10),
-    cargo_waybill: createWaybillMeta('货物关联运单', 10),
-    address_waybill: createWaybillMeta('地址关联运单', 10),
+    cargo_waybill: {
+      ...createWaybillMeta('货物关联运单', 10),
+      routeName: 'TmsWaybillDetail',
+      routeParams: (record) => ({ id: record.targetId }),
+      canNavigate: () => hasAuth('TmsLoadedWaybillList:View')
+    },
+    cargo_contract: {
+      label: '货物关联运输合同',
+      unit: '份',
+      description: '合同包含该货物的运输约定，请先核对并处理合同引用。',
+      actionLabel: '查看运输合同',
+      routeName: 'TmsContractDetail',
+      routeParams: (record) => ({ id: record.targetId }),
+      canNavigate: () => hasAuth('TmsContract:View'),
+      statusDictCode: 'tmsContractStatus',
+      order: 11
+    },
+    cargo_order: {
+      label: '货物关联运输订单',
+      unit: '单',
+      description: '订单货物清单仍引用该货物，请先核对并处理订单。',
+      actionLabel: '查看运输订单',
+      ...referenceNavigation.tms_order,
+      statusDictCode: 'tmsOrderStatus',
+      order: 12
+    },
+    cargo_waybill_allocation: {
+      ...createWaybillMeta('运单货物分配', 13),
+      routeName: 'TmsWaybillDetail',
+      routeParams: (record) => ({ id: record.targetId }),
+      canNavigate: () => hasAuth('TmsLoadedWaybillList:View')
+    },
+    cargo_customer_price: {
+      ...createGovernanceMeta(
+        '货物关联客户协议价',
+        '条',
+        '客户协议价的货物清单仍引用该货物，请先处理协议价。',
+        '查看客户协议价',
+        'TmsCustomerPrice',
+        14
+      ),
+      ...referenceNavigation.tms_customer_price,
+      statusDictCode: 'tmsPriceAgreementStatus'
+    },
+    cargo_carrier_price: {
+      ...createGovernanceMeta(
+        '货物关联承运商协议价',
+        '条',
+        '承运商协议价的货物清单仍引用该货物，请先处理协议价。',
+        '查看承运商协议价',
+        'TmsCarrierPrice',
+        15
+      ),
+      ...referenceNavigation.tms_carrier_price,
+      statusDictCode: 'tmsPriceAgreementStatus'
+    },
+    address_waybill: {
+      ...createWaybillMeta('地址关联运单', 10),
+      routeName: 'TmsWaybillDetail',
+      routeParams: (record) => ({ id: record.targetId }),
+      canNavigate: () => hasAuth('TmsLoadedWaybillList:View')
+    },
+    address_favorite_route: {
+      ...createGovernanceMeta(
+        '地址关联常用线路',
+        '条',
+        '线路仍使用该装卸地址，请先调整线路地址。',
+        '查看常用线路',
+        'TmsFavoriteRoute',
+        11
+      ),
+      canNavigate: () => hasAuth('TmsFavoriteRoute:View')
+    },
+    address_order: {
+      label: '地址关联运输订单',
+      unit: '单',
+      description: '订单仍使用该装卸地址，请先核对并处理订单引用。',
+      actionLabel: '查看运输订单',
+      ...referenceNavigation.tms_order,
+      statusDictCode: 'tmsOrderStatus',
+      order: 12
+    },
+    address_customer_price: {
+      ...createGovernanceMeta(
+        '地址关联客户协议价',
+        '条',
+        '客户协议价仍使用该地址，请先调整协议价的装卸地址。',
+        '查看客户协议价',
+        'TmsCustomerPrice',
+        13
+      ),
+      ...referenceNavigation.tms_customer_price,
+      statusDictCode: 'tmsPriceAgreementStatus'
+    },
+    address_carrier_price: {
+      ...createGovernanceMeta(
+        '地址关联承运商协议价',
+        '条',
+        '承运商协议价仍使用该地址，请先调整协议价的装卸地址。',
+        '查看承运商协议价',
+        'TmsCarrierPrice',
+        14
+      ),
+      ...referenceNavigation.tms_carrier_price,
+      statusDictCode: 'tmsPriceAgreementStatus'
+    },
     vehicle_waybill: createWaybillMeta('车辆关联运单', 10),
     vehicle_fixed_asset: createFinanceMeta('车辆固定资产', '项', 'FinanceFixedAsset', 15),
     vehicle_certificate: {
@@ -394,6 +553,15 @@
       routeQuery: (record) => ({ driverId: record.resourceId, invitationId: record.recordId }),
       canNavigate: () => router.hasRoute('TmsDriver'),
       order: 21
+    },
+    tms_driver_blacklist: {
+      label: '司机黑名单历史',
+      unit: '条',
+      description: '司机存在黑名单记录，请先在黑名单页面核对历史。',
+      actionLabel: '查看黑名单记录',
+      ...referenceNavigation.tms_driver_blacklist,
+      statusDictCode: 'tmsDriverBlacklistStatus',
+      order: 22
     },
     carrier_statement: createFinanceMeta(
       '承运商对账单',
@@ -437,6 +605,56 @@
       financeRouteNames.invoiceManagement,
       110
     ),
+    carrier_billing_waybill: createWaybillMeta('保留开票账户快照的运单', 115),
+    carrier_child_unit: {
+      ...createGovernanceMeta(
+        '下级承运商',
+        '家',
+        '请先调整下级承运商的上级单位，再删除当前承运商。',
+        '查看下级承运商',
+        'TmsCarrier',
+        120
+      ),
+      canNavigate: () => hasAuth('TmsCarrier:View')
+    },
+    carrier_vehicle: {
+      ...createGovernanceMeta(
+        '归属车辆',
+        '辆',
+        '请先在车辆档案中调整承运商归属，再重试删除。',
+        '查看车辆',
+        'VehicleArchiveManage',
+        130
+      ),
+      canNavigate: () => hasAuth('VehicleArchive:View')
+    },
+    carrier_trailer: {
+      ...createGovernanceMeta(
+        '归属挂车',
+        '辆',
+        '请先在挂车档案中调整承运商归属，再重试删除。',
+        '查看挂车',
+        'TrailerManage',
+        140
+      ),
+      canNavigate: () => hasAuth('TrailerManage:View')
+    },
+    carrier_waybill_cost: {
+      ...createFinanceMeta('承运商运单费用', '单', financeRouteNames.waybillCostDetail, 150),
+      ...referenceNavigation.tms_waybill_cost
+    },
+    carrier_payable_settlement_line: {
+      ...createFinanceMeta('承运商付款业务明细', '条', 'FinancePayablePayment', 160),
+      ...referenceNavigation.fms_payable_settlement_document
+    },
+    carrier_driver_invitation: {
+      label: '承运商司机邀请',
+      unit: '条',
+      description: '邀请记录保留了承运商身份关联，请先联系业务负责人核对后再处理。',
+      actionLabel: '查看邀请记录',
+      canNavigate: () => false,
+      order: 170
+    },
     vehicle_reminder_work_order: {
       label: '车辆提醒工单',
       unit: '条',
@@ -578,6 +796,7 @@
       description: '运单属于运输履约历史，不允许级联物理删除。',
       actionLabel: '去查看运单',
       routeName: 'TmsLoadedWaybillList',
+      statusDictCode: 'tmsWaybillStatus',
       order
     }
   }
@@ -598,17 +817,48 @@
     }
   }
 
-  const resourceIds = computed(() => currentOptions.value?.resources.map((item) => item.id) ?? [])
   const blockingResources = computed(
     () => currentOptions.value?.resources.filter((item) => item.blockReason) ?? []
   )
   const viewBlockedResource = async (resource: MasterDataDeleteResource): Promise<void> => {
-    if (!resource.to) return
+    if (!resource.to || resolvingDependency.value) return
+    const options = currentOptions.value
+    const operationCurrent = captureOperation()
+    const inspection = inspectionSequence
+    const session = dialogSession.value
+    const navigation = ++navigationSequence
+    const destination = cloneDeep(resource.to)
+    const isCurrent = () =>
+      active &&
+      operationCurrent() &&
+      currentOptions.value === options &&
+      inspection === inspectionSequence &&
+      navigation === navigationSequence &&
+      isDialogSessionCurrent(session)
+    let closedByThis = false
+    const afterCloseCurrent = () =>
+      closedByThis &&
+      active &&
+      operationCurrent() &&
+      currentOptions.value === options &&
+      inspectionSequence <= inspection + 1 &&
+      navigationSequence <= navigation + 1
     try {
-      await dialogRef.value?.handleClose(true)
-      await router.push(resource.to)
+      if (!isCurrent()) return
+      resolvingDependency.value = true
+      closedByThis = true
+      const closed = await dialogRef.value?.handleClose(true)
+      if (!closed || !afterCloseCurrent()) return
+      await router.push(destination)
     } catch (error) {
-      ElMessage.error(getFriendlySupabaseErrorMessage(error, '单据定位失败，请返回对应列表查询'))
+      if (isCurrent() || afterCloseCurrent())
+        ElMessage.error(getFriendlySupabaseErrorMessage(error, '单据定位失败，请返回对应列表查询'))
+    } finally {
+      if (
+        navigation === navigationSequence ||
+        (closedByThis && navigationSequence === navigation + 1)
+      )
+        resolvingDependency.value = false
     }
   }
   const canCleanup = computed(() =>
@@ -646,7 +896,7 @@
         records,
         meta: currentOptions.value?.dependencyMeta?.[code] ??
           dependencyMeta[code] ?? {
-            label: code,
+            label: getRecordReferenceMeta(code).label,
             unit: '条',
             description: '该记录仍引用当前主数据，请先处理后再删除。',
             actionLabel: '去处理',
@@ -657,8 +907,10 @@
   })
 
   const formatRecordMeta = (record: MasterDataDeleteDependencyDetail): string => {
-    const hasStatusDictionary =
-      currentOptions.value?.dependencyMeta?.[record.dependencyCode]?.statusDictCode
+    const hasStatusDictionary = (
+      currentOptions.value?.dependencyMeta?.[record.dependencyCode] ??
+      dependencyMeta[record.dependencyCode]
+    )?.statusDictCode
     const parts = [
       record.recordSummary,
       hasStatusDictionary ? null : formatReferenceStatus(record.recordStatus)
@@ -704,19 +956,30 @@
       : selectedRecordIds.value.filter((recordId) => !groupRecordIds.includes(recordId))
   }
 
-  const loadDependencies = async (sequence = inspectionSequence): Promise<void> => {
-    const options = currentOptions.value
-    if (!options) return
+  const loadDependencies = async (
+    options: MasterDataDeleteGuardOpenOptions,
+    resources: MasterDataDeleteResource[],
+    isCurrent: () => boolean
+  ): Promise<boolean> => {
+    const ids = resources.map((item) => item.id)
     const records = options.fetchDependencies
-      ? await options.fetchDependencies(resourceIds.value)
-      : await fetchMasterDataDeleteDependencies(options.resourceType, resourceIds.value)
-    if (options !== currentOptions.value || sequence !== inspectionSequence) return
+      ? await options.fetchDependencies(ids)
+      : await fetchMasterDataDeleteDependencies(options.resourceType, ids)
+    if (!isCurrent()) return false
     dependencies.value = records
     selectedRecordIds.value = []
+    return true
   }
 
   const inspect = async (options: MasterDataDeleteGuardOpenOptions): Promise<boolean> => {
     const sequence = ++inspectionSequence
+    cleanupSequence += 1
+    navigationSequence += 1
+    invalidateDialogSession()
+    cleanupLoading.value = false
+    resolvingDependency.value = false
+    const operationCurrent = captureOperation()
+    const isCurrent = () => active && sequence === inspectionSequence && operationCurrent()
     const hadDialog = Boolean(unref(dialogRef.value?.visible))
     currentOptions.value = options
     if (!hadDialog) dependencies.value = []
@@ -725,7 +988,7 @@
     checking.value = true
     progressMessage?.close()
     const progressTimer = window.setTimeout(() => {
-      if (sequence !== inspectionSequence || hadDialog) return
+      if (!isCurrent() || hadDialog) return
       progressMessage = ElMessage({
         message: '正在检查删除条件…',
         icon: () => h(Loading, { class: 'el-icon is-loading' }),
@@ -747,22 +1010,29 @@
         }
       )
     try {
+      let resolvedOptions = options
       if (options.resolveResources) {
         const resources = await options.resolveResources()
-        if (sequence !== inspectionSequence) return true
-        currentOptions.value = { ...options, resources }
+        if (!isCurrent()) return true
+        resolvedOptions = { ...options, resources }
+        currentOptions.value = resolvedOptions
       }
-      await loadDependencies()
-      if (sequence !== inspectionSequence || (hadDialog && !unref(dialogRef.value?.visible)))
+      if (!(await loadDependencies(resolvedOptions, resolvedOptions.resources, isCurrent)))
         return true
+      if (!isCurrent() || (hadDialog && !unref(dialogRef.value?.visible))) return true
       if (dependencies.value.length || blockingResources.value.length) {
         await showResult()
         return true
       }
-      if (hadDialog) await dialogRef.value?.handleClose(true)
-      return false
+      if (hadDialog && !(await dialogRef.value?.handleClose(true))) return true
+      return active &&
+        operationCurrent() &&
+        currentOptions.value === resolvedOptions &&
+        (sequence === inspectionSequence || (hadDialog && sequence + 1 === inspectionSequence))
+        ? false
+        : true
     } catch (error) {
-      if (sequence === inspectionSequence && (!hadDialog || unref(dialogRef.value?.visible))) {
+      if (isCurrent() && (!hadDialog || unref(dialogRef.value?.visible))) {
         inspectionError.value = getFriendlySupabaseErrorMessage(
           error,
           '暂时无法检查关联资料，请重试'
@@ -788,20 +1058,35 @@
 
   const handleCleanup = async (): Promise<void> => {
     const options = currentOptions.value
-    const selected = cleanupRecords.value
+    const resources = options?.resources.map((item) => ({ ...item })) ?? []
+    const selected = cleanupRecords.value.map((item) => ({ ...item }))
+    const actionCount = cleanupActionCount.value
     if (
       !options ||
       !canCleanup.value ||
       !selected.length ||
-      !cleanupActionCount.value ||
+      !actionCount ||
       checking.value ||
       inspectionError.value ||
       cleanupLoading.value
     )
       return
+    const operationCurrent = captureOperation()
+    const inspection = inspectionSequence
+    const session = dialogSession.value
+    const cleanup = ++cleanupSequence
+    const isCurrent = () =>
+      active &&
+      cleanup === cleanupSequence &&
+      inspection === inspectionSequence &&
+      operationCurrent() &&
+      currentOptions.value === options &&
+      isDialogSessionCurrent(session)
+    if (!isCurrent()) return
+    cleanupLoading.value = true
     try {
       await confirmAction(
-        options.cleanup?.confirmMessage(cleanupActionCount.value) ??
+        options.cleanup?.confirmMessage(actionCount) ??
           `将永久清理选中的 ${selected.length} 项配置或终态记录。运单、合同和财务历史不会被删除，是否继续？`,
         '清理关联项确认',
         {
@@ -812,57 +1097,86 @@
           closeOnClickModal: false
         }
       )
-      cleanupLoading.value = true
+      if (!isCurrent()) return
       let deletedCount = 0
       if (options.cleanup) {
         deletedCount = await options.cleanup.run(selected)
+        if (!isCurrent()) return
       } else if (options.resourceType) {
         const grouped = groupBy(selected, (item) => item.dependencyCode)
         for (const [dependencyCode, records] of Object.entries(grouped)) {
+          if (!isCurrent()) return
           deletedCount += await cleanupMasterDataDeleteDependencies({
             resourceType: options.resourceType,
-            resourceIds: resourceIds.value,
+            resourceIds: resources.map((item) => item.id),
             dependencyCode,
             recordIds: records.map((item) => item.recordId)
           })
+          if (!isCurrent()) return
         }
       }
-      await loadDependencies()
+      if (!(await loadDependencies(options, resources, isCurrent))) return
+      if (!isCurrent()) return
       if (!dependencies.value.length) {
-        await dialogRef.value?.handleClose(true)
         ElMessage.success(`已清理 ${deletedCount} 项关联资料，现在可以重新删除`)
         emit('cleared')
+        await dialogRef.value?.handleClose(true)
         return
       }
       ElMessage.success(`已清理 ${deletedCount} 项，其余业务历史仍需保留或处理`)
     } catch (error) {
-      if (error !== 'cancel' && error !== 'close') {
+      if (isCurrent() && error !== 'cancel' && error !== 'close') {
         try {
-          await loadDependencies()
+          await loadDependencies(options, resources, isCurrent)
         } catch (checkError) {
-          inspectionError.value = getFriendlySupabaseErrorMessage(
-            checkError,
-            '关联重新检查失败，请稍后重试'
-          )
+          if (isCurrent())
+            inspectionError.value = getFriendlySupabaseErrorMessage(
+              checkError,
+              '关联重新检查失败，请稍后重试'
+            )
         }
-        ElMessage.error(getFriendlySupabaseErrorMessage(error, '清理失败，请稍后重试'))
+        if (isCurrent())
+          ElMessage.error(getFriendlySupabaseErrorMessage(error, '清理失败，请稍后重试'))
       }
     } finally {
-      cleanupLoading.value = false
+      if (cleanup === cleanupSequence) cleanupLoading.value = false
     }
   }
 
-  const resolvingDependency = ref(false)
   const openDependency = async (
     meta: DependencyMeta,
-    record: MasterDataDeleteDependencyDetail
+    sourceRecord: MasterDataDeleteDependencyDetail
   ): Promise<void> => {
     const options = currentOptions.value
-    if (!options) return
-    if (meta.canNavigate && !meta.canNavigate()) {
-      ElMessage.error('当前账号无权查看关联记录，请联系业务负责人核对')
+    if (!options || resolvingDependency.value) return
+    const record = cloneDeep(sourceRecord)
+    const operationCurrent = captureOperation()
+    const inspection = inspectionSequence
+    const session = dialogSession.value
+    const navigation = ++navigationSequence
+    const isCurrent = () =>
+      active &&
+      navigation === navigationSequence &&
+      inspection === inspectionSequence &&
+      operationCurrent() &&
+      currentOptions.value === options &&
+      isDialogSessionCurrent(session) &&
+      (meta.canNavigate?.() ?? true)
+    if (!isCurrent()) {
+      if (operationCurrent() && meta.canNavigate && !meta.canNavigate())
+        ElMessage.error('当前账号无权查看关联记录，请联系业务负责人核对')
       return
     }
+    resolvingDependency.value = true
+    let closedByThis = false
+    const afterCloseCurrent = () =>
+      closedByThis &&
+      active &&
+      operationCurrent() &&
+      currentOptions.value === options &&
+      inspectionSequence <= inspection + 1 &&
+      navigationSequence <= navigation + 1 &&
+      (meta.canNavigate?.() ?? true)
     const resourceQueryKeyMap: Record<MasterDataDeleteResourceType, string> = {
       carrier: 'carrierId',
       driver: 'driverId',
@@ -896,16 +1210,20 @@
         options.resources.find((item) => item.id === record.resourceId)?.label ??
         options.resourceLabel
     }
-    if (meta.resolveRouteName || meta.routeName) {
-      if (resolvingDependency.value) return
-      resolvingDependency.value = true
-      try {
+    try {
+      const extraQuery = cloneDeep(
+        typeof meta.routeQuery === 'function' ? meta.routeQuery(record) : meta.routeQuery
+      )
+      if (meta.resolveRouteName || meta.routeName) {
         const name = meta.resolveRouteName ? await meta.resolveRouteName(record) : meta.routeName
+        if (!isCurrent()) return
         if ((!name || !router.hasRoute(name)) && meta.applicationCode && meta.routePath) {
-          await dialogRef.value?.handleClose(true)
+          closedByThis = true
+          const closed = await dialogRef.value?.handleClose(true)
+          if (!closed || !afterCloseCurrent()) return
           await navigateToApplication(meta.applicationCode, meta.routePath, {
             ...query,
-            ...(typeof meta.routeQuery === 'function' ? meta.routeQuery(record) : meta.routeQuery)
+            ...extraQuery
           })
           return
         }
@@ -914,62 +1232,65 @@
           return
         }
         const params = await meta.routeParams?.(record)
+        if (!isCurrent()) return
         if (params === null) {
           ElMessage.error('关联记录已不存在或当前账号无权查看，请重新检查关联')
           return
         }
-        await dialogRef.value?.handleClose(true)
+        closedByThis = true
+        const closed = await dialogRef.value?.handleClose(true)
+        if (!closed || !afterCloseCurrent()) return
         await router.push({
           name,
           params,
-          query: {
-            ...query,
-            ...(typeof meta.routeQuery === 'function' ? meta.routeQuery(record) : meta.routeQuery)
-          }
+          query: { ...query, ...extraQuery }
         })
-      } catch (error) {
-        ElMessage.error(getFriendlySupabaseErrorMessage(error, '关联记录定位失败，请重试'))
-      } finally {
-        resolvingDependency.value = false
+        return
       }
-      return
-    }
-    if (record.dependencyCode === 'vehicle_reminder_work_order') {
-      const reminderRoutes = {
-        insurance: '/vms/reminder-manage/insurance-expiry',
-        inspection: '/vms/reminder-manage/inspection-expiry',
-        maintenance: '/vms/reminder-manage/maintenance-expiry',
-        part: '/vms/reminder-manage/part-service-life',
-        vehicle: '/vms/reminder-manage/vehicle-service-life'
-      } as const
-      dialogRef.value?.setLoading(true)
-      try {
+      if (record.dependencyCode === 'vehicle_reminder_work_order') {
+        const reminderRoutes = {
+          insurance: '/vms/reminder-manage/insurance-expiry',
+          inspection: '/vms/reminder-manage/inspection-expiry',
+          maintenance: '/vms/reminder-manage/maintenance-expiry',
+          part: '/vms/reminder-manage/part-service-life',
+          vehicle: '/vms/reminder-manage/vehicle-service-life'
+        } as const
+        dialogRef.value?.setLoading(true)
         const destination = await fetchVehicleReminderDeleteDestination(record.targetId)
+        if (!isCurrent()) return
         if (!destination || !reminderRoutes[destination.sourceType]) {
           ElMessage.error('关联工单已不存在或当前账号无法访问')
           return
         }
-        await dialogRef.value?.handleClose(true)
+        closedByThis = true
+        const closed = await dialogRef.value?.handleClose(true)
+        if (!closed || !afterCloseCurrent()) return
         await router.push({
           path: reminderRoutes[destination.sourceType],
           query: { ...query, sourceKey: destination.sourceKey }
         })
-      } catch (error) {
-        ElMessage.error(getFriendlySupabaseErrorMessage(error, '关联工单定位失败，请重试'))
-      } finally {
+        return
+      }
+      if (!isCurrent()) return
+      closedByThis = true
+      const closed = await dialogRef.value?.handleClose(true)
+      if (closed && meta.routePath && afterCloseCurrent())
+        await router.push({
+          path: meta.routePath,
+          query: { ...query, ...extraQuery }
+        })
+    } catch (error) {
+      if (isCurrent() || afterCloseCurrent())
+        ElMessage.error(getFriendlySupabaseErrorMessage(error, '关联记录定位失败，请重试'))
+    } finally {
+      if (
+        navigation === navigationSequence ||
+        (closedByThis && navigationSequence === navigation + 1)
+      ) {
+        resolvingDependency.value = false
         dialogRef.value?.setLoading(false)
       }
-      return
     }
-    await dialogRef.value?.handleClose(true)
-    if (meta.routePath)
-      await router.push({
-        path: meta.routePath,
-        query: {
-          ...query,
-          ...(typeof meta.routeQuery === 'function' ? meta.routeQuery(record) : meta.routeQuery)
-        }
-      })
   }
 
   defineExpose({ inspect, checking })

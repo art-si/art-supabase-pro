@@ -41,7 +41,7 @@ test('清空缓存后文字标签徽标及表格自动重载字典，不依赖�
   for (const display of ['text', 'tag', 'badge']) {
     await expect(page.getByTestId(`${display}-self`)).toHaveText('重载自有')
     await expect(page.getByTestId(`${display}-supplier`)).toHaveText('重载供应商')
-    await expect(page.getByTestId(`${display}-legacy`)).toHaveText('legacy')
+    await expect(page.getByTestId(`${display}-legacy`)).toHaveText('待核对')
   }
   await expect(page.getByTestId('dictionary-cache-table')).toContainText('重载自有')
   await expect(page.getByTestId('dictionary-cache-table')).toContainText('重载供应商')

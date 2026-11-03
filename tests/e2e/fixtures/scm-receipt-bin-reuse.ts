@@ -5,6 +5,7 @@ import { store } from '@/store'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useUserStore } from '@/store/modules/user'
 import { setupGlobDirectives } from '@/directives'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import PurchaseDialog from '@scm/views/purchase-document/modules/purchase-dialog.vue'
 import type { ScmPurchaseDocument } from '@scm/api'
 import '@styles/core/tailwind.css'
@@ -88,4 +89,5 @@ scope.tenantOptions = [{ id: tenantId, tenantCode: 'A', tenantName: '测试租�
 scope.setTenantScope(tenantId)
 await router.push('/')
 await router.isReady()
+initializeTheme()
 app.mount('#app')

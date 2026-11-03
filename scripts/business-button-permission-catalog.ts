@@ -313,7 +313,23 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('ManageGroup', '管理分组')
     ]
   },
-  ...['MdmSalesCustomer', 'MdmSalesProject', 'MdmOperationSet'].map((menuName) => ({
+  {
+    menuName: 'MdmSalesCustomer',
+    buttons: [
+      ...crud({ view: true, import: true, export: true }),
+      button('Copy', '复制'),
+      button('ManageGroup', '管理分组'),
+      button('ContactAdd', '新增联系人'),
+      button('ContactEdit', '编辑联系人'),
+      button('ContactCopy', '复制联系人'),
+      button('ContactDelete', '删除联系人'),
+      button('FinanceAdd', '新增财务信息'),
+      button('FinanceEdit', '编辑财务信息'),
+      button('FinanceCopy', '复制财务信息'),
+      button('FinanceDelete', '删除财务信息')
+    ]
+  },
+  ...['MdmSalesProject', 'MdmOperationSet'].map((menuName) => ({
     menuName,
     buttons: [
       ...crud({ view: true, import: true, export: true }),
@@ -496,15 +512,37 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
   { menuName: 'TmsCarrier', buttons: crud({ view: true, import: true, export: true }) },
   { menuName: 'TmsCarrierDetail', buttons: [button('AiAnalyze', 'AI 经营评估')] },
   { menuName: 'TmsCarrierPrice', buttons: crud({ view: true, export: true }) },
-  { menuName: 'TmsCarrierPriceEdit', buttons: [button('Save', '保存承运商价')] },
-  { menuName: 'TmsContract', buttons: crud({ view: true, export: true }) },
-  { menuName: 'TmsCustomer', buttons: crud({ view: true, import: true, export: true }) },
+  { menuName: 'TmsCarrierPriceEdit', buttons: [button('Save', '保存承运商协议价')] },
+  {
+    menuName: 'TmsContract',
+    buttons: [
+      ...crud({ view: true, export: true }),
+      button('Copy', '复制'),
+      button('Submit', '提交审核'),
+      button('Terminate', '终止合同')
+    ]
+  },
+  { menuName: 'TmsAlertCenter', buttons: [button('View', '查看合同预警')] },
+  {
+    menuName: 'TmsCustomer',
+    buttons: [
+      ...crud({ view: true, import: true, export: true }),
+      button('ContactAdd', '新增联系人'),
+      button('ContactEdit', '编辑联系人'),
+      button('ContactCopy', '复制联系人'),
+      button('ContactDelete', '删除联系人'),
+      button('FinanceAdd', '新增财务信息'),
+      button('FinanceEdit', '编辑财务信息'),
+      button('FinanceCopy', '复制财务信息'),
+      button('FinanceDelete', '删除财务信息')
+    ]
+  },
   {
     menuName: 'TmsCustomerAddress',
     buttons: [...crud(), button('Geofence', '维护地址围栏')]
   },
   { menuName: 'TmsCustomerPrice', buttons: crud({ view: true, export: true }) },
-  { menuName: 'TmsCustomerPriceEdit', buttons: [button('Save', '保存客户价')] },
+  { menuName: 'TmsCustomerPriceEdit', buttons: [button('Save', '保存客户协议价')] },
   {
     menuName: 'TmsDriver',
     buttons: [
@@ -526,11 +564,14 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     buttons: [
       button('View', '查看'),
       button('Add', '新增'),
-      button('Delete', '删除'),
+      button('Release', '解除黑名单'),
       button('Export', '导出')
     ]
   },
-  { menuName: 'TmsServiceCase', buttons: crud({ view: true, export: true }) },
+  {
+    menuName: 'TmsServiceCase',
+    buttons: [...crud({ view: true, export: true }), button('Reply', '回复')]
+  },
   {
     menuName: 'TmsElectronicContract',
     buttons: [
@@ -669,6 +710,7 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('TabEngine', '页签 · 发动机参数', 'VehicleArchive:TabEngine'),
       button('TabOther', '页签 · 其他信息', 'VehicleArchive:TabOther'),
       button('TabTypes', '页签 · 车型', 'VehicleArchive:TabTypes'),
+      button('TabTrailers', '页签 · 挂车管理', 'VehicleArchive:TabTrailers'),
       button('TabApprovalHistory', '页签 · 审批历程', 'VehicleArchive:TabApprovalHistory'),
       button('TypeAdd', '新增车型规格', 'VehicleArchive:TypeAdd'),
       button('TypeEdit', '编辑车型规格', 'VehicleArchive:TypeEdit'),

@@ -46,8 +46,12 @@ async function fixture(t: TestContext) {
     'database/migration-history-data.sql': dump('supabase_migrations'),
     'database/schema.sql': '-- fixture schema\n',
     'database/roles.sql': '-- fixture roles\n',
-    'database/managed-project-objects.sql': '-- fixture managed objects\n',
+    'database/managed-project-objects.sql':
+      '-- Project-owned policies and triggers in managed schemas.\n-- Review managed-schema-snapshot.sql for platform base-schema differences.\n\n\n',
     'metadata/functions.json': '[]',
+    'metadata/storage-buckets.json': '[]',
+    'metadata/storage-object-counts.json': '[]',
+    'metadata/realtime-publication-tables.json': '[]',
     'metadata/database-connection.json': JSON.stringify({
       Host: `db.${BACKUP_SOURCE_PROJECT}.supabase.co`,
       Port: 5432,
@@ -85,10 +89,14 @@ async function fixture(t: TestContext) {
   })
 
   const commands: string[] = []
-  const run: UpdateCommand = async (command, args) => {
+  const run: UpdateCommand = async (command, args, invocation) => {
     commands.push(command)
-    if (command === 'powershell.exe' && args.includes('-VerifyBackupOnly')) {
-      const destination = args[args.indexOf('-VerificationReportPath') + 1]
+    if (command === 'powershell.exe' && args[args.indexOf('-Operation') + 1] === 'verify') {
+      assert.equal(path.basename(args[args.indexOf('-File') + 1]), 'operations-task.ps1')
+      const parameters: unknown = JSON.parse(invocation?.input || '{}')
+      assert.ok(typeof parameters === 'object' && parameters !== null && 'BackupPath' in parameters)
+      const destination = invocation?.env?.SUPABASE_OPS_REPORT_PATH
+      assert.ok(destination)
       const now = new Date().toISOString()
       const report: BackupVerificationReport = {
         formatVersion: 1,
@@ -152,6 +160,13 @@ function unchangedSource(t: TestContext): ReturnType<typeof postgres> {
       ]
     if (query.includes("where c.relkind='S'")) return []
     if (query.includes('from storage.objects order by')) return []
+    if (
+      query.includes("select 'policy' kind") ||
+      query.includes('from storage.buckets order by') ||
+      query.includes('from storage.objects group by') ||
+      query.includes("where pubname='supabase_realtime'")
+    )
+      return []
     throw new Error('Unexpected source query in isolated backup update test')
   })
   t.mock.method(
@@ -222,7 +237,12 @@ test(
       await completed
       assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
       const destination = args[args.indexOf('--file') + 1]
-      await writeFile(destination, index === 0 ? '-- fixture schema\n' : '-- fixture roles\n')
+      await writeFile(
+        destination,
+        index === 0
+          ? '-- fixture schema\nCREATE SCHEMA IF NOT EXISTS fixture_update;\n'
+          : '-- fixture roles\nCREATE ROLE fixture_export_role NOLOGIN;\n'
+      )
       return { code: 0, stdout: '', stderr: '' }
     }
     t.mock.timers.enable({ apis: ['setTimeout'] })

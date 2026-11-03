@@ -33,6 +33,10 @@ test(
     for (const operation of SUPABASE_OPERATIONS) {
       if (operation.id === 'diagnose') continue
       const fields = declarations.get(operation.script) || new Set<string>()
+      if (operation.script === 'backup-supabase.ps1') {
+        fields.add('PlanOnly')
+        fields.add('ApplyUpdate')
+      }
       for (const field of operation.fields) fields.add(field.key)
       if (['restoreLocal', 'resumeLocal', 'verify'].includes(operation.id)) {
         fields.add('VerifyBackupOnly')
@@ -67,6 +71,7 @@ test(
             `param(${parameters.join(',')})`,
             `Write-Output 'DISPATCH:${script}'`,
             'Write-Output "VERIFY:$([bool]$VerifyBackupOnly) RESUME:$([bool]$Resume)"',
+            'Write-Output "PLAN:$([bool]$PlanOnly) APPLY:$([bool]$ApplyUpdate)"',
             'if ($VerifyBackupOnly) {',
             '  if (-not $VerificationReportPath) { throw "Missing fixed verification report path." }',
             '  $now = (Get-Date).ToUniversalTime().ToString("o")',
@@ -122,10 +127,12 @@ test(
         if (operation.id === 'previewBackupUpdate') {
           assert.equal(run.updateReport?.mode, 'preview')
           assert.equal(run.updateReport?.status, 'planned')
+          assert.ok(run.logs.some((line) => line.message.includes('PLAN:True')))
         }
         if (operation.id === 'updateBackup') {
           assert.equal(run.updateReport?.mode, 'apply')
           assert.equal(run.updateReport?.status, 'updated')
+          assert.ok(run.logs.some((line) => line.message.includes('APPLY:True')))
         }
         if (operation.id === 'resumeLocal')
           assert.ok(run.logs.some((line) => line.message.includes('RESUME:True')))

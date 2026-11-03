@@ -312,6 +312,28 @@
             <strong>{{ selectedNode.name || `审批节点 ${selectedIndex + 1}` }}</strong>
             <small>节点 {{ selectedIndex + 1 }} · 设置审批人与流转规则</small>
           </div>
+          <ElButtonGroup class="workflow-canvas-editor__node-navigation">
+            <ArtTooltip content="配置上一个审批节点" placement="bottom">
+              <ElButton
+                size="small"
+                :disabled="selectedIndex <= 0"
+                aria-label="配置上一个审批节点"
+                @click="selectAdjacentNode(-1)"
+              >
+                <ArtSvgIcon icon="ri:arrow-left-s-line" />
+              </ElButton>
+            </ArtTooltip>
+            <ArtTooltip content="配置下一个审批节点" placement="bottom">
+              <ElButton
+                size="small"
+                :disabled="selectedIndex >= nodes.length - 1"
+                aria-label="配置下一个审批节点"
+                @click="selectAdjacentNode(1)"
+              >
+                <ArtSvgIcon icon="ri:arrow-right-s-line" />
+              </ElButton>
+            </ArtTooltip>
+          </ElButtonGroup>
         </header>
 
         <ElScrollbar always>
@@ -465,7 +487,7 @@
     }
   })
   const { getDictMap } = storeToRefs(useUserStore())
-  const { fitView } = useVueFlow('workflow-designer-flow')
+  const { fitView, updateNodeInternals, vueFlowRef } = useVueFlow('workflow-designer-flow')
   const reducedMotion = usePreferredReducedMotion()
   const approvalFormRef = ref<FormExpose>()
   const contextMenuRef = ref<HTMLElement>()
@@ -957,6 +979,11 @@
 
   async function fitCanvas(): Promise<void> {
     closeContextMenu()
+    await document.fonts.ready
+    await nextTick()
+    const canvas = vueFlowRef.value
+    if (!canvas?.clientWidth || !canvas.clientHeight) return
+    updateNodeInternals()
     await nextTick()
     await fitView({
       padding: 0.18,
@@ -1130,7 +1157,12 @@
     inspectorVisible.value = true
   }
 
-  defineExpose({ selectNode })
+  function selectAdjacentNode(offset: -1 | 1): void {
+    const node = nodes.value[selectedIndex.value + offset]
+    if (node) selectedNodeKey.value = node.key
+  }
+
+  defineExpose({ selectNode, fitCanvas })
 </script>
 
 <style scoped lang="scss">
@@ -1564,6 +1596,12 @@
           font-size: 11px;
           color: var(--art-gray-600);
         }
+      }
+
+      .workflow-canvas-editor__node-navigation {
+        display: flex;
+        flex: none;
+        margin-left: auto;
       }
 
       &.is-empty {

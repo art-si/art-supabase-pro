@@ -249,6 +249,135 @@ test('真实人工效率页按任务和人员合并出勤，保留首位身份�
   await page.screenshot({ path: info.outputPath('mes-person-efficiency-accepted.png') })
 })
 
+test('班次达成按任务日期复用有序异常且不混报工', async ({ page }, info) => {
+  const { workDate, reads, unknownWrites, pageErrors } = await preparePersonPage(page)
+  const previousDate = dayjs(workDate).subtract(1, 'day').format('YYYY-MM-DD')
+  const firstTask = {
+    ...task('task-1'),
+    required_completion_date: workDate,
+    scheduling_status: 'scheduled',
+    work_center: { code: 'A', name: 'A 产线', department_id: 'department-1' },
+    allocations: [
+      {
+        id: 'a-day',
+        work_center_id: 'center-1',
+        shift_name_snapshot: '白班',
+        quantity: 10,
+        planned_start_date: workDate
+      },
+      {
+        id: 'a-night',
+        work_center_id: 'center-1',
+        shift_name_snapshot: '晚班',
+        quantity: 4,
+        planned_start_date: workDate
+      },
+      {
+        id: 'a-previous',
+        work_center_id: 'center-1',
+        shift_name_snapshot: '白班',
+        quantity: 5,
+        planned_start_date: previousDate
+      }
+    ]
+  }
+  const secondTask = {
+    ...task('task-2'),
+    required_completion_date: workDate,
+    scheduling_status: 'scheduled',
+    work_center: { code: 'B', name: 'B 产线', department_id: 'department-1' },
+    allocations: [
+      {
+        id: 'b-day',
+        work_center_id: 'center-1',
+        shift_name_snapshot: '白班',
+        quantity: 10,
+        planned_start_date: workDate
+      }
+    ]
+  }
+  const eventBase = { tenant_id: tenantId, work_center_id: 'center-1', status: 'open' }
+  const events = [
+    {
+      ...eventBase,
+      id: 'event-1',
+      task_id: 'task-1',
+      kind: 'exception',
+      title: '首项异常',
+      occurred_at: `${workDate}T15:00:00+08:00`
+    },
+    {
+      ...eventBase,
+      id: 'event-2',
+      task_id: 'task-2',
+      kind: 'exception',
+      title: '另一任务异常',
+      occurred_at: `${workDate}T14:00:00+08:00`
+    },
+    {
+      ...eventBase,
+      id: 'event-3',
+      task_id: 'task-1',
+      kind: 'andon',
+      title: '安灯提醒',
+      occurred_at: `${workDate}T13:00:00+08:00`
+    },
+    {
+      ...eventBase,
+      id: 'event-4',
+      task_id: 'task-1',
+      kind: 'exception',
+      title: '末项异常',
+      occurred_at: `${workDate}T12:00:00+08:00`
+    },
+    {
+      ...eventBase,
+      id: 'event-5',
+      task_id: 'task-1',
+      kind: 'exception',
+      title: '前日异常',
+      occurred_at: `${previousDate}T11:00:00+08:00`
+    }
+  ]
+  const taskMethods: string[] = []
+  const eventMethods: string[] = []
+  await page.route('**/rest/v1/mes_operation_task?*', (route) => {
+    taskMethods.push(route.request().method())
+    return fulfillReports(route, [secondTask, firstTask])
+  })
+  await page.route('**/rest/v1/mes_execution_event?*', (route) => {
+    eventMethods.push(route.request().method())
+    return fulfillReports(route, events)
+  })
+  await page.goto('/tests/e2e/fixtures/mes-person-efficiency.html?mode=shift&theme=dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByRole('heading', { name: '当班达成', exact: true })).toBeVisible()
+  const rows = page.locator('.el-table__row')
+  await expect(rows).toHaveCount(4)
+  for (const [index, date, shift, center, achieved, remark] of [
+    [0, workDate, '白班', 'A 产线', '10', '首项异常；安灯提醒；末项异常'],
+    [1, workDate, '晚班', 'A 产线', '0', '首项异常；安灯提醒；末项异常'],
+    [2, workDate, '白班', 'B 产线', '10', '另一任务异常'],
+    [3, previousDate, '白班', 'A 产线', '0', '前日异常']
+  ] as const) {
+    const row = rows.nth(index)
+    await expect(row.locator('td').nth(1)).toHaveText(date)
+    await expect(row.locator('td').nth(2)).toHaveText(shift)
+    await expect(row.locator('td').nth(3)).toHaveText(center)
+    await expect(row.locator('td').nth(7)).toHaveText(achieved)
+    await expect(row.locator('td').nth(8)).toHaveText(remark)
+  }
+  await expect(metrics(page)).toHaveText(['4', '29', '20', '69%'])
+  expect(taskMethods).toEqual(['GET'])
+  expect(eventMethods).toEqual(['GET'])
+  expect(reads).toContain('mes_production_report')
+  expect(unknownWrites).toEqual([])
+  expect(pageErrors).toEqual([])
+  await expect(page.locator('.el-message--error')).toHaveCount(0)
+  await settlePointer(page)
+  await page.screenshot({ path: info.outputPath('mes-shift-events-dark.png'), fullPage: true })
+})
+
 for (const { width, mode } of [
   { width: 1440, mode: 'person' },
   { width: 570, mode: 'person' },

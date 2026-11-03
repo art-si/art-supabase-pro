@@ -236,8 +236,12 @@ test('只读查看不重新读取 BOM 或改变历史参数', async ({ page }) =
   for (const name of ['基本信息', '产品与计划', '销售协同', '生产明细']) {
     await page.getByRole('tab', { name, exact: true }).click()
     await expect(page.getByRole('tabpanel').filter({ visible: true })).toHaveCount(1)
-    await expect(page.getByRole('tabpanel').filter({ visible: true }).locator('input, textarea')).toHaveCount(0)
-    await page.screenshot({ path: join(process.cwd(), '.artifacts', 'work-order-tabs', `readonly-${name}.png`) })
+    await expect(
+      page.getByRole('tabpanel').filter({ visible: true }).locator('input, textarea')
+    ).toHaveCount(0)
+    await page.screenshot({
+      path: join(process.cwd(), '.artifacts', 'work-order-tabs', `readonly-${name}.png`)
+    })
   }
   expect(state.saves).toHaveLength(0)
 })

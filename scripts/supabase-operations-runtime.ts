@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
+import { PlatformIdentityError } from './lib/platform-identity'
 import {
   isOperationRun,
   operationNeedsInspectionAfterCancel
@@ -89,12 +90,20 @@ export async function authorizeOperationsIdentity(
   permission: string
 ): Promise<string> {
   if ((await call('/rest/v1/rpc/current_is_super', {})) !== true)
-    throw new Error('只有平台超级管理员可以使用项目运维执行端。')
+    throw new PlatformIdentityError(
+      '只有平台超级管理员可以使用项目运维执行端。',
+      403,
+      'PLATFORM_PERMISSION_DENIED'
+    )
   if ((await call('/rest/v1/rpc/current_has_permission', { p_permission: permission })) !== true)
-    throw new Error('没有该运维操作权限，请联系平台管理员。')
+    throw new PlatformIdentityError(
+      '没有该运维操作权限，请联系平台管理员。',
+      403,
+      'PLATFORM_PERMISSION_DENIED'
+    )
   const user = await call('/auth/v1/user')
   if (!user || typeof user !== 'object' || !('id' in user) || typeof user.id !== 'string')
-    throw new Error('当前账号身份无效，请重新登录。')
+    throw new PlatformIdentityError('当前账号身份无效，请重新登录。', 401, 'PLATFORM_AUTH_REQUIRED')
   return user.id
 }
 
@@ -372,8 +381,10 @@ export class OperationsRunner {
           run.error = '未取得有效更新报告，请检查执行端版本和日志；不能判定更新完成。'
         } else if (
           report.status === 'failed' ||
-          (operation.id === 'previewBackupUpdate' && report.mode !== 'preview') ||
-          (operation.id === 'updateBackup' && report.mode !== 'apply')
+          (operation.id === 'previewBackupUpdate' &&
+            (report.mode !== 'preview' || !['planned', 'unchanged'].includes(report.status))) ||
+          (operation.id === 'updateBackup' &&
+            (report.mode !== 'apply' || !['updated', 'unchanged'].includes(report.status)))
         ) {
           run.status = 'failed'
           run.error = report.error || '备份更新未完成，请查看更新报告。'

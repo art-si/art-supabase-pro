@@ -4,17 +4,19 @@ import ExcelJS from 'exceljs'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
-test('演练报表导出保留字典标签、名称和历史值回退', async ({ page }, info) => {
+test('演练报表导出保留字典标签与名称，未识别值不显示原始 code', async ({ page }, info) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.route('**/rest/v1/**', async (route) => {
-    const path = new URL(route.request().url()).pathname
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    const dictionaryValue = url.searchParams.get('value')?.replace(/^eq\./, '')
     await route.fulfill({
       json: path.endsWith('/sys_dictionary')
         ? [
             { value: 'known', label: '已配置标签', name: '不得显示备用名', sort: 0 },
             { value: 'blank', label: '', name: '空标签名称', sort: 1 }
-          ]
+          ].filter((item) => !dictionaryValue || item.value === dictionaryValue)
         : path.endsWith('/smis_emergency_drill_report_secure')
           ? {
               overview: {
@@ -88,8 +90,9 @@ test('演练报表导出保留字典标签、名称和历史值回退', async ({
   worksheet.eachRow((row) => row.eachCell((cell) => values.push(cell.value)))
   expect(values).toContain('已配置标签')
   expect(values).toContain('空标签名称')
-  expect(values).toContain('legacy')
-  expect(values).toContain('legacy-level')
+  expect(values).toContain('待核对')
+  expect(values).not.toContain('legacy')
+  expect(values).not.toContain('legacy-level')
   expect(values).toContain('—')
   expect(values).not.toContain('不得显示备用名')
   expect(worksheet.rowCount).toBe(7)

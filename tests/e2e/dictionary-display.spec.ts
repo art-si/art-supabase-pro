@@ -11,9 +11,9 @@ test('公共字典三种显示方式采用同一名称回退规则', async ({ pa
     known: '已配置标签',
     blank: '空标签名称',
     'missing-label': '无标签名称',
-    'empty-name': 'raw',
+    'empty-name': '待核对',
     zero: '零值名称',
-    unknown: 'legacy',
+    unknown: '待核对',
     nil: '—',
     override: '历史选项',
     'explicit-item': '指定字典名称'

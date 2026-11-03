@@ -15,7 +15,7 @@
           </div>
           <div class="recognition-detail__identity">
             <div>
-              <ElTag effect="light">{{ featureLabels[detail.data.feature] }}</ElTag>
+              <ElTag effect="light">{{ featureLabels[detail.data.feature] ?? '未识别类型' }}</ElTag>
               <ArtDictDisplay
                 :value="detail.data.status"
                 dict-code="aiArtifactStatus"

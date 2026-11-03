@@ -18,6 +18,7 @@ import type {
 } from '@/types/supabase-operations'
 import { isOperationRun, OPERATIONS_PROJECT_REF } from '@/utils/supabase/operations-catalog'
 import { useUserStore } from '@/store/modules/user'
+import { LocalExecutorError } from '@/api/local-executor'
 
 interface SavedConnection {
   port: number
@@ -74,6 +75,8 @@ export function useOperationsWorkspace(enabled: Readonly<Ref<boolean>>) {
   let refreshing = false
   let epoch = 0
   let mounted = false
+  let reconnectAt = 0
+  let reconnectAttempts = 0
   const clock = useIntervalFn(() => {
     now.value = Date.now()
   }, 1000)
@@ -91,6 +94,8 @@ export function useOperationsWorkspace(enabled: Readonly<Ref<boolean>>) {
       connected.value = true
       checkedAt.value = Date.now()
       error.value = ''
+      reconnectAt = 0
+      reconnectAttempts = 0
       const activeRun = snapshot.runs.find((run) => ['running', 'cancelling'].includes(run.status))
       if (
         (!wasConnected && activeRun) ||
@@ -123,13 +128,23 @@ export function useOperationsWorkspace(enabled: Readonly<Ref<boolean>>) {
       if (!disposed && requestEpoch === epoch) {
         connected.value = false
         error.value = cause instanceof Error ? cause.message : '读取运维任务失败，请重新连接。'
+        // Only retry status reads. Authentication/permission failures require user action;
+        // a broken connection must never replay a backup submission.
+        reconnectAt =
+          cause instanceof LocalExecutorError && [401, 403].includes(cause.status)
+            ? 0
+            : Date.now() + Math.min(30_000, 5000 * 2 ** Math.min(reconnectAttempts++, 3))
       }
     } finally {
       refreshing = false
     }
   }
   const polling = useIntervalFn(() => {
-    if (!enabled.value || !connected.value || visibility.value === 'hidden') return
+    if (!enabled.value || visibility.value === 'hidden') return
+    if (!connected.value) {
+      if (reconnectAt && Date.now() >= reconnectAt) void refresh()
+      return
+    }
     // An unknown Docker result still needs polling. Idle connections also keep their health fresh.
     if (busy.value || externalActivity.value || Date.now() - checkedAt.value >= 30_000)
       void refresh()
@@ -200,6 +215,8 @@ export function useOperationsWorkspace(enabled: Readonly<Ref<boolean>>) {
     () => connection.value.port,
     () => {
       epoch++
+      reconnectAt = 0
+      reconnectAttempts = 0
       connected.value = false
       runs.value = []
       selectedRunId.value = ''
@@ -218,7 +235,7 @@ export function useOperationsWorkspace(enabled: Readonly<Ref<boolean>>) {
     if (mounted && allowed && isSavedConnection(saved.value) && !connected.value) void connect()
   })
   watch(visibility, (state) => {
-    if (state === 'visible' && enabled.value && connected.value) void refresh()
+    if (state === 'visible' && enabled.value && (connected.value || reconnectAt)) void refresh()
   })
   onBeforeUnmount(() => {
     disposed = true

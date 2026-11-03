@@ -11,6 +11,10 @@ export interface RecordDeleteDependency extends Omit<
 }
 
 const scopedDeleteReaders: Partial<Record<string, string>> = {
+  mdm_customer: 'get_mdm_customer_delete_dependency_details_secure',
+  mdm_customer_contact: 'get_mdm_customer_contact_delete_dependencies_secure',
+  mdm_customer_finance: 'get_mdm_customer_finance_delete_dependencies_secure',
+  tms_customer_statement: 'get_tms_customer_statement_delete_dependencies_secure',
   tms_contract: 'get_tms_contract_delete_dependencies_secure',
   vehicle_maintenance_record: 'vms_get_maintenance_delete_dependencies_secure',
   fms_payable_writeoff_automation: 'get_fms_payable_automation_delete_dependencies_secure',
@@ -199,6 +203,21 @@ export async function fetchMasterDataDeleteDependencies(
           p_resource_ids: resourceIds
         })
       }
+      if (resourceType === 'carrier') {
+        return supabase.rpc('tms_get_carrier_delete_dependencies_secure', {
+          p_resource_ids: resourceIds
+        })
+      }
+      if (resourceType === 'customer_address') {
+        return supabase.rpc('tms_get_customer_address_delete_dependencies_secure', {
+          p_resource_ids: resourceIds
+        })
+      }
+      if (resourceType === 'cargo') {
+        return supabase.rpc('tms_get_cargo_delete_dependencies_secure', {
+          p_resource_ids: resourceIds
+        })
+      }
       return supabase.rpc('get_governed_delete_dependency_details', {
         p_resource_type: resourceType,
         p_resource_ids: resourceIds
@@ -228,7 +247,7 @@ export async function cleanupMasterDataDeleteDependencies(
         p_dependency_code: payload.dependencyCode,
         p_record_ids: payload.recordIds
       }),
-    { breakReturn: true }
+    { breakReturn: true, showReferenceFeedback: false }
   )
   return Number(data) || 0
 }

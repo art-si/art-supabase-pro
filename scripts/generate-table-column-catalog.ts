@@ -893,30 +893,58 @@ export function generateColumnCatalog(menus: MenuRow[]): {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const menus = JSON.parse(
-    fs.readFileSync(process.argv[2] || '.artifacts/column-config/menu-backup.json', 'utf8')
-  ) as MenuRow[]
+  const args = process.argv.slice(2)
+  if (args.length !== 1) {
+    throw new Error(
+      '请显式提供当前菜单快照：pnpm exec tsx scripts/generate-table-column-catalog.ts <菜单快照.json>'
+    )
+  }
+  const snapshot: unknown = JSON.parse(fs.readFileSync(args[0], 'utf8'))
+  const menus: unknown[] = Array.isArray(snapshot)
+    ? snapshot.filter(
+        (menu: unknown) =>
+          menu !== null && typeof menu === 'object' && 'type' in menu && menu.type === 'menu'
+      )
+    : []
+  if (
+    menus.length === 0 ||
+    !menus.every(
+      (menu: unknown): menu is MenuRow =>
+        menu !== null &&
+        typeof menu === 'object' &&
+        'id' in menu &&
+        typeof menu.id === 'string' &&
+        'type' in menu &&
+        typeof menu.type === 'string' &&
+        'path' in menu &&
+        typeof menu.path === 'string' &&
+        'component' in menu &&
+        (menu.component === null || typeof menu.component === 'string') &&
+        'parent_id' in menu &&
+        (menu.parent_id === null || typeof menu.parent_id === 'string')
+    ) ||
+    !menus.some((menu) => menu.type === 'menu' && menu.component?.startsWith('/'))
+  ) {
+    throw new Error(
+      '菜单快照必须是非空数组，包含 id/component/type/path/parent_id 字段及有效菜单入口'
+    )
+  }
   const result = generateColumnCatalog(menus)
   const jsonFormat = {
     ...(await resolveConfig(path.join(root, '.prettierrc'))),
     parser: 'json' as const
   }
-  fs.mkdirSync('src/config', { recursive: true })
-  fs.writeFileSync(
-    'src/config/table-column-catalog.generated.json',
-    await format(JSON.stringify(result.catalogs), jsonFormat)
+  const catalogText = await format(JSON.stringify(result.catalogs), jsonFormat)
+  const routesText = await format(
+    JSON.stringify(result.catalogs.map((catalog) => catalog.routePath).sort()),
+    jsonFormat
   )
-  fs.writeFileSync(
-    'src/config/table-column-routes.generated.json',
-    await format(
-      JSON.stringify(result.catalogs.map((catalog) => catalog.routePath).sort()),
-      jsonFormat
-    )
-  )
-  fs.writeFileSync(
-    '.artifacts/column-config/inventory.json',
-    `${JSON.stringify(result, null, 2)}\n`
-  )
+  const inventoryText = `${JSON.stringify(result, null, 2)}\n`
+  fs.mkdirSync(path.join(root, 'src/config'), { recursive: true })
+  fs.mkdirSync(path.join(root, '.artifacts/column-config'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'src/config/table-column-catalog.generated.json'), catalogText)
+  fs.writeFileSync(path.join(root, 'src/config/table-column-routes.generated.json'), routesText)
+  fs.writeFileSync(path.join(root, '.artifacts/column-config/inventory.json'), inventoryText)
   console.info(
     JSON.stringify({
       menus: menus.filter((m) => m.type === 'menu').length,

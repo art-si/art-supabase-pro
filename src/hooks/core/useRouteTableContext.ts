@@ -6,15 +6,19 @@ import type { ArtTableQueryExpose } from '@/components/core/tables/art-table-que
 export function useRouteOperationGuard(): () => () => boolean {
   const route = useRoute()
   let version = 0
+  let active = true
   watch(
     () => route.fullPath,
     () => version++,
     { flush: 'sync' }
   )
-  onScopeDispose(() => version++)
+  onScopeDispose(() => {
+    active = false
+    version++
+  })
   return () => {
     const capturedVersion = version
-    return () => capturedVersion === version
+    return () => active && capturedVersion === version
   }
 }
 

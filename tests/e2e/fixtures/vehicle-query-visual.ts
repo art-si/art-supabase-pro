@@ -14,9 +14,19 @@ useUserStore(store).setUserInfo({
   platformSuper: false
 })
 useMenuStore(store).setButtonList(
-  ['VehicleQuery:View', 'VehicleQuery:Export', 'TmsOrderQuery:View', 'TmsDriverQuery:View'].map(
-    (name) => ({ name, path: '', type: 'button', meta: { title: name } })
-  )
+  [
+    'VehicleQuery:View',
+    'VehicleQuery:Export',
+    'VehicleArchive:View',
+    'VehicleArchive:Edit',
+    'VehicleArchive:Export',
+    'FuelCardArchive:View',
+    'FuelCardLedger:View',
+    'ElectricCardArchive:View',
+    'ElectricCardLedger:View',
+    'TmsOrderQuery:View',
+    'TmsDriverQuery:View'
+  ].map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
 )
 
 const router = createRouter({
@@ -26,6 +36,11 @@ const router = createRouter({
       path: '/vms/vehicle-query',
       name: 'VehicleQuery',
       component: () => import('@vms/views/vehicle-query/index.vue')
+    },
+    {
+      path: '/vms/vehicle-archive-manage',
+      name: 'VehicleArchiveManage',
+      component: () => import('@vms/views/vehicle-archive-manage/index.vue')
     },
     {
       path: '/vms/vehicle-query/detail/:id',
@@ -48,9 +63,11 @@ app.use(router)
 app.use(language)
 setupGlobDirectives(app)
 await router.push(
-  new URLSearchParams(location.search).get('page') === 'detail'
-    ? '/vms/vehicle-query/detail/11111111-1111-4111-8111-111111111101'
-    : '/vms/vehicle-query'
+  new URLSearchParams(location.search).get('page') === 'archive'
+    ? '/vms/vehicle-archive-manage'
+    : new URLSearchParams(location.search).get('page') === 'detail'
+      ? '/vms/vehicle-query/detail/11111111-1111-4111-8111-111111111101'
+      : '/vms/vehicle-query'
 )
 await router.isReady()
 app.mount('#vehicle-query-visual')

@@ -98,6 +98,50 @@ async function waitForProfile(page: Page, length: number) {
   })
 }
 
+test('车型层级标题保留内边距，长树滚动条贴边且节点两侧留白对称', async ({ page }) => {
+  await isolate(page)
+  await page.route('**/rest/v1/rpc/vms_list_vehicle_type_profiles_secure', (route) =>
+    route.fulfill({
+      json: Array.from({ length: 30 }, (_, index) =>
+        profile(ownTenant, `type-profile-${index}`, 13 + index)
+      )
+    })
+  )
+  await page.goto(`${fixture}?role=super&target=${ownTenant}`)
+  await waitForProfile(page, 13)
+  const tree = page.locator('.vehicle-type-tab__tree-card')
+  await expect(tree.locator('.el-tree-node').first()).toBeVisible()
+  const geometry = await tree.evaluate((card) => {
+    const header = card.querySelector<HTMLElement>('.art-section-card__header')
+    const identity = header?.querySelector<HTMLElement>('.art-section-card__identity')
+    const viewport = card.querySelector<HTMLElement>('.vehicle-type-tab__tree-viewport')
+    const scrollWindow = viewport?.querySelector<HTMLElement>('.el-vl__window')
+    const node = viewport?.querySelector<HTMLElement>('.el-tree-node')
+    if (!identity || !viewport || !scrollWindow || !node) return null
+    const cardBounds = card.getBoundingClientRect()
+    const identityBounds = identity.getBoundingClientRect()
+    const viewportBounds = viewport.getBoundingClientRect()
+    const scrollBounds = scrollWindow.getBoundingClientRect()
+    const nodeBounds = node.getBoundingClientRect()
+    return {
+      headerInset: identityBounds.left - cardBounds.left,
+      overflow: scrollWindow.scrollHeight - scrollWindow.clientHeight,
+      scrollbarInset: cardBounds.right - scrollBounds.right,
+      viewportInset: cardBounds.right - viewportBounds.right,
+      nodeLeftInset: nodeBounds.left - viewportBounds.left,
+      nodeRightInset: viewportBounds.right - nodeBounds.right
+    }
+  })
+  expect(geometry).not.toBeNull()
+  expect(geometry!.headerInset).toBeGreaterThanOrEqual(16)
+  expect(geometry!.overflow).toBeGreaterThan(0)
+  expect(geometry!.scrollbarInset).toBeGreaterThanOrEqual(0)
+  expect(geometry!.scrollbarInset).toBeLessThanOrEqual(2)
+  expect(geometry!.viewportInset).toBeLessThanOrEqual(1)
+  expect(Math.abs(geometry!.nodeLeftInset - geometry!.nodeRightInset)).toBeLessThanOrEqual(1)
+  expect(geometry!.nodeLeftInset).toBeGreaterThanOrEqual(7)
+})
+
 test('平台全部租户以父表单显式目标加载和保存该租户车型', async ({ page }, info) => {
   const unexpected = await isolate(page)
   const reads: string[] = []

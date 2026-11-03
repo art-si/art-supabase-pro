@@ -88,10 +88,12 @@
               <small v-if="record.revokeReason">撤销原因：{{ record.revokeReason }}</small>
             </div>
             <ElButton
-              v-if="canRevoke(record)"
+              v-if="canShowRevoke(record)"
               type="danger"
               plain
               size="small"
+              :loading="revokingId === record.id"
+              :disabled="!!revokingId && revokingId !== record.id"
               @click="handleRevoke(record)"
             >
               撤销
@@ -290,16 +292,18 @@
     return `${dayjs(record.startsAt).format('YYYY-MM-DD HH:mm')} 至 ${dayjs(record.endsAt).format('YYYY-MM-DD HH:mm')}`
   }
 
-  function canRevoke(record: Api.Workflow.WorkflowDelegationRecord): boolean {
+  function canShowRevoke(record: Api.Workflow.WorkflowDelegationRecord): boolean {
     return (
       formActive.value &&
-      !revokingId.value &&
       !loading.value &&
       !loadError.value &&
       record.delegatorUserId === state.userId &&
       !record.revokedAt &&
       dayjs(record.endsAt).isAfter(dayjs())
     )
+  }
+  function canRevoke(record: Api.Workflow.WorkflowDelegationRecord): boolean {
+    return !revokingId.value && canShowRevoke(record)
   }
 
   async function loadData(): Promise<void> {
