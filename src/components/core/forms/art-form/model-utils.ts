@@ -15,7 +15,10 @@ export interface SanitizeOutputOptions {
 }
 
 export function cloneModelValue(value: FormRecord | undefined): FormRecord {
-  return value ? cloneDeep(toRaw(value)) : {}
+  // Clone the reactive proxy so Vue can unwrap nested refs before lodash walks the model.
+  // Cloning the raw object directly exposes RefImpl/ObjectRefImpl internals and can recurse
+  // indefinitely for form models composed with `reactive({ ...toRefs(form) })`.
+  return value ? cloneDeep(value) : {}
 }
 
 export function updateFormFieldValue(model: FormRecord, path: string, value: unknown): FormRecord {

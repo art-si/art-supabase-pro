@@ -243,7 +243,7 @@
                 :loading="loading"
                 loading-overlay
                 :pagination="false"
-                :show-table-header="false"
+                :show-table-header="showTableHeader"
                 :row-key="getTableRowKey"
                 height="100%"
                 empty-height="100%"
@@ -506,6 +506,7 @@
     mode: 'table',
     multiple: false,
     showPagination: true,
+    showTableHeader: false,
     showSelectedPanel: undefined
   })
 

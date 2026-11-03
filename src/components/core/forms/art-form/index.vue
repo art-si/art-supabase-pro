@@ -15,10 +15,10 @@
       ref="formRef"
       :class="formClass"
       :model="modelValue"
-      :rules="props.rules"
+      :rules="$props.rules"
       :label-position="effectiveLabelPosition"
-      :disabled="props.disabled"
-      :validate-on-rule-change="props.validateOnRuleChange"
+      :disabled="$props.disabled"
+      :validate-on-rule-change="$props.validateOnRuleChange"
       v-bind="{ ...$attrs }"
       @validate="handleValidate"
       @submit.prevent="handleSubmit"
@@ -235,7 +235,7 @@
                 <ElButton
                   v-if="showReset"
                   class="reset-button"
-                  :disabled="props.disabled || !formControlsReady"
+                  :disabled="$props.disabled || !formControlsReady"
                   :loading="resetLoading"
                   @click="handleReset"
                   v-ripple
@@ -251,7 +251,7 @@
                   class="submit-button"
                   @click="handleSubmit"
                   v-ripple
-                  :disabled="props.disabled || disabledSubmit || hasBlockingFields"
+                  :disabled="$props.disabled || disabledSubmit || hasBlockingFields"
                   :loading="submitLoading"
                 >
                   <ElIcon>
@@ -1258,6 +1258,7 @@
       componentProps.options = options
     }
     if (item.type === 'employeeSelect' && componentProps.multiple === true) {
+      componentProps.modelValue = undefined
       componentProps.modelValues = componentProps.modelValues ?? getFieldValue(item.key)
       const onUpdate = componentProps['onUpdate:modelValues']
       componentProps['onUpdate:modelValues'] = (values: string[]) => {

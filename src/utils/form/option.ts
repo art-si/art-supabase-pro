@@ -14,7 +14,19 @@ export function toDictionaryOption<TValue>(item: { label?: string; name: string;
   label: string
   value: TValue
 } {
-  return { label: item.label || item.name, value: item.value }
+  return { label: getDictionaryDisplayLabel(item, item.value), value: item.value }
+}
+
+/** Unresolved dictionary values remain identifiable as incomplete data without exposing codes. */
+export function getDictionaryDisplayLabel(
+  item: { label?: string; name?: string } | undefined,
+  value: unknown,
+  options: { emptyText?: string; unknownText?: string } = {}
+): string {
+  const label = item?.label?.trim() || item?.name?.trim()
+  if (label) return label
+  if (value === undefined || value === null || value === '') return options.emptyText ?? '--'
+  return options.unknownText ?? '待核对'
 }
 
 /**

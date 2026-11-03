@@ -27,7 +27,7 @@
   import { useUserStore } from '@/store/modules/user'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import type { DictDisplayMode } from '@/types/component'
-  import { toDictionaryOption } from '@/utils/form/option'
+  import { getDictionaryDisplayLabel } from '@/utils/form/option'
 
   defineOptions({ name: 'ArtDictDisplay' })
 
@@ -70,16 +70,7 @@
   const dictItem = computed<Api.DataCenter.DictListItem | undefined>(
     () => props.item ?? userStore.getDictDisplayItemByValue(props.dictCode, props.value)
   )
-  const label = computed(() => {
-    if (dictItem.value) {
-      const optionLabel = toDictionaryOption(dictItem.value).label
-      if (optionLabel) return optionLabel
-    }
-    if (props.value === undefined || props.value === null || props.value === '') {
-      return props.emptyText
-    }
-    return props.unknownText ?? String(props.value)
-  })
+  const label = computed(() => getDictionaryDisplayLabel(dictItem.value, props.value, props))
   const tagType = computed<Api.Common.TagPreset | undefined>(() => {
     const type = dictItem.value?.tagType
     return type ? (type as Api.Common.TagPreset) : undefined

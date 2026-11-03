@@ -105,6 +105,7 @@ export interface ArtDataSelectProps<T extends object = DataSelectRecord> {
   pageSize?: number
   pageSizes?: number[]
   showPagination?: boolean
+  showTableHeader?: boolean
   showSearch?: boolean
   showSelectedPanel?: boolean
   /** Start each dialog visit with an empty draft while retaining the confirmed field value. */

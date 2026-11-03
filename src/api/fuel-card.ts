@@ -23,6 +23,9 @@ export interface FuelCard {
   vehicleId: string
   plateNo: string
   companyName: string | null
+  vehicleOwnership: string | null
+  carrierName: string | null
+  driverPhone: string | null
   issuer: string
   imagePath: string | null
   fuelType: FuelCardFuelType
@@ -47,6 +50,10 @@ export interface FuelCardEntry {
   vehicleId: string
   plateNo: string
   companyName: string | null
+  vehicleOwnership: string | null
+  carrierName: string | null
+  vehicleDriverName: string | null
+  vehicleDriverPhone: string | null
   cardStatus: FuelCardStatus
   driverId: string | null
   driverName: string | null
@@ -93,11 +100,15 @@ export interface FuelCardListFilters {
   keyword?: string
   status?: FuelCardStatus | ''
   vehicleId?: string
+  vehicleOwnership?: string
+  vehicleType?: string
 }
 
 export interface FuelCardLedgerFilters {
   cardId?: string
   vehicleId?: string
+  vehicleOwnership?: string
+  vehicleType?: string
   entryType?: FuelCardEntryType | ''
   occurredFrom?: string
   occurredTo?: string
@@ -190,6 +201,8 @@ async function listCards(
         p_keyword: normalizeNullableText(params.keyword),
         p_status: params.status || null,
         p_vehicle_id: params.vehicleId || null,
+        p_vehicle_ownership: params.vehicleOwnership || null,
+        p_vehicle_type: params.vehicleType || null,
         p_export: options.export,
         p_ids: options.selectedIds?.length
           ? options.selectedIds
@@ -214,6 +227,8 @@ async function listEntries(
         p_to: to,
         p_card_id: params.cardId || null,
         p_vehicle_id: params.vehicleId || null,
+        p_vehicle_ownership: params.vehicleOwnership || null,
+        p_vehicle_type: params.vehicleType || null,
         p_entry_type: params.entryType || null,
         p_occurred_from: params.occurredFrom || null,
         p_occurred_to: params.occurredTo || null,
