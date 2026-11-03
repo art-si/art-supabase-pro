@@ -20,7 +20,6 @@ jobs:
     timeout-minutes: 35
     env:
       GIT_TERMINAL_PROMPT: '0'
-      VITE_OUT_DIR: docs
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - name: Check out the exact source revision
@@ -45,6 +44,8 @@ jobs:
       - name: Verify production deployment configuration
         run: pnpm exec tsx --test tests/unit/deployment-isolation.test.ts
       - name: Build the production application
+        env:
+          VITE_OUT_DIR: docs
         run: pnpm build --mode production
       - name: Verify the generated site
         run: |
