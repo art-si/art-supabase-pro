@@ -49,7 +49,11 @@ export const runUpdateCommand: UpdateCommand = (command, args, options = {}) =>
     const timer = setTimeout(() => {
       child.stdin.end()
       child.kill()
-      finish(new Error('当前步骤等待超时，原备份尚未替换；请检查网络和 Docker 后重试。'))
+      finish(
+        Object.assign(new Error('当前步骤等待超时，原备份尚未替换；请检查网络和 Docker 后重试。'), {
+          code: 'BACKUP_COMMAND_TIMEOUT'
+        })
+      )
     }, options.timeoutMs || 180_000)
     child.stdout.setEncoding('utf8').on('data', (value: string) => {
       stdout += value
@@ -61,8 +65,15 @@ export const runUpdateCommand: UpdateCommand = (command, args, options = {}) =>
     child.stderr.setEncoding('utf8').on('data', (value: string) => {
       stderr = (stderr + value).slice(-256 * 1024)
     })
-    child.on('error', () =>
-      finish(new Error('无法启动本机更新步骤，请检查 Supabase CLI、Node 和 Docker 安装。'))
+    child.on('error', (cause) =>
+      finish(
+        Object.assign(
+          new Error('无法启动本机更新步骤，请检查 Supabase CLI、Node 和 Docker 安装。', {
+            cause
+          }),
+          { code: 'BACKUP_COMMAND_START_FAILED' }
+        )
+      )
     )
     child.on('close', (code) => finish(undefined, code ?? 1))
     child.stdin.on('error', () => {
