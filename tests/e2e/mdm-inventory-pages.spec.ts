@@ -107,6 +107,12 @@ test('库存主数据布局与库位交互', async ({ page }, testInfo) => {
     if (path === 'bin-3d') {
       await expect(page.getByRole('navigation', { name: '货架库区导航' })).toBeVisible()
       await expect(page.locator('canvas.rack-scene__canvas')).toBeVisible()
+      await expect(page.locator('.overview-strip')).toHaveCount(0)
+      await expect(page.locator('.scene-context')).toContainText(/2 组货架 · 5 个库位/)
+      await expect(page.locator('.scene-context')).toContainText(/有货\s+0/)
+      await expect(page.locator('.scene-context')).toContainText(/空位\s+3/)
+      await expect(page.locator('.scene-context')).toContainText(/异常\s+1/)
+      await expect(page.locator('.scene-context')).toContainText(/停用\s+1/)
       await expectSceneFooterLayout(page)
       const sceneFrame = await page.locator('.scene-frame').boundingBox()
       const sceneCanvas = await page.locator('canvas.rack-scene__canvas').boundingBox()
@@ -117,7 +123,7 @@ test('库存主数据布局与库位交互', async ({ page }, testInfo) => {
       )
       await expect(page.locator('.art-workspace-splitter')).toHaveCount(2)
       for (const label of ['间距设置', '重置视角', '刷新库位'])
-        await expect(page.getByRole('button', { name: label }).locator('svg')).toBeVisible()
+        await expect(page.getByRole('button', { name: label })).toHaveCSS('border-top-width', '0px')
       if ((page.viewportSize()?.width ?? 0) <= 640) {
         await page.locator('canvas.rack-scene__canvas').scrollIntoViewIfNeeded()
         await page.screenshot({ path: join(visualDir, 'mdm-bin-3d-mobile-scene.png') })
@@ -196,10 +202,28 @@ test('库存主数据布局与库位交互', async ({ page }, testInfo) => {
       expect(Math.abs(firstRackLabel!.y - secondRackLabel!.y)).toBeGreaterThan(30)
       if ((page.viewportSize()?.width ?? 0) >= 1120)
         await page.screenshot({ path: join(visualDir, 'mdm-bin-3d-top.png') })
+      await page.locator('.business-workspace-focus-toggle:visible .el-switch').click({
+        timeout: 10_000
+      })
+      await expect(page.locator('.bin-3d-page')).toHaveClass(/is-focus-mode/)
+      await expect(page.getByRole('heading', { name: '立体库位', exact: true })).toBeHidden()
+      await expect(page.locator('.scene-frame')).toBeVisible()
+      await page.screenshot({ path: join(visualDir, 'mdm-bin-3d-focus-mode.png') })
+      await page.locator('.business-workspace-focus-toggle:visible .el-switch').click({
+        timeout: 10_000
+      })
+      await expect(page.locator('.bin-3d-page')).not.toHaveClass(/is-focus-mode/)
+      await page.locator('.business-workspace-focus-toggle:visible .el-switch').click({
+        timeout: 10_000
+      })
+      await expect(page.locator('.bin-3d-page')).toHaveClass(/is-focus-mode/)
+      await page.keyboard.press('Escape')
+      await expect(page.locator('.bin-3d-page')).not.toHaveClass(/is-focus-mode/)
+      await expect(page.getByRole('heading', { name: '立体库位', exact: true })).toBeVisible()
       await page.getByRole('button', { name: /彩卷区/ }).click()
       await expect(page.getByText('当前库区暂无货架')).toBeVisible()
     }
-    if (path === 'zone' || path === 'bin' || path === 'bin-3d') {
+    if (path === 'zone' || path === 'bin') {
       await expect(page.getByRole('button', { name: '进入专注模式' })).toHaveCount(0)
       await expect(page.getByRole('switch', { name: '进入专注模式' })).toHaveCount(0)
       await expect(page.locator('.art-section-card .el-scrollbar').first()).toBeVisible()
@@ -613,7 +637,7 @@ test('立体库位多货架空间布局', async ({ page }, testInfo) => {
   await expect(page.getByRole('heading', { name: '立体库位', exact: true })).toBeVisible({
     timeout: 60_000
   })
-  await expect(page.getByText('12 组货架 · 180 个层位')).toBeVisible()
+  await expect(page.getByText('12 组货架 · 180 个库位')).toBeVisible()
   await expect(page.locator('canvas.rack-scene__canvas')).toBeVisible()
   const settingGuide = page.getByRole('button', { name: '知道了' })
   if (await settingGuide.isVisible()) {
