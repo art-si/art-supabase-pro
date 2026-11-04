@@ -10,6 +10,7 @@ import {
   exists,
   fileHash,
   readJson,
+  runUpdateCommand,
   writeJson,
   type UpdateCommand
 } from '../../scripts/lib/backup-update-io'
@@ -183,7 +184,7 @@ function unchangedSource(t: TestContext): ReturnType<typeof postgres> {
   return sql
 }
 
-function sourceWithSchemaChanges(t: TestContext) {
+function sourceWithSchemaChanges(t: TestContext, rolesChanged = true) {
   const sql = unchangedSource(t)
   const query = sql.unsafe
   const settings: string[] = []
@@ -197,7 +198,7 @@ function sourceWithSchemaChanges(t: TestContext) {
       return [
         {
           schema: 'b'.repeat(32),
-          roles: 'b'.repeat(32),
+          roles: rolesChanged ? 'b'.repeat(32) : catalogHash,
           managed: catalogHash,
           migration: catalogHash
         }
@@ -230,8 +231,12 @@ test(
           query.includes("idle_in_transaction_session_timeout='15min'")
         )
       )
-      assert.equal(options?.timeoutMs, 15 * 60_000, 'each export retains its own deadline')
       const index = exports++
+      assert.equal(
+        options?.timeoutMs,
+        index === 0 ? 45 * 60_000 : 15 * 60_000,
+        'schema and other exports retain separate deadlines'
+      )
       const completed = new Promise<void>((resolve) => setTimeout(resolve, 8 * 60_000))
       started[index].resolve()
       await completed
@@ -240,8 +245,8 @@ test(
       await writeFile(
         destination,
         index === 0
-          ? '-- fixture schema\nCREATE SCHEMA IF NOT EXISTS fixture_update;\n'
-          : '-- fixture roles\nCREATE ROLE fixture_export_role NOLOGIN;\n'
+          ? '-- fixture schema\nCREATE SCHEMA IF NOT EXISTS fixture_update;\n-- PostgreSQL database dump complete\n'
+          : '-- fixture roles\nCREATE ROLE fixture_export_role NOLOGIN;\nRESET ALL;\n'
       )
       return { code: 0, stdout: '', stderr: '' }
     }
@@ -284,7 +289,10 @@ test(
       exports++
       started.resolve()
       await finishExport.promise
-      await writeFile(args[args.indexOf('--file') + 1], '-- fixture schema\n')
+      await writeFile(
+        args[args.indexOf('--file') + 1],
+        '-- fixture schema\n-- PostgreSQL database dump complete\n'
+      )
       return { code: 0, stdout: '', stderr: '' }
     }
     t.mock.timers.enable({ apis: ['setTimeout'] })
@@ -306,6 +314,178 @@ test(
     assert.equal(state.input.DbPassword, '')
   }
 )
+
+for (const { diagnostic, code } of [
+  { diagnostic: 'FATAL: password authentication failed for user secret=private', code: '28P01' },
+  { diagnostic: 'ERROR: permission denied for schema public secret=private', code: '42501' },
+  {
+    diagnostic: 'connection to server timed out secret=private',
+    code: 'BACKUP_DUMP_CONNECTION_FAILED'
+  },
+  {
+    diagnostic: 'cache lookup failed for function 123 secret=private',
+    code: 'BACKUP_DUMP_SOURCE_CHANGED'
+  },
+  {
+    diagnostic: 'ERROR: canceling statement due to statement timeout secret=private',
+    code: '57014'
+  },
+  { diagnostic: 'unknown CLI failure secret=private', code: 'BACKUP_DUMP_FAILED' }
+]) {
+  test(
+    `failed schema export reports ${code} without exposing CLI diagnostics`,
+    options,
+    async (t) => {
+      const state = await fixture(t)
+      const source = sourceWithSchemaChanges(t, false)
+      let attempts = 0
+      const run: UpdateCommand = async (command, args, invocation) => {
+        if (command !== 'supabase' || !args.includes('dump'))
+          return state.run(command, args, invocation)
+        attempts++
+        assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
+        return { code: 1, stdout: '', stderr: diagnostic }
+      }
+      const report = await runBackupUpdate(state.input, run, () => source.sql)
+      assert.equal(attempts, code === 'BACKUP_DUMP_CONNECTION_FAILED' ? 2 : 1)
+      assert.equal(report.status, 'failed')
+      assert.equal(report.errorCode, code)
+      assert.equal(
+        report.errorStage,
+        code === 'BACKUP_DUMP_CONNECTION_FAILED'
+          ? '结构文件 schema.sql 连接中断，清理暂存文件后重试'
+          : '校对结构文件 schema.sql'
+      )
+      assert.match(report.error || '', /结构导出|来源数据库/)
+      assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
+      assert.equal(report.backupPath, state.root)
+      assert.doesNotMatch(JSON.stringify(report), /secret=private|fixture-only/)
+    }
+  )
+}
+
+test(
+  'schema export subprocess timeout retains its diagnostic code and the original backup',
+  options,
+  async (t) => {
+    const state = await fixture(t)
+    const source = sourceWithSchemaChanges(t, false)
+    const run: UpdateCommand = async (command, args, invocation) => {
+      if (command !== 'supabase' || !args.includes('dump'))
+        return state.run(command, args, invocation)
+      assert.equal(invocation?.timeoutMs, 45 * 60_000)
+      return runUpdateCommand(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+        timeoutMs: 100
+      })
+    }
+    const report = await runBackupUpdate(state.input, run, () => source.sql)
+    assert.equal(report.status, 'failed')
+    assert.equal(report.errorCode, 'BACKUP_COMMAND_TIMEOUT')
+    assert.equal(report.errorStage, '校对结构文件 schema.sql')
+    assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
+    assert.equal(report.backupPath, state.root)
+    assert.doesNotMatch(JSON.stringify(report), /fixture-only/)
+  }
+)
+
+for (const writePartial of [false, true]) {
+  test(
+    `schema export rejects ${writePartial ? 'partial' : 'missing'} output`,
+    options,
+    async (t) => {
+      const state = await fixture(t)
+      const source = sourceWithSchemaChanges(t, false)
+      const run: UpdateCommand = async (command, args, invocation) => {
+        if (command !== 'supabase' || !args.includes('dump'))
+          return state.run(command, args, invocation)
+        if (writePartial)
+          await writeFile(
+            args[args.indexOf('--file') + 1],
+            '-- incomplete schema\nCREATE TABLE fixture (id int);\n'
+          )
+        return { code: 0, stdout: '', stderr: '' }
+      }
+      const report = await runBackupUpdate(state.input, run, () => source.sql)
+      assert.equal(report.status, 'failed')
+      assert.equal(report.errorCode, 'BACKUP_DUMP_INCOMPLETE')
+      assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
+      assert.equal(report.backupPath, state.root)
+      assert.doesNotMatch(JSON.stringify(report), /fixture-only/)
+    }
+  )
+}
+
+for (const recover of [true, false]) {
+  test(
+    `schema export ${recover ? 'recovers from one' : 'stops after two'} connection failure${recover ? '' : 's'}`,
+    options,
+    async (t) => {
+      const state = await fixture(t)
+      const source = sourceWithSchemaChanges(t, false)
+      let attempts = 0
+      const complete =
+        '-- fixture schema\nCREATE SCHEMA IF NOT EXISTS fixture_update;\n-- PostgreSQL database dump complete\n'
+      const run: UpdateCommand = async (command, args, invocation) => {
+        if (command !== 'supabase' || !args.includes('dump'))
+          return state.run(command, args, invocation)
+        attempts++
+        assert.equal(invocation?.timeoutMs, 45 * 60_000)
+        const destination = args[args.indexOf('--file') + 1]
+        if (attempts === 1) {
+          await writeFile(destination, '-- abandoned partial export\n')
+          return { code: 1, stdout: '', stderr: 'connection to server timed out secret=private' }
+        }
+        assert.equal(await exists(destination), false, 'retry must clear the first partial output')
+        if (recover) {
+          await writeFile(destination, complete)
+          return { code: 0, stdout: '', stderr: '' }
+        }
+        return { code: 1, stdout: '', stderr: 'connection to server timed out secret=private' }
+      }
+      const report = await runBackupUpdate(state.input, run, () => source.sql)
+      assert.equal(attempts, 2)
+      assert.doesNotMatch(JSON.stringify(report), /secret=private|fixture-only/)
+      if (recover) {
+        state.caches.add(cachePath(report.backupPath))
+        assert.equal(report.status, 'updated', report.error || '')
+        assert.equal(
+          await readFile(path.join(report.backupPath, 'database/schema.sql'), 'utf8'),
+          complete
+        )
+        assert.ok(report.historyPath)
+        assert.equal(await fileHash(path.join(report.historyPath, 'manifest.json')), state.hash)
+      } else {
+        assert.equal(report.status, 'failed')
+        assert.equal(report.errorCode, 'BACKUP_DUMP_CONNECTION_FAILED')
+        assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
+        assert.equal(report.backupPath, state.root)
+      }
+    }
+  )
+}
+
+test('complete schema export updates a verified snapshot', options, async (t) => {
+  const state = await fixture(t)
+  const source = sourceWithSchemaChanges(t, false)
+  const complete =
+    '-- fixture schema\nCREATE SCHEMA IF NOT EXISTS fixture_update;\n-- PostgreSQL database dump complete\n'
+  const run: UpdateCommand = async (command, args, invocation) => {
+    if (command !== 'supabase' || !args.includes('dump'))
+      return state.run(command, args, invocation)
+    await writeFile(args[args.indexOf('--file') + 1], complete)
+    return { code: 0, stdout: '', stderr: '' }
+  }
+  const report = await runBackupUpdate(state.input, run, () => source.sql)
+  state.caches.add(cachePath(report.backupPath))
+  assert.equal(report.status, 'updated', report.error || '')
+  assert.equal(
+    await readFile(path.join(report.backupPath, 'database/schema.sql'), 'utf8'),
+    complete
+  )
+  assert.ok(report.historyPath)
+  assert.equal(await fileHash(path.join(report.historyPath, 'manifest.json')), state.hash)
+  assert.doesNotMatch(JSON.stringify(report), /fixture-only/)
+})
 
 test(
   'apply with no remote changes still refreshes the directory and preserves its data',

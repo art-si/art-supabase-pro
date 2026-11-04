@@ -270,6 +270,18 @@ export async function connectBackupSource(
 
 export function backupUpdateErrorMessage(cause: unknown): string {
   const code = isObjectRecord(cause) && typeof cause.code === 'string' ? cause.code : ''
+  if (code === 'BACKUP_DUMP_CONNECTION_FAILED')
+    return '结构导出时数据库连接中断或超时，请检查执行端网络和 Docker 后重试；原完整备份保留。'
+  if (code === 'BACKUP_DUMP_SOURCE_CHANGED')
+    return '结构导出时来源对象发生变化，请重新检查更新计划后重试；原完整备份保留。'
+  if (code === 'BACKUP_DUMP_INCOMPLETE')
+    return '结构导出文件不完整，请检查本机磁盘空间和 Docker 状态后重试；原完整备份保留。'
+  if (code === 'BACKUP_DUMP_FAILED')
+    return '结构导出失败，请检查 Supabase CLI 和 Docker 状态后重试；原完整备份保留。'
+  if (code === 'BACKUP_COMMAND_TIMEOUT')
+    return '本机更新步骤等待超时，请检查执行端网络和 Docker 后重试；原完整备份保留。'
+  if (code === 'BACKUP_COMMAND_START_FAILED')
+    return '无法启动本机更新命令，请检查 Supabase CLI、Node 和 Docker 安装；原完整备份保留。'
   if (code === '42501') return '来源数据库权限不足，请使用具备备份读取权限的数据库账号。'
   if (code === 'ENOSPC') return '本机磁盘空间不足，请清理空间后使用同一计划重试。'
   if (['EACCES', 'EPERM', 'EBUSY'].includes(code))
