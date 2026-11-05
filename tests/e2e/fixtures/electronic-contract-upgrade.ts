@@ -52,9 +52,11 @@ userStore.setDictMap(
   )
 )
 
-const actions = params.has('limited')
-  ? ['View']
-  : ['View', 'Add', 'Edit', 'Preview', 'Submit', 'Sign', 'Copy', 'Delete', 'Terminate']
+const actions = params.has('noView')
+  ? ['Preview']
+  : params.has('limited')
+    ? ['View']
+    : ['View', 'Add', 'Edit', 'Preview', 'Submit', 'Sign', 'Copy', 'Delete', 'Terminate']
 useMenuStore(store).setButtonList(
   actions.map((action) => ({
     name: `TmsElectronicContract:${action}`,
@@ -80,6 +82,13 @@ document.documentElement.dataset.electronicFixtureReady = 'true'
 await new Promise<void>((resolve) => {
   document.addEventListener('electronic-contract-fixture-start', () => resolve(), { once: true })
 })
-await router.push('/')
+await router.push(
+  params.has('deep')
+    ? {
+        name: 'TmsElectronicContract',
+        query: { contractId: '33333333-3333-4333-8333-333333333331' }
+      }
+    : '/'
+)
 await router.isReady()
 app.mount('#electronic-contract-upgrade')

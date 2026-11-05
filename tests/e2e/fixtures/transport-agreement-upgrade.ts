@@ -49,4 +49,9 @@ app.use(language)
 setupGlobDirectives(app)
 await router.push('/')
 await router.isReady()
-app.mount('#transport-agreement-upgrade')
+const startButton = document.querySelector<HTMLButtonElement>('#start-transport-agreement-upgrade')
+startButton?.addEventListener('click', () => {
+  app.mount('#transport-agreement-upgrade')
+  startButton.remove()
+})
+if (startButton) startButton.disabled = false
