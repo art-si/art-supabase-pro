@@ -19,7 +19,10 @@ async function setup(page: Page): Promise<void> {
       ['internal_saved', '企业内保存']
     ],
     tmsDriverType: [['primary', '主驾']],
-    tmsDriverOwnership: [['self', '自营司机']],
+    tmsDriverOwnership: [
+      ['self', '自营司机'],
+      ['carrier', '承运商司机']
+    ],
     tmsDriverStatus: [['on_duty', '在岗']],
     tmsDriverLicenseType: [['A2', 'A2']],
     commonBoolean: [
@@ -288,7 +291,22 @@ test('司机列表展示归属、公司、认证与紧急联系人，黑名单�
   }
   await page.route('**/rest/v1/rpc/tms_list_drivers_secure', (route) =>
     route.fulfill({
-      json: { records: [driverRow], total: 1, fieldAccess: driverRow.field_access }
+      json: {
+        records: [
+          driverRow,
+          {
+            ...driverRow,
+            id: '55555555-5555-4555-8555-555555555555',
+            driver_name: '验收承运司机',
+            carrier_id: '33333333-3333-4333-8333-333333333333',
+            company_name: '验收承运商',
+            driver_ownership: 'carrier',
+            is_blacklisted: false
+          }
+        ],
+        total: 2,
+        fieldAccess: driverRow.field_access
+      }
     })
   )
   await page.route('**/rest/v1/rpc/tms_get_driver_secure', (route) =>
@@ -335,6 +353,7 @@ test('司机列表展示归属、公司、认证与紧急联系人，黑名单�
   ]) {
     await expect(page.getByRole('columnheader', { name: label, exact: true })).toHaveCount(1)
   }
+  await expect(page.getByRole('row', { name: /验收承运司机/ })).toContainText('承运商司机')
   await expect(page.locator('.tms-driver__blocked').getByText('黑名单')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('driver-list.png'), fullPage: true })
   await page.locator('.tms-driver__blocked').getByRole('button', { name: '验收司机' }).click()

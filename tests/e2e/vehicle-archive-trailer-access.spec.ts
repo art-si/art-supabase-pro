@@ -54,7 +54,10 @@ for (const ownership of [
     const owner = page.locator('.vehicle-archive-detail__identity-copy > p')
     await expect(owner).toHaveText(ownership.ownerName)
     await expect(owner).toHaveAttribute('title', ownership.ownerName)
-    await page.screenshot({ path: testInfo.outputPath('vehicle-header.png'), animations: 'disabled' })
+    await page.screenshot({
+      path: testInfo.outputPath('vehicle-header.png'),
+      animations: 'disabled'
+    })
   })
 }
 
