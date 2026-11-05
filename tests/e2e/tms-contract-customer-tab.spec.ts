@@ -160,7 +160,8 @@ test('合同表单用标准参选控件展示承运商五列信息', async ({ pa
       const code = url.searchParams.get('dict_type_table.code')?.replace(/^eq\./, '')
       const dictionaryRows = [
         { type: 'tmsCarrierType', value: 'enterprise', label: '企业承运商' },
-        { type: 'tmsCarrierDispatchChannel', value: 'offline', label: '线下' }
+        { type: 'tmsCarrierDispatchChannel', value: 'offline', label: '线下' },
+        { type: 'tmsContractBillingMethod', value: 'by_vehicle', label: '按车计费' }
       ]
       return route.fulfill({
         json: dictionaryRows
@@ -174,6 +175,24 @@ test('合同表单用标准参选控件展示承运商五列信息', async ({ pa
           }))
       })
     }
+    if (name === 'material_unit_compatibility_options')
+      return route.fulfill({
+        json: [
+          ['car', '车'],
+          ['U28', '辆'],
+          ['piece', '个'],
+          ['ton', '吨']
+        ].map(([value, label], index) => ({
+          id: `contract-unit-${index}`,
+          code: value,
+          value,
+          label,
+          name: label,
+          status: '1',
+          sort: index,
+          dict_type_table: { code: 'tmsCargoUnit', name: '计量单位' }
+        }))
+      })
     if (name === 'tms_list_contracts_secure')
       return route.fulfill({ json: { records: [], total: 0, fieldAccess: {} } })
     if (name === 'tms_list_carrier_options_secure')
@@ -208,4 +227,115 @@ test('合同表单用标准参选控件展示承运商五列信息', async ({ pa
   await expect(selector.getByText('企业承运商')).toBeVisible()
   await expect(selector.getByText('线下', { exact: true })).toBeVisible()
   await expect(selector.getByText('enterprise', { exact: true })).toHaveCount(0)
+  await selector.getByRole('button', { name: '取消' }).click()
+  await form.getByRole('tab', { name: '计费与履约' }).click()
+  await form.getByRole('combobox', { name: '计费方式' }).click()
+  await expect(page.getByRole('option', { name: '按车计费' })).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('option', { name: '按车计费' }).click()
+  await form.getByRole('combobox', { name: '计费单位' }).click()
+  await expect(page.getByRole('option', { name: '车', exact: true })).toBeVisible()
+  await expect(page.getByRole('option', { name: '辆', exact: true })).toBeVisible()
+  await expect(page.getByRole('option', { name: '个', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('option', { name: '吨', exact: true })).toHaveCount(0)
+})
+
+test('运输合同提审失败保留草稿，重试成功刷新列表', async ({ page }) => {
+  test.setTimeout(120_000)
+  const customerId = '11111111-1111-4111-8111-111111111112'
+  const tenantId = '11111111-1111-4111-8111-111111111111'
+  const contract = {
+    id: '22222222-2222-4222-8222-222222222222',
+    tenantId,
+    contractNo: 'HT-2026-RETRY',
+    contractName: '提审失败回归合同',
+    contractStatus: 'draft',
+    businessContractType: 'customer',
+    contractCategory: 'annual_framework',
+    transportMode: 'road',
+    customerId,
+    customer: { id: customerId, customerName: '测试客户' },
+    billingMethod: 'by_weight',
+    billingUnit: 'ton',
+    signTime: '2026-10-01T00:00:00Z',
+    handler: '测试经办人',
+    effectiveDate: '2026-10-01',
+    expiryDate: '2027-10-01',
+    attachments: [],
+    transportDetails: []
+  }
+  let saves = 0
+  let submits = 0
+  let failWorkflow = true
+  await page.route('**/rest/v1/**', (route) => {
+    const url = new URL(route.request().url())
+    const name = url.pathname.split('/').at(-1)
+    if (name === 'sys_dictionary') {
+      const code = url.searchParams.get('dict_type_table.code')?.replace(/^eq\./, '')
+      const values: Record<string, [string, string]> = {
+        tmsContractCategory: ['annual_framework', '年度框架'],
+        tmsContractBusinessType: ['customer', '企业/货主端合同'],
+        tmsContractTransportMode: ['road', '公路'],
+        tmsContractBillingMethod: ['by_weight', '按重量计费'],
+        tmsCargoUnit: ['ton', '吨']
+      }
+      const item = code ? values[code] : undefined
+      return route.fulfill({
+        json: item
+          ? [
+              {
+                id: `dict-${code}`,
+                code: item[0],
+                value: item[0],
+                label: item[1],
+                status: '1',
+                dict_type_table: { code, name: code }
+              }
+            ]
+          : []
+      })
+    }
+    if (name === 'tms_list_contracts_secure')
+      return route.fulfill({ json: { records: [contract], total: 1, fieldAccess: {} } })
+    if (name === 'tms_get_contract_secure') return route.fulfill({ json: contract })
+    if (name === 'tms_update_contract_secure') {
+      saves++
+      return route.fulfill({ json: contract })
+    }
+    if (name === 'start_workflow') {
+      submits++
+      if (failWorkflow)
+        return route.fulfill({
+          status: 400,
+          json: { code: 'P0001', message: 'No active workflow definition' }
+        })
+      contract.contractStatus = 'pending'
+      return route.fulfill({ json: '33333333-3333-4333-8333-333333333333' })
+    }
+    if (name === 'tms_list_customer_options_secure')
+      return route.fulfill({ json: [contract.customer] })
+    return route.fulfill({ json: [] })
+  })
+  await page.goto('/tests/e2e/fixtures/tms-contract-customer-tab.html', {
+    waitUntil: 'domcontentloaded',
+    timeout: 90_000
+  })
+  await expect(page.getByText(contract.contractName)).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('button', { name: '编辑' }).first().click()
+  const form = page.getByRole('dialog', { name: '编辑合同' })
+  await expect(form).toBeVisible()
+  await form.getByRole('button', { name: '提交审核' }).click()
+  await expect(
+    page.getByText('合同已保存为草稿，但审批未发起。请检查运输合同审批流程是否已发布并启用后重试。')
+  ).toBeVisible({ timeout: 20_000 })
+  expect(saves).toBe(1)
+  expect(submits).toBe(1)
+  await expect(form).toBeVisible()
+  failWorkflow = false
+  await form.getByRole('button', { name: '提交审核' }).click()
+  await expect(form).toBeHidden()
+  expect(saves).toBe(2)
+  expect(submits).toBe(2)
+  await expect(
+    page.getByRole('row', { name: /HT-2026-RETRY/ }).getByRole('button', { name: '编辑' })
+  ).toHaveCount(0)
 })

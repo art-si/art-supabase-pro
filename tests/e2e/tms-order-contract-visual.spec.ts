@@ -82,6 +82,7 @@ for (const linked of [true, false]) {
       timeout: 300_000
     })
     await expect(page.getByText('合同与报价')).toBeVisible()
+    await page.getByRole('tab', { name: '合同与报价' }).click()
     await expect(page.getByText('待配载').first()).toBeVisible()
     if (linked) {
       await expect(page.getByText('HT-QA-2026-001')).toBeVisible()
@@ -225,6 +226,7 @@ test('快速切换订单时旧合同摘要不会覆盖新订单空态', async ({
   })
   try {
     await page.goto('/tests/e2e/fixtures/tms-order-contract-visual.html', { waitUntil: 'commit' })
+    await page.getByRole('tab', { name: '合同与报价' }).click()
     await expect.poll(() => summaryRequested, { timeout: 300_000 }).toBe(true)
     await page.evaluate((id) => {
       window.dispatchEvent(
@@ -242,6 +244,7 @@ test('快速切换订单时旧合同摘要不会覆盖新订单空态', async ({
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       )
   )
+  await page.getByRole('tab', { name: '合同与报价' }).click()
   await expect(page.getByText('这张订单未关联客户合同。')).toBeVisible()
   await expect(page.getByText('HT-OLD')).toHaveCount(0)
 })
@@ -296,6 +299,7 @@ for (const summaryFails of [false, true]) {
       { waitUntil: 'commit' }
     )
     await expect(page.getByText('合同与报价')).toBeVisible({ timeout: 300_000 })
+    await page.getByRole('tab', { name: '合同与报价' }).click()
     if (summaryFails) {
       await expect(page.getByText('关联合同加载失败，请重试。')).toBeVisible()
       await expect(page.getByRole('button', { name: '重试' })).toBeVisible()

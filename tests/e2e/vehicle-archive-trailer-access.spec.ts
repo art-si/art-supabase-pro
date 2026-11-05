@@ -15,6 +15,49 @@ const vehicle = {
   fieldAccess: { documents: 'read' }
 }
 
+for (const ownership of [
+  {
+    name: '承运商车辆抬头显示关联承运商',
+    vehicleOwnership: 'carrier',
+    ownerName: '验收承运商（华东区域干线运输服务有限公司）',
+    carrierName: '验收承运商（华东区域干线运输服务有限公司）',
+    companyName: '旧所属公司'
+  },
+  {
+    name: '自营车辆抬头显示所属公司',
+    vehicleOwnership: 'self_operated',
+    ownerName: '测试物流公司',
+    carrierName: '不应显示的承运商',
+    companyName: '测试物流公司'
+  }
+] as const) {
+  test(ownership.name, async ({ page }, testInfo) => {
+    await prepareIsolatedSession(page)
+    await page.route('**/rest/v1/**', (route) => {
+      const endpoint = new URL(route.request().url()).pathname.split('/').at(-1)
+      if (endpoint === 'vms_get_vehicle_archive_secure') {
+        return route.fulfill({
+          json: {
+            ...vehicle,
+            vehicleOwnership: ownership.vehicleOwnership,
+            companyName: ownership.companyName,
+            carrier: { id: 'carrier-1', companyName: ownership.carrierName }
+          }
+        })
+      }
+      return route.fulfill({ json: [] })
+    })
+
+    await page.goto('/tests/e2e/fixtures/trailer-company-edit.html?panel=archive', {
+      waitUntil: 'commit'
+    })
+    const owner = page.locator('.vehicle-archive-detail__identity-copy > p')
+    await expect(owner).toHaveText(ownership.ownerName)
+    await expect(owner).toHaveAttribute('title', ownership.ownerName)
+    await page.screenshot({ path: testInfo.outputPath('vehicle-header.png'), animations: 'disabled' })
+  })
+}
+
 for (const scenario of [
   { mode: 'archive', name: '档案详情有编辑及挂车维护权限', writable: true },
   { mode: 'view', name: '档案详情只有查看权限', writable: false },

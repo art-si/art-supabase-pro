@@ -241,6 +241,41 @@ for (const kind of ['task', 'repair'] as const) {
   })
 }
 
+test('task 逾期完成计入本页完成率并区分全部结果', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await prepareIsolatedSession(page)
+  await interceptRows(page, 'task', (route) =>
+    fulfillRows(
+      route,
+      [
+        {
+          ...taskRow('逾期完成记录'),
+          status: 'completed',
+          due_date: '2026-11-01',
+          completed_at: '2026-11-03T08:00:00+08:00'
+        }
+      ],
+      25
+    )
+  )
+  await page.goto(fixture('task'), { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText('逾期完成记录', { exact: true })).toBeVisible()
+  await expect(metric(page, '任务总数')).toHaveText('25')
+  await expect(metric(page, '本页已完成')).toHaveText('1')
+  await expect(
+    page.locator('.pmis-task-workspace .business-workspace-header__metric').filter({
+      hasText: '任务总数'
+    })
+  ).toContainText('全部结果')
+  await expect(
+    page.locator('.pmis-task-workspace .business-workspace-header__metric').filter({
+      hasText: '本页已完成'
+    })
+  ).toContainText('本页完成率 100%')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await capture(page, 'task-completed-overdue-current-page-390.png')
+})
+
 test('task 深色阴影模式错误与重试保留可见专注出口', async ({ page }) => {
   const appearance = { theme: 'dark' as const, boxBorderMode: false }
   await page.setViewportSize({ width: 570, height: 900 })

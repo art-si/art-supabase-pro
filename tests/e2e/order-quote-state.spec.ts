@@ -27,9 +27,10 @@ test('关闭重开报价后旧读取不能覆盖当前备注', async ({ page }, 
   await page.getByRole('button', { name: '打开报价', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect.poll(() => reads).toBe(1)
-  await dialog.getByRole('button', { name: 'Close this dialog' }).click()
+  await dialog.getByRole('button', { name: '关闭弹窗' }).click()
   await expect(dialog).toBeHidden()
   await page.getByRole('button', { name: '打开报价', exact: true }).click()
+  await dialog.getByRole('tab', { name: '付款与附件' }).click()
   const remark = dialog.getByRole('textbox', { name: /备注/ })
   await expect(remark).toHaveValue('当前读取备注')
   const oldResponse = page.waitForResponse((response) =>
@@ -39,11 +40,33 @@ test('关闭重开报价后旧读取不能覆盖当前备注', async ({ page }, 
   await (await oldResponse).finished()
   await expect(remark).toHaveValue('当前读取备注')
   await expect(dialog.getByRole('button', { name: '保存报价', exact: true })).toBeEnabled()
+  await dialog.getByRole('tab', { name: '报价费用' }).click()
   await expect(dialog.getByText('¥1,234.50', { exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true
   )
   await page.screenshot({ path: info.outputPath('quote-money.png'), animations: 'disabled' })
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => {
+      document.documentElement.classList.toggle('dark', value === 'dark')
+    }, theme)
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 1280, height: 800 },
+      { width: 390, height: 844 }
+    ]) {
+      await page.setViewportSize(viewport)
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBeLessThanOrEqual(1)
+      await page.screenshot({
+        path: info.outputPath(`quote-${viewport.width}-${theme}.png`),
+        animations: 'disabled'
+      })
+    }
+  }
+  await dialog.getByRole('tab', { name: '付款与附件' }).click()
+  await page.screenshot({ path: info.outputPath('quote-payment-390-dark.png') })
 })
 
 test('报价保存失败只提示一次，重试请求冻结原内容', async ({ page }) => {
@@ -67,6 +90,7 @@ test('报价保存失败只提示一次，重试请求冻结原内容', async ({
   await page.goto('/tests/e2e/fixtures/order-quote-state.html')
   await page.getByRole('button', { name: '打开报价', exact: true }).click()
   const dialog = page.getByRole('dialog')
+  await dialog.getByRole('tab', { name: '付款与附件' }).click()
   const remark = dialog.getByRole('textbox', { name: /备注/ })
   await remark.fill('首次报价备注')
   await dialog.getByRole('button', { name: '保存报价', exact: true }).click()

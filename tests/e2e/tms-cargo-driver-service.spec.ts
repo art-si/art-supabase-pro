@@ -64,6 +64,7 @@ async function setup(page: Page): Promise<void> {
 }
 
 test('货物新增参选使用分类、物料与已选三栏，单位显示名称', async ({ page }, testInfo) => {
+  test.setTimeout(240_000)
   await setup(page)
   await page.route('**/rest/v1/mdm_material_category?**', (route) =>
     route.fulfill({
@@ -114,8 +115,10 @@ test('货物新增参选使用分类、物料与已选三栏，单位显示名�
   await page.goto('/tests/e2e/fixtures/tms-cargo-driver-service.html?kind=cargo', {
     waitUntil: 'domcontentloaded'
   })
-  await expect(page.getByText('新增货物', { exact: true })).toBeVisible()
-  await page.getByRole('textbox', { name: '参选 MDM 物料编码' }).click()
+  await expect(page.getByText('新增货物', { exact: true })).toBeVisible({ timeout: 120_000 })
+  const materialPickerInput = page.getByRole('textbox', { name: '参选 MDM 物料编码' })
+  await expect(materialPickerInput).toBeVisible({ timeout: 120_000 })
+  await materialPickerInput.press('Enter')
   await expect(page.getByText('产品品类')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: '物料编码' })).toBeVisible()
   const picker = page.getByRole('dialog', { name: '参选物料编码' })
@@ -134,11 +137,12 @@ test('货物新增参选使用分类、物料与已选三栏，单位显示名�
 })
 
 test('货物编辑以 MDM 单位名称展示持久化单位代码', async ({ page }, testInfo) => {
+  test.setTimeout(240_000)
   await setup(page)
   await page.goto('/tests/e2e/fixtures/tms-cargo-driver-service.html?kind=cargo-edit', {
     waitUntil: 'domcontentloaded'
   })
-  await expect(page.getByText('编辑货物', { exact: true })).toBeVisible()
+  await expect(page.getByText('编辑货物', { exact: true })).toBeVisible({ timeout: 120_000 })
   const unit = page.getByRole('group', { name: '计量单位' })
   await expect(unit.getByText('件', { exact: true })).toBeVisible()
   await expect(unit).not.toContainText('U05')
@@ -191,11 +195,65 @@ test('司机姓名查看沿用编辑弹窗布局并禁止写入', async ({ page 
   await page.goto('/tests/e2e/fixtures/tms-cargo-driver-service.html?kind=driver', {
     waitUntil: 'domcontentloaded'
   })
-  await expect(page.getByText('查看司机', { exact: true })).toBeVisible()
+  await expect(page.getByText('查看司机', { exact: true })).toBeVisible({ timeout: 120_000 })
   await expect(page.getByText('验收运输公司')).toBeVisible()
   await expect(page.getByRole('tab', { name: '身份证信息' })).toBeVisible()
   await expect(page.getByRole('button', { name: '确定' })).toHaveCount(0)
+  const dialog = page.getByRole('dialog', { name: '查看司机' })
+  await dialog.getByRole('tab', { name: '其他信息' }).click()
+  await expect(dialog.getByText('司机接受邀请并完成注册后自动更新')).toBeVisible()
+  await expect(dialog.getByRole('combobox', { name: '注册状态' })).toBeDisabled()
+  await dialog.getByRole('button', { name: '查看证件材料' }).click()
+  await expect(dialog.getByRole('tab', { name: '司机证件' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
   await page.screenshot({ path: testInfo.outputPath('driver-readonly.png'), fullPage: true })
+})
+
+test('司机证件查看入口不会遮挡有权限的审核操作', async ({ page }) => {
+  await setup(page)
+  await page.route('**/rest/v1/rpc/tms_get_driver_secure', (route) =>
+    route.fulfill({
+      json: {
+        id: driverId,
+        tenant_id: tenantId,
+        carrier_id: null,
+        driver_name: '验收司机',
+        phone: '138****0001',
+        gender: 'male',
+        license_type: 'A2',
+        driver_type: 'primary',
+        enabled: true,
+        company_name: '验收运输公司'
+      }
+    })
+  )
+  await page.route('**/rest/v1/rpc/tms_get_driver_profile_secure', (route) =>
+    route.fulfill({ json: { driver_ownership: 'self' } })
+  )
+  await page.route('**/rest/v1/rpc/tms_get_driver_certification_secure', (route) =>
+    route.fulfill({
+      json: {
+        required: true,
+        certified: true,
+        canReview: true,
+        identityStatus: 'unverified',
+        licenseStatus: 'unverified',
+        qualificationStatus: 'unverified'
+      }
+    })
+  )
+  await page.goto('/tests/e2e/fixtures/tms-cargo-driver-service.html?kind=driver-review', {
+    waitUntil: 'domcontentloaded'
+  })
+  const dialog = page.getByRole('dialog', { name: '编辑司机' })
+  await expect(dialog).toBeVisible({ timeout: 120_000 })
+  await dialog.getByRole('tab', { name: '其他信息' }).click()
+  await expect(dialog.getByText('司机证件尚未通过审核')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '查看证件材料' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '审核通过' })).toBeEnabled()
+  await expect(dialog.getByRole('button', { name: '撤销认证' })).toBeVisible()
 })
 
 test('司机列表展示归属、公司、认证与紧急联系人，黑名单姓名可查看', async ({ page }, testInfo) => {

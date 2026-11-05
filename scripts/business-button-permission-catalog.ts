@@ -649,6 +649,7 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     buttons: [
       button('View', '查看'),
       button('GenerateReceivable', '生成暂估应收'),
+      button('PickupAppointment', '提货预约'),
       button('Export', '导出'),
       button('Print', '打印'),
       button('Accept', '确认接单', 'TmsWaybill:Accept'),

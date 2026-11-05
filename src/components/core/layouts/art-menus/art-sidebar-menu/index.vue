@@ -150,6 +150,7 @@
   import { useMenuStore } from '@/store/modules/menu'
   import { isIframe } from '@/utils/navigation'
   import { startMenuJump } from '@/utils/navigation'
+  import { resolveMenuRootPath } from '@/utils/navigation/route'
   import SidebarSubmenu from './widget/sidebar-submenu.vue'
   import { useCommon } from '@/hooks/core/useCommon'
   import { useWindowSize, useTimeoutFn } from '@vueuse/core'
@@ -195,7 +196,7 @@
   const isMobileScreen = computed(() => width.value < MOBILE_BREAKPOINT)
 
   // 路由相关
-  const firstLevelMenuPath = computed(() => route.matched[0]?.path)
+  const firstLevelMenuPath = computed(() => resolveMenuRootPath(route.matched, route.path))
   const routerPath = computed(() => String(route.meta.activePath || route.path))
 
   // 菜单数据
@@ -228,7 +229,7 @@
     }
 
     // 返回当前顶级路径对应的子菜单
-    const currentTopPath = `/${route.path.split('/')[1]}`
+    const currentTopPath = firstLevelMenuPath.value
     const currentMenu = allMenus.find((menu) => menu.path === currentTopPath)
     return currentMenu?.children ?? []
   })

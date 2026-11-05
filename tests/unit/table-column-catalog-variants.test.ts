@@ -185,7 +185,7 @@ for (const kind of ['estimated', 'financial'] as const) {
 
 const waybillFactory = compileFactory(
   'modules/art-supabase-tms/src/views/waybill-management/modules/waybill-shared.tsx',
-  ['createWaybillColumns'],
+  ['feeFields', 'createWaybillColumns'],
   'createWaybillColumns(context)'
 )
 for (const mode of ['pending', 'loaded']) {

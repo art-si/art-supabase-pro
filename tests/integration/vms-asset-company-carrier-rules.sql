@@ -7,7 +7,7 @@ declare
  platform_tenant uuid:='028e6a68-a9db-4055-974c-1e05bfe94b0f';
  own_tenant uuid:='7529f951-938e-4e2c-ac0d-316c136ae1f9';
  foreign_tenant uuid:='2824c2b5-2774-4781-b995-f55e8bcee920';
- target uuid; record_id uuid; carrier_id uuid; carrier_name text; company_name text;
+ target uuid; record_id uuid; carrier_id uuid; company_name text;
  refs jsonb; blocked boolean; scope integer;
 begin
  for scope in 1..4 loop
@@ -33,23 +33,36 @@ begin
  perform set_config('request.jwt.claim.sub',platform_uid::text,true);
  perform set_config('request.jwt.claims',jsonb_build_object('sub',platform_uid,'role','authenticated')::text,true);
  perform set_config('request.headers','{}',true);
- select c.id,c.company_name into carrier_id,carrier_name from public.mdm_carrier c where tenant_id=own_tenant and enabled order by id limit 1;
+ select c.id into carrier_id from public.mdm_carrier c where tenant_id=own_tenant and enabled order by id limit 1;
  if carrier_id is null then raise exception 'Carrier fixture missing'; end if;
  record_id:=public.vms_create_vehicle_archive_secure(jsonb_build_object(
   'tenant_id',own_tenant,'plate_no','测A资产规则回滚','vehicle_type','厢式货车',
-  'carrier_id',carrier_id,'vehicle_ownership','self_operated','is_new_energy',false
+  'carrier_id',carrier_id,'vehicle_ownership','carrier','is_new_energy',false
  ));
- if not exists(select 1 from public.mdm_vehicle v where v.id=record_id and v.company_name=carrier_name and v.vehicle_ownership='carrier' and not v.is_new_energy) then
-  raise exception 'Carrier company/ownership or energy default not applied';
+ if not exists(select 1 from public.mdm_vehicle v where v.id=record_id and v.company_name is null and v.carrier_id=asset_rules.carrier_id and v.vehicle_ownership='carrier' and not v.is_new_energy) then
+  raise exception 'Carrier ownership, company isolation or energy selection not applied';
  end if;
  perform public.vms_update_vehicle_archive_secure(record_id,jsonb_build_object('company_name','可编辑公司'));
- if (select v.company_name from public.mdm_vehicle v where id=record_id)<>'可编辑公司' then raise exception 'Company is not editable'; end if;
+ if (select v.company_name from public.mdm_vehicle v where id=record_id) is not null then raise exception 'Carrier company must remain empty'; end if;
  record_id:=public.vms_create_vehicle_archive_secure(jsonb_build_object(
   'tenant_id',own_tenant,'plate_no','测A首次公司编辑回滚','vehicle_type','厢式货车',
   'carrier_id',carrier_id,'company_name','首次保存手工公司','vehicle_ownership','carrier'
  ));
- if not exists(select 1 from public.mdm_vehicle v where v.id=record_id and v.company_name='首次保存手工公司' and v.carrier_id=asset_rules.carrier_id) then
-  raise exception 'Company edited before first save was overwritten or carrier detached';
+ if not exists(select 1 from public.mdm_vehicle v where v.id=record_id and v.company_name is null and v.carrier_id=asset_rules.carrier_id) then
+  raise exception 'Carrier company was retained or carrier detached';
+ end if;
+ blocked:=false;
+ begin perform public.vms_create_vehicle_archive_secure(jsonb_build_object(
+  'tenant_id',own_tenant,'plate_no','测A缺承运商回滚','vehicle_type','厢式货车',
+  'vehicle_ownership','carrier','is_new_energy',false
+ )); exception when sqlstate '23514' then blocked:=true; end;
+ if not blocked then raise exception 'Carrier ownership without carrier was accepted'; end if;
+ record_id:=public.vms_create_vehicle_archive_secure(jsonb_build_object(
+  'tenant_id',own_tenant,'plate_no','测A个人归属回滚','vehicle_type','厢式货车',
+  'vehicle_ownership','individual_affiliation','company_name','不可保留公司','is_new_energy',false
+ ));
+ if not exists(select 1 from public.mdm_vehicle v where v.id=record_id and v.company_name is null and v.carrier_id is null) then
+  raise exception 'Individual ownership retained company or carrier';
  end if;
  blocked:=false;
  begin perform public.vms_update_vehicle_archive_secure(record_id,'{"is_new_energy":null}'::jsonb);

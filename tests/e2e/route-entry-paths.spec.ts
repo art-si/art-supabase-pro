@@ -38,7 +38,7 @@ for (const nativeLoader of [false, true]) {
 for (const entry of [
   { component: '/examples/tables/basic', selector: '.el-table' },
   { component: '/examples/form/search-bar', text: '基础示例（默认收起）' },
-  { component: '/tms/waybill-management/pending', text: '待调度运单' },
+  { component: '/tms/waybill-management/pending', text: '待配载派车' },
   { component: '/tms/waybill-management/loaded', text: '运输运单' },
   { component: '/tms/order-list/detail', text: '缺少订单标识' }
 ]) {

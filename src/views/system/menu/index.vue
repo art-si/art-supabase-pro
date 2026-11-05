@@ -44,8 +44,8 @@
 
     <!-- 菜单详情与维护弹窗 -->
     <MenuDetailDrawer ref="menuDetailDrawerRef" />
-    <MenuDialog ref="menuDialogRef" @submit="handleSubmit" />
-    <MenuSortDialog ref="menuSortDialogRef" @submit="handleSubmit" />
+    <MenuDialog ref="menuDialogRef" @submit="handleMenuChanged" />
+    <MenuSortDialog ref="menuSortDialogRef" @submit="handleMenuChanged" />
     <MasterDataDeleteGuard ref="deleteGuardRef" @cleared="handleSubmit" />
   </div>
 </template>
@@ -557,6 +557,11 @@
     void tableQueryRef.value?.refreshData()
   }
 
+  // 导航与动态路由在启动时装配；菜单层级或页面配置变更后重新读取授权树。
+  const handleMenuChanged = (): void => {
+    window.location.reload()
+  }
+
   /**
    * 删除菜单
    */
@@ -587,9 +592,7 @@
       remove: () => deleteMenu({ ids }),
       successMessage: '菜单删除成功',
       onDeleted: async () => {
-        completeMenuTreeCache.value = null
-        loadedChildrenByParent.clear()
-        await tableQueryRef.value?.refreshData()
+        window.location.reload()
       }
     })
   }

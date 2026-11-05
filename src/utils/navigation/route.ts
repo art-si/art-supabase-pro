@@ -23,6 +23,16 @@
 
 import type { AppRouteRecord } from '@/types'
 
+/** 当前路由的实际顶层菜单优先于网址前缀；未注册路由才按网址回退。 */
+export function resolveMenuRootPath(
+  matchedRoutes: readonly { path: string }[],
+  currentPath: string
+): string {
+  const matchedRoot = matchedRoutes[0]?.path
+  if (matchedRoot && matchedRoot !== '/') return matchedRoot
+  return `/${currentPath.split('/')[1] || ''}`
+}
+
 /** 菜单展示与默认首页落点不同：隐藏的全屏页面也不展示在导航中。 */
 export const isVisibleMenuPage = (item: AppRouteRecord): boolean =>
   Boolean(

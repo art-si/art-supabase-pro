@@ -62,8 +62,10 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Carrier dependency reader exposed amounts or invalid cleanup';
   END IF;
-  IF (SELECT count(*) FROM public.tms_get_carrier_delete_dependencies_secure(ARRAY[qa_carrier])
-      WHERE dependency_code = 'carrier_vehicle') < 2 THEN
+  IF NOT EXISTS (SELECT 1 FROM public.mdm_vehicle WHERE carrier_id = qa_carrier)
+     OR (SELECT count(*) FROM public.tms_get_carrier_delete_dependencies_secure(ARRAY[qa_carrier])
+         WHERE dependency_code = 'carrier_vehicle')
+       <> (SELECT count(*) FROM public.mdm_vehicle WHERE carrier_id = qa_carrier) THEN
     RAISE EXCEPTION 'Carrier vehicle ownership references were missed';
   END IF;
 

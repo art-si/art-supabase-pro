@@ -743,6 +743,31 @@
       'Dict',
       10
     ),
+    attachment_scm_sales_contract: {
+      label: '销售合同附件',
+      unit: '份',
+      description: '附件已关联合同，请到合同中核对并替换或移除关联后再删除资源。',
+      actionLabel: '查看销售合同',
+      routeName: 'ScmSalesContract',
+      applicationCode: 'scm',
+      routePath: '/scm/sales-management/sales-contract',
+      statusDictCode: 'scmDocumentStatus',
+      canNavigate: () => hasAuth('ScmSalesContract:View'),
+      order: 20
+    },
+    attachment_scm_purchase_contract: {
+      label: '采购合同附件',
+      unit: '份',
+      description: '附件已关联合同，请到合同中核对并替换或移除关联后再删除资源。',
+      actionLabel: '查看采购合同',
+      routeName: 'ScmPurchaseContract',
+      applicationCode: 'scm',
+      routePath: '/scm/purchase-management/purchase-contract',
+      routeQuery: { dependencyCode: 'scm_purchase_document' },
+      statusDictCode: 'scmPurchaseStatus',
+      canNavigate: () => hasAuth('ScmPurchaseContract:View'),
+      order: 30
+    },
     attachment_waybill_proof: createGovernanceMeta(
       '运单凭证引用',
       '处',

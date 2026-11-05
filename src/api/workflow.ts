@@ -532,7 +532,7 @@ export async function startWorkflow(
     businessTitle: string
     context?: Record<string, unknown>
   },
-  options: { showErrorMessage?: boolean } = {}
+  options: { showErrorMessage?: boolean; errorMessage?: string } = {}
 ) {
   return await responseHandle<string>(
     () =>
@@ -546,6 +546,7 @@ export async function startWorkflow(
     {
       showMessage: true,
       showErrorMessage: options.showErrorMessage ?? true,
+      errorMessage: options.errorMessage,
       breakReturn: true,
       message: '已提交审批'
     }

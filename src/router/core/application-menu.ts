@@ -24,6 +24,57 @@ export function buildApplicationMenuTree(flat: AppRouteRecord[]): AppRouteRecord
   return roots
 }
 
+/** 规范化授权菜单路径；绝对路径在调整菜单层级后保持原访问地址。 */
+export function normalizeApplicationMenuPaths(
+  menuList: AppRouteRecord[],
+  parentPath = ''
+): AppRouteRecord[] {
+  return menuList.map((item) => {
+    const fullPath = buildFullPath(item.path || '', parentPath)
+    const children = item.children?.length
+      ? normalizeApplicationMenuPaths(item.children, fullPath)
+      : item.children
+
+    return {
+      ...item,
+      path: fullPath,
+      redirect: item.redirect || resolveDefaultRedirect(children),
+      children
+    }
+  })
+}
+
+function resolveDefaultRedirect(children?: AppRouteRecord[]): string | undefined {
+  if (!children?.length) return undefined
+
+  for (const child of children) {
+    if (
+      child.path &&
+      child.path !== '/' &&
+      !child.meta?.link &&
+      child.meta?.isIframe !== true &&
+      child.component &&
+      child.component !== ''
+    ) {
+      return child.path
+    }
+
+    const nestedRedirect = resolveDefaultRedirect(child.children)
+    if (nestedRedirect) return nestedRedirect
+  }
+
+  return undefined
+}
+
+function buildFullPath(path: string, parentPath: string): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) {
+    return path
+  }
+  if (!parentPath) return `/${path}`
+  return `${parentPath.replace(/\/$/, '')}/${path}`
+}
+
 /**
  * 独立应用已经通过应用切换器表明自身身份，不再重复显示应用壳目录。
  * 子菜单路径必须先完成规范化，这样提升层级后仍保留 `/vms/...` 等稳定前缀。

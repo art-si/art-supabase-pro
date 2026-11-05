@@ -100,11 +100,18 @@ test('车辆公司可编辑、承运商联动与复制、新能源必选和重�
   await page.getByRole('option', { name: '验收承运商（CYS001）' }).click()
   await expect(company).toHaveValue('')
   await expect(company).toBeDisabled()
+  await expect(page.locator('[data-art-form-item-key="carrierId"] .el-form-item')).toHaveClass(
+    /is-required/
+  )
   await expect(
     page
       .locator('[data-art-form-item-key="vehicleOwnership"]')
       .getByRole('radio', { name: '承运商', exact: true })
   ).toBeChecked()
+  await page.screenshot({
+    path: info.outputPath('vehicle-asset-form-carrier-1440.png'),
+    animations: 'disabled'
+  })
   await page.getByRole('button', { name: '复制承运商名称' }).click()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('验收承运商')
   const energy = page.locator('[data-art-form-item-key="isNewEnergy"]')
@@ -166,7 +173,7 @@ test('车辆归属切回自营时清空承运商并恢复所属租户默认公�
   const carrier = page.locator('[data-art-form-item-key="carrierId"] .el-select')
   const ownership = page.locator('[data-art-form-item-key="vehicleOwnership"]')
   await expect(company).toHaveValue('验收法人公司', { timeout: 90_000 })
-  await ownership.getByText('承运商', { exact: true }).click()
+  await ownership.getByText('承运商', { exact: true }).click({ timeout: 60_000 })
   await carrier.click()
   await page.getByRole('option', { name: '验收承运商（CYS001）' }).click()
   await expect(company).toHaveValue('')

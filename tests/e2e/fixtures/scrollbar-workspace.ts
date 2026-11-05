@@ -289,6 +289,7 @@ const appointmentWorkspace = defineComponent({
               drawer.value?.handleOpen({
                 id: '00000000-0000-4000-a000-000000000003',
                 waybillNo: 'YD-TEST-003',
+                waybillStatus: 'accepted',
                 orderNo: 'DD-TEST-003',
                 originStation: '',
                 destinationStation: '',
