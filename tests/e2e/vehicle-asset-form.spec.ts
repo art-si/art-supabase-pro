@@ -92,9 +92,14 @@ test('车辆公司可编辑、承运商联动与复制、新能源必选和重�
     path: info.outputPath('vehicle-asset-form-top.png'),
     animations: 'disabled'
   })
+  await page
+    .locator('[data-art-form-item-key="vehicleOwnership"]')
+    .getByText('承运商', { exact: true })
+    .click()
   await carrier.click()
   await page.getByRole('option', { name: '验收承运商（CYS001）' }).click()
-  await expect(company).toHaveValue('验收承运商')
+  await expect(company).toHaveValue('')
+  await expect(company).toBeDisabled()
   await expect(
     page
       .locator('[data-art-form-item-key="vehicleOwnership"]')
@@ -161,15 +166,17 @@ test('车辆归属切回自营时清空承运商并恢复所属租户默认公�
   const carrier = page.locator('[data-art-form-item-key="carrierId"] .el-select')
   const ownership = page.locator('[data-art-form-item-key="vehicleOwnership"]')
   await expect(company).toHaveValue('验收法人公司', { timeout: 90_000 })
+  await ownership.getByText('承运商', { exact: true }).click()
   await carrier.click()
   await page.getByRole('option', { name: '验收承运商（CYS001）' }).click()
-  await expect(company).toHaveValue('验收承运商')
+  await expect(company).toHaveValue('')
 
   await ownership.getByText('自营车辆', { exact: true }).click()
   await expect.poll(() => companyRequests.length).toBe(2)
   await expect(carrier.locator('input')).toHaveValue('')
   await expect(company).toHaveValue('')
 
+  await ownership.getByText('承运商', { exact: true }).click()
   await carrier.click()
   await page.getByRole('option', { name: '验收承运商（CYS001）' }).click()
   const staleCompanyResponse = page.waitForResponse(
@@ -177,20 +184,19 @@ test('车辆归属切回自营时清空承运商并恢复所属租户默认公�
   )
   releaseStaleCompany?.()
   await staleCompanyResponse
-  await expect(company).toHaveValue('验收承运商')
+  await expect(company).toHaveValue('')
   await expect(ownership.getByRole('radio', { name: '承运商', exact: true })).toBeChecked()
 
   await ownership.getByText('自营车辆', { exact: true }).click()
   await expect(company).toHaveValue('验收法人公司')
   await expect(carrier.locator('input')).toHaveValue('')
-  for (const [label, previousCompany] of [
-    ['第三方物流', '第三方物流公司'],
-    ['个人挂靠', '个人挂靠公司']
-  ] as const) {
+  for (const label of ['第三方物流', '个人挂靠'] as const) {
     await ownership.getByText(label, { exact: true }).click()
-    await company.fill(previousCompany)
+    await expect(company).toHaveValue('')
+    await expect(company).toBeDisabled()
     await ownership.getByText('自营车辆', { exact: true }).click()
     await expect(company).toHaveValue('验收法人公司')
+    await expect(company).toBeEnabled()
     await expect(carrier.locator('input')).toHaveValue('')
   }
   expect(companyRequests).toHaveLength(5)
@@ -296,6 +302,7 @@ test('车辆归属联动自营、承运商和个人挂靠司机参选并清除�
   )
   await chooseDrivers('self_operated')
 
+  await ownership.getByText('承运商', { exact: true }).click()
   await carrier.click()
   await page.getByRole('option', { name: '验收承运商（CYS001）' }).click()
   await expect(ownership.getByRole('radio', { name: '承运商', exact: true })).toBeChecked()
@@ -306,6 +313,7 @@ test('车辆归属联动自营、承运商和个人挂靠司机参选并清除�
   await chooseDrivers('carrier')
 
   await ownership.getByText('个人挂靠', { exact: true }).click()
+  await expect(page.locator('[data-art-form-item-key="companyName"] input')).toHaveValue('')
   await otherTab.click()
   await expect(primaryName).toHaveValue('')
   await expect(backup).not.toContainText('承运商备用司机')
@@ -441,6 +449,10 @@ test('完整档案分组和跨页签字段保留并进入同一保存请求', as
   await page.locator('[data-art-form-item-key="plateNo"] input').fill('测A完整001')
   await page.locator('[data-art-form-item-key="plateColor"] .el-select').click()
   await page.getByRole('option', { name: '黄牌', exact: true }).click()
+  await page
+    .locator('[data-art-form-item-key="vehicleOwnership"]')
+    .getByText('承运商', { exact: true })
+    .click()
   await page.locator('[data-art-form-item-key="carrierId"] .el-select').click()
   await page.getByRole('option', { name: '验收承运商（CYS001）' }).click()
   await page.getByRole('button', { name: /请选择车型与规格/ }).click()
@@ -449,7 +461,11 @@ test('完整档案分组和跨页签字段保留并进入同一保存请求', as
   await picker.getByRole('button', { name: '使用此车型', exact: true }).click()
   await page.locator('[data-art-form-item-key="vin"] input').fill('LSVAU2189N2000001')
   await page.locator('[data-art-form-item-key="remark"] textarea').fill('完整字段验收备注')
-  await page.screenshot({ path: info.outputPath('basic-lower-fields.png'), animations: 'disabled' })
+  await page.screenshot({
+    path: info.outputPath('basic-lower-fields.png'),
+    animations: 'disabled',
+    timeout: 60_000
+  })
   await page.getByRole('tab', { name: '车身参数', exact: true }).click()
   await page.locator('[data-art-form-item-key="grossMass"] input').fill('18000')
   await page.getByRole('tab', { name: '发动机参数', exact: true }).click()
@@ -466,7 +482,7 @@ test('完整档案分组和跨页签字段保留并进入同一保存请求', as
   expect(savedPayload).toMatchObject({
     plate_no: '测A完整001',
     carrier_id: 'carrier-1',
-    company_name: '验收承运商',
+    company_name: null,
     vehicle_ownership: 'carrier',
     is_new_energy: false,
     vehicle_type_profile_id: '22222222-2222-4222-8222-222222222222',
