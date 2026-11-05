@@ -495,7 +495,7 @@
   const simulatorDialogRef = ref<SimulatorDialogExpose>()
   const versionHistoryRef = ref<VersionHistoryExpose>()
   const activeStep = ref<1 | 2 | 3 | 4>(1)
-  const { focusMode } = useWorkspaceFocus()
+  const { focusMode } = useWorkspaceFocus({ autoFocus: computed(() => activeStep.value === 3) })
   watch(focusMode, async (focused) => {
     if (focused) activeStep.value = 3
     await nextTick()

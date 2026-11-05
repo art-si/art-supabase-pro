@@ -14,7 +14,7 @@ const dictionaries: Record<string, Array<[string, string]>> = {
     ['paid', '已付款'],
     ['reversed', '已反核销']
   ],
-  arViewMode: [
+  commonDocumentDisplayMode: [
     ['document', '按单据'],
     ['line', '按明细']
   ],
@@ -70,7 +70,7 @@ const dictionaries: Record<string, Array<[string, string]>> = {
     ['detail', '应收明细'],
     ['summary', '应收汇总与账龄']
   ],
-  arAgingBasis: [
+  commonAgingBasis: [
     ['due', '计划到期日'],
     ['business', '业务日期']
   ],
@@ -395,7 +395,7 @@ test('暂估列表、抽屉和窄屏完整可用', async ({ page }, info) => {
   await expect(page.getByText('AR-E-202610-001', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '新增', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(page.getByText('应收明细', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: '应收明细' }).click()
   await expect(page.getByRole('button', { name: '保存应收单', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '新增服务行', exact: true }).click()
   await expect(page.getByRole('spinbutton', { name: '录入价税合计(元) 第10行' })).toBeVisible()

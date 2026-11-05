@@ -8,8 +8,14 @@
       >
         <template #aside
           ><ElTag :type="document.status === 'confirmed' ? 'success' : 'info'"
-            >{{ settlementStatusLabel(kind, document.status)
-            }}{{ document.frozen ? ' · 已冻结' : '' }}</ElTag
+            ><template v-if="kind === 'refund' && document.status === 'confirmed'"
+              >已确认到账</template
+            ><ArtDictDisplay
+              v-else
+              dict-code="fmsPayableSettlementStatus"
+              :value="document.status"
+              display="text"
+            />{{ document.frozen ? ' · 已冻结' : '' }}</ElTag
           ></template
         >
       </ArtEntitySummary>
@@ -367,6 +373,8 @@
   </ArtDrawer>
 </template>
 <script setup lang="ts">
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { fetchOrganizationOptionsTree } from '@/api/system-manage'
   import { cloneDeep } from 'lodash-es'
   import { unref } from 'vue'
@@ -400,7 +408,6 @@
     type PayableSettlementOption
   } from '@/api/payable-settlement'
   import {
-    settlementStatusLabel,
     settlementTitles,
     newPayableSettlement,
     newPayableSettlementLine,
@@ -441,6 +448,7 @@
   const deleteGuardRef = ref<InstanceType<typeof MasterDataDeleteGuard>>()
   const document = ref<PayableSettlementDocument>()
   const options = ref<PayableSettlementOptions>()
+  const paymentInitiationTypeOptions = useDictionaryOptions('fmsPayablePaymentInitiationType')
   const organizationTree = ref<Api.SystemManage.OrganizationListItem[]>([])
   const editable = ref(false)
   const loading = ref(false)
@@ -569,10 +577,9 @@
             type: 'select',
             span: 8,
             props: {
-              options: [
-                { value: 'active', label: '主动付款' },
-                { value: 'passive', label: '被动付款' }
-              ]
+              options: paymentInitiationTypeOptions.filter((item) =>
+                ['active', 'passive'].includes(item.value)
+              )
             }
           } as FormItem
         ]

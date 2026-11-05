@@ -3,8 +3,6 @@ import test from 'node:test'
 import {
   newPayableSettlement,
   newPayableSettlementLine,
-  settlementPaymentLabel,
-  settlementStatusLabel,
   settlementTitles,
   validateSettlementAmounts,
   settlementFundAccountOptions,
@@ -116,14 +114,9 @@ test('AR sources constrain fund accounts even before the header receives its ori
   )
 })
 
-test('refund uses its own route, identity and receipt status without changing payment labels', () => {
+test('refund uses its own route and identity', () => {
   assert.equal(financePaths.payableRefund, '/fms/accounts-payable/payment-refund')
   assert.equal(settlementTitles.refund, '付款退款单')
-  assert.equal(settlementStatusLabel('refund', 'confirmed'), '已确认到账')
-  assert.equal(settlementStatusLabel('payment', 'confirmed'), '已确认付款')
-  assert.equal(settlementPaymentLabel('refund', 'none'), '未到账')
-  assert.equal(settlementPaymentLabel('refund', 'full'), '全部到账')
-  assert.equal(settlementPaymentLabel('payment', 'full'), '全部付款')
   assert.equal(newPayableSettlement('refund').kind, 'refund')
 })
 

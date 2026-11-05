@@ -10,7 +10,7 @@ import { useSettingStore } from '@/store/modules/setting'
 import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import WorkOrderDialog from '@mes/views/components/manufacturing/modules/work-order-dialog.vue'
-import type { MesWorkOrder } from '@mes/api'
+import type { MesWorkOrder, MesWorkOrderBomSnapshot, MesWorkOrderRouteSnapshot } from '@mes/api'
 import type { WorkOrderExtensionValues } from '@/types/business/work-order-extension'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
@@ -24,7 +24,92 @@ const tenantOptions = [
   { label: '测试租户 B', value: tenantB }
 ]
 
-function workOrder(tenantId: string, extensionValues: WorkOrderExtensionValues = {}): MesWorkOrder {
+const savedBom: MesWorkOrderBomSnapshot = {
+  id: 'bom-snapshot-a',
+  bomCode: 'BOM-PANEL-TEST',
+  version: 'V2',
+  status: 'active',
+  items: [
+    {
+      id: 'bom-line-a',
+      componentMaterialId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+      componentMaterialCode: 'BOM-CORE-A',
+      componentMaterialName: '快照芯材 A',
+      componentSpecification: '1200 × 800',
+      sequenceNo: 10,
+      quantity: 2,
+      basicQuantity: 2,
+      requiredQuantity: 20,
+      unitId: 'unit-a',
+      unitName: '件',
+      positionNo: 'P01',
+      operationName: '裁切',
+      assignedRouteStepId: 'route-step-a',
+      assignedOperationCode: 'CUT',
+      assignedOperationName: '裁切',
+      assignmentSource: 'configured',
+      sourcePath: ['BOM-PANEL-TEST', 'BOM-CORE-A'],
+      virtualUnexpanded: false
+    }
+  ]
+}
+
+const savedRoute: MesWorkOrderRouteSnapshot = {
+  id: 'route-a',
+  name: '板材标准路线',
+  code: 'ROUTE-PANEL',
+  version: 'V3',
+  steps: [
+    {
+      id: 'route-step-a',
+      code: 'CUT',
+      name: '裁切',
+      operationCode: 'CUT',
+      sort: 10,
+      sequenceNo: 10,
+      sequenceType: 'standard',
+      workCenterId: null,
+      workCenterIds: [],
+      workCenterNames: ['一号工作中心'],
+      departmentId: null,
+      departmentName: '板材车间',
+      unitId: null,
+      unitName: '件',
+      basicBatch: 1,
+      runOutputQuantity: 10,
+      runProcessingMinutes: 30,
+      runGreenMinutes: 0,
+      setupMinutes: 5,
+      queueMinutes: 0,
+      transferMinutes: 0,
+      minimumTransferQuantity: 1,
+      overlapEnabled: false,
+      operatorCount: 1,
+      machineCount: 1,
+      controlCode: '',
+      controlCodeName: '',
+      operationMode: '',
+      processingMode: '',
+      reportMode: '',
+      inspectionMode: '',
+      sequenceControl: '',
+      reworkMode: '',
+      firstInspectionControl: '',
+      needInspection: false,
+      firstInspection: false,
+      isFirst: true,
+      isLast: true,
+      critical: false,
+      description: '首道工序'
+    }
+  ]
+}
+
+function workOrder(
+  tenantId: string,
+  extensionValues: WorkOrderExtensionValues = {},
+  hasSavedSnapshot = false
+): MesWorkOrder {
   return {
     id:
       tenantId === tenantA
@@ -91,8 +176,8 @@ function workOrder(tenantId: string, extensionValues: WorkOrderExtensionValues =
     inboundWarehouseId: null,
     inboundWarehouseNameSnapshot: '',
     projectNameSnapshot: null,
-    bomSnapshot: [],
-    routeSnapshot: {},
+    bomSnapshot: hasSavedSnapshot ? [savedBom] : [],
+    routeSnapshot: hasSavedSnapshot ? savedRoute : {},
     confirmedAt: null,
     closedAt: null,
     deletedAt: null,
@@ -111,6 +196,8 @@ const app = createApp({
       ['reference', '编辑参考工单'],
       ['manual', '编辑人工参数工单'],
       ['readonly', '查看只读工单'],
+      ['saved', '编辑有生产资料的工单'],
+      ['saved-readonly', '查看有生产资料的工单'],
       ['tenant-b', '编辑租户 B 工单']
     ] as const
     return () =>
@@ -141,8 +228,12 @@ const app = createApp({
                       row:
                         mode === 'add'
                           ? undefined
-                          : workOrder(mode === 'tenant-b' ? tenantB : tenantA, extensionValues),
-                      readonly: mode === 'readonly'
+                          : workOrder(
+                              mode === 'tenant-b' ? tenantB : tenantA,
+                              extensionValues,
+                              mode === 'saved' || mode === 'saved-readonly'
+                            ),
+                      readonly: mode === 'readonly' || mode === 'saved-readonly'
                     })
                   }
                 },

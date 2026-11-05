@@ -23,10 +23,13 @@ const agreement = (id: string, agreementNo: string, vehicleType: string) => ({
   vehicleLengthM: 6.8,
   startsOn: '2026-11-01',
   endsOn: '2027-10-31',
-  status: 'signed',
+  status: 'pending_signed',
+  approvalStatus: 'draft',
   contentHtml: '<p>验收协议内容</p>',
   idCardImages: [],
   registrationImages: [],
+  driverLicenseImages: [],
+  roadPermitImages: [],
   driverLicenseImage: null,
   roadPermitImage: null,
   partyASeal: '验收托运方',
@@ -55,10 +58,10 @@ const dictionaries = [
     dict_type_table: { code: 'vehicleType', name: '车型' }
   },
   {
-    id: 'agreement-status-signed',
-    code: 'signed',
-    value: 'signed',
-    label: '已签订',
+    id: 'agreement-status-pending',
+    code: 'pending_signed',
+    value: 'pending_signed',
+    label: '待签署',
     status: '1',
     sort: 1,
     dict_type_table: { code: 'tmsTransportAgreementStatus', name: '协议状态' }
@@ -137,7 +140,7 @@ test('运输协议车型在列表、详情、表单和导出均显示字典中�
   await detail.getByRole('button', { name: '关闭弹窗' }).click()
   await unknownRow.getByRole('button', { name: unknownNo }).click()
   const unknownDetail = page.getByRole('dialog', { name: `运输协议 · ${unknownNo}` })
-  await expect(unknownDetail.getByText('待核对', { exact: true })).toBeVisible()
+  await expect(unknownDetail.getByText('待核对', { exact: true }).first()).toBeVisible()
   await unknownDetail.getByRole('button', { name: '关闭弹窗' }).click()
   await legacyRow.getByRole('button', { name: legacyNo }).click()
   const legacyDetail = page.getByRole('dialog', { name: `运输协议 · ${legacyNo}` })

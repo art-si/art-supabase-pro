@@ -132,7 +132,7 @@
     type PayableWriteoffRelation
   } from '@/api/payable-reference'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
-  import { payablePurposeBusinessTypeOptions } from '@/utils/finance/payable-settlement'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import {
     newPayableMatchRule,
@@ -149,6 +149,9 @@
     }>(),
     { configurationVersion: 0, relationOptions: () => [] }
   )
+  const purposeBusinessTypeOptions = useDictionaryOptions('fmsPayableSettlementPurpose')
+  const settlementMethodCategoryOptions = useDictionaryOptions('fmsPayableSettlementMethodCategory')
+  const settlementCashMethodOptions = useDictionaryOptions('fmsPayableSettlementCashMethod')
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose>()
   const activeTab = ref('identity')
@@ -314,7 +317,18 @@
             label: '付款业务类型',
             type: 'select',
             props: {
-              options: payablePurposeBusinessTypeOptions
+              options: purposeBusinessTypeOptions.filter((item) =>
+                [
+                  'purchase',
+                  'advance',
+                  'guarantee',
+                  'other',
+                  'sales_refund',
+                  'other_refund',
+                  'purchase_refund',
+                  'advance_refund'
+                ].includes(item.value)
+              )
             }
           },
           { key: 'defaultFundPurpose', label: '默认资金用途', type: 'input' },
@@ -328,13 +342,9 @@
               label: '结算方式类别',
               type: 'select',
               props: {
-                options: [
-                  { value: 'cash', label: '现金' },
-                  { value: 'cheque', label: '支票' },
-                  { value: 'remittance', label: '汇兑' },
-                  { value: 'bill', label: '非支票票据' },
-                  { value: 'virtual', label: '虚拟结算' }
-                ]
+                options: settlementMethodCategoryOptions.filter((item) =>
+                  ['cash', 'cheque', 'remittance', 'bill', 'virtual'].includes(item.value)
+                )
               }
             },
             {
@@ -342,11 +352,9 @@
               label: '运输资金结算映射',
               type: 'select',
               props: {
-                options: [
-                  { value: 'cash', label: '现金' },
-                  { value: 'bank_transfer', label: '银行转账' },
-                  { value: 'other', label: '其他' }
-                ]
+                options: settlementCashMethodOptions.filter((item) =>
+                  ['cash', 'bank_transfer', 'other'].includes(item.value)
+                )
               }
             }
           ] as FormItem[])

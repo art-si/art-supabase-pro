@@ -15,8 +15,7 @@ import {
 import type { PayableReference } from '../../src/api/payable-reference'
 import {
   newPayableSettlementLine,
-  validateSettlementAmounts,
-  payablePurposeBusinessTypeOptions
+  validateSettlementAmounts
 } from '../../src/utils/finance/payable-settlement'
 
 describe('payable writeoff allocation', () => {
@@ -301,17 +300,6 @@ describe('payable writeoff allocation', () => {
       schemes.map((scheme) => scheme.id),
       ['ar', 'legacy', 'automatic', 'disabled']
     )
-  })
-  it('keeps payment and symmetric refund business types distinct', () => {
-    const labels = Object.fromEntries(
-      payablePurposeBusinessTypeOptions.map(({ value, label }) => [value, label])
-    )
-    assert.equal(Object.keys(labels).length, payablePurposeBusinessTypeOptions.length)
-    assert.equal(labels.purchase, '采购付款')
-    assert.equal(labels.guarantee, '采购保证金')
-    assert.equal(labels.purchase_refund, '退采购付款')
-    assert.equal(labels.advance_refund, '退预付款')
-    assert.equal(labels.other_refund, '其他退款')
   })
   it('splits multiple sides exactly in cents without mutating inputs', () => {
     const primary = [

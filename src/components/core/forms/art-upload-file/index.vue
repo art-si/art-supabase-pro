@@ -199,6 +199,7 @@
       inline?: boolean
       resourceTenantId?: string
       fileName?: string
+      fileNames?: Record<string, string>
       uploadRequest?: (file: File) => Promise<Api.DataCenter.Resources.ResourceListItem[]>
     }>(),
     {
@@ -217,7 +218,8 @@
       hoverEffect: true,
       inline: false,
       resourceTenantId: '',
-      fileName: ''
+      fileName: '',
+      fileNames: () => ({})
     }
   )
 
@@ -265,9 +267,9 @@
   })
 
   watch(
-    () => [props.modelValue, props.fileName, props.resourceTenantId] as const,
-    ([value, fileName, tenantId], previous) => {
-      const targetChanged = previous?.[2] !== undefined && tenantId !== previous[2]
+    () => [props.modelValue, props.fileName, props.fileNames, props.resourceTenantId] as const,
+    ([value, fileName, fileNames, tenantId], previous) => {
+      const targetChanged = previous?.[3] !== undefined && tenantId !== previous[3]
       if (targetChanged) {
         resourcePickerVisible.value = false
       }
@@ -277,12 +279,15 @@
         const urls = normalizeUploadModelUrls(value)
         lastSyncedModelUrls.value = urls
         fileList.value = urls.map((url) => ({
-          name: getAttachmentDisplayName(url),
+          name: fileNames[url] || getAttachmentDisplayName(url),
           url
         }))
       }
       if (!props.multiple && fileName?.trim() && fileList.value[0]) {
         fileList.value[0].name = fileName.trim()
+      }
+      for (const file of fileList.value) {
+        if (file.url && fileNames[file.url]) file.name = fileNames[file.url]
       }
     },
     { immediate: true, deep: true }

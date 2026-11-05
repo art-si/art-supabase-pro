@@ -18,7 +18,7 @@ for (const kind of ['estimate', 'financial']) {
                 ['submitted', '已提交'],
                 ['approved', '已审核']
               ]
-            : code === 'arViewMode'
+            : code === 'commonDocumentDisplayMode'
               ? [
                   ['document', '按单据'],
                   ['line', '按明细']

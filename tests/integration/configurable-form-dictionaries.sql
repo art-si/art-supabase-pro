@@ -8,24 +8,25 @@ declare
 begin
   for choice in
     select * from (values
-      ('commonDocumentDisplayMode', 'commonBasicDirectory', array['document','line']::text[]),
-      ('scmLoadingOutboundStatus', 'scmSalesDocuments', array['pending','partial','complete','all']::text[]),
+      ('commonDocumentDisplayMode', 'commonDocumentDirectory', array['document','line']::text[]),
+      ('commonAgingBasis', 'commonFinanceDirectory', array['due','business']::text[]),
+      ('scmLoadingOutboundStatus', 'scmSalesLoadingDict', array['pending','partial','complete','all']::text[]),
       ('sysFieldPermissionSubjectType', 'sysIdentityDirectory', array['role','user']::text[]),
       ('mdmProductionEquipmentScopeMode', 'mdmProductionEquipmentDirectory', array['category','department','location']::text[]),
       ('hrTalentInventoryFilter', 'hrPeopleAnalytics', array['all','gap','high','unassessed']::text[]),
       ('hrSkillMatrixFilter', 'hrPeopleAnalytics', array['all','gap','ready','unassessed','unmodelled']::text[]),
       ('hrWorkforceRiskFilter', 'hrPeopleAnalytics', array['all','contract','qualification','probation','headcount']::text[]),
       ('hrFullTimeFlag', 'hrEmployeeBasic', array['true','false']::text[]),
-      ('tmsWaybillSplitBasis', 'tmsWaybill', array['quantity','weight','volume']::text[]),
-      ('tmsDispatchOperatorMode', 'tmsWaybill', array['carrier','self_operated','individual_driver']::text[]),
+      ('tmsWaybillSplitBasis', 'tmsWaybillCoreDict', array['quantity','weight','volume']::text[]),
+      ('tmsDispatchOperatorMode', 'tmsWaybillCoreDict', array['carrier','self_operated','individual_driver']::text[]),
       ('scmPurchaseAllocationMode', 'scmPurchaseDocuments', array['ratio','amount']::text[]),
       ('pmisTaskExecutionResult', 'pmisMaintenancePlanDirectory', array['ok','ng','exempt']::text[]),
-      ('mdmAccessoryCodingFilter', 'mdmProduction', array['all','pending','coded']::text[]),
+      ('mdmAccessoryCodingFilter', 'mdmAccessoryProcessingDict', array['all','pending','coded']::text[]),
       ('fmsExceptionSeverity', 'fmsExceptionManagement', array['critical','warning','attention']::text[]),
-      ('commonDashboardTrendPeriod', 'commonBasicDirectory', array['today','week','month','year']::text[]),
+      ('commonDashboardTrendPeriod', 'commonTimeDirectory', array['today','week','month','year']::text[]),
       ('sysAiOperationsWindowDays', 'aiRuntimeDirectory', array['7','30','90']::text[]),
-      ('tmsCapacityPlanningHorizonDays', 'tmsWaybill', array['7','14','30']::text[]),
-      ('tmsRoutePerformanceWindowDays', 'tmsWaybill', array['30','90','180']::text[])
+      ('tmsCapacityPlanningHorizonDays', 'tmsCapacityPlanningDict', array['7','14','30']::text[]),
+      ('tmsRoutePerformanceWindowDays', 'tmsRoutePerformanceDict', array['30','90','180']::text[])
     ) as expected(code, parent, values)
   loop
     select p.code, array_agg(d.value order by d.sort)

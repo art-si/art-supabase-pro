@@ -245,6 +245,7 @@
 
 <script setup lang="ts">
   import { createDateTimeFormatter } from '@/utils/ui/format'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
 
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { downloadBlob } from '@/utils/file'
@@ -266,12 +267,10 @@
   withDefaults(defineProps<{ externalLoading?: boolean }>(), { externalLoading: false })
   const emit = defineEmits<{ loadingChange: [loading: boolean] }>()
 
-  const periodOptions = [
-    { label: '7 天', value: 7 },
-    { label: '30 天', value: 30 },
-    { label: '90 天', value: 90 },
-    { label: '180 天', value: 180 }
-  ]
+  const configuredPeriodOptions = useDictionaryOptions('workflowAnalyticsPeriodDays', Number)
+  const periodOptions = computed(() =>
+    configuredPeriodOptions.filter((item) => [7, 30, 90, 180].includes(item.value))
+  )
   const request = useAsyncState(
     async (days: number) => {
       const [data, bottleneck] = await Promise.all([

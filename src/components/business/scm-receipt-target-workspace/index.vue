@@ -489,10 +489,7 @@
     }
   ])
   function statusLabel(status: ScmReceiptTargetStatus) {
-    return (
-      statusOptions.value.find((item) => item.value === status)?.label ??
-      (status === 'draft' ? '草稿' : status === 'confirmed' ? '已入库' : '已审核')
-    )
+    return statusOptions.value.find((item) => item.value === status)?.label ?? '状态待确认'
   }
   async function fetchPage(query: ScmReceiptTargetQuery & { current: number; size: number }) {
     const pageQuery = { ...query, ...buildSupabasePageRange(query) }

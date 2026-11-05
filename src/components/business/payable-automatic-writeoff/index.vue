@@ -76,6 +76,7 @@
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatCurrencyValue } from '@/utils/ui/format'
   import {
     formatPayableCurrencyTotals,
@@ -102,11 +103,12 @@
   const isNarrow = useMediaQuery('(max-width: 639px)')
   const isRedBlue = computed(() => request.value?.query.relation === 'payable_red_blue')
   const crossCurrencyMode = ref<PayableCrossCurrencyMode>('book_equivalent')
-  const currencyModes = [
-    { label: '本位币等值分配', value: 'book_equivalent' },
-    { label: '匹配余量全部对冲', value: 'full_pair' },
-    { label: '仅同币种', value: 'same_currency' }
-  ]
+  const configuredCurrencyModes = useDictionaryOptions('fmsPayableAutoCurrencyMode')
+  const currencyModes = computed(() =>
+    configuredCurrencyModes.filter((item) =>
+      ['book_equivalent', 'full_pair', 'same_currency'].includes(item.value)
+    )
+  )
   async function changeCurrencyMode(): Promise<void> {
     if (!request.value) return
     request.value.query.crossCurrencyMode = crossCurrencyMode.value

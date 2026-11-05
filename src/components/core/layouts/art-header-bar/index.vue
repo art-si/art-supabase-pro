@@ -54,6 +54,18 @@
           v-if="isPlatformSuper && shouldShowRefreshButton && !isHeaderLeftMenu"
         />
 
+        <!-- 全局专注偏好：所有已登录用户均可使用 -->
+        <ArtIconButton
+          :icon="globalFocusEnabled ? 'ri:focus-2-line' : 'ri:focus-3-line'"
+          :label="globalFocusEnabled ? '关闭自动专注浏览' : '开启自动专注浏览'"
+          :aria-pressed="globalFocusEnabled"
+          :loading="globalFocusPending || globalFocusPreference.loading.value"
+          :disabled="globalFocusPending || globalFocusPreference.loading.value"
+          class="global-focus-button ml-3 max-sm:ml-[7px]"
+          :class="{ 'is-active': globalFocusEnabled }"
+          @click="toggleGlobalFocus"
+        />
+
         <!-- 快速入口 -->
         <ArtFastEnter
           v-if="shouldShowFastEnter && !isHeaderLeftMenu && width >= headerBarFastEnterMinWidth"
@@ -226,6 +238,8 @@
   import { useThemeAnimation } from '@/hooks/core/useThemeAnimation'
   import { useCommon } from '@/hooks/core/useCommon'
   import { useHeaderBar } from '@/hooks/core/useHeaderBar'
+  import { useGlobalFocusPreference } from '@/hooks/core/useGlobalFocusPreference'
+  import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtUserMenu from './widget/art-user-menu.vue'
   import ArtApplicationSwitcher from './widget/art-application-switcher.vue'
   import PlatformTenantScopeSwitcher from '@/components/business/platform-tenant-scope-switcher/index.vue'
@@ -275,6 +289,10 @@
 
   const { language, isPlatformSuper } = storeToRefs(userStore)
   const { menuList } = storeToRefs(menuStore)
+  const globalFocusPreference = useGlobalFocusPreference()
+  const globalFocusPending = ref(false)
+  const globalFocusEnabled = computed(() => globalFocusPreference.enabled.value)
+  const { confirm } = useArtFeedback()
 
   const showNotice = ref(false)
   const notificationUnreadCount = ref(0)
@@ -300,10 +318,48 @@
 
   onMounted(() => {
     initLanguage()
+    if (!globalFocusPreference.initialized.value) {
+      void globalFocusPreference.load().catch((error: unknown) => {
+        notifyFriendlyError(error, '自动专注设置加载失败，请稍后重试')
+      })
+    }
     if (showSettingGuide.value) {
       scheduleSettingGuide()
     }
   })
+
+  const toggleGlobalFocus = async (): Promise<void> => {
+    if (globalFocusPending.value || globalFocusPreference.loading.value) return
+    const nextEnabled = !globalFocusPreference.enabled.value
+    if (!isPlatformSuper.value) {
+      globalFocusPreference.setLocalPreference(nextEnabled)
+      return
+    }
+
+    globalFocusPending.value = true
+    try {
+      await confirm(
+        `将自动专注浏览设为「${nextEnabled ? '开启' : '关闭'}」。入库后作为平台默认值；仅存本地只对当前账号在这台设备生效。`,
+        {
+          title: '自动专注浏览',
+          type: 'info',
+          confirmButtonText: '入库保持',
+          cancelButtonText: '仅存本地',
+          distinguishCancelAndClose: true,
+          closeOnClickModal: false
+        }
+      )
+      await globalFocusPreference.saveGlobalPreference(nextEnabled)
+    } catch (error: unknown) {
+      if (error === 'cancel') {
+        globalFocusPreference.setLocalPreference(nextEnabled)
+      } else if (error !== 'close') {
+        notifyFriendlyError(error, '自动专注设置保存失败，请重试或选择仅存本地')
+      }
+    } finally {
+      globalFocusPending.value = false
+    }
+  }
 
   /**
    * 切换全屏状态
@@ -425,6 +481,12 @@
 <style lang="scss" scoped>
   .art-header-bar {
     background: transparent;
+
+    .global-focus-button.is-active {
+      color: var(--theme-color);
+      background-color: color-mix(in srgb, var(--theme-color) 10%, transparent);
+      box-shadow: var(--art-themed-action-active-shadow);
+    }
 
     &__main {
       min-height: var(--art-header-height);

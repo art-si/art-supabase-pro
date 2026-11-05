@@ -166,16 +166,12 @@
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import SettlementDocumentDrawer from './modules/settlement-document-drawer.vue'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useRouteTableContext, useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { formatCurrencyValue } from '@/utils/ui/format'
-  import {
-    settlementStatusLabels,
-    settlementPaymentLabels,
-    settlementTitles,
-    settlementStatusLabel,
-    settlementPaymentLabel
-  } from '@/utils/finance/payable-settlement'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
+  import { settlementTitles } from '@/utils/finance/payable-settlement'
   import { printHtmlDocument } from '@/utils/file/print-document'
   import { financePaths } from '@/router/business-paths'
   import type { ColumnOption } from '@/types'
@@ -220,6 +216,10 @@
   const { confirm, confirmDelete, promptReason } = useArtFeedback()
   const title = computed(() => settlementTitles[props.kind])
   const query = reactive<PayableSettlementQuery>({ current: 1, size: 20, viewMode: 'document' })
+  const documentDisplayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
+  const settlementStatusOptions = useDictionaryOptions('fmsPayableSettlementStatus')
+  const paymentProgressOptions = useDictionaryOptions('fmsPayablePaymentProgress')
+  const refundProgressOptions = useDictionaryOptions('fmsPayableRefundProgress')
   const searchItems = computed<SearchFormItem[]>(() => [
     {
       key: 'keyword',
@@ -244,12 +244,25 @@
       type: 'select',
       props: {
         clearable: true,
-        options: Object.entries(settlementStatusLabels)
+        options: settlementStatusOptions
           .filter(
-            ([value]) =>
-              value !== 'processing' && (props.kind !== 'application' || value !== 'confirmed')
+            (item) =>
+              [
+                'draft',
+                'submitted',
+                'approved',
+                'processing',
+                'confirmed',
+                'closed',
+                'cancelled'
+              ].includes(item.value) &&
+              item.value !== 'processing' &&
+              (props.kind !== 'application' || item.value !== 'confirmed')
           )
-          .map(([value]) => ({ value, label: settlementStatusLabel(props.kind, value) }))
+          .map((item) => ({
+            ...item,
+            label: props.kind === 'refund' && item.value === 'confirmed' ? '已确认到账' : item.label
+          }))
       }
     },
     {
@@ -258,10 +271,9 @@
       type: 'select',
       props: {
         clearable: true,
-        options: Object.keys(settlementPaymentLabels).map((value) => ({
-          value,
-          label: settlementPaymentLabel(props.kind, value)
-        }))
+        options: (props.kind === 'refund' ? refundProgressOptions : paymentProgressOptions).filter(
+          (item) => ['none', 'partial', 'full'].includes(item.value)
+        )
       }
     },
     {
@@ -275,10 +287,9 @@
       label: '查询方式',
       type: 'select',
       props: {
-        options: [
-          { value: 'document', label: '按单据' },
-          { value: 'line', label: '按明细' }
-        ]
+        options: documentDisplayModeOptions.filter((item) =>
+          ['document', 'line'].includes(item.value)
+        )
       }
     }
   ])
@@ -688,7 +699,15 @@
       width: 135,
       formatter: (row) => (
         <ElTag type={row.status === 'confirmed' ? 'success' : 'info'}>
-          {settlementStatusLabel(props.kind, row.status)}
+          {props.kind === 'refund' && row.status === 'confirmed' ? (
+            '已确认到账'
+          ) : (
+            <ArtDictDisplay
+              dictCode="fmsPayableSettlementStatus"
+              value={row.status}
+              display="text"
+            />
+          )}
           {row.frozen ? ' · 冻结' : ''}
         </ElTag>
       )
@@ -702,7 +721,14 @@
       prop: 'paymentStatus',
       label: props.kind === 'refund' ? '到账状态' : '付款状态',
       width: 130,
-      formatter: (row) => settlementPaymentLabel(props.kind, row.paymentStatus || 'none')
+      formatter: (row) => (
+        <ArtDictDisplay
+          dictCode={
+            props.kind === 'refund' ? 'fmsPayableRefundProgress' : 'fmsPayablePaymentProgress'
+          }
+          value={row.paymentStatus || 'none'}
+        />
+      )
     },
     { prop: 'documentTypeName', label: '单据类型', minWidth: 155 },
     { prop: 'reason', label: props.kind === 'application' ? '请款事由' : '摘要', minWidth: 220 },

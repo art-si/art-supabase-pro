@@ -102,49 +102,10 @@ export function applySettlementSourceContext(
   }
 }
 
-export const payablePurposeBusinessTypeOptions = [
-  { value: 'purchase', label: '采购付款' },
-  { value: 'advance', label: '预付款' },
-  { value: 'guarantee', label: '采购保证金' },
-  { value: 'other', label: '其他付款' },
-  { value: 'sales_refund', label: '销售退款' },
-  { value: 'other_refund', label: '其他退款' },
-  { value: 'purchase_refund', label: '退采购付款' },
-  { value: 'advance_refund', label: '退预付款' }
-]
-
-export const settlementStatusLabels: Record<string, string> = {
-  draft: '暂存',
-  submitted: '已提交',
-  approved: '已审核',
-  processing: '付款处理中',
-  confirmed: '已确认付款',
-  closed: '已关闭',
-  cancelled: '已取消'
-}
-export const settlementPaymentLabels: Record<string, string> = {
-  none: '未付款',
-  partial: '部分付款',
-  full: '全部付款'
-}
 export const settlementTitles: Record<PayableSettlementKind, string> = {
   application: '付款申请单',
   payment: '付款单',
   refund: '付款退款单'
-}
-export function settlementStatusLabel(kind: PayableSettlementKind, status: string): string {
-  return kind === 'refund' && status === 'confirmed'
-    ? '已确认到账'
-    : settlementStatusLabels[status] || status
-}
-export function settlementPaymentLabel(kind: PayableSettlementKind, status: string): string {
-  if (kind === 'refund')
-    return (
-      ({ none: '未到账', partial: '部分到账', full: '全部到账' } as Record<string, string>)[
-        status
-      ] || status
-    )
-  return settlementPaymentLabels[status] || status
 }
 export function newPayableSettlement(kind: PayableSettlementKind): PayableSettlementDocument {
   return {

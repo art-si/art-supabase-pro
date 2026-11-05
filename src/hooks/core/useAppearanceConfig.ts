@@ -25,6 +25,16 @@ const appearanceLoads = new WeakMap<SettingStore, AppearanceLoadState>()
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
+/** Keep optional platform preferences when editing the appearance JSON. */
+export function parseAppearanceRecord(raw: string): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(raw)
+    return isRecord(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
 export function getAppearanceConfig(store = useSettingStore()): AppearanceConfig {
   return Object.fromEntries(
     Object.keys(SETTING_DEFAULT_CONFIG).map((key) => [key, store[key as keyof AppearanceConfig]])
@@ -33,8 +43,8 @@ export function getAppearanceConfig(store = useSettingStore()): AppearanceConfig
 
 function parseAppearanceConfig(raw: string): ParsedAppearanceConfig | null {
   try {
-    const source: unknown = JSON.parse(raw)
-    if (!isRecord(source)) return null
+    const source = parseAppearanceRecord(raw)
+    if (!source) return null
     const result: Record<string, unknown> = {}
     for (const [key, fallback] of Object.entries(SETTING_DEFAULT_CONFIG)) {
       const value = source[key]
@@ -115,6 +125,15 @@ export async function saveAppearanceConfig(): Promise<void> {
   }
   const { data } = await fetchSystemParamByKey(APPEARANCE_CONFIG_KEY)
   if (!data) throw new Error('未找到外观设置参数，请刷新后重试')
-  await editSystemParam({ ...data, paramValue: JSON.stringify(getAppearanceConfig()) })
+  const saved = parseAppearanceRecord(data.paramValue)
+  const globalFocusMode = saved?.globalFocusMode
+  await editSystemParam({
+    ...data,
+    paramValue: JSON.stringify({
+      ...saved,
+      ...getAppearanceConfig(),
+      ...(typeof globalFocusMode === 'boolean' ? { globalFocusMode } : {})
+    })
+  })
   clearSystemParamCache(APPEARANCE_CONFIG_KEY)
 }

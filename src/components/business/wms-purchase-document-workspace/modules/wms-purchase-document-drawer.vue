@@ -616,7 +616,12 @@
     @confirm="addSourceLines"
   ></ArtTableMultipleSelect>
 
-  <ArtDialog ref="serialEntryDialogRef" size="sm" :show-footer="mode !== 'view'">
+  <ArtDialog
+    ref="serialEntryDialogRef"
+    size="sm"
+    :show-footer="mode !== 'view'"
+    @close="invalidateSerialImport"
+  >
     <ArtExcelImport
       accept=".txt,.csv"
       :parse-excel="false"
@@ -659,6 +664,7 @@
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { parseSerialNumberText } from '@/utils/file/serial-number-text'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import dayjs from 'dayjs'
   import { cloneDeep, round, uniq } from 'lodash-es'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase/error'
@@ -1892,6 +1898,13 @@
     })
   }
   const serialList = computed(() => parseSerialNumberText(serialText.value))
+  const serialSession = useArtOverlaySession(() =>
+    Boolean(unref(serialEntryDialogRef.value?.visible))
+  )
+  const invalidateSerialImport = (): void => {
+    serialSession.invalidate()
+  }
+  onDeactivated(invalidateSerialImport)
   const serialEntryVisible = computed({
     get: () => false,
     set: (value: boolean) => {
@@ -1917,8 +1930,16 @@
     }
   })
   async function importSerials(file: File): Promise<void> {
+    const request = serialSession.invalidate()
+    const line = serialLine.value
+    const documentVersion = documentRequest
+    const isCurrent = () =>
+      serialSession.isCurrent(request) &&
+      line === serialLine.value &&
+      documentVersion === documentRequest
     try {
       const serials = parseSerialNumberText(await file.text())
+      if (!isCurrent()) return
       if (!serials.length) {
         ElMessage.warning('文件中没有可用的序列号，请检查文件内容后重试')
         return
@@ -1926,10 +1947,11 @@
       serialEntryForm.value.serialText = serials.join('\n')
       ElMessage.success(`已导入 ${serials.length} 个序列号`)
     } catch (error) {
-      notifyFriendlyError(error, '序列号文件读取失败，请重新选择文件')
+      if (isCurrent()) notifyFriendlyError(error, '序列号文件读取失败，请重新选择文件')
     }
   }
   function openInlineSerials(line: WmsPurchaseLine): void {
+    invalidateSerialImport()
     serialLine.value = line
     serialText.value = line.serialNos.join('\n')
     serialEntryVisible.value = mode.value !== 'view'

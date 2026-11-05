@@ -114,6 +114,7 @@
 </template>
 
 <script setup lang="ts">
+  import { h } from 'vue'
   import type { ColumnOption } from '@/types'
   import BusinessWorkspaceFocusToggle from '@/components/business/business-workspace-focus-toggle/index.vue'
   import {
@@ -125,12 +126,12 @@
   import { createFriendlySupabaseError } from '@/utils/supabase'
   import { useWorkspaceFocus } from '@/hooks/core/useWorkspaceFocus'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import RecognitionPageHero from '../modules/recognition-page-hero.vue'
   import RecognitionWorkbenchDrawer from '../modules/recognition-workbench-drawer.vue'
   import RecognitionDetailDrawer from '../modules/recognition-detail-drawer.vue'
   import {
     confidencePercent,
-    featureLabels,
     getArtifactTitle,
     recognitionCapabilities,
     type RecognitionFeature
@@ -197,7 +198,12 @@
       prop: 'feature',
       label: '类型',
       width: 120,
-      formatter: (row) => featureLabels[row.feature] ?? '未识别类型'
+      formatter: (row) =>
+        h(ArtDictDisplay, {
+          dictCode: 'aiOcrFeature',
+          value: row.feature,
+          unknownText: '未识别类型'
+        })
     },
     {
       prop: 'confidence',

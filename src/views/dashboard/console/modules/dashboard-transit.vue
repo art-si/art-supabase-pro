@@ -56,7 +56,7 @@
   .dashboard-transit {
     position: relative;
     min-width: 0;
-    padding: 24px 25px 10px;
+    padding-bottom: 10px;
     overflow: hidden;
 
     &::before {
@@ -79,6 +79,7 @@
       gap: 12px;
       align-items: center;
       justify-content: space-between;
+      padding: 24px 25px 0;
 
       button {
         @include cardLink.button;
@@ -102,6 +103,10 @@
     &__list {
       height: 282px;
       margin-top: 16px;
+
+      :deep(> .el-scrollbar__wrap > .el-scrollbar__view) {
+        padding-inline: 25px;
+      }
     }
 
     .transit-row {
@@ -210,8 +215,14 @@
     }
 
     @media screen and (width <= 720px) {
-      padding-right: 18px;
-      padding-left: 18px;
+      header {
+        padding-right: 18px;
+        padding-left: 18px;
+      }
+
+      &__list :deep(> .el-scrollbar__wrap > .el-scrollbar__view) {
+        padding-inline: 18px;
+      }
 
       .transit-row {
         grid-template-columns: 38px minmax(0, 1fr) auto;

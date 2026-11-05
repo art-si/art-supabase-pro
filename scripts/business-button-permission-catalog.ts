@@ -577,12 +577,24 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     buttons: [
       button('View', '查看'),
       button('Add', '新增'),
+      button('Edit', '编辑'),
+      button('Preview', '预览'),
+      button('Submit', '提交审批'),
+      button('Sign', '签署'),
       button('Copy', '复制'),
       button('Delete', '删除'),
       button('Terminate', '终止')
     ]
   },
-  { menuName: 'TmsTransportAgreement', buttons: crud({ view: true, export: true }) },
+  {
+    menuName: 'TmsTransportAgreement',
+    buttons: [
+      ...crud({ view: true, export: true }),
+      button('Preview', '预览'),
+      button('Submit', '提交审批'),
+      button('Sign', '签署')
+    ]
+  },
   { menuName: 'TmsFavoriteRoute', buttons: crud() },
   {
     menuName: 'TmsStation',

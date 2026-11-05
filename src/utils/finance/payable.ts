@@ -9,7 +9,6 @@ import {
   scaleWmsMaterialBaseQuantity
 } from '@/utils/wms/material-quantity'
 
-export const payableStatusLabels = { draft: '暂存', submitted: '已提交', approved: '已审核' }
 export const roundPayable = (value: number, digits = 2): number => {
   const rounded = Math.sign(value) * round(Math.abs(value), digits)
   return rounded === 0 ? 0 : rounded

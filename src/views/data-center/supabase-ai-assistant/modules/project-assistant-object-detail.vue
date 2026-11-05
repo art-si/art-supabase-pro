@@ -299,12 +299,14 @@
       flex: 1;
       flex-direction: column;
       min-height: 0;
-      padding: 0 14px 14px;
+      padding-bottom: 14px;
       overflow: hidden;
     }
 
     &__detail-tabs :deep(.el-tabs__header) {
       flex: none;
+      margin-right: 14px;
+      margin-left: 14px;
     }
 
     &__tab-label {
@@ -329,6 +331,10 @@
     &__code-scroll,
     &__relation-list {
       height: 100%;
+
+      :deep(> .el-scrollbar__wrap > .el-scrollbar__view) {
+        padding-inline: 14px;
+      }
     }
 
     &__insights {

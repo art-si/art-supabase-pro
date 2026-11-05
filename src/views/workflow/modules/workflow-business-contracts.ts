@@ -90,6 +90,20 @@ const contracts: Record<string, WorkflowBusinessContract> = {
     ],
     routePath: getWaybillCostDetailPath
   },
+  tms_order_quote: {
+    businessType: 'tms_order_quote',
+    label: '订单报价',
+    menuName: 'TmsOrderList',
+    domain: 'finance',
+    riskLevel: 'medium',
+    owner: '运输业务',
+    fields: [
+      { key: 'quoteNo', label: '报价单号', valueType: 'text' },
+      { key: 'orderNo', label: '订单号', valueType: 'text' },
+      { key: 'amount', label: '报价金额', valueType: 'number' }
+    ],
+    routePath: () => '/tms/order-list'
+  },
   tms_expense_reimbursement: {
     businessType: 'tms_expense_reimbursement',
     label: '费用报销',
@@ -227,6 +241,52 @@ const contracts: Record<string, WorkflowBusinessContract> = {
       { key: 'settledAmount', label: '已结算金额', valueType: 'number' }
     ],
     routePath: () => financePaths.customerSettlement
+  },
+  tms_electronic_contract: {
+    businessType: 'tms_electronic_contract',
+    label: '电子合同',
+    menuName: 'TmsElectronicContract',
+    domain: 'transport',
+    riskLevel: 'high',
+    owner: '合同管理',
+    fields: [
+      { key: 'contractNo', label: '合同编号', valueType: 'text' },
+      { key: 'contractName', label: '合同名称', valueType: 'text' },
+      { key: 'partyACompany', label: '甲方', valueType: 'text' },
+      { key: 'partyBCompany', label: '乙方', valueType: 'text' },
+      {
+        key: 'settlementCycle',
+        label: '结算周期',
+        valueType: 'text',
+        dictCode: 'tmsElectronicContractSettlementCycle'
+      },
+      { key: 'paymentTermDays', label: '账期（天）', valueType: 'number' },
+      { key: 'taxRate', label: '税率', valueType: 'number' },
+      { key: 'startsOn', label: '生效日期', valueType: 'date' },
+      { key: 'endsOn', label: '到期日期', valueType: 'date' }
+    ],
+    routePath: (businessId) =>
+      `/tms/basic-data/electronic-contract?recordId=${encodeURIComponent(businessId)}`
+  },
+  tms_transport_agreement: {
+    businessType: 'tms_transport_agreement',
+    label: '运输协议',
+    menuName: 'TmsTransportAgreement',
+    domain: 'transport',
+    riskLevel: 'high',
+    owner: '运输协议',
+    fields: [
+      { key: 'agreementNo', label: '协议编号', valueType: 'text' },
+      { key: 'shipperName', label: '托运方', valueType: 'text' },
+      { key: 'carrierName', label: '承运方', valueType: 'text' },
+      { key: 'plateNo', label: '车牌号', valueType: 'text' },
+      { key: 'contactPhone', label: '联系电话', valueType: 'text' },
+      { key: 'partyBRepresentative', label: '乙方代表人', valueType: 'text' },
+      { key: 'startsOn', label: '生效日期', valueType: 'date' },
+      { key: 'endsOn', label: '到期日期', valueType: 'date' }
+    ],
+    routePath: (businessId) =>
+      `/tms/basic-data/transport-agreement?recordId=${encodeURIComponent(businessId)}`
   },
   tms_contract: {
     businessType: 'tms_contract',

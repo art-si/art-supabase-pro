@@ -38,6 +38,7 @@
 
   const notificationRecipientsModeOptions = useDictionaryOptions('notificationRecipientsMode')
   const notificationRepeatModeOptions = useDictionaryOptions('notificationRepeatMode')
+  const notificationLeadUnitOptions = useDictionaryOptions('notificationLeadUnit')
 
   interface Props {
     tenantId: string
@@ -223,10 +224,9 @@
       key: 'leadUnit',
       type: 'segment',
       props: {
-        options: [
-          { label: '按天', value: 'days' },
-          { label: '按日历月', value: 'months' }
-        ]
+        options: notificationLeadUnitOptions.filter((item) =>
+          ['days', 'months'].includes(item.value)
+        )
       }
     },
     {

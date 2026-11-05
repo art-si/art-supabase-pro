@@ -90,12 +90,18 @@ test('workflow simulator identifies every matching node and the first scheduled 
     allowAutoApprove: false
   }
 
-  const result = simulateWorkflow(config, fields, { amount: 12000, costType: 'fuel' })
+  const result = simulateWorkflow(
+    config,
+    fields,
+    { amount: 12000, costType: 'fuel' },
+    (operator) => (operator === 'gt' ? '大于' : operator)
+  )
 
   assert.equal(result.outcome, 'matched')
   assert.equal(result.matchedCount, 2)
   assert.equal(result.firstMatchedNodeKey, 'manager')
   assert.equal(result.traces[0].isFirstMatched, true)
+  assert.match(result.traces[0].reason, /大于10000/)
   assert.equal(result.simulationStates.finance, 'matched')
 })
 

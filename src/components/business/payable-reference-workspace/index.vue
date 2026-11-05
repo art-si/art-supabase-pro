@@ -48,7 +48,7 @@
   import { ElTag } from 'element-plus'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { formatTenantLabel } from '@/utils/tenant-display'
-  import { payablePurposeBusinessTypeOptions } from '@/utils/finance/payable-settlement'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import {
     fetchPayableReferences,
     deletePayableMasters,
@@ -76,16 +76,6 @@
   const { deleteGuardRef, deleteRecords, deleteBusy } = useRecordDeleteGuard(table, title)
   const tableRef = ref<InstanceType<typeof ArtTableQuery>>()
   const editorRef = ref<InstanceType<typeof ReferenceEditor>>()
-  const labels: Record<string, string> = {
-    ...Object.fromEntries(
-      payablePurposeBusinessTypeOptions.map(({ value, label }) => [value, label])
-    ),
-    cash: '现金',
-    cheque: '支票',
-    remittance: '汇兑',
-    bill: '非支票票据',
-    virtual: '虚拟结算'
-  }
   async function fetchRows(params: { keyword?: string; current?: number; size?: number }) {
     const rows = (await fetchPayableReferences(props.kind)).filter(
       (row) => !params.keyword || `${row.code} ${row.name}`.includes(params.keyword)
@@ -114,7 +104,9 @@
             prop: 'businessType',
             label: '付款业务类型',
             minWidth: 150,
-            formatter: (row: PayableReference) => labels[row.businessType || ''] || '—'
+            formatter: (row: PayableReference) => (
+              <ArtDictDisplay dictCode="fmsPayableSettlementPurpose" value={row.businessType} />
+            )
           },
           {
             prop: 'payableWriteoff',
@@ -134,7 +126,9 @@
             prop: 'category',
             label: '类别',
             minWidth: 160,
-            formatter: (row: PayableReference) => labels[row.category || ''] || '—'
+            formatter: (row: PayableReference) => (
+              <ArtDictDisplay dictCode="fmsPayableSettlementMethodCategory" value={row.category} />
+            )
           }
         ]),
     { prop: 'description', label: '描述', minWidth: 240 },

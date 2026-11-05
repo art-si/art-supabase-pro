@@ -6,12 +6,11 @@
     :show-fullscreen-button="true"
     confirm-text="应用内容"
     @opened="editorVisible = true"
-    @closed="editorVisible = false"
+    @closed="handleClosed"
   >
     <div class="flex flex-col gap-3">
       <p class="m-0 text-sm text-g-600">
-        {{ fieldLabel }} · 悬停字段名查看说明，按 Ctrl+Space
-        查看候选值；编辑后点击“应用内容”，最后保存参数。
+        {{ fieldLabel }} · 字段上方的注释说明用途、类型和可选值；应用时会去除注释并保存标准 JSON。
       </p>
       <div
         class="overflow-hidden rounded border border-g-200"
@@ -42,8 +41,9 @@
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import { useSettingStore } from '@/store/modules/setting'
   import '@/utils/monaco-runtime'
-  import { jsonDefaults } from 'monaco-editor/languages/features/json/register'
+  import { jsonDefaults, type JSONSchema } from 'monaco-editor/languages/features/json/register'
   import { getJsonParamSchema } from './json-param-schema'
+  import { formatJsonWithGuides, parseJsonObjectDraft } from './json-param-editor'
 
   interface OpenData {
     label: string
@@ -61,22 +61,25 @@
   const editorLoading = ref(false)
   const modelPath = ref('')
   let applyValue: OpenData['onApply'] | undefined
+  let previousDiagnostics: typeof jsonDefaults.diagnosticsOptions | undefined
   const editorOptions = {
     automaticLayout: true,
     minimap: { enabled: false },
     fontSize: 13,
     scrollBeyondLastLine: false,
-    formatOnPaste: true
+    formatOnPaste: true,
+    wordWrap: 'on' as const,
+    wrappingIndent: 'same' as const
   }
 
   const validationError = computed(() => {
     if (!draft.value.trim()) return fieldLabel.value === '扩展配置' ? '' : '请输入 JSON 对象'
-    try {
-      const value: unknown = JSON.parse(draft.value)
-      return value && typeof value === 'object' && !Array.isArray(value) ? '' : '请输入 JSON 对象'
-    } catch {
-      return 'JSON 格式有误，请检查语法'
-    }
+    const parsed = parseJsonObjectDraft(draft.value)
+    return parsed.error === 'object'
+      ? '请输入 JSON 对象'
+      : parsed.error === 'syntax'
+        ? 'JSON 格式有误，请检查语法'
+        : ''
   })
 
   watch(validationError, (error) => {
@@ -89,34 +92,40 @@
     drawerRef.value?.setOptions({ confirmDisabled: Boolean(validationError.value) })
   }
 
+  const handleClosed = () => {
+    editorVisible.value = false
+    if (previousDiagnostics) jsonDefaults.setDiagnosticsOptions(previousDiagnostics)
+    previousDiagnostics = undefined
+  }
+
+  onBeforeUnmount(handleClosed)
+
   const handleOpen = async (data: OpenData): Promise<void> => {
     fieldLabel.value = data.label
     modelPath.value = `inmemory://system-param/${data.paramKey}/${data.fieldKey}.json`
     const schema =
       data.fieldKey === 'extendConfigText' ? undefined : getJsonParamSchema(data.paramKey)
-    const previous = jsonDefaults.diagnosticsOptions
+    const editorSchema: JSONSchema = { ...schema, type: 'object', allowComments: true }
+    previousDiagnostics = jsonDefaults.diagnosticsOptions
     jsonDefaults.setDiagnosticsOptions({
-      ...previous,
+      ...previousDiagnostics,
       validate: true,
-      allowComments: false,
+      allowComments: true,
+      comments: 'ignore',
       schemas: [
-        ...(previous.schemas ?? []).filter(
+        ...(previousDiagnostics.schemas ?? []).filter(
           (item) => !item.uri.startsWith('inmemory://schemas/system-param/')
         ),
-        ...(schema
-          ? [
-              {
-                uri: `inmemory://schemas/system-param/${data.paramKey}`,
-                fileMatch: [modelPath.value],
-                schema
-              }
-            ]
-          : [])
+        {
+          uri: `inmemory://schemas/system-param/${data.paramKey}/${data.fieldKey}`,
+          fileMatch: [modelPath.value],
+          schema: editorSchema
+        }
       ]
     })
     applyValue = data.onApply
     try {
-      draft.value = JSON.stringify(JSON.parse(data.value), null, 2)
+      draft.value = formatJsonWithGuides(JSON.stringify(JSON.parse(data.value)), schema)
     } catch {
       draft.value = data.value
     }
@@ -128,7 +137,13 @@
       confirmDisabled: true,
       onConfirm: () => {
         if (validationError.value) return false
-        applyValue?.(draft.value)
+        if (!draft.value.trim()) {
+          applyValue?.('')
+          return true
+        }
+        const parsed = parseJsonObjectDraft(draft.value)
+        if (!parsed.value) return false
+        applyValue?.(JSON.stringify(parsed.value, null, 2))
         return true
       }
     })

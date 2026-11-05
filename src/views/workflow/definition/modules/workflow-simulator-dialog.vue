@@ -191,6 +191,7 @@
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import WorkflowFlowMap from '@/components/business/workflow-flow-map/index.vue'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { getWorkflowContextFields } from '../../modules/workflow-business-contracts'
   import {
     createWorkflowSimulationContext,
@@ -252,7 +253,16 @@
               : { clearable: true, maxlength: 120, placeholder: `输入${field.label}` }
     }))
   )
-  const result = computed(() => simulateWorkflow(config.value, contextFields.value, form.data))
+  const conditionOperatorOptions = useDictionaryOptions('workflowConditionOperator')
+  const result = computed(() =>
+    simulateWorkflow(
+      config.value,
+      contextFields.value,
+      form.data,
+      (operator) =>
+        conditionOperatorOptions.find((item) => item.value === operator)?.label ?? operator
+    )
+  )
   const outcomeMeta = computed<{
     label: string
     type: 'success' | 'warning' | 'danger'

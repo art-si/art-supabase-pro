@@ -3,6 +3,7 @@
   <div
     ref="rootRef"
     class="art-table-query"
+    :data-focusable="focusable ? '' : undefined"
     :class="{
       'is-focus-mode': focusMode,
       'has-visible-search': hasSearchBar && showSearchBar
@@ -49,7 +50,7 @@
             :button-props="getHeaderActionButtonProps(action)"
             :disabled="isHeaderActionDisabled(action)"
             :icon="getHeaderActionIcon(action)"
-            :context-key="props.importContextKey"
+            :context-key="effectiveImportContextKey"
             @import-success="handleHeaderActionImportSuccess(action, $event)"
             @import-error="handleHeaderActionImportError(action, $event)"
           >
@@ -186,7 +187,7 @@
                         :button-props="getSelectionActionButtonProps(action)"
                         :disabled="isHeaderActionDisabled(action, 'selection')"
                         :icon="getHeaderActionIcon(action)"
-                        :context-key="props.importContextKey"
+                        :context-key="effectiveImportContextKey"
                         @import-success="
                           handleHeaderActionImportSuccess(action, $event, 'selection')
                         "
@@ -323,6 +324,11 @@
     singleActionLabel,
     tableRowCommandsKey
   } from './row-action-context'
+  import {
+    dismissGlobalTableFocus,
+    isGlobalTableFocusDismissed,
+    resetGlobalTableFocusDismissal
+  } from './global-focus-session'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import ArtExcelImport from '@/components/core/forms/art-excel-import/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
@@ -332,6 +338,7 @@
   import type { ColumnOption } from '@/types'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useGlobalFocusPreference } from '@/hooks/core/useGlobalFocusPreference'
   import { useTable, type TableRequestOptions } from '@/hooks/core/useTable'
   import type { ApiResponse } from '@/utils/table/table-cache'
   import {
@@ -362,9 +369,11 @@
   const captureExportScope = useTenantOperationGuard()
   const userStore = useUserStore()
   const { confirmAction } = useArtFeedback()
+  const globalFocusPreference = useGlobalFocusPreference()
   const route = useRoute()
   const { isCrossTenantReadOnly } = useTenantScopeAccessPolicy()
-  const { isPlatformScope } = storeToRefs(useTenantScopeStore())
+  const tenantScopeStore = useTenantScopeStore()
+  const { isPlatformScope } = storeToRefs(tenantScopeStore)
 
   export interface ArtTableQuerySanitizeOutputOptions {
     /** 移除空字符串 */
@@ -810,8 +819,17 @@
   const focusMode = defineModel<boolean>('focusMode', { default: false })
   const importPending = ref(false)
   let importVersion = 0
+  const effectiveImportContextKey = computed(() => ({
+    business: props.importContextKey,
+    route: route.fullPath,
+    tenant: tenantScopeStore.effectiveTenantId,
+    tenantRevision: tenantScopeStore.revision,
+    userId: userStore.getUserInfo.userId,
+    actorTenantId: userStore.getUserInfo.tenantId,
+    platformSuper: userStore.isPlatformSuper
+  }))
   watch(
-    () => props.importContextKey,
+    effectiveImportContextKey,
     () => {
       importVersion += 1
       importPending.value = false
@@ -1539,9 +1557,16 @@
     scope: ArtTableQueryHeaderActionContext['scope'] = 'default'
   ): Promise<void> => {
     if (importPending.value) return
-    const contextKey = props.importContextKey
+    const contextKey = effectiveImportContextKey.value
     const version = ++importVersion
-    const isCurrent = () => version === importVersion && props.importContextKey === contextKey
+    const isCurrent = () => {
+      const permission = getHeaderActionPermission(action)
+      return (
+        version === importVersion &&
+        effectiveImportContextKey.value === contextKey &&
+        (!permission || hasAuth(permission))
+      )
+    }
     importPending.value = true
     const ctx = createHeaderActionContext(action, undefined, scope)
     let submitted = false
@@ -1855,8 +1880,18 @@
     }
   }
 
-  const handleFocusModeChange = (value: boolean): void => {
+  const focusPage = (): HTMLElement | null =>
+    rootRef.value?.closest<HTMLElement>('.art-page-view') ?? null
+
+  const handleFocusModeChange = (
+    value: boolean,
+    source: 'manual' | 'automatic' = 'manual'
+  ): void => {
     if (!props.focusable) return
+    if (!value && focusMode.value && source === 'manual' && globalFocusPreference.enabled.value) {
+      const page = focusPage()
+      if (page) dismissGlobalTableFocus(page)
+    }
     if (value && !focusMode.value) {
       focusScrollPositions = []
       for (
@@ -1876,7 +1911,7 @@
     showTableToolbar: ComputedRef<boolean>
     effectiveShowTableToolbar: ComputedRef<boolean>
     focusable: ComputedRef<boolean>
-    setFocusMode: (value: boolean) => void
+    setFocusMode: (value: boolean, source?: 'manual' | 'automatic') => void
     setShowTableToolbar: (value: boolean) => void
     attachHeaderActionHost: (element: HTMLElement) => void
     detachHeaderActionHost: (element: HTMLElement) => void
@@ -1940,6 +1975,88 @@
     { flush: 'post' }
   )
 
+  let routeActive = true
+  let tableVisible = false
+
+  const isTableVisible = (): boolean =>
+    routeActive && Boolean(rootRef.value?.isConnected && rootRef.value.getClientRects().length)
+
+  const applyGlobalFocus = async (): Promise<void> => {
+    await nextTick()
+    const page = focusPage()
+    const root = rootRef.value
+    if (
+      !page ||
+      !root ||
+      !props.focusable ||
+      !globalFocusPreference.initialized.value ||
+      !globalFocusPreference.enabled.value ||
+      isGlobalTableFocusDismissed(page) ||
+      !isTableVisible() ||
+      focusMode.value
+    ) {
+      return
+    }
+
+    // A page can contain several tabs or tables. Only the first visible focusable
+    // workspace should claim the page when the global preference is applied.
+    const firstVisibleTable = Array.from(
+      page.querySelectorAll<HTMLElement>('.art-table-query[data-focusable]')
+    ).find((element) => element.getClientRects().length > 0)
+    if (firstVisibleTable === root) handleFocusModeChange(true, 'automatic')
+  }
+
+  useResizeObserver(rootRef, () => {
+    const visible = isTableVisible()
+    if (!visible && focusMode.value) handleFocusModeChange(false, 'automatic')
+    if (visible && !tableVisible) void applyGlobalFocus()
+    tableVisible = visible
+  })
+
+  watch(
+    () => [globalFocusPreference.enabled.value, globalFocusPreference.initialized.value] as const,
+    ([enabled, initialized], previous) => {
+      if (!initialized || !routeActive) return
+      if (enabled) {
+        if (!previous?.[0]) {
+          const page = focusPage()
+          if (page) resetGlobalTableFocusDismissal(page)
+        }
+        void applyGlobalFocus()
+      } else if (previous?.[0] && focusMode.value) {
+        handleFocusModeChange(false, 'automatic')
+      }
+    },
+    { immediate: true, flush: 'post' }
+  )
+
+  watch(
+    () => props.focusable,
+    (focusable) => {
+      if (focusable) void applyGlobalFocus()
+    },
+    { flush: 'post' }
+  )
+
+  watch(
+    () => route.path,
+    () => {
+      const page = focusPage()
+      if (page) resetGlobalTableFocusDismissal(page)
+    },
+    { flush: 'sync' }
+  )
+
+  onMounted(() => {
+    void globalFocusPreference.load()
+    void applyGlobalFocus()
+  })
+  onActivated(() => {
+    routeActive = true
+    tableVisible = false
+    void applyGlobalFocus()
+  })
+
   const handleFocusEscape = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape' || !focusMode.value) return
     // A loading modal can move focus to body when its active control is disabled.
@@ -1953,12 +2070,14 @@
   useEventListener(document, 'keydown', handleFocusEscape)
 
   onDeactivated(() => {
+    routeActive = false
+    tableVisible = false
     importVersion += 1
     importPending.value = false
     measurementActive = false
     stopHeaderTopMeasurement()
     focusScrollPositions = []
-    if (focusMode.value) handleFocusModeChange(false)
+    if (focusMode.value) handleFocusModeChange(false, 'automatic')
     restoreFocusLayout()
   })
   onBeforeUnmount(() => {

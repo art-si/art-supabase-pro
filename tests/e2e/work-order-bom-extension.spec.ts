@@ -21,6 +21,39 @@ const componentIds = (tenant: string) =>
     (index) => `${tenant === tenantA ? 'a' : 'b'}aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa${index}`
   )
 const fixture = '/tests/e2e/fixtures/work-order-bom-extension.html'
+const issueMovementId = (index: number) => `movement-${String(index).padStart(2, '0')}`
+
+function issueRows(start: number, count: number, suffix = 'A') {
+  return Array.from({ length: count }, (_, offset) => {
+    const index = start + offset
+    return {
+      id: `issue-line-${index}`,
+      tenant_id: suffix === 'A' ? tenantA : '22222222-2222-4222-8222-222222222222',
+      fulfilled_quantity: index === 1 ? 3 : index === 2 ? -1 : 1,
+      batch_no: `BATCH-${index}`,
+      source_line_no: 'bom-line-a',
+      return_type: index === 2 ? 'good' : null,
+      remark: index === 1 ? '按单领料' : null,
+      movement: {
+        id: issueMovementId(index),
+        work_order_id:
+          suffix === 'A'
+            ? '55555555-5555-4555-8555-555555555555'
+            : '66666666-6666-4666-8666-666666666666',
+        occurred_at: '2026-10-31T08:00:00Z'
+      },
+      document: {
+        kind: index === 2 ? 'return' : 'issue',
+        document_no: `PM-${suffix}-${String(index).padStart(3, '0')}`,
+        business_date: '2026-10-31'
+      },
+      material: { material_code: `CORE-${suffix}`, material_name: `芯材 ${suffix}` },
+      warehouse: { warehouse_name: '原料仓' },
+      bin: { bin_name: 'A-01' },
+      unit: { unit_name: '件' }
+    }
+  })
+}
 
 function bomRows(tenant: string) {
   const suffix = tenant === tenantA ? 'A' : 'B'
@@ -72,6 +105,11 @@ async function mockApi(page: Page, options: { finishedMaterial?: boolean } = {})
     held: [] as Route[],
     delayTenant: '',
     failBom: false,
+    failIssues: false,
+    emptyIssues: false,
+    heldIssues: [] as Route[],
+    delayIssueTenant: '',
+    issueRequests: [] as Array<{ url: URL; tenant: string }>,
     saves: [] as Record<string, unknown>[]
   }
   await page.route('**/rest/v1/**', async (route) => {
@@ -105,7 +143,39 @@ async function mockApi(page: Page, options: { finishedMaterial?: boolean } = {})
         ]
       }
     else if (name === 'mdm_document_type') body = [{ id: typeId }]
-    else if (name === 'mdm_material')
+    else if (name === 'mdm_component_type')
+      body = [
+        {
+          id: componentTypes[0],
+          component_type_code: 'CORE',
+          component_type_name: '芯材',
+          enabled: true
+        }
+      ]
+    else if (name === 'wms_work_order_bom_issue_totals_secure') body = []
+    else if (name === 'wms_production_material_line') {
+      state.issueRequests.push({ url, tenant })
+      if (state.delayIssueTenant === tenant) {
+        state.heldIssues.push(route)
+        return
+      }
+      if (state.failIssues)
+        return route.fulfill({
+          status: 503,
+          json: { code: 'PGRST000', message: 'connection unavailable' }
+        })
+      const isSecondPage = url.searchParams.get('offset') === '10'
+      const rows = state.emptyIssues
+        ? []
+        : issueRows(isSecondPage ? 11 : 1, isSecondPage ? 1 : 10, tenant === tenantA ? 'A' : 'B')
+      return route.fulfill({
+        json: rows,
+        headers: {
+          'content-range': state.emptyIssues ? '*/0' : `${isSecondPage ? '10-10' : '0-9'}/11`,
+          'access-control-expose-headers': 'content-range'
+        }
+      })
+    } else if (name === 'mdm_material')
       body = [
         {
           id: materialId,
@@ -165,7 +235,7 @@ function field(page: Page, label: string) {
 
 async function open(page: Page, mode: string, theme: 'light' | 'dark' = 'light') {
   await prepareAppearance(page, { theme, boxBorderMode: true })
-  await page.goto(fixture)
+  await page.goto(fixture, { waitUntil: 'domcontentloaded', timeout: 30_000 })
   await page.getByTestId(`open-${mode}`).click()
   await expect(page.getByRole('dialog').first()).toBeVisible()
 }
@@ -244,6 +314,148 @@ test('只读查看不重新读取 BOM 或改变历史参数', async ({ page }) =
     })
   }
   expect(state.saves).toHaveLength(0)
+})
+
+test('新增工单的三个生产资料页签说明保存后生成，切回表单仍保留填写值', async ({ page }) => {
+  const state = await mockApi(page)
+  await open(page, 'add')
+  await page.getByRole('tab', { name: '销售协同', exact: true }).click()
+  await field(page, '备注').getByRole('textbox').fill('资料页签前填写')
+  for (const [name, title] of [
+    ['BOM组件', '保存工单后生成生产资料'],
+    ['工艺路线', '保存工单后生成生产资料'],
+    ['领用流水', '保存工单后查看领用流水']
+  ]) {
+    await page.getByRole('tab', { name, exact: true }).click()
+    await expect(page.getByText(title, { exact: true })).toBeVisible()
+    await expect(page.getByRole('tabpanel').filter({ visible: true })).toHaveCount(1)
+  }
+  await page.getByRole('tab', { name: '销售协同', exact: true }).click()
+  await expect(field(page, '备注').getByRole('textbox')).toHaveValue('资料页签前填写')
+  expect(state.issueRequests).toHaveLength(0)
+  expect(state.saves).toHaveLength(0)
+})
+
+test('已保存快照在编辑和只读页签呈现真实内容，编辑页签不会误提供快照操作', async ({ page }) => {
+  const state = await mockApi(page)
+  await open(page, 'saved')
+  const evidence = join(process.cwd(), '.artifacts', 'work-order-related-tabs')
+  mkdirSync(evidence, { recursive: true })
+  await page.screenshot({ path: join(evidence, 'desktop-1440-initial.png') })
+  for (const [name, text] of [
+    ['BOM组件', '快照芯材 A'],
+    ['工艺路线', '板材标准路线']
+  ]) {
+    await page.getByRole('tab', { name, exact: true }).click()
+    await expect(page.getByText(text, { exact: false }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /新增组件|新增工序|编辑路线信息/ })).toHaveCount(
+      0
+    )
+    await page.screenshot({ path: join(evidence, `desktop-1440-${name}.png`) })
+  }
+  await page.getByRole('tab', { name: '销售协同', exact: true }).click()
+  await field(page, '备注').getByRole('textbox').fill('查看快照后仍可保存')
+  await page.getByRole('button', { name: '保存更改', exact: true }).click()
+  await expect.poll(() => state.saves.length).toBe(1)
+  await open(page, 'saved-readonly')
+  for (const [name, text] of [
+    ['BOM组件', '快照芯材 A'],
+    ['工艺路线', '板材标准路线']
+  ]) {
+    await page.getByRole('tab', { name, exact: true }).click()
+    await expect(page.getByText(text, { exact: false }).first()).toBeVisible()
+  }
+  await expect(page.getByText('本次表单修改保存后生效', { exact: false })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '保存更改', exact: true })).toHaveCount(0)
+})
+
+test('已有工单无快照时显示资料空态；领用流水失败后可重试、翻页', async ({ page }) => {
+  const state = await mockApi(page)
+  await open(page, 'edit')
+  await page.getByRole('tab', { name: 'BOM组件', exact: true }).click()
+  await expect(page.getByText('当前工单没有 BOM 组件', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: '工艺路线', exact: true }).click()
+  await expect(page.getByText('当前工单没有工艺路线', { exact: true })).toBeVisible()
+  state.failIssues = true
+  await page.getByRole('tab', { name: '领用流水', exact: true }).click()
+  await expect(
+    page.getByText('领用流水加载失败，请检查网络和查看权限后重试。', { exact: true })
+  ).toBeVisible({ timeout: 15_000 })
+  state.failIssues = false
+  await page.getByRole('button', { name: '重新加载', exact: true }).click()
+  await expect(page.getByText('PM-A-001', { exact: true })).toBeVisible()
+  await expect(page.getByText('PM-A-002', { exact: true })).toBeVisible()
+  await expect(page.getByText('退料', { exact: false }).first()).toBeVisible()
+  const scopedIssueRequest = state.issueRequests.find(({ url }) =>
+    url.searchParams.has('movement.work_order_id')
+  )
+  expect(scopedIssueRequest?.url.searchParams.has('tenant_id')).toBe(false)
+  expect(scopedIssueRequest?.tenant).toBe(tenantA)
+  expect(scopedIssueRequest?.url.searchParams.get('movement.work_order_id')).toBe(
+    'eq.55555555-5555-4555-8555-555555555555'
+  )
+  expect(scopedIssueRequest?.url.searchParams.get('document.kind')).toBe('in.(issue,return)')
+  expect(scopedIssueRequest?.url.searchParams.get('fulfilled_quantity')).toBe('neq.0')
+  expect(scopedIssueRequest?.url.searchParams.get('order')).toContain('movement(occurred_at).desc')
+  await page.screenshot({
+    path: join(process.cwd(), '.artifacts', 'work-order-related-tabs', 'desktop-1440-领用流水.png')
+  })
+  await page.getByRole('button', { name: '下一页' }).click()
+  await expect(page.getByText('PM-A-011', { exact: true })).toBeVisible()
+  expect(state.issueRequests.at(-1)?.url.searchParams.get('movement.work_order_id')).toBe(
+    'eq.55555555-5555-4555-8555-555555555555'
+  )
+  expect(state.issueRequests.at(-1)?.url.searchParams.get('select')).toContain('document:')
+})
+
+test('1280 与 390 深色下三个生产资料页签和表格保留可读布局', async ({ page }) => {
+  await mockApi(page)
+  const evidence = join(process.cwd(), '.artifacts', 'work-order-related-tabs')
+  mkdirSync(evidence, { recursive: true })
+  for (const [width, height, theme] of [
+    [1280, 800, 'light'],
+    [390, 844, 'dark']
+  ] as const) {
+    await page.setViewportSize({ width, height })
+    await open(page, 'saved', theme)
+    for (const name of ['BOM组件', '工艺路线', '领用流水']) {
+      await page.getByRole('tab', { name, exact: true }).click()
+      await expect(page.getByRole('tabpanel').filter({ visible: true })).toHaveCount(1)
+      expect(
+        await page
+          .getByRole('dialog')
+          .first()
+          .evaluate((element) => {
+            const rect = element.getBoundingClientRect()
+            return rect.left >= 0 && rect.right <= window.innerWidth + 1
+          })
+      ).toBe(true)
+      await page.screenshot({ path: join(evidence, `${theme}-${width}-${name}.png`) })
+    }
+    await page.getByRole('button', { name: '关闭弹窗', exact: true }).click()
+  }
+})
+
+test('领用流水空态与迟到旧工单结果保持隔离', async ({ page }) => {
+  const state = await mockApi(page)
+  state.emptyIssues = true
+  await open(page, 'saved')
+  await page.getByRole('tab', { name: '领用流水', exact: true }).click()
+  await expect(page.getByText('暂无领退料流水', { exact: true })).toBeVisible()
+  state.emptyIssues = false
+  state.delayIssueTenant = tenantA
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect.poll(() => state.heldIssues.length).toBe(1)
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click()
+  await page.getByTestId('open-tenant-b').click()
+  await page.getByRole('tab', { name: '领用流水', exact: true }).click()
+  await expect(page.getByText('PM-B-001', { exact: true })).toBeVisible()
+  const oldRequest = state.heldIssues[0]
+  const response = page.waitForResponse((value) => value.url() === oldRequest.request().url())
+  await oldRequest.fulfill({ json: issueRows(1, 10), headers: { 'content-range': '0-9/11' } })
+  await (await response).finished()
+  await expect(page.getByText('PM-B-001', { exact: true })).toBeVisible()
+  await expect(page.getByText('PM-A-001', { exact: true })).toHaveCount(0)
 })
 
 test('关闭后重新打开另一租户，迟到 BOM 响应不串入新工单', async ({ page }) => {
@@ -332,9 +544,12 @@ test('物料缺少成品仓时，提示与物料选择框保留可见间距', as
   await page.getByRole('cell', { name: 'BOM 验证板材', exact: true }).first().click()
   await page.getByRole('button', { name: '确定', exact: true }).last().click()
   const item = field(page, '物料描述')
-  await expect(item.getByRole('alert')).toBeVisible()
+  const warehouseAlert = item
+    .getByRole('alert')
+    .filter({ hasText: '暂无可用成品仓；请先启用成品仓并设置业务应用范围。' })
+  await expect(warehouseAlert).toBeVisible()
   const pickerBounds = await item.locator('.art-data-select').boundingBox()
-  const alertBounds = await item.getByRole('alert').boundingBox()
+  const alertBounds = await warehouseAlert.boundingBox()
   expect(pickerBounds).not.toBeNull()
   expect(alertBounds).not.toBeNull()
   expect(

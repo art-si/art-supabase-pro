@@ -181,7 +181,8 @@
   import { copyTextToClipboard } from '@/utils/file/clipboard'
 
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
-  import { useEventListener, useMediaQuery, useStorage } from '@vueuse/core'
+  import { useMediaQuery, useStorage } from '@vueuse/core'
+  import { useWorkspaceFocus } from '@/hooks/core/useWorkspaceFocus'
   import { ElMessage } from 'element-plus'
   import { updateProjectObjectDescription } from '@/api/supabase-ai-assistant'
   import type {
@@ -248,7 +249,7 @@
   const capabilityCenterRef = ref<CapabilityCenterExpose>()
   const isCompactWorkspace = useMediaQuery('(width <= 900px)')
   const mobilePanel = ref<MobilePanel>('objects')
-  const focusMode = useStorage('supabase-ai-assistant:focus-mode', false)
+  const { focusMode } = useWorkspaceFocus()
   const assistantMode = useStorage<ProjectAssistantSafetyMode>(
     'supabase-ai-assistant:safety-mode',
     'read_only'
@@ -448,16 +449,11 @@
 
   function toggleFocusMode(): void {
     focusMode.value = !focusMode.value
-    nextTick(() => window.dispatchEvent(new Event('resize')))
   }
 
-  function exitFocusMode(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || !focusMode.value) return
-    event.preventDefault()
-    toggleFocusMode()
-  }
-
-  useEventListener(document, 'keydown', exitFocusMode)
+  watch(focusMode, () => {
+    void nextTick(() => window.dispatchEvent(new Event('resize')))
+  })
 
   onMounted(async () => {
     await Promise.all([loadInitialData(), loadAssistantCapabilities()])

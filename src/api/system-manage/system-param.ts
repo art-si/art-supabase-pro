@@ -111,13 +111,17 @@ export async function addSystemParam(params: SystemParamItem) {
   })
 }
 
-export async function editSystemParam(params: SystemParamItem) {
+export async function editSystemParam(
+  params: SystemParamItem,
+  feedback: { showMessage?: boolean; showErrorMessage?: boolean } = {}
+) {
   const { id, ...payload } = params
   return await responseHandle(
     () =>
       supabase.from('sys_param').update(keysToSnakeDeep(payload), { count: 'exact' }).eq('id', id),
     {
-      showMessage: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
       breakReturn: true,
       requireAffected: true,
       noAffectedMessage: WRITE_PERMISSION_DENIED_MESSAGE

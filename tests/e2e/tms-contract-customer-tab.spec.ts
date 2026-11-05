@@ -154,7 +154,26 @@ test('运输合同终止要求原因并刷新为已终止', async ({ page }) => 
 
 test('合同表单用标准参选控件展示承运商五列信息', async ({ page }) => {
   await page.route('**/rest/v1/**', async (route) => {
-    const name = new URL(route.request().url()).pathname.split('/').at(-1)
+    const url = new URL(route.request().url())
+    const name = url.pathname.split('/').at(-1)
+    if (name === 'sys_dictionary') {
+      const code = url.searchParams.get('dict_type_table.code')?.replace(/^eq\./, '')
+      const dictionaryRows = [
+        { type: 'tmsCarrierType', value: 'enterprise', label: '企业承运商' },
+        { type: 'tmsCarrierDispatchChannel', value: 'offline', label: '线下' }
+      ]
+      return route.fulfill({
+        json: dictionaryRows
+          .filter((item) => !code || item.type === code)
+          .map((item, index) => ({
+            id: `contract-carrier-dict-${index}`,
+            value: item.value,
+            label: item.label,
+            status: '1',
+            dict_type_table: { code: item.type, name: item.type }
+          }))
+      })
+    }
     if (name === 'tms_list_contracts_secure')
       return route.fulfill({ json: { records: [], total: 0, fieldAccess: {} } })
     if (name === 'tms_list_carrier_options_secure')
@@ -186,4 +205,7 @@ test('合同表单用标准参选控件展示承运商五列信息', async ({ pa
   for (const label of ['承运商编码', '公司名称', '承运商类型', '调度渠道', '上级单位'])
     await expect(selector.getByRole('columnheader', { name: label })).toBeVisible()
   await expect(selector.getByText('测试承运公司')).toBeVisible()
+  await expect(selector.getByText('企业承运商')).toBeVisible()
+  await expect(selector.getByText('线下', { exact: true })).toBeVisible()
+  await expect(selector.getByText('enterprise', { exact: true })).toHaveCount(0)
 })

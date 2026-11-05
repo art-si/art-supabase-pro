@@ -9,6 +9,31 @@ import dayjs from 'dayjs'
 
 const { supabase, responseHandle } = useSupabase()
 
+/** Resolve stored attachment paths to their tenant-owned original filenames. */
+export async function fetchAttachmentDisplayNames(
+  urls: string[],
+  tenantId: string
+): Promise<Record<string, string>> {
+  if (!urls.length) return {}
+  const { data, error } = await responseHandle<
+    Array<Pick<Api.DataCenter.Resources.ResourceListItem, 'url' | 'originName'>>
+  >(
+    () =>
+      supabase
+        .from('sys_attachment')
+        .select('url,origin_name')
+        .eq('tenant_id', tenantId)
+        .in('url', urls),
+    { showErrorMessage: false }
+  )
+  if (error) throw new Error('附件原文件名加载失败', { cause: error })
+  return Object.fromEntries(
+    (data ?? [])
+      .filter((item) => item.url && item.originName)
+      .map((item) => [item.url, item.originName])
+  )
+}
+
 export async function uploadAttachment(
   files: File | File[],
   options?: {
