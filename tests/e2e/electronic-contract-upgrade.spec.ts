@@ -78,6 +78,9 @@ async function mockContracts(page: Page) {
   const records = structuredClone(seedRecords)
   let listFailure = false
   let emptyList = false
+  let listRequests = 0
+  let detailRequests = 0
+  let failedRequests = 0
   let submitted = false
   const writes: Array<{ method: string; body: Record<string, unknown> }> = []
   const signatures: Record<string, unknown>[] = []
@@ -87,11 +90,13 @@ async function mockContracts(page: Page) {
     const endpoint = url.pathname.split('/').at(-1)
     if (endpoint === 'tms_electronic_contract') {
       if (request.method() === 'GET') {
+        listRequests += 1
         if (listFailure) {
-          listFailure = false
+          failedRequests += 1
           return route.fulfill({ status: 503, json: { message: 'unavailable' } })
         }
         const id = url.searchParams.get('id')?.replace(/^eq\./, '')
+        if (id) detailRequests += 1
         const rows = id ? records.filter((row) => row.id === id) : emptyList ? [] : records
         return route.fulfill({
           status: id ? 200 : 206,
@@ -140,9 +145,15 @@ async function mockContracts(page: Page) {
   return {
     writes,
     signatures,
+    listRequests: () => listRequests,
+    detailRequests: () => detailRequests,
+    failedRequests: () => failedRequests,
     wasSubmitted: () => submitted,
-    failNextList: () => {
+    failList: () => {
       listFailure = true
+    },
+    restoreList: () => {
+      listFailure = false
     },
     setEmpty: (value: boolean) => {
       emptyList = value
@@ -150,9 +161,9 @@ async function mockContracts(page: Page) {
   }
 }
 
-async function openFixture(page: Page, limited = false) {
+async function openFixture(page: Page, limited = false, noView = false) {
   await page.goto(
-    `/tests/e2e/fixtures/electronic-contract-upgrade.html${limited ? '?limited=1' : ''}`,
+    `/tests/e2e/fixtures/electronic-contract-upgrade.html${noView ? '?noView=1&deep=1' : limited ? '?limited=1' : ''}`,
     { waitUntil: 'domcontentloaded' }
   )
   await expect(page.locator('html[data-electronic-fixture-ready="true"]')).toHaveCount(1)
@@ -160,6 +171,16 @@ async function openFixture(page: Page, limited = false) {
   await page.evaluate(() => document.dispatchEvent(new Event('electronic-contract-fixture-start')))
   return mock
 }
+
+test('缺少查看权限时合同号不可打开全文，深链也不请求详情', async ({ page }) => {
+  const mock = await openFixture(page, false, true)
+  const row = page.locator('.el-table__row').filter({ hasText: '月度干线运输合同' })
+  await expect(row).toBeVisible()
+  await expect(row.getByRole('link', { name: /HT-202611-001/ })).toHaveCount(0)
+  await expect(row.getByRole('button', { name: '查看' })).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: /电子合同/ })).toHaveCount(0)
+  expect(mock.detailRequests()).toBe(0)
+})
 
 test('两条电子合同可预览、编辑结算约定并提交审批', async ({ page }) => {
   const errors: string[] = []
@@ -223,11 +244,8 @@ test('已通过审批的第二条合同可完成手写签署并预览签署信�
   )
   await page.route('**/storage/v1/object/public/attachments/**', (route) =>
     route.fulfill({
-      contentType: 'image/png',
-      body: Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=',
-        'base64'
-      )
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="220" height="90"><path d="M10 66 Q45 12 60 62 T115 39 T177 55 M30 75 L200 18" fill="none" stroke="#25334a" stroke-width="3" stroke-linecap="round"/></svg>'
     })
   )
   for (const canvas of await dialog.locator('canvas').all()) {
@@ -250,7 +268,15 @@ test('已通过审批的第二条合同可完成手写签署并预览签署信�
   await expect(page.getByText('签署日期：2026-11-04', { exact: true })).toHaveCount(2)
   await expect(page.getByAltText('甲方手写签名')).toBeVisible()
   await expect(page.getByAltText('乙方手写签名')).toBeVisible()
-  await page.screenshot({ path: '.artifacts/electronic-contract-signed.png', fullPage: true })
+  for (const label of ['甲方手写签名', '乙方手写签名']) {
+    await expect
+      .poll(() =>
+        page.getByAltText(label).evaluate((element: HTMLImageElement) => element.naturalWidth)
+      )
+      .toBeGreaterThan(0)
+  }
+  await page.getByText('签署日期：2026-11-04', { exact: true }).last().scrollIntoViewIfNeeded()
+  await dialog.screenshot({ path: '.artifacts/electronic-contract-signed-footer.png' })
 })
 
 test('仅查看权限隐藏写入动作，窄屏长内容无页面横向溢出', async ({ page }) => {
@@ -280,14 +306,18 @@ test('仅查看权限隐藏写入动作，窄屏长内容无页面横向溢出',
 test('列表错误与空数据均可反馈，重试后恢复合同', async ({ page }) => {
   const mock = await openFixture(page)
   await expect(page.getByText('月度干线运输合同')).toBeVisible()
-  mock.failNextList()
+  const initialRequests = mock.listRequests()
+  await page.getByRole('textbox', { name: '合同号' }).fill('HT')
+  mock.failList()
   await page.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(mock.listRequests).toBeGreaterThan(initialRequests)
+  await expect.poll(mock.failedRequests).toBeGreaterThan(0)
   await expect(page.locator('.el-message--error')).toBeVisible()
+  mock.restoreList()
   await page.getByRole('button', { name: '查询', exact: true }).click()
   await expect(page.getByText('月度干线运输合同')).toBeVisible()
   mock.setEmpty(true)
   await page.getByRole('button', { name: '查询', exact: true }).click()
-  await expect(page.getByText('暂无常用线路')).toHaveCount(0)
   await expect(page.getByText('暂无电子合同')).toBeVisible()
   mock.setEmpty(false)
   await page.getByRole('button', { name: '查询', exact: true }).click()

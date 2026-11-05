@@ -26,7 +26,7 @@ export function getFileExtension(fileName?: string, suffix?: string): string {
 
 /** Remove one displayed attachment even when legacy rows share a resource URL. */
 export function removeAttachmentRow<
-  T extends { url?: string; name?: string; fileType?: string; fileSize?: string }
+  T extends { url?: string; name?: string; fileType?: string; fileSize?: string | number }
 >(attachments: readonly T[], selected: T): T[] {
   let index = attachments.indexOf(selected)
   if (index < 0)
