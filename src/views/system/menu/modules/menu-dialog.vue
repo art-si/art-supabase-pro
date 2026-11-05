@@ -236,6 +236,7 @@
           label: '父级菜单',
           key: 'parentId',
           type: 'treeSelect',
+          description: '移到其他应用目录时，当前菜单及其下级会自动归属该应用。',
           props: {
             clearable: true,
             filterable: true,
@@ -261,8 +262,8 @@
           label: '路由地址',
           help: () =>
             [
-              '一级菜单：以 / 开头的绝对路径（如 /dashboard）',
-              '二级及以下：相对路径（如 console、user）'
+              '以 / 开头的绝对路径会保留原访问地址，移动菜单层级也不会改变网址。',
+              '相对路径会接在父级路径后（如 console、user）。'
             ].map((value) => h('p', value)),
           key: 'path',
           type: 'input',
@@ -314,6 +315,7 @@
           label: '父级菜单',
           key: 'parentId',
           type: 'treeSelect',
+          description: '移到其他应用目录时，当前菜单及其下级会自动归属该应用。',
           props: {
             clearable: true,
             filterable: true,
@@ -338,8 +340,8 @@
           label: '路由地址',
           help: () =>
             [
-              '一级菜单：以 / 开头的绝对路径（如 /dashboard）',
-              '二级及以下：相对路径（如 console、user）'
+              '以 / 开头的绝对路径会保留原访问地址，移动菜单层级也不会改变网址。',
+              '相对路径会接在父级路径后（如 console、user）。'
             ].map((value) => h('p', value)),
           key: 'path',
           type: 'input',

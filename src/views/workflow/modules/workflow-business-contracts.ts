@@ -104,6 +104,21 @@ const contracts: Record<string, WorkflowBusinessContract> = {
     ],
     routePath: () => '/tms/order-list'
   },
+  tms_abnormal_freight: {
+    businessType: 'tms_abnormal_freight',
+    label: '异常运费',
+    menuName: 'TmsOrderList',
+    domain: 'finance',
+    riskLevel: 'high',
+    owner: '运输业务',
+    fields: [
+      { key: 'documentNo', label: '异常单号', valueType: 'text' },
+      { key: 'orderNo', label: '订单号', valueType: 'text' },
+      { key: 'amount', label: '异常金额', valueType: 'number' },
+      { key: 'ownership', label: '费用归属', valueType: 'text' }
+    ],
+    routePath: () => '/tms/order-list'
+  },
   tms_expense_reimbursement: {
     businessType: 'tms_expense_reimbursement',
     label: '费用报销',

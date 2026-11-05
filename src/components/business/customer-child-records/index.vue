@@ -349,12 +349,12 @@
         ]
       : [
           ['invoiceTitle', '开票名称', 200],
-          ...(canViewField(props.fieldAccess, 'taxNo') ? [['taxNo', '纳税人识别号', 190]] : []),
-          ['bankName', '开户行', 180],
+          ...(canViewField(props.fieldAccess, 'taxNo') ? [['taxNo', '纳税人识别号', 170]] : []),
+          ['bankName', '开户行', 160],
           ...(canViewField(props.fieldAccess, 'bankAccount')
-            ? [['bankAccount', '银行账号', 200]]
+            ? [['bankAccount', '银行账号', 180]]
             : []),
-          ['bankBranch', '支行', 160],
+          ['bankBranch', '支行', 150],
           ['remark', '备注', 180]
         ]
     ).map(([prop, label, minWidth]) => ({

@@ -12,10 +12,16 @@ test('承运商子表与关联页签可编辑、保存并在窄屏显示', async
     const endpoint = url.pathname.split('/').at(-1)
     if (endpoint === 'sys_dictionary') {
       const code = url.searchParams.get('dict_type_table.code')?.replace(/^eq\./, '') || ''
+      const valueFilter = url.searchParams.get('value')?.replace(/^eq\./, '')
       const dictionaries: Record<string, Array<[string, string]>> = {
         tmsCarrierType: [['truckload', '整车运输']],
         tmsCarrierDispatchChannel: [['offline', '线下']],
-        tmsWaybillStatus: [['pending', '待接单']],
+        tmsWaybillStatus: [
+          ['pending', '待接单'],
+          ['signed', '已签收'],
+          ['transporting', '运输中'],
+          ['completed', '已完成']
+        ],
         vehicleOperationStatus: [['operating', '营运']],
         tmsSettlementStatus: [['draft', '草稿']],
         tmsDriverLicenseType: [['A2', 'A2型准驾']],
@@ -29,15 +35,17 @@ test('承运商子表与关联页签可编辑、保存并在窄屏显示', async
         json: Object.entries(dictionaries)
           .filter(([dictCode]) => !code || dictCode === code)
           .flatMap(([dictCode, entries]) =>
-            entries.map(([value, label], index) => ({
-              id: `${dictCode}-${index}`,
-              code: value,
-              value,
-              label,
-              status: '1',
-              sort: index + 1,
-              dict_type_table: { code: dictCode, name: dictCode }
-            }))
+            entries
+              .filter(([value]) => !valueFilter || value === valueFilter)
+              .map(([value, label], index) => ({
+                id: `${dictCode}-${index}`,
+                code: value,
+                value,
+                label,
+                status: '1',
+                sort: index + 1,
+                dict_type_table: { code: dictCode, name: dictCode }
+              }))
           )
       })
     }
@@ -95,7 +103,12 @@ test('承运商子表与关联页签可编辑、保存并在窄屏显示', async
       endpoint === 'tms_list_carrier_waybills_secure'
     )
       return route.fulfill({
-        json: [{ id: 'waybill-1', waybill_no: 'YWD-001', status: 'pending' }]
+        json: [
+          { id: 'waybill-1', waybill_no: 'YWD-001', status: 'pending' },
+          { id: 'waybill-2', waybill_no: 'YWD-002', status: 'signed' },
+          { id: 'waybill-3', waybill_no: 'YWD-003', status: 'transporting' },
+          { id: 'waybill-4', waybill_no: 'YWD-004', status: 'completed' }
+        ]
       })
     if (endpoint === 'tms_list_carrier_prices_secure')
       return route.fulfill({
@@ -156,26 +169,33 @@ test('承运商子表与关联页签可编辑、保存并在窄屏显示', async
     ['承运商对账', 'DZD-001']
   ]) {
     await dialog.getByRole('tab', { name: tab }).click()
-    await expect(dialog.getByText(value, { exact: true })).toBeVisible()
+    const panel = dialog.getByRole('tabpanel', { name: tab })
+    await expect(panel.getByText(value, { exact: true }).first()).toBeVisible()
     if (tab === '司机信息') {
-      await expect(dialog.getByText('A2型准驾', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('启用', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('李师傅', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('待核对', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('停用', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('legacy_license', { exact: true })).toHaveCount(0)
+      await expect(panel.getByText('A2型准驾', { exact: true }).first()).toBeVisible()
+      await expect(panel.getByText('启用', { exact: true }).first()).toBeVisible()
+      await expect(panel.getByText('李师傅', { exact: true }).first()).toBeVisible()
+      await expect(panel.getByText('待核对', { exact: true }).first()).toBeVisible()
+      await expect(panel.getByText('停用', { exact: true }).first()).toBeVisible()
+      await expect(panel.getByText('legacy_license', { exact: true })).toHaveCount(0)
     }
     if (tab === '车辆明细') {
-      await expect(dialog.getByText('营运', { exact: true }).first()).toBeVisible()
-      await expect(dialog.getByText('厢式货车', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('待核对', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('box_truck', { exact: true })).toHaveCount(0)
-      await expect(dialog.getByText('legacy_unknown', { exact: true })).toHaveCount(0)
+      await expect(panel.getByText('营运', { exact: true }).first()).toBeVisible()
+      await expect(panel.getByText('厢式货车', { exact: true }).first()).toBeVisible()
+      await expect(panel.getByText('待核对', { exact: true }).first()).toBeVisible()
+      await expect(panel.getByText('box_truck', { exact: true })).toHaveCount(0)
+      await expect(panel.getByText('legacy_unknown', { exact: true })).toHaveCount(0)
       await dialog.screenshot({ path: info.outputPath('carrier-vehicle-dictionary-narrow.png') })
     }
-    if (tab === '承运单列表')
-      await expect(dialog.getByText('待接单', { exact: true })).toBeVisible()
-    if (tab === '承运商对账') await expect(dialog.getByText('草稿', { exact: true })).toBeVisible()
+    if (tab === '承运单列表') {
+      await expect(panel.getByText('待接单', { exact: true }).first()).toBeVisible()
+      for (const label of ['已签收', '运输中', '已完成'])
+        await expect(panel.getByText(label, { exact: true }).first()).toBeVisible()
+      for (const code of ['signed', 'transporting', 'completed'])
+        await expect(panel.getByText(code, { exact: true })).toHaveCount(0)
+    }
+    if (tab === '承运商对账')
+      await expect(panel.getByText('草稿', { exact: true }).first()).toBeVisible()
   }
   await dialog.getByRole('button', { name: '确定', exact: true }).click()
   await expect.poll(() => writes.length).toBe(1)

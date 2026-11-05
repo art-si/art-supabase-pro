@@ -3,8 +3,10 @@ import test from 'node:test'
 import type { AppRouteRecord } from '../../src/types/router'
 import {
   buildApplicationMenuTree,
-  flattenStandaloneApplicationMenu
+  flattenStandaloneApplicationMenu,
+  normalizeApplicationMenuPaths
 } from '../../src/router/core/application-menu'
+import { RouteValidator } from '../../src/router/core/route-validator'
 
 const vmsMenu: AppRouteRecord[] = [
   {
@@ -80,4 +82,76 @@ test('rebuilds authorized menu trees in sorted order without adding ungranted si
   )
   assert.deepEqual(tree[1]?.children, [])
   assert.equal('children' in flat[0], false)
+})
+
+test('keeps an absolute WMS URL when the menu is grouped under SCM', () => {
+  const flat: AppRouteRecord[] = [
+    {
+      id: 'scm',
+      parentId: null,
+      name: 'ScmRoot',
+      path: '/scm',
+      component: '/index/index',
+      meta: { title: 'SCM' }
+    },
+    {
+      id: 'purchase',
+      parentId: 'scm',
+      name: 'ScmPurchaseManagement',
+      path: 'purchase-management',
+      meta: { title: '采购管理' }
+    },
+    {
+      id: 'inbound',
+      parentId: 'purchase',
+      name: 'WmsPurchaseInbound',
+      path: '/wms/inbound-business/purchase-inbound',
+      component: '/wms/inbound-business/purchase-inbound/index',
+      meta: { title: '采购入库单' }
+    }
+  ]
+  const errors: unknown[][] = []
+  const originalError = console.error
+  console.error = (...args) => errors.push(args)
+  try {
+    const menu = normalizeApplicationMenuPaths(buildApplicationMenuTree(flat))
+    const purchase = menu[0]?.children?.[0]
+    assert.equal(purchase?.path, '/scm/purchase-management')
+    assert.equal(purchase?.children?.[0]?.path, '/wms/inbound-business/purchase-inbound')
+    assert.equal(purchase?.redirect, '/wms/inbound-business/purchase-inbound')
+    assert.equal(new RouteValidator().validate(menu).valid, true)
+    assert.deepEqual(errors, [])
+  } finally {
+    console.error = originalError
+  }
+})
+
+test('route diagnostics retain the absolute child URL', () => {
+  const menu: AppRouteRecord[] = [
+    {
+      name: 'ScmRoot',
+      path: '/scm',
+      component: '/index/index',
+      meta: { title: 'SCM' },
+      children: [
+        {
+          name: 'Duplicate',
+          path: 'other',
+          component: '/scm/other/index',
+          meta: { title: '其他' }
+        },
+        {
+          name: 'Duplicate',
+          path: '/wms/inbound-business/purchase-inbound',
+          component: '/wms/inbound-business/purchase-inbound/index',
+          meta: { title: '采购入库单' }
+        }
+      ]
+    }
+  ]
+
+  const result = new RouteValidator().validate(menu)
+  assert.ok(
+    result.warnings.includes('路由名称重复: "Duplicate" (/wms/inbound-business/purchase-inbound)')
+  )
 })

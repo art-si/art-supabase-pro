@@ -24,7 +24,7 @@ const order: Api.Tms.Order.OrderRecord = {
 const dialog = ref<InstanceType<typeof QuoteDialog>>()
 useUserStore(store).setUserInfo({
   userId: 'fixture-user',
-  tenantId: 'tenant-a',
+  tenantId: '11111111-1111-4111-8111-111111111111',
   platformSuper: true
 })
 const router = createRouter({

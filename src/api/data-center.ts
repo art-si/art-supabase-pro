@@ -541,18 +541,20 @@ export async function renameResource(params: RenameResourceParams) {
 export async function deleteResource(params: Api.DataCenter.Resources.ResourceListItem) {
   const { id } = params
 
-  const { data: resourceItem } = await responseHandle(
+  const { data: resourceItem } = await responseHandle<Api.DataCenter.Resources.ResourceListItem>(
     () => supabase.from('sys_attachment').select().eq('id', id).single(),
-    {}
+    { breakReturn: true, showErrorMessage: false }
   )
 
   if (!resourceItem) throw new Error('未找到待删除的附件')
-  const { storagePath, objectName } = resourceItem as Api.DataCenter.Resources.ResourceListItem
+  const { storagePath, objectName } = resourceItem
 
   await responseHandle(
     () => supabase.from('sys_attachment').delete({ count: 'exact' }).eq('id', id),
     {
       breakReturn: true,
+      showErrorMessage: false,
+      showReferenceFeedback: false,
       requireAffected: true,
       noAffectedMessage: WRITE_PERMISSION_DENIED_MESSAGE,
       errorMessage: '附件删除失败，请稍后重试'

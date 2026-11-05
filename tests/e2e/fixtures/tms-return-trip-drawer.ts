@@ -2,6 +2,7 @@ import { createApp, h, onMounted, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import language from '@/locales'
 import { store } from '@/store'
+import { useUserStore } from '@/store/modules/user'
 import { setupGlobDirectives } from '@/directives'
 import ReturnTripDrawer from '@tms/views/order-list/modules/return-trip/return-trip-drawer.vue'
 import '@styles/core/tailwind.css'
@@ -17,7 +18,24 @@ const app = createApp({
         orderNo: 'ORD-RETURN-001',
         originStation: '上海仓',
         destinationStation: '杭州门店',
-        orderStatus: 'transporting'
+        orderStatus: 'transporting',
+        orderConfig: {
+          loadType: 'ltl',
+          vehicleType: '厢式货车',
+          billingMode: 'weight',
+          cargoCategory: 'general',
+          packaging: 'bulk',
+          attachmentUrls: ['https://example.invalid/old-order-proof.pdf'],
+          payable: {
+            driverFreight: 999,
+            driverSettlementMethod: 'monthly',
+            carrierSettlementMethod: 'monthly'
+          },
+          loading: {
+            loadPhotoUrls: ['https://example.invalid/old-load.jpg'],
+            signerName: '原单签收人'
+          }
+        }
       } as Api.Tms.Order.OrderRecord)
     )
     return () => h('main', [h(ReturnTripDrawer, { ref: drawerRef })])
@@ -25,6 +43,11 @@ const app = createApp({
 })
 
 app.use(store)
+const userStore = useUserStore()
+userStore.setUserInfo({
+  ...userStore.getUserInfo,
+  tenantId: '11111111-1111-4111-8111-111111111111'
+})
 app.use(language)
 app.use(
   createRouter({

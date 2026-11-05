@@ -2,12 +2,12 @@
   {
     "path": "modules/art-supabase-vms",
     "url": "https://gitee.com/art-si/art-supabase-vms.git",
-    "ref": "ac0078a674b539cc2e79759654a44fe7c3c56b18"
+    "ref": "c658b090889527f31b43e61a8afe4d684f822ced"
   },
   {
     "path": "modules/art-supabase-fms",
     "url": "https://gitee.com/art-si/art-supabase-fms.git",
-    "ref": "4e092400f4ae61fc8616aa8407b3d4e6eb00094a"
+    "ref": "1726876bec520cbeba2ed9f5fbd60284c075704f"
   },
   {
     "path": "modules/art-supabase-hr",
@@ -17,22 +17,22 @@
   {
     "path": "modules/art-supabase-smis",
     "url": "https://gitee.com/art-si/art-supabase-smis.git",
-    "ref": "db677ec56074882108f85471a9191e80d0945d87"
+    "ref": "f17fab4b15b0200b59b68663954742b6b49990ca"
   },
   {
     "path": "modules/art-supabase-tms",
     "url": "https://gitee.com/art-si/art-supabase-tms.git",
-    "ref": "ec677b5b83a2c379b7027dc2120469835d2576a0"
+    "ref": "93e5af90ced9d3a40c36aae3e9f917df389a3abb"
   },
   {
     "path": "modules/art-supabase-doc",
     "url": "https://gitee.com/art-si/art-supabase-doc.git",
-    "ref": "e32d30fc0a54f3e89c669681065d338d1fe09ff2"
+    "ref": "d3ef6b57fed77edd7ad933bf59d7e23677f4a61c"
   },
   {
     "path": "modules/art-supabase-mdm",
     "url": "https://gitee.com/art-si/art-supabase-mdm.git",
-    "ref": "786709309f5f39972edf1e7eb6129e2a28c09864"
+    "ref": "2bb929388ebab854d46a5cedf1f3c0b717a2d0ec"
   },
   {
     "path": "modules/art-supabase-wms",
@@ -42,17 +42,17 @@
   {
     "path": "modules/art-supabase-mes",
     "url": "https://gitee.com/art-si/art-supabase-mes.git",
-    "ref": "d9813703e705b6e1e83fcbd7df960d4b0c0fac34"
+    "ref": "b3d4d841e8973e4fa48ccf1f1ecd23a9c8f98ddb"
   },
   {
     "path": "modules/art-supabase-pmis",
     "url": "https://gitee.com/art-si/art-supabase-pmis.git",
-    "ref": "d5dd043cee26d4ead3b148f299e70eb543363797"
+    "ref": "35063ab6a207cd7831eab3618e8e9c757e4c8a4a"
   },
   {
     "path": "modules/art-supabase-scm",
     "url": "https://gitee.com/art-si/art-supabase-scm.git",
-    "ref": "b9549909782d8e2d9f4732d7881db7325d7c2fe8"
+    "ref": "8c2507c53460fa98eeab011681b334f817a32342"
   },
   {
     "path": "modules/art-supabase-site",

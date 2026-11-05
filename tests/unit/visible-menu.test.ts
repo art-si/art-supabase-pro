@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AppRouteRecord } from '../../src/types/router'
-import { filterVisibleMenuItems, getFirstMenuPath } from '../../src/utils/navigation/route'
+import {
+  filterVisibleMenuItems,
+  getFirstMenuPath,
+  resolveMenuRootPath
+} from '../../src/utils/navigation/route'
+
+test('menu root follows the registered parent when a moved page keeps its old URL', () => {
+  const matched = [
+    { path: '/scm' },
+    { path: '/scm/purchase-management' },
+    { path: '/wms/inbound-business/purchase-inbound' }
+  ]
+  assert.equal(resolveMenuRootPath(matched, '/wms/inbound-business/purchase-inbound'), '/scm')
+  assert.equal(resolveMenuRootPath([], '/wms/inbound-business/purchase-inbound'), '/wms')
+})
 
 const page = (name: string, extra: Partial<AppRouteRecord> = {}): AppRouteRecord => ({
   name,

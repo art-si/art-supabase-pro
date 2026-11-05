@@ -16,7 +16,7 @@ const component =
     ? (await import('@tms/views/basic-data/service-case/index.vue')).default
     : kind === 'driver-list'
       ? (await import('@tms/views/basic-data/driver/index.vue')).default
-      : kind === 'driver'
+      : kind === 'driver' || kind === 'driver-review'
         ? (await import('@tms/views/basic-data/driver/modules/driver-dialog.vue')).default
         : kind === 'service'
           ? (await import('@tms/views/basic-data/service-case/modules/service-case-dialog.vue'))
@@ -92,7 +92,7 @@ useMenuStore(store).setButtonList([
     type: 'button',
     meta: { title: action }
   })),
-  ...['View', 'Add', 'Edit', 'Delete', 'UploadDocument'].map((action) => ({
+  ...['View', 'Add', 'Edit', 'Delete', 'UploadDocument', 'Audit'].map((action) => ({
     name: `TmsDriver:${action}`,
     path: '',
     type: 'button',
@@ -105,7 +105,7 @@ const preview = app.mount('#tms-cargo-driver-service') as unknown as {
 await nextTick()
 if (kind === 'service-detail' || kind === 'driver-list') {
   // The list page opens its detail dialog when the service number is clicked.
-} else if (kind === 'driver') {
+} else if (kind === 'driver' || kind === 'driver-review') {
   void preview.handleOpen(
     {
       id: '33333333-3333-4333-8333-333333333333',
@@ -121,7 +121,7 @@ if (kind === 'service-detail' || kind === 'driver-list') {
     undefined,
     undefined,
     undefined,
-    true
+    kind === 'driver'
   )
 } else if (kind === 'service') {
   void preview.handleOpen()

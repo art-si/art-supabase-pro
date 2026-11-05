@@ -18,6 +18,7 @@ async function setFixtureTheme(page: Page, dark: boolean) {
 }
 
 test('客户名称打开档案，子表独立编辑且关联页签锁定客户', async ({ page }, testInfo) => {
+  test.slow()
   const customer = {
     id: '11111111-1111-4111-8111-111111111112',
     tenantId: '11111111-1111-4111-8111-111111111111',
@@ -127,6 +128,27 @@ test('客户名称打开档案，子表独立编辑且关联页签锁定客户',
   await expect(dialog.getByText('测试开票主体', { exact: true })).toBeVisible()
   await expect(dialog.getByRole('columnheader', { name: '默认开票账户' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('customer-finance.png'), fullPage: true })
+  const financeCard = dialog.locator('[data-art-form-tab="financeSection"] .art-table-card')
+  const standardCardHeight = await financeCard.evaluate(
+    (element) => element.getBoundingClientRect().height
+  )
+  await dialog.getByRole('button', { name: '全屏', exact: true }).click()
+  await expect(dialog.locator('.tms-customer-dialog')).toHaveClass(/is-fullscreen/)
+  await expect
+    .poll(() => financeCard.evaluate((element) => element.getBoundingClientRect().height))
+    .toBeGreaterThan(standardCardHeight + 80)
+  const footerGap = await dialog.evaluate((element) => {
+    const card = element.querySelector('[data-art-form-tab="financeSection"] .art-table-card')
+    const footer = element.querySelector('.el-dialog__footer')
+    if (!card || !footer) return Number.POSITIVE_INFINITY
+    return footer.getBoundingClientRect().top - card.getBoundingClientRect().bottom
+  })
+  expect(footerGap).toBeLessThan(48)
+  await page.screenshot({
+    path: testInfo.outputPath('customer-finance-fullscreen.png'),
+    fullPage: true
+  })
+  await dialog.getByRole('button', { name: '退出全屏', exact: true }).click()
   failContacts = true
   await dialog.getByRole('tab', { name: '联系人', exact: true }).click()
   await expect(dialog.getByText('数据加载失败', { exact: true })).toBeVisible()
@@ -155,6 +177,14 @@ test('客户名称打开档案，子表独立编辑且关联页签锁定客户',
   await page.setViewportSize({ width: 1024, height: 768 })
   await page.screenshot({ path: testInfo.outputPath('customer-narrow.png'), fullPage: true })
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+  await dialog.getByRole('tab', { name: '财务信息', exact: true }).click()
+  await expect(dialog.getByText('测试开票主体', { exact: true })).toBeVisible()
+  await dialog
+    .locator('.art-dialog__scrollbar > .el-scrollbar__wrap')
+    .evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await expect(
+    dialog.locator('[data-art-form-tab="financeSection"] .el-pagination')
+  ).toBeInViewport()
 })
 
 test('仅查看权限打开同一客户档案，基础字段和维护按钮不可写', async ({ page }) => {

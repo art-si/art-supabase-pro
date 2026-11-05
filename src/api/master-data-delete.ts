@@ -227,6 +227,8 @@ export async function fetchMasterDataDeleteDependencies(
   )
   return (data ?? []).map((item) => ({
     ...item,
+    targetId: item.targetId ?? '',
+    createdAt: item.createdAt ?? '',
     cleanupAllowed: Boolean(item.cleanupAllowed),
     recordAmount:
       item.recordAmount === null || item.recordAmount === undefined

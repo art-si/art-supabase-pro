@@ -824,13 +824,20 @@
    */
   async function handleDelete(resource: Resource): Promise<void> {
     if (!resource.id) return
+    const guard = deleteGuardRef.value
+    if (!guard) {
+      ElMessage.error('删除前检查尚未就绪，请稍后重试')
+      return
+    }
+    const inspection = {
+      resourceType: 'attachment' as const,
+      resourceLabel: '附件资源',
+      resources: [{ id: String(resource.id), label: resource.originName || '未命名附件' }]
+    }
+    let deleteStarted = false
+    let deleteCommitted = false
     try {
-      const blocked = await deleteGuardRef.value?.inspect({
-        resourceType: 'attachment',
-        resourceLabel: '附件资源',
-        resources: [{ id: String(resource.id), label: resource.originName || '未命名附件' }]
-      })
-      if (blocked) return
+      if (await guard.inspect(inspection)) return
 
       await confirmDelete(
         `确定要删除“${resource.originName || '未命名附件'}”吗？删除后将无法恢复。`,
@@ -840,7 +847,9 @@
       )
 
       loading.value = true
+      deleteStarted = true
       const { storageCleanupFailed } = await deleteResource({ id: resource.id })
+      deleteCommitted = true
       unSelect(resource)
       await handleGetResourceList()
       if (storageCleanupFailed) {
@@ -850,6 +859,11 @@
       }
     } catch (error: unknown) {
       if (error !== 'cancel' && error !== 'close') {
+        if (deleteCommitted) {
+          ElMessage.warning('附件已删除，资源列表刷新失败，请刷新列表重试')
+          return
+        }
+        if (deleteStarted && (await guard.inspect(inspection))) return
         ElMessage.error(
           getFriendlySupabaseErrorMessage(error, '删除前检查失败，附件未删除，请稍后重试')
         )

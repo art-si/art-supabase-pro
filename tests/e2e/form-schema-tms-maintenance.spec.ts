@@ -10,6 +10,18 @@ test('预约配置化表单校验两条独立记录并保存正确路径字段',
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.route('**/rest/v1/**', (route) => {
+    if (route.request().url().includes('/rpc/tms_get_appointment_dispatch_snapshot_secure')) {
+      return route.fulfill({
+        json: {
+          driverName: '验收司机',
+          driverPhone: '13800000000',
+          plateNo: '测A12345',
+          vehicleType: '厢式货车',
+          loadCapacityTon: 8,
+          vehicleLengthM: 9.6
+        }
+      })
+    }
     if (route.request().url().includes('/rpc/tms_save_waybill_appointment_secure')) {
       writes.push(route.request().postDataJSON())
       return route.fulfill({ json: `saved-${writes.length}` })
@@ -29,9 +41,12 @@ test('预约配置化表单校验两条独立记录并保存正确路径字段',
   for (const index of [0, 1]) {
     const field = (key: string) =>
       drawer.locator(`[data-art-form-item-key="entries.${index}.${key}"] input`).first()
-    await field('driverName').fill(`验收司机${index + 1}`)
-    await field('driverPhone').fill(`1380000000${index}`)
-    await field('plateNo').fill(`测A1234${index}`)
+    await expect(field('driverName')).toBeDisabled()
+    await expect(field('driverPhone')).toBeDisabled()
+    await expect(field('plateNo')).toBeDisabled()
+    await expect(field('vehicleType')).toBeDisabled()
+    await expect(field('loadCapacityTon')).toBeDisabled()
+    await expect(field('vehicleLengthM')).toBeDisabled()
     await field('scheduledAt').fill('2026-11-20 09:30')
     await field('scheduledAt').press('Tab')
   }
@@ -42,11 +57,14 @@ test('预约配置化表单校验两条独立记录并保存正确路径字段',
   await drawer.getByRole('button', { name: '保存预约', exact: true }).click()
   await expect(drawer).toBeHidden()
   expect(writes).toHaveLength(2)
-  for (const [index, write] of writes.entries()) {
+  for (const write of writes) {
     expect(write).toMatchObject({
       p_payload: {
-        driver_name: `验收司机${index + 1}`,
-        plate_no: `测A1234${index}`,
+        driver_name: '验收司机',
+        driver_phone: '13800000000',
+        plate_no: '测A12345',
+        load_capacity_ton: 8,
+        vehicle_length_m: 9.6,
         selected_waybill_ids: ['00000000-0000-4000-a000-000000000003']
       }
     })

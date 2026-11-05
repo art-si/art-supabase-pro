@@ -334,6 +334,7 @@ test('车辆档案管理字段、分类收缩和专注模式保持可用', async
     workspace.locator('.vehicle-archive-manage__navigation').getByText('自营车辆')
   ).toBeVisible()
   await expect(workspace.getByRole('columnheader', { name: '车辆年限' })).toBeVisible()
+  await expect(workspace.getByRole('columnheader', { name: '车架号（VIN）' })).toBeAttached()
   await page
     .locator('.vehicle-archive-manage__workspace .el-splitter-bar__horizontal-collapse-icon-start')
     .click()
@@ -349,6 +350,14 @@ test('车辆档案管理字段、分类收缩和专注模式保持可用', async
     .toBeGreaterThan(200)
   await expect(workspace.locator('.vehicle-archive-manage__navigation')).toBeVisible()
   await page.screenshot({ path: info.outputPath('vehicle-archive-list-light.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+    .toBeLessThanOrEqual(1)
+  await page.screenshot({ path: info.outputPath('vehicle-archive-list-390-light.png') })
+  await page.evaluate(() => document.documentElement.classList.add('dark'))
+  await page.screenshot({ path: info.outputPath('vehicle-archive-list-390-dark.png') })
+  await page.evaluate(() => document.documentElement.classList.remove('dark'))
   await page.setViewportSize({ width: 1280, height: 800 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page

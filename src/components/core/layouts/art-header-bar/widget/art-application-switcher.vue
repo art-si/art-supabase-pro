@@ -49,7 +49,7 @@
     type ApplicationCode
   } from '@/config/application'
   import { useMenuStore } from '@/store/modules/menu'
-  import { getFirstMenuPath } from '@/utils/navigation/route'
+  import { getFirstMenuPath, resolveMenuRootPath } from '@/utils/navigation/route'
   import { navigateToApplication } from '@/utils/application-navigation'
   import { WEB_LINKS } from '@/utils/constants'
   import { ElMessage } from 'element-plus'
@@ -70,7 +70,7 @@
   const menuStore = useMenuStore()
   const activeApplicationCode = computed(() =>
     currentApplication.code === 'platform'
-      ? resolveApplicationCode(route.path.split('/')[1])
+      ? resolveApplicationCode(resolveMenuRootPath(route.matched, route.path).split('/')[1])
       : currentApplication.code
   )
   const documentationEntry: SwitcherEntry = {

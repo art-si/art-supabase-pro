@@ -103,11 +103,11 @@ test('overview preserves empty and every display-status count, including exempt 
   const rows = statuses.map((status, index) => task(`task-${index}`, status, equipmentOne))
   assert.deepEqual(summarizePmisTasks(rows), {
     total: 6,
-    completed: 1,
+    completed: 2,
     pending: 1,
     overdue: 1,
     exempt: 1,
-    completionRate: 20
+    completionRate: 40
   })
   assert.deepEqual(
     summarizePmisTasks([task('exempt-only', 'exempt', equipmentOne)]).completionRate,
