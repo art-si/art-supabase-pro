@@ -421,6 +421,11 @@ test('1280 与 390 深色下三个生产资料页签和表格保留可读布局'
     for (const name of ['BOM组件', '工艺路线', '领用流水']) {
       await page.getByRole('tab', { name, exact: true }).click()
       await expect(page.getByRole('tabpanel').filter({ visible: true })).toHaveCount(1)
+      if (name === '领用流水') {
+        const scrollHint = page.getByText('左右滑动表格，查看更多列', { exact: true })
+        if (width === 390) await expect(scrollHint).toBeVisible()
+        else await expect(scrollHint).toBeHidden()
+      }
       expect(
         await page
           .getByRole('dialog')
@@ -451,9 +456,13 @@ test('领用流水空态与迟到旧工单结果保持隔离', async ({ page }) 
   await page.getByRole('tab', { name: '领用流水', exact: true }).click()
   await expect(page.getByText('PM-B-001', { exact: true })).toBeVisible()
   const oldRequest = state.heldIssues[0]
-  const response = page.waitForResponse((value) => value.url() === oldRequest.request().url())
   await oldRequest.fulfill({ json: issueRows(1, 10), headers: { 'content-range': '0-9/11' } })
-  await (await response).finished()
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  )
   await expect(page.getByText('PM-B-001', { exact: true })).toBeVisible()
   await expect(page.getByText('PM-A-001', { exact: true })).toHaveCount(0)
 })
@@ -506,10 +515,15 @@ test('关闭后新增空工单，迟到响应不回填上张单的组件', async
 test('读取失败提供中文反馈，仍允许手动选择组件', async ({ page }) => {
   const state = await mockApi(page)
   state.failBom = true
-  await open(page, 'reference')
-  await expect(
-    page.getByText('BOM 组件带入失败，请手动填写工单专用参数', { exact: true })
-  ).toBeVisible()
+  await prepareAppearance(page, { theme: 'light', boxBorderMode: true })
+  await page.goto(fixture, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+  await Promise.all([
+    expect(page.getByText('BOM 组件带入失败，请手动填写工单专用参数', { exact: true })).toBeVisible(
+      { timeout: 30_000 }
+    ),
+    page.getByTestId('open-reference').click()
+  ])
+  await expect(page.getByRole('dialog').first()).toBeVisible()
   await page.getByRole('tab', { name: '专用参数', exact: true }).click()
   await field(page, '芯材').locator('.el-select').click()
   await page.getByRole('option', { name: /人工芯材/ }).click()
