@@ -65,19 +65,6 @@ interface ConditionMatchResult {
   reason: string
 }
 
-const operatorLabels: Record<Api.Workflow.ConditionOperator, string> = {
-  always: '无条件',
-  eq: '等于',
-  ne: '不等于',
-  gt: '大于',
-  gte: '大于等于',
-  lt: '小于',
-  lte: '小于等于',
-  in: '属于',
-  contains: '包含',
-  not_empty: '不为空'
-}
-
 const numericOperators = new Set<Api.Workflow.ConditionOperator>(['gt', 'gte', 'lt', 'lte'])
 
 function isEmptyValue(value: unknown): boolean {
@@ -120,7 +107,8 @@ function normalizeCandidates(value: unknown): unknown[] {
 function matchCondition(
   condition: Api.Workflow.WorkflowCondition,
   context: Record<string, unknown>,
-  field?: Api.Workflow.WorkflowContextField
+  field: Api.Workflow.WorkflowContextField | undefined,
+  operatorLabel: (operator: Api.Workflow.ConditionOperator) => string
 ): ConditionMatchResult {
   if (condition.operator === 'always') {
     return { matched: true, reason: '无条件进入该节点' }
@@ -168,7 +156,7 @@ function matchCondition(
 
   return {
     matched,
-    reason: `${fieldLabel}（${formatValue(actualValue)}）${operatorLabels[condition.operator]}${formatValue(expectedValue)}，${matched ? '条件成立' : '条件不成立'}`
+    reason: `${fieldLabel}（${formatValue(actualValue)}）${operatorLabel(condition.operator)}${formatValue(expectedValue)}，${matched ? '条件成立' : '条件不成立'}`
   }
 }
 
@@ -356,14 +344,20 @@ export function inspectWorkflowConfig(
 export function simulateWorkflow(
   config: Api.Workflow.WorkflowConfig,
   fields: Api.Workflow.WorkflowContextField[],
-  context: Record<string, unknown>
+  context: Record<string, unknown>,
+  operatorLabel: (operator: Api.Workflow.ConditionOperator) => string = (operator) => operator
 ): WorkflowSimulationResult {
   const diagnostics = inspectWorkflowConfig(config, fields)
   const fieldMap = new Map(fields.map((field) => [field.key, field]))
   const orderedNodes = [...config.nodes].sort((a, b) => a.order - b.order)
   let firstMatchedNodeKey: string | undefined
   const traces = orderedNodes.map((node): WorkflowSimulationTrace => {
-    const match = matchCondition(node.condition, context, fieldMap.get(node.condition.field || ''))
+    const match = matchCondition(
+      node.condition,
+      context,
+      fieldMap.get(node.condition.field || ''),
+      operatorLabel
+    )
     if (match.matched && !firstMatchedNodeKey) firstMatchedNodeKey = node.key
     return {
       node,

@@ -81,11 +81,8 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
-  import {
-    workflowTemplateCategories,
-    workflowTemplates,
-    type WorkflowTemplateCategory
-  } from './workflow-templates'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
+  import { workflowTemplates, type WorkflowTemplateCategory } from './workflow-templates'
 
   defineOptions({ name: 'WorkflowTemplateLibraryDialog' })
 
@@ -95,9 +92,17 @@
     category: 'all',
     keyword: ''
   })
+  const configuredCategories = useDictionaryOptions('workflowTemplateCategory')
+  const isTemplateCategory = (value: string): value is Exclude<WorkflowTemplateCategory, 'all'> =>
+    workflowTemplates.some((template) => template.category === value)
 
   const categoryOptions = computed(() =>
-    workflowTemplateCategories.map((category) => ({
+    [
+      { key: 'all' as const, label: '全部' },
+      ...configuredCategories.flatMap((item) =>
+        isTemplateCategory(item.value) ? [{ key: item.value, label: item.label }] : []
+      )
+    ].map((category) => ({
       ...category,
       count:
         category.key === 'all'
@@ -191,7 +196,7 @@
         justify-content: space-between;
         width: 100%;
         min-height: 42px;
-        padding: 0 var(--art-space-3);
+        padding: 8px var(--art-space-3);
         color: var(--art-gray-700);
         text-align: left;
         cursor: pointer;
@@ -202,7 +207,14 @@
           color var(--art-motion-duration-fast) ease,
           background-color var(--art-motion-duration-fast) ease;
 
+        span {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+
         small {
+          flex: none;
+          margin-left: 8px;
           font-variant-numeric: tabular-nums;
           color: var(--art-gray-500);
         }

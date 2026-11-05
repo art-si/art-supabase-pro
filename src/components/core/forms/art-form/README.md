@@ -4,6 +4,8 @@
 
 单个 `checkbox`、`radio` 的控件文字取 `props.label`，未指定时取字段标签；`slots.default` 可覆盖文字内容。组选项仍按各自的 `options` 渲染，不受此规则影响。
 
+手写签名使用 `type: 'signature'`，配置 `props.resourceTenantId`、`props.disabled`；详见 [ArtSignaturePad](../art-signature-pad/README.md)。画布值在提交时通过该控件提供的持久化函数保存。
+
 ## 基础用法
 
 业务字段以 `items` 配置为准：现有 `type` 能表达的控件不再写字段插槽、`render` 包装或 `ElFormItem`。只有缺少类型的控件、复合编辑器和业务表格使用命名字段插槽；内部 prefix/suffix、选项内容优先放在配置的 `slots` / `optionComponent`。同一条业务记录的费用等敏感字段与其他字段共用表单，通过字段级显隐、禁用和只读类型保留权限。登录、注册和密码找回页面的特殊布局按用户要求保留。

@@ -57,7 +57,11 @@ async function mockAppearanceParam(
         json: {
           id: 'appearance-test-param',
           param_key: 'ui.appearance.config',
-          param_value: JSON.stringify(remoteAppearance),
+          param_value: JSON.stringify({
+            ...remoteAppearance,
+            globalFocusMode: true,
+            futureAppearanceSetting: 'preserved'
+          }),
           enabled: true
         }
       })
@@ -207,6 +211,23 @@ test('远端读取期间仅有运行状态变化，仍采用远端默认', async
   await expect.poll(() => appearance(page)).toMatchObject(remoteAppearance)
 })
 
+test('全局专注偏好按账号保存在本机，并在没有本地偏好时采用平台值', async ({ page }) => {
+  await prepareIsolatedSession(page)
+  await mockAppearanceParam(page)
+  await page.goto(`${fixtureUrl}?focus=1`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('focus-ready')).toHaveText('true')
+  await expect(page.getByTestId('focus-state')).toHaveText('true')
+
+  await page.getByRole('button', { name: '本地关闭专注' }).click()
+  await expect(page.getByTestId('focus-state')).toHaveText('false')
+  await page.getByRole('button', { name: '切换测试账号' }).click()
+  await expect(page.getByTestId('focus-state')).toHaveText('true')
+  await page.getByRole('button', { name: '切回测试账号' }).click()
+  await expect(page.getByTestId('focus-state')).toHaveText('false')
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('focus-state')).toHaveText('false')
+})
+
 test('普通用户无保存入口，直接调用保存也不读取或写入参数', async ({ page }, testInfo) => {
   await prepareIsolatedSession(page)
   const requests = await mockAppearanceParam(page)
@@ -238,6 +259,10 @@ test('授权用户可将当前本地外观保存到参数配置', async ({ page 
   const saved = JSON.parse(String(requests.saved?.param_value || '{}')) as AppearanceState
   expect(saved.systemThemeColor).toBe('#118855')
   expect(saved.customRadius).toBe('1.25')
+  expect((saved as AppearanceState & { globalFocusMode: boolean }).globalFocusMode).toBe(true)
+  expect(
+    (saved as AppearanceState & { futureAppearanceSetting: string }).futureAppearanceSetting
+  ).toBe('preserved')
 })
 
 test('重置默认外观刷新后保留，远端默认不再覆盖', async ({ page }) => {

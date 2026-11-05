@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { mockApplicationMenus } from './menu-rpc'
 import { prepareIsolatedSession } from './isolated-session'
+import { wmsAdjustmentTypePairs } from './wms-adjustment-dictionaries'
 
 const tenantId = '7529f951-938e-4e2c-ac0d-316c136ae1f9'
 const warehouseId = 'd97f5bc1-73c4-4617-9225-b0af0327875f'
@@ -23,6 +24,11 @@ const pages = [
 
 const meta = (title: string) => ({ title, roles: ['R_SUPER'], is_enable: true, is_hide: false })
 const dictionaryItems: Record<string, [string, string, string][]> = {
+  wmsAdjustmentType: wmsAdjustmentTypePairs.map(([value, label]): [string, string, string] => [
+    value,
+    label,
+    'info'
+  ]),
   wmsCountSheetStatus: [
     ['draft', '草稿', 'info'],
     ['submitted', '待审核', 'warning'],

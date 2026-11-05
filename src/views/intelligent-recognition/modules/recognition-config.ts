@@ -49,20 +49,6 @@ export const recognitionCapabilities: RecognitionCapability[] = [
   }
 ]
 
-export const featureLabels: Record<RecognitionFeature, string> = {
-  invoice_ocr: '发票识别',
-  waybill_receipt_ocr: '回单识别',
-  cash_voucher_ocr: '收付款凭证',
-  waybill_expense_ocr: '运单费用票据'
-}
-
-export const artifactStatusLabels: Record<Api.IntelligentRecognition.ArtifactStatus, string> = {
-  pending: '待业务复核',
-  applied: '已应用',
-  rejected: '已驳回',
-  superseded: '已失效'
-}
-
 export const fieldLabels: Record<string, string> = {
   invoiceNo: '发票号码',
   invoiceCode: '发票代码',

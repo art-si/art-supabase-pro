@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { installFixtures, meta, tenantId } from './support/inventory-fixtures'
 import { mockApplicationMenus } from './support/menu-rpc'
 import { prepareAppearance } from './support/appearance'
+import { wmsAdjustmentTypeRows } from './support/wms-adjustment-dictionaries'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -69,28 +70,34 @@ async function installAdjustmentMenu(
       }
     })
   )
-  await page.route('**/rest/v1/sys_dictionary?*', (route) =>
-    route.fulfill({
-      json: [
-        {
-          id: 'condition-normal',
-          label: '正常',
-          value: 'normal',
-          status: '1',
-          sort: 1,
-          dict_type_table: { code: 'wmsAdjustmentCondition', name: '库存状态' }
-        },
-        {
-          id: 'condition-frozen',
-          label: '测试冻结状态',
-          value: 'test_frozen',
-          status: '1',
-          sort: 2,
-          dict_type_table: { code: 'wmsAdjustmentCondition', name: '库存状态' }
-        }
-      ]
+  await page.route('**/rest/v1/sys_dictionary?*', (route) => {
+    const code = new URL(route.request().url()).searchParams.get('dict_type_table.code')
+    if (code !== 'eq.wmsAdjustmentCondition' && code !== 'eq.wmsAdjustmentType')
+      return route.fallback()
+    return route.fulfill({
+      json:
+        code === 'eq.wmsAdjustmentType'
+          ? wmsAdjustmentTypeRows
+          : [
+              {
+                id: 'condition-normal',
+                label: '正常',
+                value: 'normal',
+                status: '1',
+                sort: 1,
+                dict_type_table: { code: 'wmsAdjustmentCondition', name: '库存状态' }
+              },
+              {
+                id: 'condition-frozen',
+                label: '测试冻结状态',
+                value: 'test_frozen',
+                status: '1',
+                sort: 2,
+                dict_type_table: { code: 'wmsAdjustmentCondition', name: '库存状态' }
+              }
+            ]
     })
-  )
+  })
 }
 
 test('库存调整仅查看菜单隐藏办理入口', async ({ page }) => {

@@ -1,4 +1,4 @@
-import { createApp, defineComponent, h, nextTick, ref } from 'vue'
+import { KeepAlive, createApp, defineComponent, h, nextTick, ref } from 'vue'
 import WmsInitializationReconciliation from '@/components/business/wms-initialization-reconciliation/index.vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { setupGlobDirectives } from '@/directives'
@@ -138,6 +138,8 @@ const purchaseDocument: WmsPurchaseDocument = {
   isInitialization: purchaseKind.startsWith('initial_'),
   supplierId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   customerId: purchaseKind.startsWith('entrusted_processing_') ? document.customerId : null,
+  customer: null,
+  keeper: null,
   purchaserId: null,
   purchaseDepartmentId: null,
   warehouseId: null,
@@ -252,7 +254,7 @@ if (query.get('openingReturnValues') === 'true') {
 }
 if (query.get('missingStockWarehouse') === 'true') {
   initialStockDocument.lines.forEach((line) => {
-    line.warehouseId = null
+    line.warehouseId = ''
   })
 }
 if (query.get('missingStockUnit') === 'true') {
@@ -467,7 +469,20 @@ const Preview = defineComponent({
   }
 })
 
-const app = createApp(Preview)
+const InactivePreview = defineComponent({
+  setup: () => () => h('div', { id: 'serial-preview-inactive' }, '工作区已停用')
+})
+const KeepAlivePreview = defineComponent({
+  setup() {
+    const active = ref(true)
+    Object.assign(window, { __setSerialPreviewActive: (value: boolean) => (active.value = value) })
+    return () =>
+      h(KeepAlive, null, {
+        default: () => (active.value ? h(Preview) : h(InactivePreview))
+      })
+  }
+})
+const app = createApp(query.get('serialKeepAlive') === 'true' ? KeepAlivePreview : Preview)
 app.use(store)
 app.use(
   createRouter({

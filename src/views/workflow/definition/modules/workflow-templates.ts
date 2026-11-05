@@ -16,11 +16,6 @@ export interface WorkflowTemplateDefinition {
   isCustom?: boolean
 }
 
-export interface WorkflowTemplateCategoryOption {
-  key: WorkflowTemplateCategory
-  label: string
-}
-
 const templateDefinitions: WorkflowTemplateDefinition[] = [
   {
     key: 'scm-sales-contract',
@@ -134,6 +129,26 @@ const templateDefinitions: WorkflowTemplateDefinition[] = [
     nodeNames: ['业务负责人审核', '合同风险复核']
   },
   {
+    key: 'electronic-contract',
+    name: '电子合同审批',
+    description: '核对签约双方、有效期与结算条款，审批通过后允许签署。',
+    category: 'transport',
+    businessType: 'tms_electronic_contract',
+    icon: 'ri:file-shield-2-line',
+    tone: 'warning',
+    nodeNames: ['业务负责人审核', '合同条款复核']
+  },
+  {
+    key: 'transport-agreement',
+    name: '运输协议审批',
+    description: '核对托运承运资料、司机证照与协议内容，审批通过后允许签署。',
+    category: 'transport',
+    businessType: 'tms_transport_agreement',
+    icon: 'ri:truck-line',
+    tone: 'primary',
+    nodeNames: ['运输负责人审核', '协议资料复核']
+  },
+  {
     key: 'vehicle-archive',
     name: '车辆档案维护审批',
     description: '用于车辆档案新增或关键资料变更的受控审批。',
@@ -183,17 +198,6 @@ const templateDefinitions: WorkflowTemplateDefinition[] = [
     tone: 'warning',
     nodeNames: ['用人部门审核', '人力资源复核']
   }
-]
-
-export const workflowTemplateCategories: WorkflowTemplateCategoryOption[] = [
-  { key: 'all', label: '全部' },
-  { key: 'finance', label: '财务审批' },
-  { key: 'transport', label: '运输管理' },
-  { key: 'vehicle', label: '车辆管理' },
-  { key: 'safety', label: '安全生产' },
-  { key: 'hr', label: '人力资源' },
-  { key: 'scm', label: '供应链管理' },
-  { key: 'general', label: '通用审批' }
 ]
 
 export const workflowTemplates = templateDefinitions.map((template) => ({

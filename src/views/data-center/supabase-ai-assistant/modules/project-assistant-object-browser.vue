@@ -236,7 +236,10 @@
 
     &__list {
       height: 100%;
-      padding: 7px;
+
+      :deep(> .el-scrollbar__wrap > .el-scrollbar__view) {
+        padding: 7px;
+      }
     }
 
     &__list button {

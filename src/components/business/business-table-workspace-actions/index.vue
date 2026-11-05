@@ -105,7 +105,7 @@
     const revision = ++syncRevision
 
     if (tableChanged && previousTable?.workspaceController.focusMode.value) {
-      previousTable.workspaceController.setFocusMode(false)
+      previousTable.workspaceController.setFocusMode(false, 'automatic')
     }
     detachHeaderActionHost()
     if (!nextTable || !nextElement) {
@@ -121,7 +121,7 @@
     if (shouldTransferFocus && nextTable.workspaceController.focusable.value) {
       await nextTick()
       if (revision === syncRevision && props.table === nextTable) {
-        nextTable.workspaceController.setFocusMode(true)
+        nextTable.workspaceController.setFocusMode(true, 'automatic')
       }
     }
   }

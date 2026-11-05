@@ -1,4 +1,5 @@
 @use './screen-empty-state';
+@use './command-screen-shell' as shell;
 
 .enterprise-screen {
   --screen-bg: #071320;
@@ -33,44 +34,8 @@
     radial-gradient(ellipse at 93% 98%, rgb(35 110 140 / 12%), transparent 45%),
     linear-gradient(rgb(115 164 198 / 3%) 1px, transparent 1px),
     linear-gradient(90deg, rgb(115 164 198 / 3%) 1px, transparent 1px), var(--screen-bg);
-  background-size:
-    auto,
-    auto,
-    48px 48px,
-    48px 48px,
-    auto;
 
-  &::before {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    content: '';
-    background: linear-gradient(180deg, rgb(3 12 24 / 42%), transparent 24%);
-  }
-
-  &__state {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-  }
-
-  &__scrollbar {
-    height: 100%;
-  }
-
-  &__stage {
-    position: relative;
-    display: grid;
-    grid-template-rows: 72px minmax(0, 1fr);
-    width: 100%;
-    min-width: 0;
-    height: 100vh;
-    padding: 0 24px;
-
-    &.has-refresh-error {
-      grid-template-rows: 72px auto minmax(0, 1fr);
-    }
-  }
+  @include shell.viewport-shell;
 
   .command-header {
     display: grid;

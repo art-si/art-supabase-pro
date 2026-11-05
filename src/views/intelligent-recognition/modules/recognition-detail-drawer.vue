@@ -15,7 +15,12 @@
           </div>
           <div class="recognition-detail__identity">
             <div>
-              <ElTag effect="light">{{ featureLabels[detail.data.feature] ?? '未识别类型' }}</ElTag>
+              <ArtDictDisplay
+                :value="detail.data.feature"
+                dict-code="aiOcrFeature"
+                display="tag"
+                unknown-text="未识别类型"
+              />
               <ArtDictDisplay
                 :value="detail.data.status"
                 dict-code="aiArtifactStatus"
@@ -151,7 +156,6 @@
   import { buildRecognitionBusinessRoute } from '@/utils/intelligent-recognition'
   import {
     confidencePercent,
-    featureLabels,
     fieldLabels,
     getArtifactImageUrls,
     getArtifactTitle,

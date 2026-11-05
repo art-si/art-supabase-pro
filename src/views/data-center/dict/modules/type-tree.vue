@@ -102,36 +102,27 @@
                 </div>
 
                 <div class="dict-type-tree__actions" @click.stop>
-                  <ArtTooltip
+                  <ArtIconButton
                     v-if="data.nodeType === 'directory'"
-                    content="新增下级"
-                    placement="top"
-                  >
-                    <ArtIconButton
-                      size="small"
-                      icon="ri:add-line"
-                      :label="`在${data.name}下新增`"
-                      @click="handleAdd(data)"
-                    />
-                  </ArtTooltip>
-                  <ArtTooltip content="编辑" placement="top">
-                    <ArtIconButton
-                      size="small"
-                      icon="ri:pencil-line"
-                      :label="`编辑${data.name}`"
-                      @click="handleEdit(data)"
-                    />
-                  </ArtTooltip>
-                  <ArtTooltip content="删除" placement="top">
-                    <ArtIconButton
-                      size="small"
-                      icon="ri:delete-bin-5-line"
-                      tone="danger"
-                      :disabled="deleteBusy"
-                      :label="`删除${data.name}`"
-                      @click="handleDelete(data)"
-                    />
-                  </ArtTooltip>
+                    size="small"
+                    icon="ri:add-line"
+                    :label="`在${data.name}下新增`"
+                    @click="handleAdd(data)"
+                  />
+                  <ArtIconButton
+                    size="small"
+                    icon="ri:pencil-line"
+                    :label="`编辑${data.name}`"
+                    @click="handleEdit(data)"
+                  />
+                  <ArtIconButton
+                    size="small"
+                    icon="ri:delete-bin-5-line"
+                    tone="danger"
+                    :disabled="deleteBusy"
+                    :label="`删除${data.name}`"
+                    @click="handleDelete(data)"
+                  />
                 </div>
               </div>
             </template>
@@ -969,7 +960,7 @@
       flex: 1;
       flex-direction: column;
       min-height: 0;
-      padding: 8px 10px 0;
+      padding: 8px 0 0;
     }
 
     :deep(.el-scrollbar) {
@@ -978,6 +969,7 @@
     }
 
     :deep(.el-tree-node__content) {
+      margin-inline: 10px;
       border-radius: var(--el-border-radius-base);
     }
 
@@ -1152,7 +1144,7 @@
       align-items: center;
       justify-content: space-between;
       min-height: 52px;
-      padding: 8px 4px 8px 2px;
+      padding: 8px 14px 8px 12px;
       color: var(--el-text-color-secondary);
       background: var(--el-bg-color);
       border-top: 1px solid var(--el-border-color-lighter);

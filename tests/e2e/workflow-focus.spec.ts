@@ -136,6 +136,43 @@ test('审批工作台专注模式释放表格高度并保留页签、筛选和�
   expect(errors).toEqual([])
 })
 
+test('全局专注偏好自动进入，手动退出只影响当前页面访问，关闭开关立即退出', async ({ page }) => {
+  await mockWorkflowRequests(page)
+  await page.goto('/tests/e2e/fixtures/workflow-focus.html?mode=workbench&global-focus')
+
+  const hero = page.locator('.business-workspace-header')
+  const tabs = page.locator('.workflow-workbench__tabs')
+  const activeTable = page.locator('.el-tab-pane:visible .art-table-query')
+  const setGlobalFocus = (value: boolean) =>
+    page.evaluate(
+      (enabled) =>
+        (
+          window as Window & { setGlobalFocusPreference: (nextEnabled: boolean) => void }
+        ).setGlobalFocusPreference(enabled),
+      value
+    )
+
+  await expect(activeTable).toHaveClass(/is-focus-mode/)
+  await expect(hero).toBeHidden()
+  await page.keyboard.press('Escape')
+  await expect(activeTable).not.toHaveClass(/is-focus-mode/)
+  await expect(hero).toBeVisible()
+
+  await tabs.getByRole('tab', { name: /全局待办/ }).click()
+  await expect(activeTable).not.toHaveClass(/is-focus-mode/)
+  await expect(hero).toBeVisible()
+
+  await setGlobalFocus(false)
+  await setGlobalFocus(true)
+  await expect(activeTable).toHaveClass(/is-focus-mode/)
+  await expect(hero).toBeHidden()
+
+  await setGlobalFocus(false)
+  await expect(activeTable).not.toHaveClass(/is-focus-mode/)
+  await expect(hero).toBeVisible()
+  await expectNoPageOverflow(page)
+})
+
 test('审批流程设计专注模式保留业务筛选与列表且退出后恢复概览', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))

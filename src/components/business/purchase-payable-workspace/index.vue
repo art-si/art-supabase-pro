@@ -177,8 +177,9 @@
   import PayableDocumentDrawer from './modules/payable-document-drawer.vue'
   import StockCostMatch from './modules/stock-cost-match.vue'
   import { formatCurrencyValue } from '@/utils/ui/format'
-  import { payableStatusLabels } from '@/utils/finance/payable'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useRouteTableContext, useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { printHtmlDocument } from '@/utils/file/print-document'
@@ -223,9 +224,19 @@
     matchingStatus: '',
     writeoffStatus: ''
   })
-  const selectItems = (labels: string[], values: string[]) =>
-    labels.map((label, index) => ({ label, value: values[index] }))
-  const partialValues = ['none', 'partial', 'full']
+  const documentDisplayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
+  const payableStatusOptions = useDictionaryOptions('commonDocumentReviewStatus')
+  const matchingProgressOptions = useDictionaryOptions('fmsPayableMatchingProgress')
+  const writeoffProgressOptions = useDictionaryOptions('fmsPayableWriteoffProgress')
+  const freezeProgressOptions = useDictionaryOptions('fmsPayableFreezeProgress')
+  const configuredDirectionOptions = useDictionaryOptions('fmsPayableDirection')
+  const directionOptions = computed(() =>
+    configuredDirectionOptions
+      .filter((item) => item.value === 'false' || item.value === 'true')
+      .map((item) => ({ ...item, value: item.value === 'true' }))
+  )
+  const directionLabel = (isCredit: boolean): string =>
+    directionOptions.value.find((item) => item.value === isCredit)?.label ?? '方向待确认'
   const searchItems = computed<SearchFormItem[]>(() => [
     {
       key: 'keyword',
@@ -239,7 +250,9 @@
       type: 'select',
       props: {
         clearable: true,
-        options: selectItems(['暂存', '已提交', '已审核'], ['draft', 'submitted', 'approved'])
+        options: payableStatusOptions.filter((item) =>
+          ['draft', 'submitted', 'approved'].includes(item.value)
+        )
       }
     },
     {
@@ -253,10 +266,9 @@
       label: '查询范围',
       type: 'select',
       props: {
-        options: [
-          { label: '按单据', value: 'document' },
-          { label: '按明细', value: 'line' }
-        ]
+        options: documentDisplayModeOptions.filter((item) =>
+          ['document', 'line'].includes(item.value)
+        )
       }
     },
     {
@@ -289,7 +301,9 @@
             type: 'select',
             props: {
               clearable: true,
-              options: selectItems(['未勾稽', '部分勾稽', '全部勾稽'], partialValues)
+              options: matchingProgressOptions.filter((item) =>
+                ['none', 'partial', 'full'].includes(item.value)
+              )
             }
           },
           {
@@ -298,7 +312,9 @@
             type: 'select',
             props: {
               clearable: true,
-              options: selectItems(['未核销', '部分核销', '全部核销'], partialValues)
+              options: writeoffProgressOptions.filter((item) =>
+                ['none', 'partial', 'full'].includes(item.value)
+              )
             }
           },
           {
@@ -307,7 +323,9 @@
             type: 'select',
             props: {
               clearable: true,
-              options: selectItems(['未冻结', '部分冻结', '已冻结'], partialValues)
+              options: freezeProgressOptions.filter((item) =>
+                ['none', 'partial', 'full'].includes(item.value)
+              )
             }
           }
         ]
@@ -814,10 +832,11 @@
           primary={row.documentNo}
           secondary={
             row.isCredit
-              ? '红字冲减'
+              ? directionLabel(true)
               : row.isReversal
                 ? '暂估冲回'
-                : row.documentTypeName || (props.kind === 'estimated' ? '暂估应付' : '蓝字应付')
+                : row.documentTypeName ||
+                  (props.kind === 'estimated' ? '暂估应付' : directionLabel(false))
           }
           icon="ri:bill-line"
           iconTone={row.isCredit ? 'danger' : 'primary'}
@@ -838,9 +857,7 @@
       label: '单据状态',
       width: 110,
       formatter: (row) => (
-        <ElTag type={row.status === 'approved' ? 'success' : 'info'}>
-          {payableStatusLabels[row.status]}
-        </ElTag>
+        <ArtDictDisplay dictCode="commonDocumentReviewStatus" value={row.status} display="tag" />
       )
     },
     { prop: 'documentTypeName', label: '单据类型', minWidth: 155 },
@@ -853,10 +870,10 @@
             formatter: (row: ListRow) =>
               row.isCredit ? (
                 <ElTag type="danger" effect="plain">
-                  红字冲减
+                  <ArtDictDisplay dictCode="fmsPayableDirection" value="true" display="text" />
                 </ElTag>
               ) : (
-                '蓝字应付'
+                <ArtDictDisplay dictCode="fmsPayableDirection" value="false" />
               )
           }
         ]
@@ -920,35 +937,26 @@
             prop: 'matchingStatus',
             label: '勾稽状态',
             width: 115,
-            formatter: (row: ListRow) =>
-              row.matchingStatus === 'full'
-                ? '全部勾稽'
-                : row.matchingStatus === 'partial'
-                  ? '部分勾稽'
-                  : '未勾稽'
+            formatter: (row: ListRow) => (
+              <ArtDictDisplay dictCode="fmsPayableMatchingProgress" value={row.matchingStatus} />
+            )
           },
           {
             prop: 'writeoffStatus',
             label: '核销状态',
             width: 115,
-            formatter: (row: ListRow) =>
-              row.writeoffStatus === 'full'
-                ? '全部核销'
-                : row.writeoffStatus === 'partial'
-                  ? '部分核销'
-                  : '未核销'
+            formatter: (row: ListRow) => (
+              <ArtDictDisplay dictCode="fmsPayableWriteoffProgress" value={row.writeoffStatus} />
+            )
           },
           moneyColumn('frozenAmount', '冻结金额(原币)'),
           {
             prop: 'freezeStatus',
             label: '冻结状态',
             width: 115,
-            formatter: (row: ListRow) =>
-              row.freezeStatus === 'full'
-                ? '已冻结'
-                : row.freezeStatus === 'partial'
-                  ? '部分冻结'
-                  : '未冻结'
+            formatter: (row: ListRow) => (
+              <ArtDictDisplay dictCode="fmsPayableFreezeProgress" value={row.freezeStatus} />
+            )
           }
         ]),
     { prop: 'organizationName', label: '结算组织', minWidth: 160 },
@@ -956,12 +964,9 @@
       prop: 'sourceType',
       label: '源单类型',
       minWidth: 150,
-      formatter: (row) =>
-        row.sourceType === 'carrier_statement'
-          ? '承运商对账单'
-          : row.sourceType === 'purchase_inbound'
-            ? '采购入库单'
-            : '手工录入'
+      formatter: (row) => (
+        <ArtDictDisplay dictCode="fmsPayableSourceType" value={row.sourceType || 'manual'} />
+      )
     },
     { prop: 'sourceDocumentNo', label: '源单据号', minWidth: 190 },
     { prop: 'invoiceNo', label: '发票号码', minWidth: 160 },

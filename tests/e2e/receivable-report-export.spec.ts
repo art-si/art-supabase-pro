@@ -12,7 +12,7 @@ test('应收报表两条记录、组织树筛选、汇总账龄与导出文件�
       ['detail', '应收明细'],
       ['summary', '应收汇总与账龄']
     ],
-    arAgingBasis: [
+    commonAgingBasis: [
       ['due', '计划到期日'],
       ['business', '业务日期']
     ],

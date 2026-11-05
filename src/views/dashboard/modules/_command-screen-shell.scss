@@ -1,0 +1,40 @@
+@mixin viewport-shell {
+  background-size:
+    auto,
+    auto,
+    48px 48px,
+    48px 48px,
+    auto;
+
+  &::before {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    content: '';
+    background: linear-gradient(180deg, rgb(3 12 24 / 42%), transparent 24%);
+  }
+
+  &__state {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+
+  &__scrollbar {
+    height: 100%;
+  }
+
+  &__stage {
+    position: relative;
+    display: grid;
+    grid-template-rows: 72px minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    height: 100vh;
+    padding: 0 24px;
+
+    &.has-refresh-error {
+      grid-template-rows: 72px auto minmax(0, 1fr);
+    }
+  }
+}

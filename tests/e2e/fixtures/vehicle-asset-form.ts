@@ -51,6 +51,7 @@ userStore.setDictMap(
 useMenuStore(store).setButtonList(
   [
     'VehicleArchive:Add',
+    'VehicleArchive:Edit',
     'VehicleArchive:TabBasic',
     'VehicleArchive:TabBody',
     'VehicleArchive:TabEngine',
@@ -63,6 +64,10 @@ const router = createRouter({
   routes: [
     {
       path: '/vms/vehicle-archive-edit',
+      component: () => import('@vms/views/vehicle-archive-edit/index.vue')
+    },
+    {
+      path: '/vms/vehicle-archive-edit/:id',
       component: () => import('@vms/views/vehicle-archive-edit/index.vue')
     },
     { path: '/vms/vehicle-archive-manage', component: { render: () => h('div', '车辆档案列表') } }
@@ -81,6 +86,9 @@ useTheme().switchThemeStyles(
 )
 document.documentElement.dataset.boxMode =
   params.get('theme') === 'dark' ? 'shadow-mode' : 'border-mode'
-await router.push('/vms/vehicle-archive-edit')
+const editId = params.get('editId')
+await router.push(
+  editId ? `/vms/vehicle-archive-edit/${encodeURIComponent(editId)}` : '/vms/vehicle-archive-edit'
+)
 await router.isReady()
 app.mount('#vehicle-asset-form')

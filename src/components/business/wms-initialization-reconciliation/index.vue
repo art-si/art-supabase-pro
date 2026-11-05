@@ -31,9 +31,12 @@
           class="opening-reconciliation__category"
         >
           <ElOption label="全部期初明细" value="" />
-          <ElOption label="期初库存" value="stock" />
-          <ElOption label="期初应收" value="receivable" />
-          <ElOption label="期初暂估应付" value="estimated_payable" />
+          <ElOption
+            v-for="item in balanceTypeOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
         </ElSelect>
         <ElButton :loading="loading" @click="load">刷新对账</ElButton>
       </div>
@@ -52,7 +55,9 @@
 
 <script setup lang="tsx">
   import { computed, ref, watch } from 'vue'
-  import { ElButton, ElOption, ElSelect, ElTag } from 'element-plus'
+  import { ElButton, ElOption, ElSelect } from 'element-plus'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useRouter } from 'vue-router'
   import { useAuth } from '@/hooks/core/useAuth'
   import {
@@ -76,13 +81,17 @@
   const error = ref('')
   const balanceType = ref('')
   let requestId = 0
-  const labels = { stock: '期初库存', receivable: '期初应收', estimated_payable: '期初暂估应付' }
+  const balanceTypes = ['stock', 'receivable', 'estimated_payable'] as const
+  const configuredBalanceTypes = useDictionaryOptions('wmsOpeningBalanceType')
+  const balanceTypeOptions = computed(() =>
+    configuredBalanceTypes.filter((item) => balanceTypes.some((type) => type === item.value))
+  )
   const visibleRows = computed(() =>
     rows.value.filter((row) => !balanceType.value || row.balanceType === balanceType.value)
   )
   const totals = computed(() =>
     Object.fromEntries(
-      Object.keys(labels).map((key) => [
+      balanceTypes.map((key) => [
         key,
         formatCurrencyValue(
           rows.value
@@ -92,8 +101,8 @@
       ])
     )
   )
-  const summaryItems: ArtDescriptionItem<Record<string, string>>[] = Object.entries(labels).map(
-    ([key, label]) => ({ key, label, field: key })
+  const summaryItems = computed<ArtDescriptionItem<Record<string, string>>[]>(() =>
+    balanceTypeOptions.value.map(({ value, label }) => ({ key: value, label, field: value }))
   )
   function routeName(row: WmsInitializationReconciliationRow): string {
     if (row.sourceArea === 'stock') return 'WmsInitialStock'
@@ -135,16 +144,16 @@
       prop: 'balanceType',
       label: '余额类别',
       minWidth: 145,
-      formatter: (row) => labels[row.balanceType]
+      formatter: (row) => (
+        <ArtDictDisplay dictCode="wmsOpeningBalanceType" value={row.balanceType} />
+      )
     },
     {
       prop: 'status',
       label: '审核状态',
       width: 110,
       formatter: (row) => (
-        <ElTag type={row.status === 'approved' ? 'success' : 'warning'}>
-          {row.status === 'approved' ? '已审核' : row.status === 'submitted' ? '已提交' : '暂存'}
-        </ElTag>
+        <ArtDictDisplay dictCode="commonDocumentReviewStatus" value={row.status} display="tag" />
       )
     },
     { prop: 'counterpartyName', label: '客户／供应商', minWidth: 180 },

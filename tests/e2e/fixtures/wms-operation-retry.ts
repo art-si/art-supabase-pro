@@ -1,4 +1,5 @@
 import { createApp, defineComponent, h, ref } from 'vue'
+import { wmsAdjustmentTypePairs } from '../support/wms-adjustment-dictionaries'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -737,6 +738,13 @@ useUserStore(store).setDictMap({
       status: '1'
     }
   ],
+  wmsAdjustmentType: wmsAdjustmentTypePairs.map(([value, label]) => ({
+    name: '库存调整类型',
+    code: 'wmsAdjustmentType',
+    label,
+    value,
+    status: '1'
+  })),
   wmsProjectSectionStatus: [
     {
       name: '施工号状态',

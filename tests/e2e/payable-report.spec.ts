@@ -30,7 +30,7 @@ test('应付报表两条记录、组织树、三模式和完整导出', async ({
       ['supplier', '供应商'],
       ['carrier', '承运商']
     ],
-    apReportAgingBasis: [
+    commonAgingBasis: [
       ['due', '计划到期日'],
       ['business', '业务日期']
     ],

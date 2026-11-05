@@ -4,62 +4,60 @@ import { prepareIsolatedSession } from './support/isolated-session'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
 
-test('经营大屏共享格式化保留阈值、负数及单位', async ({ page }, info) => {
-  await prepareIsolatedSession(page)
-  const errors: string[] = []
-  page.on('pageerror', (error) => errors.push(error.message))
-  let amount = 123456.78
-  let cashInflow = 9999.9
-  let cashOutflow = -12345.6
-  await page.route('**/rest/v1/rpc/get_dashboard_console', (route) =>
-    route.fulfill({
-      json: {
-        todayOrderCount: 0,
-        todayFreightAmount: amount,
-        pendingDispatchCount: 0,
-        inTransitCount: 0,
-        vehicleCount: 0,
-        operatingVehicleCount: 0,
-        pendingAuditVehicleCount: 0,
-        completedTodayCount: 0,
-        trend: [],
-        statusCounts: {},
-        transitOrders: [],
-        recentOrders: [],
-        reminders: []
-      }
-    })
-  )
-  await page.route('**/rest/v1/rpc/get_enterprise_dashboard', (route) =>
-    route.fulfill({
-      json: {
-        generatedAt: '2026-10-10T00:00:00Z',
-        fleet: { total: 0, operating: 0, pendingAudit: 0, dueDocuments: 0 },
-        finance: {
-          voucherCount: 0,
-          postedAmount: 0,
-          cashInflow,
-          cashOutflow,
-          receivable: 0,
-          payable: 0,
-          approvedWaybillCost: 0
-        },
-        workforce: { total: 0, active: 0, probation: 0, expiringContracts: 0 },
-        safety: {
-          openHazards: 0,
-          overdueHazards: 0,
-          overdueInspections: 0,
-          recentAccidents: 0,
-          equipmentTotal: 0,
-          equipmentNormal: 0,
-          criticalEquipment: 0
+for (const width of [1920, 1280]) {
+  test(`经营大屏共享格式化保留阈值、负数及单位 ${width}px`, async ({ page }, info) => {
+    await prepareIsolatedSession(page)
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    let amount = 123456.78
+    let cashInflow = 9999.9
+    let cashOutflow = -12345.6
+    await page.route('**/rest/v1/rpc/get_dashboard_console', (route) =>
+      route.fulfill({
+        json: {
+          todayOrderCount: 0,
+          todayFreightAmount: amount,
+          pendingDispatchCount: 0,
+          inTransitCount: 0,
+          vehicleCount: 0,
+          operatingVehicleCount: 0,
+          pendingAuditVehicleCount: 0,
+          completedTodayCount: 0,
+          trend: [],
+          statusCounts: {},
+          transitOrders: [],
+          recentOrders: [],
+          reminders: []
         }
-      }
-    })
-  )
-  for (const width of [1920, 1280]) {
-    cashInflow = 9999.9
-    cashOutflow = -12345.6
+      })
+    )
+    await page.route('**/rest/v1/rpc/get_enterprise_dashboard', (route) =>
+      route.fulfill({
+        json: {
+          generatedAt: '2026-10-10T00:00:00Z',
+          fleet: { total: 0, operating: 0, pendingAudit: 0, dueDocuments: 0 },
+          finance: {
+            voucherCount: 0,
+            postedAmount: 0,
+            cashInflow,
+            cashOutflow,
+            receivable: 0,
+            payable: 0,
+            approvedWaybillCost: 0
+          },
+          workforce: { total: 0, active: 0, probation: 0, expiringContracts: 0 },
+          safety: {
+            openHazards: 0,
+            overdueHazards: 0,
+            overdueInspections: 0,
+            recentAccidents: 0,
+            equipmentTotal: 0,
+            equipmentNormal: 0,
+            criticalEquipment: 0
+          }
+        }
+      })
+    )
     await page.setViewportSize({ width, height: 1080 })
     await page.goto('/tests/e2e/fixtures/compact-display-reuse.html')
     const freight = page.locator('.hero-metric').filter({ hasText: '今日运费' }).locator('strong')
@@ -105,9 +103,9 @@ test('经营大屏共享格式化保留阈值、负数及单位', async ({ page 
       await page.getByRole('button', { name: '刷新大屏数据' }).click()
       await expect(financeScore).toHaveText(`${score}/100`)
     }
-  }
-  expect(errors).toEqual([])
-})
+    expect(errors).toEqual([])
+  })
+}
 
 for (const state of ['readable', 'zero', 'masked'] as const) {
   test(`财务驾驶舱共享紧凑金额 ${state}`, async ({ page }) => {

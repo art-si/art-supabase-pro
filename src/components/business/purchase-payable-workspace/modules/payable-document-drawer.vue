@@ -4,15 +4,19 @@
       <ArtEntitySummary
         icon="ri:bill-line"
         :title="document.documentNo || `新增${title}`"
-        :description="`${document.sourceType === 'carrier_statement' ? '来源承运商对账单' : document.sourceType === 'manual' ? '来源单据' : '来源采购入库单'}：${document.sourceDocumentNo || '手工录入'}`"
+        :description="sourceDescription"
       >
         <template #aside>
           <div class="flex flex-wrap items-center gap-2">
-            <ElTag v-if="document.isCredit" type="danger" effect="plain">红字冲减</ElTag>
-            <ElTag :type="document.status === 'approved' ? 'success' : 'info'"
-              >{{ payableStatusLabels[document.status]
-              }}{{ document.isReversal ? ' · 冲回单' : '' }}</ElTag
-            >
+            <ElTag v-if="document.isCredit" type="danger" effect="plain">
+              <ArtDictDisplay dict-code="fmsPayableDirection" value="true" display="text" />
+            </ElTag>
+            <ArtDictDisplay
+              dict-code="commonDocumentReviewStatus"
+              :value="document.status"
+              display="tag"
+            />
+            <span v-if="document.isReversal">· 冲回单</span>
           </div>
         </template>
       </ArtEntitySummary>
@@ -438,6 +442,8 @@
   />
 </template>
 <script setup lang="ts">
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { fetchOrganizationOptionsTree } from '@/api/system-manage'
   import dayjs from 'dayjs'
   import { cloneDeep } from 'lodash-es'
@@ -457,7 +463,6 @@
     calculatePaymentPlans,
     validatePaymentPlans,
     isValidPlanDate,
-    payableStatusLabels,
     roundPayable,
     payableLiabilityAmount,
     payableDocumentForEditing
@@ -563,6 +568,23 @@
     ]
   }
   const title = computed(() => (props.kind === 'estimated' ? '暂估应付单' : '财务应付单'))
+  const sourceTypeOptions = useDictionaryOptions('fmsPayableSourceType')
+  const bookingBasisOptions = useDictionaryOptions('arBasis')
+  const configuredDirectionOptions = useDictionaryOptions('fmsPayableDirection')
+  const directionOptions = computed(() =>
+    configuredDirectionOptions
+      .filter((item) => item.value === 'false' || item.value === 'true')
+      .map((item) => ({ ...item, value: item.value === 'true' }))
+  )
+  const sourceDescription = computed(() => {
+    const source = document.value
+    if (!source) return ''
+    const sourceLabel =
+      source.sourceType === 'manual'
+        ? '单据'
+        : (sourceTypeOptions.find((item) => item.value === source.sourceType)?.label ?? '单据')
+    return `来源${sourceLabel}：${source.sourceDocumentNo || '手工录入'}`
+  })
   const total = computed(
     () => document.value?.lines.reduce((sum, line) => sum + line.totalAmount, 0) || 0
   )
@@ -599,7 +621,10 @@
       key: 'isCredit',
       label: '应付方向',
       value: (row: PurchasePayableDocument) =>
-        row.isReversal ? '暂估冲回' : row.isCredit ? '红字冲减' : '蓝字应付'
+        row.isReversal
+          ? '暂估冲回'
+          : (directionOptions.value.find((item) => item.value === Boolean(row.isCredit))?.label ??
+            '方向待确认')
     },
     { key: 'businessDate', label: '业务日期', field: 'businessDate' },
     { key: 'postingDate', label: '记账日期', field: 'postingDate' },
@@ -624,7 +649,8 @@
     {
       key: 'basis',
       label: '立账依据',
-      value: (row: PurchasePayableDocument) => (row.basis === 'amount' ? '金额' : '数量')
+      value: (row: PurchasePayableDocument) =>
+        bookingBasisOptions.find((item) => item.value === (row.basis ?? 'quantity'))?.label ?? '—'
     },
     {
       key: 'taxExcludedFromCost',
@@ -655,10 +681,7 @@
       help: '红字仅用于手工非标准采购应付。有关联来源或付款计划时不可切换方向。',
       props: {
         disabled: directionLocked.value,
-        options: [
-          { label: '蓝字应付', value: false },
-          { label: '红字冲减', value: true }
-        ]
+        options: directionOptions.value
       }
     },
     {
@@ -773,10 +796,7 @@
       label: '立账依据',
       type: 'select',
       props: {
-        options: [
-          { label: '数量', value: 'quantity' },
-          { label: '金额', value: 'amount' }
-        ]
+        options: bookingBasisOptions.filter((item) => ['quantity', 'amount'].includes(item.value))
       }
     },
     { key: 'taxExcludedFromCost', label: '税额不计入成本', type: 'switch' },

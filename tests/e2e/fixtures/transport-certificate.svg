@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="104" height="104" viewBox="0 0 104 104" role="img" aria-label="测试认证证照">
+  <rect width="104" height="104" rx="4" fill="#f3f6fa"/>
+  <rect x="23" y="14" width="58" height="76" rx="3" fill="#fff" stroke="#cad5e2"/>
+  <path d="M34 33h36M34 43h30M34 53h34" fill="none" stroke="#b8c7d8" stroke-linecap="round" stroke-width="3"/>
+  <circle cx="52" cy="71" r="11" fill="#e4f2eb"/>
+  <path d="m47 71 3 3 7-7" fill="none" stroke="#3e8b69" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"/>
+</svg>

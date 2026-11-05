@@ -87,6 +87,7 @@
   import dayjs from 'dayjs'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import type { DashboardCertificateRisk, DashboardCertificateRiskStatus } from '@/api/dashboard'
 
   defineProps<{
@@ -102,17 +103,7 @@
     'open-record': [record: DashboardCertificateRisk]
   }>()
 
-  const typeLabels: Record<string, string> = {
-    vehicle_registration: '行驶证',
-    road_transport: '道路运输证',
-    compulsory_insurance: '交强险保单',
-    commercial_insurance: '商业险保单',
-    vehicle_tax: '车船税',
-    annual_inspection: '审车检验',
-    driver_license: '驾驶证',
-    professional_qualification: '从业资格证',
-    identity_card: '身份证'
-  }
+  const certificateTypeOptions = useDictionaryOptions('vehicleCertificateType')
   const statusLabels: Record<DashboardCertificateRiskStatus, string> = {
     expired: '已过期',
     due_today: '今天到期',
@@ -120,7 +111,8 @@
     due_30: '30 天内',
     due_3_months: '3 个月内'
   }
-  const certificateTypeLabel = (type: string): string => typeLabels[type] ?? '其他证件'
+  const certificateTypeLabel = (type: string): string =>
+    certificateTypeOptions.find((item) => item.value === type)?.label ?? '其他证件'
   const statusLabel = (status: DashboardCertificateRiskStatus): string => statusLabels[status]
   const formatDate = (date: string): string => dayjs(date).format('YYYY-MM-DD')
 </script>

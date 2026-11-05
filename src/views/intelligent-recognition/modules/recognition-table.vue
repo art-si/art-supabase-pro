@@ -59,7 +59,6 @@
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import {
     confidencePercent,
-    featureLabels,
     getArtifactImageUrls,
     getArtifactTitle,
     getRecognitionRiskLevel
@@ -84,8 +83,8 @@
   }>()
   const userStore = useUserStore()
   const confidenceOptions = useDictionaryOptions('aiRecognitionConfidenceLevel')
+  const recognitionFeatureOptions = useDictionaryOptions('aiOcrFeature')
   const { getDictMap } = storeToRefs(userStore)
-  const getDictItemByValue = userStore.getDictItemByValue
   const tableRef = ref<ArtTableQueryExpose>()
   const motionReady = ref(false)
   const searchQuery = ref<Search>({
@@ -95,11 +94,16 @@
     confidenceLevel: '',
     createTimeRange: []
   })
-  const quickFilters: Array<{ label: string; value: Search['confidenceLevel'] }> = [
+  const quickFilters = computed<Array<{ label: string; value: Search['confidenceLevel'] }>>(() => [
     { label: '全部待办', value: '' },
-    { label: '低可信度', value: 'low' },
-    { label: '中可信度', value: 'medium' }
-  ]
+    ...confidenceOptions
+      .filter((option) => option.value === 'low' || option.value === 'medium')
+      .map((option) =>
+        option.value === 'low'
+          ? { label: option.label, value: 'low' as const }
+          : { label: option.label, value: 'medium' as const }
+      )
+  ])
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() =>
     props.mode === 'review'
       ? [
@@ -120,18 +124,6 @@
           }
         ]
   )
-  const recognitionFeatureOptions = computed(() => {
-    const options = new Map<string, { label: string; value: string }>()
-    for (const item of getDictMap.value.aiOcrFeature ?? []) {
-      const value = String(item.value)
-      options.set(value, { label: item.label ?? value, value })
-    }
-    Object.entries(featureLabels).forEach(([value, label]) => {
-      if (!options.has(value)) options.set(value, { label, value })
-    })
-    return Array.from(options.values())
-  })
-
   const searchItems = computed<SearchFormItem[]>(() => [
     {
       label: '发起人',
@@ -144,7 +136,7 @@
       key: 'feature',
       type: 'select',
       props: {
-        options: recognitionFeatureOptions.value,
+        options: recognitionFeatureOptions,
         placeholder: '全部类型',
         clearable: true
       }
@@ -212,18 +204,14 @@
       prop: 'feature',
       label: '识别类型',
       width: 135,
-      formatter: (row) => {
-        const dictItem =
-          getDictItemByValue('aiOcrFeature', row.feature) ??
-          ({
-            name: row.feature,
-            code: row.feature,
-            status: '1',
-            value: row.feature,
-            label: featureLabels[row.feature] ?? '未识别类型'
-          } satisfies Api.DataCenter.DictListItem)
-        return <ArtDictDisplay item={dictItem} dictCode="aiOcrFeature" display="tag" />
-      }
+      formatter: (row) => (
+        <ArtDictDisplay
+          dictCode="aiOcrFeature"
+          value={row.feature}
+          display="tag"
+          unknownText="未识别类型"
+        />
+      )
     },
     {
       prop: 'confidence',

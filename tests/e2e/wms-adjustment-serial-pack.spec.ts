@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { wmsAdjustmentTypeRows } from './support/wms-adjustment-dictionaries'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -290,28 +291,32 @@ for (const kind of ['batch', 'attribute', 'bin', 'unit', 'material', 'status'] a
   for (const mode of ['serial', 'pack'] as const) {
     test(`库存调整${kind}${mode}数量约束及失败重试保留`, async ({ page }, testInfo) => {
       await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
-      await page.route('**/rest/v1/sys_dictionary?*', (route) =>
-        route.fulfill({
-          json: [
-            {
-              id: 'normal-condition',
-              label: '正常',
-              value: 'normal',
-              status: '1',
-              sort: 1,
-              dict_type_table: { code: 'wmsAdjustmentCondition', name: '库存状态' }
-            },
-            {
-              id: 'frozen-condition',
-              label: '测试冻结状态',
-              value: 'test_frozen',
-              status: '1',
-              sort: 2,
-              dict_type_table: { code: 'wmsAdjustmentCondition', name: '库存状态' }
-            }
-          ]
+      await page.route('**/rest/v1/sys_dictionary?*', (route) => {
+        const code = new URL(route.request().url()).searchParams.get('dict_type_table.code')
+        return route.fulfill({
+          json:
+            code === 'eq.wmsAdjustmentCondition'
+              ? [
+                  {
+                    id: 'normal-condition',
+                    label: '正常',
+                    value: 'normal',
+                    status: '1',
+                    sort: 1,
+                    dict_type_table: { code: 'wmsAdjustmentCondition', name: '库存状态' }
+                  },
+                  {
+                    id: 'frozen-condition',
+                    label: '测试冻结状态',
+                    value: 'test_frozen',
+                    status: '1',
+                    sort: 2,
+                    dict_type_table: { code: 'wmsAdjustmentCondition', name: '库存状态' }
+                  }
+                ]
+              : wmsAdjustmentTypeRows
         })
-      )
+      })
       await page.route('**/rest/v1/mdm_material?*', (route) =>
         route.fulfill({
           json: [

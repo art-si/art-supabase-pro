@@ -3,6 +3,7 @@ import type { AppRouteRecord } from '@/types/router'
 import { store } from '@/store'
 import { useSettingStore } from '@/store/modules/setting'
 import { useMenuStore } from '@/store/modules/menu'
+import { useUserStore } from '@/store/modules/user'
 import { SETTING_DEFAULT_CONFIG } from '@/config/setting'
 import { SystemThemeEnum } from '@/enums/app-enum'
 import { initializeTheme } from '@/hooks/core/useTheme'
@@ -13,6 +14,7 @@ import {
   saveAppearanceConfig
 } from '@/hooks/core/useAppearanceConfig'
 import SettingActions from '@/components/core/layouts/art-settings-panel/widget/setting-actions.vue'
+import { useGlobalFocusPreference } from '@/hooks/core/useGlobalFocusPreference'
 import language from '@/locales'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
@@ -24,6 +26,8 @@ const app = createApp({
   setup() {
     const settings = useSettingStore()
     const menu = useMenuStore()
+    const user = useUserStore()
+    const focus = window.location.search.includes('focus=1') ? useGlobalFocusPreference() : null
     const { basicHandlers, boxStyleHandlers, colorHandlers } = useSettingsHandlers()
     const loadState = ref('idle')
     const saveState = ref('idle')
@@ -52,6 +56,42 @@ const app = createApp({
         h('output', { 'data-testid': 'defaults' }, JSON.stringify(SETTING_DEFAULT_CONFIG)),
         h('output', { 'data-testid': 'load-state' }, loadState.value),
         h('output', { 'data-testid': 'save-state' }, saveState.value),
+        h('output', { 'data-testid': 'focus-state' }, String(focus?.enabled.value ?? false)),
+        h('output', { 'data-testid': 'focus-ready' }, String(focus?.initialized.value ?? false)),
+        h(
+          'button',
+          { type: 'button', onClick: () => focus?.setLocalPreference(false) },
+          '本地关闭专注'
+        ),
+        h(
+          'button',
+          { type: 'button', onClick: () => focus?.setLocalPreference(true) },
+          '本地开启专注'
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () =>
+              user.setUserInfo({
+                ...user.getUserInfo,
+                userId: 'second-test-user'
+              } as Api.Auth.UserInfo)
+          },
+          '切换测试账号'
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () =>
+              user.setUserInfo({
+                ...user.getUserInfo,
+                userId: 'permission-test-user'
+              } as Api.Auth.UserInfo)
+          },
+          '切回测试账号'
+        ),
         h('button', { type: 'button', onClick: load }, '再次读取默认外观'),
         h(
           'button',

@@ -14,11 +14,15 @@ export function useTenantOperationGuard(permission?: string): () => () => boolea
     const tenantId = tenantScope.effectiveTenantId
     const revision = tenantScope.revision
     const userId = user.getUserInfo.userId
+    const actorTenantId = user.getUserInfo.tenantId
+    const platformSuper = user.isPlatformSuper
     return () =>
       isCurrentRoute() &&
       tenantScope.effectiveTenantId === tenantId &&
       tenantScope.revision === revision &&
       user.getUserInfo.userId === userId &&
+      user.getUserInfo.tenantId === actorTenantId &&
+      user.isPlatformSuper === platformSuper &&
       (!permission || hasAuth(permission))
   }
 }

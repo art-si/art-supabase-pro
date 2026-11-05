@@ -27,6 +27,7 @@ import ArtUserSelect from '@/components/core/forms/art-user-select/index.vue'
 import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
 import ArtUploadFile from '@/components/core/forms/art-upload-file/index.vue'
 import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
+import ArtSignaturePad from '@/components/core/forms/art-signature-pad/index.vue'
 
 // Custom-layout forms do not need these controls or their styles. ArtForm loads this
 // registry only when its schema contains a field that uses a preset component.
@@ -61,7 +62,8 @@ const componentMap = {
   userSelect: ArtUserSelect,
   employeeSelect: ArtEmployeeSelect,
   uploadFile: ArtUploadFile,
-  uploadImage: ArtUploadImage
+  uploadImage: ArtUploadImage,
+  signature: ArtSignaturePad
 }
 
 export type ComponentMap = typeof componentMap

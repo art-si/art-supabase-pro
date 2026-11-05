@@ -149,6 +149,7 @@
   } from '@vue-flow/core'
   import { MiniMap } from '@vue-flow/minimap'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
 
   import '@vue-flow/core/dist/style.css'
   import '@vue-flow/core/dist/theme-default.css'
@@ -195,6 +196,7 @@
     simulationOutcome: undefined,
     compact: false
   })
+  const conditionOperatorOptions = useDictionaryOptions('workflowConditionOperator')
 
   const stateMeta: Record<
     NodeState,
@@ -419,20 +421,11 @@
 
   function conditionText(condition: Api.Workflow.WorkflowCondition): string {
     if (condition.operator === 'always') return '无条件进入此节点'
-    const operatorLabels: Record<Api.Workflow.ConditionOperator, string> = {
-      always: '无条件',
-      eq: '等于',
-      ne: '不等于',
-      gt: '大于',
-      gte: '大于等于',
-      lt: '小于',
-      lte: '小于等于',
-      in: '属于',
-      contains: '包含',
-      not_empty: '不为空'
-    }
+    const operatorLabel =
+      conditionOperatorOptions.find((item) => item.value === condition.operator)?.label ??
+      condition.operator
     const value = Array.isArray(condition.value) ? condition.value.join('、') : condition.value
-    return [condition.field, operatorLabels[condition.operator], value].filter(Boolean).join(' ')
+    return [condition.field, operatorLabel, value].filter(Boolean).join(' ')
   }
 
   function edgeColor(state: NodeState): string {

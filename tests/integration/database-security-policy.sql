@@ -387,3 +387,85 @@ begin
   end if;
 end
 $wms_business_document_assignment_test$;
+
+-- The focus default lives inside the existing platform appearance JSON.
+do $global_focus_policy_test$
+declare
+  v_param public.sys_param%rowtype;
+  v_allowed boolean := false;
+begin
+  select * into v_param from public.sys_param
+  where param_key = 'ui.appearance.config'
+    and tenant_id = app_private.platform_tenant_id();
+  if not found or v_param.param_type <> 'json' or not v_param.builtin
+    or jsonb_typeof(v_param.param_value::jsonb -> 'globalFocusMode') is distinct from 'boolean'
+    or jsonb_typeof(v_param.default_value::jsonb -> 'globalFocusMode') is distinct from 'boolean'
+  then
+    raise exception 'Platform focus field is missing from appearance JSON';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.sys_param'::regclass
+      and tgname = 'guard_platform_focus_appearance'
+      and tgenabled = 'O'
+  ) or not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'sys_param'
+      and policyname = 'sys_param_authorized_delete'
+      and qual like '%NOT builtin%'
+  ) then
+    raise exception 'Platform focus trigger or built-in delete guard is missing';
+  end if;
+
+  -- Without an authenticated platform-super claim, only unrelated appearance fields may change.
+  begin
+    update public.sys_param
+    set param_value = (
+      param_value::jsonb || jsonb_build_object(
+        'showCrumbs', not coalesce((param_value::jsonb ->> 'showCrumbs')::boolean, false)
+      )
+    )::text
+    where id = v_param.id;
+    v_allowed := true;
+    raise exception 'rollback permitted appearance update';
+  exception when others then
+    if sqlerrm <> 'rollback permitted appearance update' then raise; end if;
+  end;
+  if not v_allowed then raise exception 'Unrelated appearance update was blocked'; end if;
+
+  begin
+    update public.sys_param
+    set param_value = (
+      param_value::jsonb || jsonb_build_object(
+        'globalFocusMode', not (v_param.param_value::jsonb ->> 'globalFocusMode')::boolean
+      )
+    )::text
+    where id = v_param.id;
+    raise exception 'Focus value changed without platform super';
+  exception when others then
+    if sqlerrm <> '仅平台超级管理员可保存全局专注模式' then raise; end if;
+  end;
+
+  begin
+    update public.sys_param
+    set default_value = (
+      default_value::jsonb || jsonb_build_object(
+        'globalFocusMode', not (v_param.default_value::jsonb ->> 'globalFocusMode')::boolean
+      )
+    )::text
+    where id = v_param.id;
+    raise exception 'Focus default changed without platform super';
+  exception when others then
+    if sqlerrm <> '仅平台超级管理员可保存全局专注模式' then raise; end if;
+  end;
+
+  begin
+    update public.sys_param set param_key = 'ui.appearance.config.renamed'
+    where id = v_param.id;
+    raise exception 'Appearance parameter renamed without platform super';
+  exception when others then
+    if sqlerrm <> '仅平台超级管理员可更改外观参数标识' then raise; end if;
+  end;
+end
+$global_focus_policy_test$;

@@ -141,7 +141,14 @@ function createProperties(
 const appearanceSchema: JSONSchema = {
   type: 'object',
   description: '界面外观设置；悬停字段名查看说明，输入值时按 Ctrl+Space 查看候选项。',
-  properties: createProperties(SETTING_DEFAULT_CONFIG, appearanceGuide),
+  properties: {
+    ...createProperties(SETTING_DEFAULT_CONFIG, appearanceGuide),
+    globalFocusMode: {
+      type: 'boolean',
+      description: '自动专注浏览；true：进入支持专注模式的页面时自动开启，false：不自动开启',
+      enum: [true, false]
+    }
+  },
   additionalProperties: true
 }
 

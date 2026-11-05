@@ -12,7 +12,7 @@ const definitions: Record<string, Array<[string, string]>> = {
     ['paid', '已付款'],
     ['reversed', '已反核销']
   ],
-  arViewMode: [
+  commonDocumentDisplayMode: [
     ['document', '按单据'],
     ['line', '按明细']
   ],

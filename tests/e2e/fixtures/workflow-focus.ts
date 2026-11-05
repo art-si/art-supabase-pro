@@ -4,10 +4,13 @@ import { setupGlobDirectives } from '@/directives'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
+import { setLocalGlobalFocusPreference } from '@/hooks/core/useGlobalFocusPreference'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
-const mode = new URLSearchParams(location.search).get('mode')
+const fixtureParams = new URLSearchParams(location.search)
+const mode = fixtureParams.get('mode')
+const globalFocusEnabled = fixtureParams.has('global-focus')
 const { default: Page } =
   mode === 'designer'
     ? await import('@/views/workflow/definition/modules/workflow-designer-workspace.vue')
@@ -20,11 +23,13 @@ const { default: Page } =
           : mode === 'reference'
             ? await import('@/views/system/user/index.vue')
             : await import('@/views/workflow/workbench/index.vue')
-useUserStore(store).setUserInfo({
+const userStore = useUserStore(store)
+userStore.setUserInfo({
   userId: 'workflow-focus-user',
   tenantId: 'workflow-focus-tenant',
   platformSuper: true
 })
+if (globalFocusEnabled) userStore.setLoginStatus(true)
 
 const router = createRouter({
   history: createMemoryHistory(),
@@ -50,6 +55,10 @@ const app = createApp({
     )
 })
 app.use(store)
+if (globalFocusEnabled) {
+  setLocalGlobalFocusPreference(true)
+  Object.assign(window, { setGlobalFocusPreference: setLocalGlobalFocusPreference })
+}
 app.use(language)
 app.use(router)
 setupGlobDirectives(app)
