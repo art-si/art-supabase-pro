@@ -43,7 +43,7 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import { useWindowSize } from '@vueuse/core'
 
-  import { addMenu, editMenu, saveMenuSort } from '@/api/system-manage'
+  import { saveMenuDefinition } from '@/api/system-manage'
   import { useUserStore } from '@/store/modules/user'
   import {
     buildMenuEditOrderUpdates,
@@ -134,6 +134,7 @@
   const menuTreeLoader = shallowRef<(() => Promise<AppRouteRecord[]>) | undefined>()
   const originalParentId = ref<string | null>(null)
   const originalSort = ref(1)
+  const originalVersion = ref<number>()
 
   const menuTypeMeta = computed(() => {
     const metaMap: Record<MenuType, { label: string; description: string; icon: string }> = {
@@ -569,12 +570,10 @@
         sort: normalizedSort,
         meta: { ...rest }
       }
-      if (id == null) {
-        await addMenu(params)
-      } else {
-        await editMenu({ ...params, id })
-        await saveMenuSort(sortUpdates)
-      }
+      await saveMenuDefinition(id == null ? params : { ...params, id }, sortUpdates, {
+        version: originalVersion.value,
+        collectionVersion: sourceMenuTree.value[0]?.collectionVersion
+      })
       emit('submit', { ...form.value })
       return true
     } catch (error) {
@@ -596,6 +595,7 @@
     sourceMenuTree.value = data.menuTree ?? []
     originalParentId.value = normalizeMenuParentId(data.row?.parentId)
     originalSort.value = data.row?.sort ?? 1
+    originalVersion.value = data.row?.version
     handleSetParent({
       id: data.parent?.id,
       menuTree: data.menuTree ?? []
@@ -626,6 +626,7 @@
     sourceMenuTree.value = []
     originalParentId.value = null
     originalSort.value = 1
+    originalVersion.value = undefined
     await handleResetFields()
   }
 

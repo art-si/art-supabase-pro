@@ -76,4 +76,7 @@ export interface AppRouteRecord extends Omit<RouteRecordRaw, 'meta' | 'children'
   children?: AppRouteRecord[]
   component?: string | RouteRecordRaw['component']
   updateTime?: string
+  /** Optional server-owned optimistic concurrency tokens for standalone hosts. */
+  version?: number
+  collectionVersion?: number
 }

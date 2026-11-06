@@ -305,8 +305,12 @@
       } else {
         await addDictType(payload)
       }
-      await userStore.fetchDictList()
       emit('success')
+      try {
+        await userStore.fetchDictList()
+      } catch (error) {
+        notifyFriendlyError(error, '字典节点已保存，但选项刷新失败，请刷新页面', 'warning')
+      }
       return true
     } catch (error) {
       notifyFriendlyError(error, '字典保存失败，请检查名称与层级后重试', 'warning')

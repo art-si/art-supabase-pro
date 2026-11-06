@@ -572,6 +572,7 @@
     }
     const menuId = row.id
     let ids: string[] = []
+    let collectionVersion: number | undefined
     await deleteRecord({
       resourceType: 'menu',
       resource: { id: String(menuId), label: formatMenuTitle(row.meta?.title) },
@@ -580,6 +581,7 @@
         if (completeMenuTreeLoad) await completeMenuTreeLoad
         completeMenuTreeCache.value = null
         const completeMenuTree = await loadCompleteMenuTree()
+        collectionVersion = completeMenuTree[0]?.collectionVersion
         const descendants = treeUtils.getDescendants(completeMenuTree, menuId, true)
         if (!descendants.length) throw new Error('菜单已变化，请刷新后重试删除')
         ids = descendants.map((item) => String(item.id))
@@ -589,7 +591,7 @@
         }))
       },
       confirmMessage: `删除「${formatMenuTitle(row.meta?.title)}」后，其下级菜单与按钮权限会一并移除，关联角色也将失去对应访问权限。确认继续吗？`,
-      remove: () => deleteMenu({ ids }),
+      remove: () => deleteMenu({ ids, collectionVersion }),
       successMessage: '菜单删除成功',
       onDeleted: async () => {
         window.location.reload()

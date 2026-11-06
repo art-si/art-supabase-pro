@@ -47,6 +47,7 @@
   import { useUserStore } from '@/store/modules/user'
   import { uniqueValidator } from '@/utils/form/validator'
   import TreeUtils from '@/utils/tree'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
 
   type DictListItem = Api.DataCenter.DictListItem
   type DictFormData = Omit<Partial<DictListItem>, 'tagType'> & {
@@ -393,11 +394,15 @@
       } else {
         await editDict({ ...params, id } as DictListItem)
       }
-      await useUserStore().fetchDictList()
       emits('success')
+      try {
+        await useUserStore().fetchDictList()
+      } catch (error) {
+        notifyFriendlyError(error, '字典项已保存，但选项刷新失败，请刷新页面', 'warning')
+      }
       return true
     } catch (error) {
-      console.warn('表单验证失败:', error)
+      notifyFriendlyError(error, '字典项保存失败，请检查内容后重试', 'warning')
       return false
     }
   }

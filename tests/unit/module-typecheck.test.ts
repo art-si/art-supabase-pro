@@ -18,6 +18,8 @@ test('module typecheck resolves platform aliases from the physical package and p
   assert.equal(config.extends, path.join(applicationRoot, 'tsconfig.json'))
   assert.equal(config.compilerOptions.baseUrl, applicationRoot)
   assert.deepEqual(config.compilerOptions.paths, {
+    'art-supabase-pro': [path.join(platformRoot, 'src/types/platform-runtime.d.ts')],
+    'art-supabase-pro/*': [path.join(platformRoot, '*')],
     '@/*': [path.join(platformRoot, 'src/*')],
     '@styles/*': [path.join(platformRoot, 'src/assets/styles/*')],
     '@smis/*': ['src/*']

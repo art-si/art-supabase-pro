@@ -263,7 +263,14 @@
         tree.expandedKeys = uniq([...tree.expandedKeys, dropKey])
       }
       await nextTick()
-      await saveMenuTreeOrder(buildMenuTreeOrderUpdates(tree.data))
+      const result = await saveMenuTreeOrder(buildMenuTreeOrderUpdates(tree.data), {
+        collectionVersion: tree.data[0]?.collectionVersion
+      })
+      if (result.collectionVersion !== undefined) {
+        treeUtils.treeToList(tree.data).forEach((row) => {
+          row.collectionVersion = result.collectionVersion
+        })
+      }
       tree.dragSourceData = []
       ElMessage.success('菜单层级和顺序已保存')
       emit('submit')

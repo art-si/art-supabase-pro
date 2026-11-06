@@ -482,7 +482,13 @@
       assertScope()
       try {
         if (rows.length === 1) await deleteDict(rows[0]!)
-        else await deleteDictBatch(resources.map((row) => row.id))
+        else
+          await deleteDictBatch(
+            resources.map((row) => row.id),
+            {
+              collectionVersion: rows[0]?.collectionVersion
+            }
+          )
       } catch (error) {
         assertScope()
         if (await inspect()) return
