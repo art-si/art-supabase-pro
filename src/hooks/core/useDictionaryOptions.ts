@@ -2,6 +2,7 @@ import { shallowReactive, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import { toDictionaryOption } from '@/utils/form/option'
+import { wasErrorUserNotified } from '@/utils/supabase/error'
 
 export interface DictionarySelectOption<T extends string | number | boolean = string> {
   label: string
@@ -17,8 +18,8 @@ export function useDictionaryOptions<T extends string | number | boolean = strin
   const options = shallowReactive<DictionarySelectOption<T>[]>([])
 
   watch(
-    () => userStore.getDictMap[code],
-    (items) => {
+    () => [userStore.isLogin, userStore.getDictMap[code]] as const,
+    ([isLogin, items]) => {
       options.splice(
         0,
         options.length,
@@ -30,8 +31,9 @@ export function useDictionaryOptions<T extends string | number | boolean = strin
           }))
       )
       // 登录初始化或切换租户会清空字典缓存。此时重新加载当前页面仍在使用的字典。
-      if (!items) {
-        void userStore.ensureDictLoaded(code).catch(() => {
+      if (isLogin && !items) {
+        void userStore.ensureDictLoaded(code).catch((error: unknown) => {
+          if (!userStore.isLogin || wasErrorUserNotified(error)) return
           ElMessage({ type: 'error', message: '字典选项加载失败，请刷新页面重试', grouping: true })
         })
       }
