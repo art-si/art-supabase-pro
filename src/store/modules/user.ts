@@ -48,6 +48,7 @@ import { groupBy } from 'lodash-es'
 import { hasPlatformSuperAccess } from '@/utils/platform-super-access'
 import { isDictionaryCacheFresh } from './dictionary-cache-policy'
 import { getDictionaryDisplayLabel } from '@/utils/form/option'
+import { invalidateTableColumnConfig } from '@/utils/table/column-runtime-cache'
 /**
  * 用户状态管理
  * 管理用户登录状态、个人信息、语言设置、搜索历史、锁屏状态等
@@ -192,6 +193,7 @@ export const useUserStore = defineStore(
         accessToken.value = ''
         refreshToken.value = ''
         clearDictionaryCache()
+        invalidateTableColumnConfig()
         // 注意：不清空工作台标签页，等下次登录时根据用户判断
         sessionStorage.removeItem('iframeRoutes')
         useMenuStore().setHomePath('')

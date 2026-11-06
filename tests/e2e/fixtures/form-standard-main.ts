@@ -73,7 +73,8 @@ const user = {
 const menu = {
   id: recordId,
   name: 'FixtureMenu',
-  path: menuMove ? '/legacy/folder' : '/system/fixture',
+  parentId: menuMove ? 'legacy-root' : undefined,
+  path: menuMove ? 'folder' : '/system/fixture',
   component: menuMove ? '/legacy/folder-view' : '/system/fixture',
   type: params.get('menuType') || 'menu',
   ...(menuMove ? { sort: 1 } : {}),
@@ -82,7 +83,16 @@ const menu = {
 }
 const menuTree = menuMove
   ? [
-      menu,
+      {
+        id: 'legacy-root',
+        name: 'LegacyRoot',
+        path: '/legacy',
+        component: '/index/index',
+        type: 'folder',
+        sort: 1,
+        meta: { title: '原目录', isEnable: true },
+        children: [menu]
+      },
       {
         id: 'target-folder',
         name: 'TargetFolder',

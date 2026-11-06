@@ -479,14 +479,17 @@ for (const [type, label] of [
   })
 }
 
-test('已有目录更换父级时保留组件路径，新目录仍按父级使用默认组件', async ({ page }) => {
+test('已有相对路径目录更换父级时保留路径与组件，新目录仍按父级使用默认组件', async ({ page }) => {
   const dialog = await open(page, 'menu', '&menuType=folder&menuMove=1')
+  const path = input(dialog, '路由地址')
   const component = input(dialog, '组件路径')
+  await expect(path).toHaveValue('folder')
   await expect(component).toHaveValue('/legacy/folder-view')
   await expect(component).toBeDisabled()
 
   await field(dialog, '父级菜单').getByRole('combobox').click()
   await page.getByRole('treeitem', { name: '目标目录', exact: true }).click()
+  await expect(path).toHaveValue('folder')
   await expect(component).toHaveValue('/legacy/folder-view')
 
   const saved: Array<Record<string, unknown>> = []
@@ -505,7 +508,7 @@ test('已有目录更换父级时保留组件路径，新目录仍按父级使�
   expect(saved).toHaveLength(1)
   expect(saved[0]).toMatchObject({
     parent_id: 'target-folder',
-    path: '/legacy/folder',
+    path: 'folder',
     component: '/legacy/folder-view'
   })
   await page.unroute('**/rest/v1/sys_menu?**')

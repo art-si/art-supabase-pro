@@ -143,7 +143,7 @@
                       <template v-for="option in getOptions(item)" :key="option.value">
                         <ElOption
                           v-if="item.optionComponent"
-                          :disabled="option.disabled === true"
+                          :disabled="option.disabled === true || Boolean(asyncLoadingMap[item.key])"
                           :created="option.created === true"
                           :label="option.label"
                           :value="option.value"
@@ -152,7 +152,7 @@
                         </ElOption>
                         <ElOption
                           v-else
-                          :disabled="option.disabled === true"
+                          :disabled="option.disabled === true || Boolean(asyncLoadingMap[item.key])"
                           :created="option.created === true"
                           :label="option.label"
                           :value="option.value"
@@ -190,7 +190,19 @@
                     </template>
 
                     <template v-if="hasPickerEmptySlot(item) && !getSlots(item).empty" #empty>
-                      <ArtPickerEmpty :title="getPickerEmptyTitle(item)" />
+                      <ArtPickerEmpty
+                        :loading="Boolean(asyncLoadingMap[item.key] || getProps(item).loading)"
+                        :title="getPickerEmptyTitle(item)"
+                      />
+                    </template>
+                    <template
+                      v-if="
+                        ['select', 'selectV2'].includes(String(item.type)) &&
+                        !getSlots(item).loading
+                      "
+                      #loading
+                    >
+                      <ArtPickerEmpty loading />
                     </template>
 
                     <!-- 动态插槽支持 -->
@@ -203,6 +215,19 @@
                     </template>
                   </component>
                 </slot>
+
+                <ArtOverlayLoading
+                  v-if="
+                    item.api &&
+                    asyncLoadingMap[item.key] &&
+                    !['select', 'selectV2'].includes(String(item.type))
+                  "
+                  loading
+                  size="compact"
+                  :min-height="112"
+                  text="正在加载选项…"
+                  description="正在获取最新选项，请稍候"
+                />
 
                 <ArtAsyncState
                   v-if="asyncErrorMap[item.key]"
@@ -363,6 +388,7 @@
   import type { ComponentMap } from './components'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtPickerEmpty from '@/components/core/feedback/art-picker-empty/index.vue'
+  import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import {
     calculateActionSpan,
@@ -1234,7 +1260,8 @@
       getProps(item).disabled ||
       (item.api &&
         isOptionComponent(item) &&
-        (asyncLoadingMap.value[item.key] || asyncErrorMap.value[item.key]))
+        (asyncErrorMap.value[item.key] ||
+          (asyncLoadingMap.value[item.key] && !['select', 'selectV2'].includes(String(item.type)))))
     )
 
   const getComponentProps = (item: FormItem) => {
@@ -1246,7 +1273,10 @@
       delete componentProps.options
     }
     if (['selectV2', 'cascader', 'segment'].includes(String(item.type))) {
-      componentProps.options = options
+      componentProps.options =
+        item.type === 'selectV2' && asyncLoadingMap.value[item.key]
+          ? options.map((option) => ({ ...option, disabled: true }))
+          : options
     }
     if (String(item.type) === 'tagStyleSelect') {
       componentProps.options = options
@@ -1281,6 +1311,8 @@
     }
     if (item.api) {
       componentProps.loading = asyncLoadingMap.value[item.key] || componentProps.loading
+      if (asyncLoadingMap.value[item.key] && ['select', 'selectV2'].includes(String(item.type)))
+        componentProps.allowCreate = false
     }
     delete componentProps.optionType
     return componentProps

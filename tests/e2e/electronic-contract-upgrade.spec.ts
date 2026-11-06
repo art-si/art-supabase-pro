@@ -161,9 +161,9 @@ async function mockContracts(page: Page) {
   }
 }
 
-async function openFixture(page: Page, limited = false, noView = false) {
+async function openFixture(page: Page, limited = false, noView = false, embedded = false) {
   await page.goto(
-    `/tests/e2e/fixtures/electronic-contract-upgrade.html${noView ? '?noView=1&deep=1' : limited ? '?limited=1' : ''}`,
+    `/tests/e2e/fixtures/electronic-contract-upgrade.html${embedded ? '?embedded=1' : noView ? '?noView=1&deep=1' : limited ? '?limited=1' : ''}`,
     { waitUntil: 'domcontentloaded' }
   )
   await expect(page.locator('html[data-electronic-fixture-ready="true"]')).toHaveCount(1)
@@ -195,6 +195,15 @@ test('电子合同本页合同号仍可打开详情', async ({ page }) => {
   const mock = await openFixture(page)
   await page.getByRole('link', { name: 'HT-202611-001' }).click()
   await expect(page.getByRole('dialog', { name: '电子合同 · HT-202611-001' })).toBeVisible()
+  expect(mock.detailRequests()).toBe(1)
+})
+
+test('客户内嵌电子合同在当前页打开详情且不改客户路由', async ({ page }) => {
+  const mock = await openFixture(page, false, false, true)
+  await expect(page.locator('html')).toHaveAttribute('data-electronic-route-query', '{}')
+  await page.getByRole('button', { name: 'HT-202611-001' }).click()
+  await expect(page.getByRole('dialog', { name: '电子合同 · HT-202611-001' })).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('data-electronic-route-query', '{}')
   expect(mock.detailRequests()).toBe(1)
 })
 

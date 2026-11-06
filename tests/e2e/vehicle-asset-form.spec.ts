@@ -257,7 +257,7 @@ test('车辆归属切回自营时清空承运商并恢复所属租户默认公�
   })
 })
 
-test('车辆归属联动自营、承运商和个人挂靠司机参选并清除旧司机', async ({ page }, info) => {
+test('车辆归属联动自营、承运商、第三方物流和个人挂靠司机并清除旧司机', async ({ page }, info) => {
   type Ownership = 'self_operated' | 'carrier' | 'individual_affiliation'
   type DriverType = 'primary' | 'secondary'
   type DriverRequest = {
@@ -343,6 +343,12 @@ test('车辆归属联动自营、承运商和个人挂靠司机参选并清除�
   await basicTab.click()
   await chooseDrivers('carrier')
 
+  await ownership.getByText('第三方物流', { exact: true }).click()
+  await expect(carrier).toBeEnabled()
+  await expect(ownership.getByRole('radio', { name: '第三方物流', exact: true })).toBeChecked()
+  await chooseDrivers('carrier')
+  await expect(ownership.getByRole('radio', { name: '第三方物流', exact: true })).toBeChecked()
+
   await ownership.getByText('个人挂靠', { exact: true }).click()
   await expect(page.locator('[data-art-form-item-key="companyName"] input')).toHaveValue('')
   await otherTab.click()
@@ -360,7 +366,128 @@ test('车辆归属联动自营、承运商和个人挂靠司机参选并清除�
     .toBe(true)
 })
 
-test('编辑承运商车辆按原档案租户参选司机，切换个人挂靠清除旧司机', async ({ page }) => {
+test('普通租户复制车辆档案可上传车辆照片并保存新照片', async ({ page }, info) => {
+  const tenantId = '11111111-1111-4111-8111-111111111111'
+  const sourceId = '44444444-4444-4444-8444-444444444444'
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aBVcAAAAASUVORK5CYII=',
+    'base64'
+  )
+  let savedPayload: Record<string, unknown> | undefined
+  let uploadedPath = ''
+  let attachment: Record<string, unknown> | undefined
+  await page.route('**/rest/v1/rpc/vms_get_vehicle_archive_secure', (route) =>
+    route.fulfill({
+      json: {
+        id: sourceId,
+        plateNo: '测A复制源',
+        plateColor: 'yellow',
+        vehicleType: '半挂车',
+        vehicleTypeProfileId: '77777777-7777-4777-8777-777777777777',
+        vehicleOwnership: 'carrier',
+        carrierId: 'carrier-1',
+        carrier: { id: 'carrier-1', companyName: '验收承运商' },
+        vehiclePhotoUrl: '',
+        auditStatus: 'draft',
+        isNewEnergy: false,
+        attachments: []
+      }
+    })
+  )
+  await page.route('**/rest/v1/rpc/vms_list_asset_carrier_options_secure', (route) =>
+    route.fulfill({ json: [{ id: 'carrier-1', companyName: '验收承运商' }] })
+  )
+  await page.route('**/rest/v1/sys_attachment?*', (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: null })
+    const body = route.request().postDataJSON()
+    attachment = Array.isArray(body) ? body[0] : body
+    return route.fulfill({ json: { ...attachment, id: 'copied-vehicle-photo' } })
+  })
+  await page.route('**/storage/v1/object/attachments/**', (route) => {
+    uploadedPath = new URL(route.request().url()).pathname
+    return route.fulfill({ json: { Key: uploadedPath } })
+  })
+  await page.route('**/storage/v1/object/public/attachments/**', (route) =>
+    route.fulfill({ body: png, contentType: 'image/png' })
+  )
+  await page.route('**/rest/v1/rpc/vms_create_vehicle_archive_secure', (route) => {
+    savedPayload = route.request().postDataJSON().p_payload
+    return route.fulfill({ json: '88888888-8888-4888-8888-888888888888' })
+  })
+  await page.goto(`/tests/e2e/fixtures/vehicle-asset-form.html?copyFrom=${sourceId}`)
+  const photo = page.locator('[data-art-form-item-key="vehiclePhotoUrl"]')
+  await expect(page.getByText('复制车辆档案', { exact: true })).toBeVisible({ timeout: 90_000 })
+  await expect(page.locator('[data-art-form-item-key="tenantId"]')).toHaveCount(0)
+  await expect(photo.locator('.el-upload')).toBeVisible()
+  await photo
+    .locator('input[type="file"]')
+    .setInputFiles({ name: '复制车辆外观.png', mimeType: 'image/png', buffer: png })
+  await expect.poll(() => attachment?.tenant_id).toBe(tenantId)
+  expect(uploadedPath).toContain(`/attachments/${tenantId}/`)
+  await expect(photo.locator('img')).toBeVisible()
+  await photo.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: info.outputPath('copied-vehicle-photo-uploaded.png'),
+    animations: 'disabled'
+  })
+  await page.locator('[data-art-form-item-key="plateNo"] input').fill('测A复制新车')
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect.poll(() => savedPayload?.vehicle_photo_url).toBe(attachment?.url)
+  expect(savedPayload?.plate_no).toBe('测A复制新车')
+})
+
+test('车辆证件影像按挂车布局分栏并联动核对字段', async ({ page }, info) => {
+  await page.route('**/rest/v1/rpc/vms_list_asset_company_options_secure', (route) =>
+    route.fulfill({ json: [{ id: 'company-1', label: '验收法人公司', isDefault: true }] })
+  )
+  await page.goto(
+    `/tests/e2e/fixtures/vehicle-asset-form.html${info.project.name.includes('dark') ? '?theme=dark' : ''}`
+  )
+  const imageTabs = page.locator('.vehicle-archive-edit__image-switch')
+  const preview = page.locator('.vehicle-archive-edit__certificate-preview')
+  const front = imageTabs.getByRole('tab', { name: '行驶证主页', exact: true })
+  const back = imageTabs.getByRole('tab', { name: '行驶证副页', exact: true })
+  const reverse = imageTabs.getByRole('tab', { name: '副页背面照', exact: true })
+  await expect(front).toBeVisible({ timeout: 90_000 })
+  await front.scrollIntoViewIfNeeded()
+  await expect(preview.locator('.el-upload:visible')).toBeVisible()
+  const first = await front.boundingBox()
+  const second = await back.boundingBox()
+  const third = await reverse.boundingBox()
+  expect(Math.abs(first!.y - second!.y)).toBeLessThan(2)
+  expect(second!.x).toBeGreaterThan(first!.x)
+  expect(third!.y).toBeGreaterThan(first!.y)
+  expect((await preview.locator('.el-upload:visible').boundingBox())!.width).toBeGreaterThan(240)
+  await page.locator('[data-art-form-item-key="vin"] input').fill('VIN-IMAGE-REFERENCE')
+  await back.click()
+  await expect(page.getByRole('tab', { name: '副页与登记', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await page.locator('[data-art-form-item-key="chassisNo"] input').fill('CHASSIS-REFERENCE')
+  await imageTabs.getByRole('tab', { name: '运营证照片', exact: true }).click()
+  await expect(page.getByRole('tab', { name: '营运证信息', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await page.locator('[data-art-form-item-key="operationCertNo"] input').fill('OP-REFERENCE')
+  await front.click()
+  await expect(page.locator('[data-art-form-item-key="vin"] input')).toHaveValue(
+    'VIN-IMAGE-REFERENCE'
+  )
+  await imageTabs.evaluate((element) =>
+    element.closest('.art-section-card')?.scrollIntoView({ block: 'start' })
+  )
+  await page.screenshot({
+    path: info.outputPath('vehicle-certificate-workbench.png'),
+    animations: 'disabled'
+  })
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
+    .toBe(true)
+})
+
+test('普通租户编辑车辆无需租户字段即可参选司机，切换归属清除旧司机', async ({ page }) => {
   const vehicleId = '44444444-4444-4444-8444-444444444444'
   const tenantId = '11111111-1111-4111-8111-111111111111'
   const primaryDriverId = '55555555-5555-4555-8555-555555555555'
@@ -370,7 +497,6 @@ test('编辑承运商车辆按原档案租户参选司机，切换个人挂靠�
     route.fulfill({
       json: {
         id: vehicleId,
-        tenantId,
         plateNo: '测A编辑001',
         plateColor: 'yellow',
         vehicleType: '半挂车',

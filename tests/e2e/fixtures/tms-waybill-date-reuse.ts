@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import i18n from '@/locales'
 import { setupGlobDirectives } from '@/directives'
 import Info from '@tms/views/waybill-management/detail/modules/waybill-info-panel.vue'
+import Tracking from '@tms/views/waybill-management/detail/modules/waybill-tracking-panel.vue'
 import Operation from '@tms/views/waybill-management/detail/modules/waybill-operation-panel.vue'
 import Documents from '@tms/views/waybill-management/detail/modules/waybill-document-panel.vue'
 import Fees from '@tms/views/waybill-management/detail/modules/waybill-fee-panel.vue'
@@ -44,6 +45,21 @@ const waybill: Api.Tms.Waybill.WaybillDetailRecord = {
       fileName: '日期验收文件.pdf',
       mimeType: 'application/pdf',
       uploadedAt: time
+    }
+  ]
+}
+const statusMode = new URLSearchParams(location.search).get('status')
+if (statusMode === 'unknown') waybill.status = 'unexpected_waybill_status'
+if (statusMode === 'prototype') waybill.status = 'constructor'
+if (statusMode) {
+  waybill.events = [
+    {
+      id: 'unknown-event',
+      waybillId: waybill.id,
+      eventType: statusMode === 'prototype' ? 'constructor' : 'unexpected_waybill_event',
+      eventTime: waybill.createTime,
+      payload: {},
+      createTime: waybill.createTime
     }
   ]
 }
@@ -157,7 +173,12 @@ const app = createApp({
       { class: 'p-4 grid gap-4 min-w-0' },
       feeMode
         ? [h(Fees, { waybill })]
-        : [h(Info, { waybill }), h(Operation, { waybill }), h(Documents, { waybill })]
+        : [
+            h(Info, { waybill }),
+            ...(statusMode ? [h(Tracking, { waybill })] : []),
+            h(Operation, { waybill }),
+            h(Documents, { waybill })
+          ]
     )
 })
 app.use(createPinia())

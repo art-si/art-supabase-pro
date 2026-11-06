@@ -1,4 +1,4 @@
-import { createApp, defineComponent, h, ref } from 'vue'
+import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { ElButton, ElConfigProvider, ElTableColumn } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -110,9 +110,52 @@ const runtimePage = defineComponent({
       ])
   }
 })
+const logoutLifecycleStatus = ref('idle')
 const app = createApp({
   render: () =>
     h('main', { class: 'art-page-view p-4', style: { height: '100vh' } }, [
+      ...(parameters.has('logout-lifecycle')
+        ? [
+            h('div', { class: 'flex gap-4' }, [
+              h(
+                ElButton,
+                {
+                  onClick: async () => {
+                    logoutLifecycleStatus.value = 'unmounting'
+                    await router.push('/test/empty')
+                    await nextTick()
+                    logoutLifecycleStatus.value = 'logging-out'
+                    try {
+                      await useUserStore(store).logOut('/system/user')
+                      logoutLifecycleStatus.value = 'logged-out'
+                    } catch {
+                      logoutLifecycleStatus.value = 'logout-error'
+                    }
+                  }
+                },
+                () => '卸载表格并退出登录'
+              ),
+              h(
+                ElButton,
+                {
+                  onClick: async () => {
+                    const user = useUserStore(store)
+                    user.setUserInfo({
+                      userId: 'column-test-user',
+                      tenantId: '11111111-1111-4111-8111-111111111111',
+                      platformSuper: true
+                    })
+                    user.setLoginStatus(true)
+                    await router.push('/system/user')
+                    logoutLifecycleStatus.value = 'reentered'
+                  }
+                },
+                () => '同账号重新进入表格'
+              ),
+              h('span', { 'data-testid': 'logout-lifecycle-status' }, logoutLifecycleStatus.value)
+            ])
+          ]
+        : []),
       h(ElConfigProvider, { locale: zhCn }, () => h(RouterView))
     ])
 })
@@ -120,6 +163,7 @@ const router = createRouter({
   history: createMemoryHistory(),
   routes: [
     { path: '/system/column-config', component: ColumnConfig },
+    { path: '/test/empty', component: defineComponent({ render: () => h('div', '已卸载表格') }) },
     {
       path: '/system/user',
       component:

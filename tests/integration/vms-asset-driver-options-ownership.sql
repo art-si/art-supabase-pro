@@ -68,7 +68,7 @@ BEGIN
   FROM public.mdm_driver d
   LEFT JOIN public.tms_driver_profile p ON p.driver_id = d.id AND p.tenant_id = d.tenant_id
   JOIN public.mdm_carrier c ON c.id = d.carrier_id AND c.tenant_id = d.tenant_id AND c.enabled
-  WHERE d.tenant_id = own_tenant AND d.enabled AND p.driver_id IS NULL
+  WHERE d.tenant_id = own_tenant AND d.enabled AND p.driver_id IS NULL AND d.driver_type = 'primary'
   ORDER BY d.id LIMIT 1;
   IF self_driver IS NULL OR carrier_driver IS NULL OR other_carrier_id IS NULL
     OR individual_driver IS NULL OR other_driver IS NULL OR inactive_driver IS NULL
@@ -98,9 +98,10 @@ BEGIN
       SELECT 1 FROM jsonb_array_elements(result) item
       WHERE NOT EXISTS (
         SELECT 1 FROM public.mdm_driver d
-        JOIN public.tms_driver_profile p ON p.driver_id = d.id AND p.tenant_id = d.tenant_id
+        LEFT JOIN public.tms_driver_profile p ON p.driver_id = d.id AND p.tenant_id = d.tenant_id
         WHERE d.id = (item->>'id')::uuid AND d.tenant_id = own_tenant AND d.enabled
-          AND p.driver_ownership = expected_ownership
+          AND (p.driver_ownership = expected_ownership
+            OR (p.driver_id IS NULL AND expected_ownership = 'carrier' AND d.carrier_id = target_carrier_id))
           AND (target_carrier_id IS NULL AND d.carrier_id IS NULL
             OR target_carrier_id IS NOT NULL AND d.carrier_id = target_carrier_id)
       )
@@ -134,9 +135,9 @@ BEGIN
   result := public.vms_list_asset_driver_options_secure(
     p_tenant_id => own_tenant, p_vehicle_ownership => 'carrier',
     p_carrier_id => unprofiled_carrier_id, p_max_rows => 1000);
-  IF EXISTS (SELECT 1 FROM jsonb_array_elements(result) item
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(result) item
     WHERE item->>'id' = unprofiled_driver::text) THEN
-    RAISE EXCEPTION 'Driver without ownership profile appeared in archive choices';
+    RAISE EXCEPTION 'Legacy carrier driver with an explicit carrier relation was excluded';
   END IF;
 
   -- Platform-all may target a concrete tenant; an omitted target defaults to its home tenant.
@@ -178,6 +179,13 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(own_result) item
     WHERE item->>'id' = self_driver::text) THEN
     RAISE EXCEPTION 'Ordinary own driver missing';
+  END IF;
+  result := public.vms_list_asset_driver_options_secure(
+    p_vehicle_ownership => 'carrier', p_carrier_id => unprofiled_carrier_id,
+    p_driver_type => 'primary', p_max_rows => 1000);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(result) item
+    WHERE item->>'id' = unprofiled_driver::text) THEN
+    RAISE EXCEPTION 'Ordinary account cannot select its legacy carrier driver';
   END IF;
   PERFORM set_config('request.headers',
     jsonb_build_object('x-art-tenant-scope', other_tenant)::text, true);

@@ -22,7 +22,7 @@
       :key="option.value"
       :label="option.label"
       :value="option.value"
-      :disabled="option.disabled"
+      :disabled="option.disabled || loading"
     >
       <div class="art-user-select__option">
         <ElAvatar
@@ -41,8 +41,9 @@
       </div>
     </ElOption>
     <template #empty>
-      <ArtPickerEmpty :title="searchKeyword ? noMatchText : noDataText" />
+      <ArtPickerEmpty :loading="loading" :title="searchKeyword ? noMatchText : noDataText" />
     </template>
+    <template #loading><ArtPickerEmpty loading /></template>
   </ElSelect>
 </template>
 

@@ -10,6 +10,7 @@ import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 const params = new URLSearchParams(location.search)
+const embedded = params.has('embedded')
 const userStore = useUserStore(store)
 userStore.setUserInfo({
   userId: 'electronic-contract-fixture',
@@ -70,8 +71,12 @@ const router = createRouter({
   history: createMemoryHistory(),
   routes: [
     { name: 'TmsElectronicContract', path: '/', component: ElectronicContractPage },
+    { name: 'TmsCustomer', path: '/tms/basic-data/customer', component: { template: '<div />' } },
     { name: 'TmsContract', path: '/tms/basic-data/contract', component: { template: '<div />' } }
   ]
+})
+router.afterEach((route) => {
+  document.documentElement.dataset.electronicRouteQuery = JSON.stringify(route.query)
 })
 document.addEventListener('electronic-contract-fixture-leave', () => {
   void router
@@ -85,7 +90,21 @@ document.addEventListener('electronic-contract-fixture-leave', () => {
 })
 const app = createApp({
   render: () =>
-    h('main', { class: 'art-page-view h-screen min-w-0 p-4' }, [h(ElectronicContractPage)])
+    h('main', { class: 'art-page-view h-screen min-w-0 p-4' }, [
+      h(
+        ElectronicContractPage,
+        embedded
+          ? {
+              embedded: true,
+              customer: {
+                id: '44444444-4444-4444-8444-444444444444',
+                tenantId: '11111111-1111-4111-8111-111111111111',
+                customerName: '验收客户'
+              } as Api.Tms.BasicData.Customer
+            }
+          : {}
+      )
+    ])
 })
 app.use(store)
 app.use(router)
@@ -96,12 +115,14 @@ await new Promise<void>((resolve) => {
   document.addEventListener('electronic-contract-fixture-start', () => resolve(), { once: true })
 })
 await router.push(
-  params.has('deep')
-    ? {
-        name: 'TmsElectronicContract',
-        query: { contractId: '33333333-3333-4333-8333-333333333331' }
-      }
-    : '/'
+  embedded
+    ? { name: 'TmsCustomer' }
+    : params.has('deep')
+      ? {
+          name: 'TmsElectronicContract',
+          query: { contractId: '33333333-3333-4333-8333-333333333331' }
+        }
+      : '/'
 )
 await router.isReady()
 app.mount('#electronic-contract-upgrade')

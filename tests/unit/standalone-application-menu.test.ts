@@ -126,6 +126,37 @@ test('keeps an absolute WMS URL when the menu is grouped under SCM', () => {
   }
 })
 
+test('moving a relative child changes its full URL unless its old URL is preserved', () => {
+  const parent = (id: string, path: string): AppRouteRecord => ({
+    id,
+    name: id,
+    path,
+    component: '/index/index',
+    meta: { title: id }
+  })
+  const child = (parentId: string, path: string): AppRouteRecord => ({
+    id: 'folder',
+    parentId,
+    name: 'Folder',
+    path,
+    component: '/legacy/folder-view',
+    meta: { title: '目录' }
+  })
+  const pathAfterNormalization = (parentId: string, path: string): string | undefined => {
+    const tree = buildApplicationMenuTree([
+      parent('legacy-root', '/legacy'),
+      parent('target-folder', '/target'),
+      child(parentId, path)
+    ])
+    const normalized = normalizeApplicationMenuPaths(tree)
+    return normalized.find((item) => item.id === parentId)?.children?.[0]?.path
+  }
+
+  assert.equal(pathAfterNormalization('legacy-root', 'folder'), '/legacy/folder')
+  assert.equal(pathAfterNormalization('target-folder', 'folder'), '/target/folder')
+  assert.equal(pathAfterNormalization('target-folder', '/legacy/folder'), '/legacy/folder')
+})
+
 test('route diagnostics retain the absolute child URL', () => {
   const menu: AppRouteRecord[] = [
     {

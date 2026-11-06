@@ -34,6 +34,8 @@
             :id="selectId"
             :model-value="selectedWorkshopId"
             :clearable="allowAllWorkshops"
+            :loading="loading"
+            :disabled="loading || Boolean(error)"
             filterable
             :placeholder="allowAllWorkshops ? '全部车间 / 产线' : '选择车间或产线'"
             @update:model-value="$emit('select-workshop', String($event || ''))"
@@ -50,8 +52,9 @@
               </div>
             </ElOption>
             <template #empty>
-              <ArtPickerEmpty title="没有匹配的车间或产线" />
+              <ArtPickerEmpty :loading="loading" title="没有匹配的车间或产线" />
             </template>
+            <template #loading><ArtPickerEmpty loading /></template>
           </ElSelect>
         </div>
 
