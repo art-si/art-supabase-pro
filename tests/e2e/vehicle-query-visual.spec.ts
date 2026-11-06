@@ -159,6 +159,7 @@ const mockVehicleApis = async (page: Page): Promise<void> => {
         ],
         vehicleOwnership: [
           ['self_operated', '自营车辆'],
+          ['carrier', '承运商'],
           ['third_party', '第三方物流']
         ],
         vehiclePlateColor: [['yellow', '黄牌']],
@@ -199,6 +200,110 @@ const expandedListHeaders = [
   '购置时间',
   '车辆年限'
 ]
+
+test('普通年检用户可按查看权限打开详情，未授权时不显示入口', async ({ page }, info) => {
+  test.setTimeout(180_000)
+  await mockVehicleApis(page)
+  const record = {
+    id: vehicleId,
+    vehicleId,
+    plateNo: '测A·10001',
+    companyName: '验收物流一部',
+    inspectionDate: '2026-11-01',
+    inspectionNo: 'INSPECTION-READ',
+    expireDate: '2027-11-01',
+    fieldAccess: { inspectionIdentifiers: 'read', monetaryAmounts: 'hidden' }
+  }
+  await page.route('**/rest/v1/rpc/vms_list_vehicle_inspections_secure', (route) =>
+    route.fulfill({ json: { records: [record], total: 1, fieldAccess: record.fieldAccess } })
+  )
+  await page.route('**/rest/v1/rpc/vms_get_vehicle_inspection_secure', (route) =>
+    route.fulfill({ json: record })
+  )
+  await page.goto(
+    '/tests/e2e/fixtures/vehicle-query-visual.html?page=inspection&inspection-view=denied',
+    { waitUntil: 'commit' }
+  )
+  await expect(page.getByText('INSPECTION-READ', { exact: true })).toBeVisible({ timeout: 90_000 })
+  await expect(page.getByRole('button', { name: '更多操作', exact: true })).toHaveCount(0)
+  await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=inspection', {
+    waitUntil: 'commit'
+  })
+  await expect(page.getByText('INSPECTION-READ', { exact: true })).toBeVisible({ timeout: 90_000 })
+  await page.getByRole('button', { name: '更多操作', exact: true }).hover()
+  await expect(page.getByRole('menuitem', { name: '详情', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '删除', exact: true })).toHaveCount(0)
+  await page.screenshot({
+    path: info.outputPath('ordinary-inspection-read-menu.png'),
+    animations: 'disabled'
+  })
+  await page.getByRole('menuitem', { name: '详情', exact: true }).click()
+  const detail = page.locator('.vehicle-inspection-detail')
+  await expect(detail).toBeVisible({ timeout: 30_000 })
+  await expect(detail.getByText('年检信息', { exact: true })).toBeVisible()
+  await expect(detail.getByText('年检金额', { exact: true })).toHaveCount(0)
+})
+
+test('车辆归属主体随自营、承运商和第三方物流正确展示', async ({ page }, info) => {
+  test.setTimeout(240_000)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await mockVehicleApis(page)
+  let vehicle = { ...vehicles[0] }
+  await page.route('**/rest/v1/rpc/vms_get_vehicle_archive_secure', (route) =>
+    route.fulfill({ json: vehicle })
+  )
+  for (const ownership of ['self_operated', 'carrier', 'third_party']) {
+    vehicle = { ...vehicles[0], vehicleOwnership: ownership }
+    await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=detail', {
+      waitUntil: 'commit'
+    })
+    const summary = page.locator('.vehicle-query-summary')
+    await expect(summary).toBeVisible({ timeout: 120_000 })
+    const label = ownership === 'self_operated' ? '所属公司' : '所属承运商'
+    const name = ownership === 'self_operated' ? '验收物流一部' : '验收承运商'
+    await expect(summary.getByText(`${label}：${name}`, { exact: true })).toBeVisible()
+    await expect(
+      summary.getByText(
+        ownership === 'self_operated'
+          ? '自营车辆'
+          : ownership === 'carrier'
+            ? '承运商'
+            : '第三方物流',
+        { exact: true }
+      )
+    ).toBeVisible()
+    await expect(summary.locator('small')).toHaveAttribute('title', `${label}：${name}`)
+    await page.getByRole('button', { name: '车辆档案', exact: true }).click()
+    const overview = page.getByRole('tabpanel', { name: '综合概览', exact: true })
+    await expect(overview.getByText(label, { exact: true })).toBeVisible()
+    await expect(overview.getByText(name, { exact: true })).toBeVisible()
+    if (ownership !== 'self_operated')
+      await expect(overview.getByText('验收物流一部', { exact: true })).toHaveCount(0)
+    if (ownership === 'carrier') {
+      await page.setViewportSize({ width: 1280, height: 800 })
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(
+          (dark) => document.documentElement.classList.toggle('dark', dark),
+          theme === 'dark'
+        )
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true
+        )
+        await page.screenshot({
+          path: info.outputPath(`vehicle-ownership-${theme}-1280.png`),
+          fullPage: true
+        })
+      }
+    }
+  }
+  vehicle = { ...vehicles[0], vehicleOwnership: 'carrier', carrier: { companyName: '' } }
+  await page.reload({ waitUntil: 'commit' })
+  await expect(page.locator('.vehicle-query-summary')).toBeVisible({ timeout: 120_000 })
+  await expect(page.locator('.vehicle-query-summary')).toContainText('所属承运商：未设置')
+  await expect(page.locator('.vehicle-query-summary')).not.toContainText('验收物流一部')
+  expect(errors).toEqual([])
+})
 
 test('车辆综合查询两条记录在明暗主题和窄桌面完整呈现', async ({ page }, info) => {
   await mockVehicleApis(page)

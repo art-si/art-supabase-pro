@@ -1,9 +1,17 @@
 import { expect, test, type Route } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
+import { prepareAppearance } from './support/appearance'
+import { expectCompactDocumentForm } from './support/scm-document-layout'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(180_000)
+test.beforeEach(async ({ page }, info) => {
+  await prepareAppearance(page, {
+    theme: info.project.name.includes('dark') ? 'dark' : 'light',
+    boxBorderMode: !info.project.name.includes('shadow')
+  })
+})
 
 test('发货通知明细下推、联系信息和单位带入、装车逐行删除', async ({ page }, testInfo) => {
   const tenant = await prepareIsolatedSession(page)
@@ -341,6 +349,7 @@ test('发货通知明细下推、联系信息和单位带入、装车逐行删�
   holdMaterials = true
   await page.getByRole('button', { name: '下推发货装车', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '新增发货装车', exact: true })
+  await expectCompactDocumentForm(dialog, '装车单号', '承运单位')
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'true')
   await expect(dialog.locator('.art-dialog__viewport > .art-overlay-loading')).toBeVisible()

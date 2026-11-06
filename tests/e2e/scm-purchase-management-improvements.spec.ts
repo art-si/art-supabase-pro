@@ -1,12 +1,30 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
+import {
+  expectCompactDocumentForm,
+  expectUnifiedDocumentDetail
+} from './support/scm-document-layout'
+import { installDictionaryOptions } from './support/dictionary-options'
+import { prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(180_000)
+test.beforeEach(async ({ page }, info) => {
+  await prepareAppearance(page, {
+    theme: info.project.name.includes('dark') ? 'dark' : 'light',
+    boxBorderMode: !info.project.name.includes('shadow')
+  })
+})
 
 test('采购申请明细选择、引用重试、复制提交及打印', async ({ page }, testInfo) => {
   const tenant = await prepareIsolatedSession(page)
+  await installDictionaryOptions(page, {
+    commonDocumentDisplayMode: [
+      { value: 'document', label: '按单据' },
+      { value: 'line', label: '按明细' }
+    ]
+  })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   const path = '/scm/purchase-management/purchase-request'
@@ -98,6 +116,13 @@ test('采购申请明细选择、引用重试、复制提交及打印', async ({
       reason: '测试用途'
     }))
   }
+  const contract = {
+    ...request,
+    id: 'contract-1',
+    kind: 'purchase_contract',
+    document_no: 'QA-PURCHASE-CONTRACT',
+    details: { ...request.details, title: '测试采购合同' }
+  }
   await page.route('**/rest/v1/scm_purchase_document?**', (route) => {
     const params = new URL(route.request().url()).searchParams
     if (params.get('kind') === 'eq.purchase_order')
@@ -120,10 +145,11 @@ test('采购申请明细选择、引用重试、复制提交及打印', async ({
       })
     if (params.get('kind') === 'eq.purchase_contract')
       return route.fulfill({
-        json: [],
-        headers: { 'content-range': '*/0', 'access-control-expose-headers': 'content-range' }
+        json: [contract],
+        headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
       })
-    if (params.get('id')?.startsWith('eq.')) return route.fulfill({ json: request })
+    if (params.get('id')?.startsWith('eq.'))
+      return route.fulfill({ json: params.get('id') === 'eq.contract-1' ? contract : request })
     return route.fulfill({
       json: [request],
       headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
@@ -232,6 +258,7 @@ test('采购申请明细选择、引用重试、复制提交及打印', async ({
   await page.getByRole('button', { name: '下推采购订单', exact: true }).click()
   const orderDialog = page.getByRole('dialog', { name: '新增采购订单', exact: true })
   await expect(orderDialog).toBeVisible()
+  await expectCompactDocumentForm(orderDialog, '采购订单号', '货主类型')
   const supplierField = orderDialog
     .locator('.el-form-item')
     .filter({ hasText: '供应商全称' })
@@ -251,6 +278,7 @@ test('采购申请明细选择、引用重试、复制提交及打印', async ({
   await orderDialog.getByRole('button', { name: '取消', exact: true }).click()
   await page.getByRole('button', { name: '新增采购申请', exact: true }).click()
   const requestDialog = page.getByRole('dialog', { name: '新增采购申请', exact: true })
+  await expectCompactDocumentForm(requestDialog, '采购申请单号', '需求部门')
   await expect(
     requestDialog.locator('.el-form-item').filter({ hasText: '项目名称' }).first()
   ).not.toHaveClass(/is-required/)
@@ -260,8 +288,18 @@ test('采购申请明细选择、引用重试、复制提交及打印', async ({
   })
   await requestDialog.getByRole('button', { name: '取消', exact: true }).click()
   await page.goto(`#${contractMenu.path}`)
+  await page.getByRole('button', { name: 'QA-PURCHASE-CONTRACT', exact: true }).click()
+  const contractDetail = page.getByRole('dialog', { name: '查看采购合同', exact: true })
+  await expectUnifiedDocumentDetail(contractDetail, '测试采购合同')
+  await expect(contractDetail.getByRole('tab', { name: '合同明细', exact: true })).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('purchase-contract-unified-detail.png'),
+    animations: 'disabled'
+  })
+  await contractDetail.getByRole('button', { name: '关闭抽屉', exact: true }).click()
   await page.getByRole('button', { name: '新增采购合同', exact: true }).click()
   const contractDialog = page.getByRole('dialog', { name: '新增采购合同', exact: true })
+  await expectCompactDocumentForm(contractDialog, '合同编号', '合同主体')
   await expect(
     contractDialog.locator('.el-form-item').filter({ hasText: '项目名称' }).first()
   ).not.toHaveClass(/is-required/)

@@ -511,7 +511,10 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
   { menuName: 'TmsCargo', buttons: crud({ import: true, export: true }) },
   {
     menuName: 'TmsCarrier',
-    buttons: [...crud({ view: true, import: true, export: true }), button('AiAnalyze', 'AI 经营评估')]
+    buttons: [
+      ...crud({ view: true, import: true, export: true }),
+      button('AiAnalyze', 'AI 经营评估')
+    ]
   },
   { menuName: 'TmsCarrierPrice', buttons: crud({ view: true, export: true }) },
   { menuName: 'TmsCarrierPriceEdit', buttons: [button('Save', '保存承运商协议价')] },
@@ -780,7 +783,7 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
   },
   {
     menuName: 'VehicleInspection',
-    buttons: crud({ export: true }).map((item) => ({
+    buttons: crud({ view: true, export: true }).map((item) => ({
       ...item,
       code: `VehicleInspection:${item.action}`
     }))
