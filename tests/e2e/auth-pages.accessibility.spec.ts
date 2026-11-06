@@ -7,6 +7,9 @@ for (const existingSession of [false, true]) {
   }) => {
     test.setTimeout(120_000)
     const client = firstPartyOAuthClients[0]
+    const redirectUri = existingSession
+      ? 'https://bff.example.com/api/auth/callback'
+      : 'http://localhost:3010/api/auth/callback'
     const authorizationId = 'isolated_bff_return_test'
     const user = {
       id: '00000000-0000-4000-8000-000000000001',
@@ -57,7 +60,7 @@ for (const existingSession of [false, true]) {
           json: {
             authorization_id: authorizationId,
             client: { id: client.clientId, name: 'BFF test' },
-            redirect_uri: client.redirectUri,
+            redirect_uri: redirectUri,
             scope: 'email profile',
             user
           }
@@ -66,12 +69,12 @@ for (const existingSession of [false, true]) {
         expect(route.request().postDataJSON()).toEqual({ action: 'approve' })
         approvals++
         return route.fulfill({
-          json: { redirect_url: `${client.redirectUri}?code=isolated-code&state=isolated-state` }
+          json: { redirect_url: `${redirectUri}?code=isolated-code&state=isolated-state` }
         })
       }
       return route.fulfill({ status: 400, json: { message: 'Unexpected isolated test request' } })
     })
-    await page.route('http://localhost:3010/api/auth/callback?**', (route) =>
+    await page.route(`${redirectUri}?**`, (route) =>
       route.fulfill({
         contentType: 'text/html; charset=utf-8',
         body: '<h1>本地 BFF 回调已接收</h1>'
@@ -86,7 +89,7 @@ for (const existingSession of [false, true]) {
       await page.locator('input[name="password"]').fill('isolated-test-password')
       await page.locator('button[type="submit"]').click()
     }
-    await expect(page).toHaveURL(`${client.redirectUri}?code=isolated-code&state=isolated-state`, {
+    await expect(page).toHaveURL(`${redirectUri}?code=isolated-code&state=isolated-state`, {
       timeout: 60_000
     })
     await expect(page.getByRole('heading', { name: '本地 BFF 回调已接收' })).toBeVisible()
