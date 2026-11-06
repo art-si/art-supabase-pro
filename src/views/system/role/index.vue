@@ -22,9 +22,16 @@
     </BusinessWorkspaceHeader>
 
     <div class="role-page__workspace">
-      <ArtWorkspaceSplitter :breakpoint="1200" narrow-mode="hide">
+      <ArtWorkspaceSplitter
+        :breakpoint="1200"
+        narrow-mode="hide"
+        :primary-collapsed="!organizationScope"
+      >
         <template #primary>
-          <aside v-if="isDesktopOrganizationLayout" class="role-page__organization-panel">
+          <aside
+            v-if="organizationScope && isDesktopOrganizationLayout"
+            class="role-page__organization-panel"
+          >
             <OrganizationScopeFilter
               scope-type="role"
               :data="organizationTree"
@@ -41,7 +48,7 @@
 
         <div class="role-page__table-workspace">
           <BusinessMobileFilterContext
-            v-if="!isDesktopOrganizationLayout"
+            v-if="organizationScope && !isDesktopOrganizationLayout"
             label="当前组织范围"
             :value="selectedOrganizationLabel"
             action-label="组织筛选"
@@ -73,11 +80,15 @@
       </ArtWorkspaceSplitter>
     </div>
 
-    <RoleEditDialog ref="roleEditDialogRef" @success="refreshData" />
+    <RoleEditDialog
+      ref="roleEditDialogRef"
+      :organization-scope="organizationScope"
+      @success="refreshData"
+    />
     <RolePermissionDialog ref="rolePermissionDialogRef" @success="refreshData" />
     <RoleUserDialog ref="roleUserDialogRef" @success="refreshData" />
     <MasterDataDeleteGuard ref="deleteGuardRef" @cleared="refreshData" />
-    <ArtDrawer ref="organizationDrawerRef">
+    <ArtDrawer v-if="organizationScope" ref="organizationDrawerRef">
       <OrganizationScopeFilter
         scope-type="role"
         class="role-page__drawer-filter"
@@ -95,7 +106,11 @@
 </template>
 
 <script setup lang="ts">
-  import { ROLE_BUILTIN_TYPES } from '@/config/builtin-roles'
+  import {
+    isBuiltinMemberRole,
+    isProtectedAdminRole,
+    ROLE_BUILTIN_TYPES
+  } from '@/config/builtin-roles'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useMediaQuery } from '@vueuse/core'
   import { ButtonMoreItem } from '@/components/core/forms/art-button-more/index.vue'
@@ -132,6 +147,8 @@
   import MasterDeleteProcessingNotice from '@/components/business/master-delete-processing-notice/index.vue'
 
   defineOptions({ name: 'Role' })
+
+  const { organizationScope = true } = defineProps<{ organizationScope?: boolean }>()
 
   const route = useRoute()
   const tableQueryRef = ref<ArtTableQueryExpose>()
@@ -280,11 +297,9 @@
   const roleEditDialogRef = ref<RoleEditDialogExpose>()
   const rolePermissionDialogRef = ref<RolePermissionDialogExpose>()
   const roleUserDialogRef = ref<InstanceType<typeof RoleUserDialog>>()
-  const isBuiltinRegisterRole = (row: RoleListItem): boolean =>
-    row.builtinType === ROLE_BUILTIN_TYPES.DEFAULT_REGISTER
+  const isBuiltinRegisterRole = (row: RoleListItem): boolean => isBuiltinMemberRole(row.builtinType)
 
-  const isSuperRole = (row: RoleListItem): boolean =>
-    row.builtinType === ROLE_BUILTIN_TYPES.PLATFORM_SUPER
+  const isSuperRole = (row: RoleListItem): boolean => isProtectedAdminRole(row.builtinType)
 
   const getRoleMoreActions = (row: RoleListItem): ButtonMoreItem[] => {
     if (isSuperRole(row)) {
@@ -348,7 +363,9 @@
           minWidth: 230,
           link: {
             permission: 'System:Role:AssignPermission',
-            disabled: (row) => isBuiltinRegisterRole(row) && !isPlatformSuper.value,
+            disabled: (row) =>
+              row.builtinType === ROLE_BUILTIN_TYPES.TENANT_ADMIN ||
+              (isBuiltinRegisterRole(row) && !isPlatformSuper.value),
             onClick: showPermissionDialog
           },
           formatter: (row: RoleListItem) =>
@@ -387,26 +404,30 @@
                 : null
             ])
         },
-        {
-          prop: 'organization',
-          label: '适用组织',
-          minWidth: 180,
-          formatter: (row: RoleListItem) =>
-            row.organization
-              ? h('div', { class: 'role-organization-cell' }, [
-                  h(
-                    'strong',
-                    { title: row.organization.organizationName },
-                    row.organization.organizationName
-                  ),
-                  h(
-                    'small',
-                    { title: row.organization.organizationCode },
-                    row.organization.organizationCode
-                  )
-                ])
-              : h('span', { class: 'role-organization-cell__empty' }, '待归入组织')
-        },
+        ...(organizationScope
+          ? [
+              {
+                prop: 'organization',
+                label: '适用组织',
+                minWidth: 180,
+                formatter: (row: RoleListItem) =>
+                  row.organization
+                    ? h('div', { class: 'role-organization-cell' }, [
+                        h(
+                          'strong',
+                          { title: row.organization.organizationName },
+                          row.organization.organizationName
+                        ),
+                        h(
+                          'small',
+                          { title: row.organization.organizationCode },
+                          row.organization.organizationCode
+                        )
+                      ])
+                    : h('span', { class: 'role-organization-cell__empty' }, '待归入组织')
+              } as ColumnOption<RoleListItem>
+            ]
+          : []),
         {
           prop: 'description',
           label: '角色描述',
@@ -538,8 +559,9 @@
     const { from, to } = buildSupabasePageRange(pagination)
     return await fetchRoleList({
       tenantId: selectedTenantId.value || undefined,
-      organizationIds: selectedOrganizationIds.value,
-      organizationUnassigned: selectedOrganizationKey.value === UNASSIGNED_ORGANIZATION_KEY,
+      organizationIds: organizationScope ? selectedOrganizationIds.value : [],
+      organizationUnassigned:
+        organizationScope && selectedOrganizationKey.value === UNASSIGNED_ORGANIZATION_KEY,
       roleName,
       roleCode,
       description,
@@ -584,7 +606,7 @@
   }
 
   const handleOrganizationRefresh = async (): Promise<void> => {
-    await loadOrganizationTree()
+    if (organizationScope) await loadOrganizationTree()
     await refreshData()
   }
 
@@ -606,7 +628,7 @@
   }
 
   onMounted(async () => {
-    await loadOrganizationTree()
+    if (organizationScope) await loadOrganizationTree()
   })
 
   watch(

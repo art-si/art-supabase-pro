@@ -211,6 +211,12 @@
   const permissionKeyword = ref('')
   const selectedCount = ref(0)
   const checkedKeys = ref<string[]>([])
+  const permissionSnapshot = ref<{
+    expectedMenuIds: string[]
+    revision?: number
+    menuRevision?: number
+    roleVersion?: number
+  }>({ expectedMenuIds: [] })
   const initialExpandedKeys = ref<TreeKey[]>([])
   const manualExpandedKeys = new Set<TreeKey>()
   const TREE_ROW_HEIGHT = 40
@@ -306,6 +312,7 @@
     invalidatePermissionLoad()
     Object.assign(loadState, { loading: false, error: false, ready: false })
     checkedKeys.value = []
+    permissionSnapshot.value = { expectedMenuIds: [] }
     roleData.value = undefined
     menuList.value = []
     isExpandAll.value = false
@@ -338,6 +345,12 @@
 
       const menus = menuResult.data ?? []
       const roleMenus = roleMenuResult.data ?? []
+      permissionSnapshot.value = {
+        expectedMenuIds: roleMenus.map((item: { menuId: string }) => item.menuId),
+        revision: roleMenuResult.revision,
+        menuRevision: menuResult.revision ?? roleMenuResult.menuRevision,
+        roleVersion: roleMenuResult.roleVersion ?? roleData.value?.version
+      }
       const permissionNodes = (menus ?? [])
         .map(toPermissionNode)
         .filter((item): item is PermissionTreeNode => item !== null)
@@ -379,7 +392,8 @@
       const menuIds = getSelectedMenuIds()
       const { error } = await saveRoleMenuList({
         p_role_id: roleId,
-        p_menu_ids: menuIds
+        p_menu_ids: menuIds,
+        ...permissionSnapshot.value
       })
       if (error || sequence !== loadSequence) return false
 

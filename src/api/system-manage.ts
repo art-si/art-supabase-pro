@@ -760,7 +760,8 @@ export async function deleteRole(params: Api.SystemManage.RoleListItem) {
 
 /*新增角色*/
 export async function addRole(params: Api.SystemManage.RoleListItem) {
-  return await responseHandle(() => supabase.from('sys_role').insert(keysToSnakeDeep(params)), {
+  const payload = omit(params, ['version', 'collectionVersion'])
+  return await responseHandle(() => supabase.from('sys_role').insert(keysToSnakeDeep(payload)), {
     showMessage: true,
     breakReturn: true
   })
@@ -768,7 +769,8 @@ export async function addRole(params: Api.SystemManage.RoleListItem) {
 
 /*编辑角色*/
 export async function editRole(params: Api.SystemManage.RoleListItem) {
-  const { id, ...payload } = params
+  const { id } = params
+  const payload = omit(params, ['id', 'version', 'collectionVersion'])
   return await responseHandle(
     () => supabase.from('sys_role').update(keysToSnakeDeep(payload)).eq('id', id),
     {
@@ -781,7 +783,7 @@ export async function editRole(params: Api.SystemManage.RoleListItem) {
 /*获取当前角色拥有的菜单*/
 export async function getCurrentRoleMenus(params: { id: string }) {
   const { id } = params
-  return await fetchAllRangePages<{ menuId: string }>(
+  const result = await fetchAllRangePages<{ menuId: string }>(
     ({ from, to }) =>
       responseHandle<Array<{ menuId: string }>>(
         () =>
@@ -795,11 +797,17 @@ export async function getCurrentRoleMenus(params: { id: string }) {
       ),
     { pageSize: 500 }
   )
+  const snapshot: typeof result & {
+    revision?: number
+    menuRevision?: number
+    roleVersion?: number
+  } = result
+  return snapshot
 }
 
 // 获取完整菜单目录，供角色授权与业务配置选择使用。
 export async function fetchMenuCatalog() {
-  return await fetchAllRangePages<AppRouteRecord>(
+  const result = await fetchAllRangePages<AppRouteRecord>(
     ({ from, to }) =>
       responseHandle<AppRouteRecord[]>(
         () =>
@@ -813,11 +821,22 @@ export async function fetchMenuCatalog() {
       ),
     { pageSize: 500 }
   )
+  const snapshot: typeof result & { revision?: number } = result
+  return snapshot
 }
 
 // 保存角色权限
-export async function saveRoleMenuList(params: { p_role_id: string; p_menu_ids: string[] }) {
-  return await responseHandle(() => supabase.rpc('set_role_menus', params), {
+export async function saveRoleMenuList(params: {
+  p_role_id: string
+  p_menu_ids: string[]
+  expectedMenuIds?: string[]
+  revision?: number
+  menuRevision?: number
+  roleVersion?: number
+}) {
+  // BFF hosts can compare the opening snapshot; native pro's RPC retains its original signature.
+  const { p_role_id, p_menu_ids } = params
+  return await responseHandle(() => supabase.rpc('set_role_menus', { p_role_id, p_menu_ids }), {
     showMessage: true,
     breakReturn: true
   })

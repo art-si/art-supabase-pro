@@ -32,7 +32,7 @@ const records = [
   }
 ]
 
-async function prepare(page: Page, permitted = true) {
+async function prepare(page: Page, permitted = true, roleVersion?: number) {
   const tenant = await prepareIsolatedSession(page)
   await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
   await page.route('**/rest/v1/sys_role?*', (route) =>
@@ -44,7 +44,11 @@ async function prepare(page: Page, permitted = true) {
         role_code: `TEST_${name}`,
         tenant_id: tenant.id,
         tenant,
-        enabled: true
+        enabled: true,
+        description: '角色回归测试',
+        ...(roleVersion === undefined
+          ? {}
+          : { version: roleVersion, collection_version: roleVersion + 3 })
       }))
     })
   )
@@ -109,6 +113,33 @@ async function prepare(page: Page, permitted = true) {
     }
   )
 }
+
+test('native role edit keeps host revisions out of sys_role writes', async ({ page }) => {
+  await prepare(page, true, 7)
+  const writes: Record<string, unknown>[] = []
+  await page.route('**/rest/v1/sys_role?*', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      writes.push(route.request().postDataJSON())
+      return route.fulfill({ json: [] })
+    }
+    if (new URL(route.request().url()).searchParams.get('select') === 'id') {
+      return route.fulfill({ json: null })
+    }
+    return route.fallback()
+  })
+  const more = page.getByLabel('更多操作').first()
+  await more.hover()
+  await page.getByRole('menuitem', { name: '编辑角色', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑角色', exact: true })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox', { name: /角色名称/ }).fill('测试角色 A 更新')
+  await expect(dialog.getByRole('button', { name: '确定', exact: true })).toBeEnabled()
+  await dialog.getByRole('button', { name: '确定', exact: true }).click()
+  await expect.poll(() => writes.length).toBe(1)
+  expect(writes[0]).toMatchObject({ role_name: '测试角色 A 更新', role_code: 'TEST_A' })
+  expect(writes[0]).not.toHaveProperty('version')
+  expect(writes[0]).not.toHaveProperty('collection_version')
+})
 
 async function open(page: Page, index = 0) {
   const more = page.getByLabel('更多操作').nth(index)
