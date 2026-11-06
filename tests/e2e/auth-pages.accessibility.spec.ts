@@ -35,6 +35,16 @@ for (const existingSession of [false, true]) {
         businessRequests.push(request.url())
     })
     await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+    await page.route('**/rest/v1/sys_param?*', (route) =>
+      route.fulfill({
+        json: {
+          id: 'isolated-website-config',
+          param_key: 'website.config',
+          enabled: true,
+          param_value: JSON.stringify({ captchaEnabled: false, authChannels: [] })
+        }
+      })
+    )
     await page.route('**/functions/v1/check_user_status', (route) =>
       route.fulfill({ json: { allowed: true } })
     )
