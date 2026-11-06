@@ -62,9 +62,13 @@ test('常用线路允许三个有序途经点和返程', async ({ page }, testIn
   await page.getByRole('option', { name: /第二途经点/ }).click()
   await waypointRows.nth(2).click()
   await page.getByRole('option', { name: /第三途经点/ }).click()
-  await dialog.getByRole('button', { name: '上移途经点' }).nth(1).click()
-  await expect(dialog.getByText('1. 第二途经点')).toBeVisible()
-  await expect(dialog.getByText('2. 第一途经点')).toBeVisible()
+  for (let index = 1; index <= 3; index += 1) {
+    await expect(dialog.getByRole('button', { name: `上移第 ${index} 个途经点` })).toHaveCount(1)
+    await expect(dialog.getByRole('button', { name: `下移第 ${index} 个途经点` })).toHaveCount(1)
+  }
+  await dialog.getByRole('button', { name: '上移第 2 个途经点' }).click()
+  await expect(waypointRows.nth(0)).toContainText('第二途经点')
+  await expect(waypointRows.nth(1)).toContainText('第一途经点')
   await dialog.locator('.el-form-item').filter({ hasText: '含返程' }).locator('.el-switch').click()
   await expect(dialog.getByText('返程按相反顺序经过这些站点')).toBeVisible()
   await page.screenshot({

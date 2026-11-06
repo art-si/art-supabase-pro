@@ -51,6 +51,12 @@ begin
   perform set_config('request.headers','{}',true);
   blacklist_id:=(public.tms_add_driver_blacklist_secure(own_driver,now(),'集成验证拉黑',null)->>'id')::uuid;
   execute 'reset role';
+  if not exists (
+    select 1 from public.mdm_driver
+    where id=own_driver and not enabled and is_blacklisted
+  ) then
+    raise exception 'Blacklisting did not disable and mark the driver';
+  end if;
   begin
     update public.mdm_driver set enabled=true where id=own_driver;
     raise exception 'An active blacklisted driver was enabled';
@@ -70,6 +76,12 @@ begin
   end if;
 
   execute 'reset role';
+  if not exists (
+    select 1 from public.mdm_driver
+    where id=own_driver and enabled is not distinct from previous_enabled and not is_blacklisted
+  ) then
+    raise exception 'Releasing did not restore the driver and clear the blacklist mark';
+  end if;
   update public.mdm_driver set enabled=false where id=own_driver;
   execute 'set local role authenticated';
   blacklist_id:=(public.tms_add_driver_blacklist_secure(own_driver,now(),'集成验证停用状态',null)->>'id')::uuid;

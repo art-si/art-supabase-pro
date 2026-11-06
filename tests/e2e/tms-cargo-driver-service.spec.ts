@@ -109,7 +109,7 @@ test('货物新增参选使用分类、物料与已选三栏，单位显示名�
           material_group_id: null,
           category_id: '44444444-4444-4444-8444-444444444444',
           category: { category_name: '产品品类' },
-          baseUnit: { unit_name: '件' }
+          baseUnit: { unit_name: 'PC' }
         }
       ],
       headers: { 'content-range': '0-1/2', 'access-control-expose-headers': 'content-range' }
@@ -127,6 +127,9 @@ test('货物新增参选使用分类、物料与已选三栏，单位显示名�
   const picker = page.getByRole('dialog', { name: '参选物料编码' })
   await expect(picker.getByText('已选 0', { exact: true })).toBeVisible()
   await expect(page.getByText('千克', { exact: true })).toBeVisible()
+  const secondMaterial = picker.getByRole('row', { name: /M-002/ })
+  await expect(secondMaterial.getByRole('cell', { name: '件', exact: true })).toBeVisible()
+  await expect(secondMaterial.getByRole('cell', { name: 'PC', exact: true })).toHaveCount(0)
   await page.screenshot({
     path: testInfo.outputPath('cargo-picker-three-pane.png'),
     fullPage: true
@@ -355,6 +358,17 @@ test('司机列表展示归属、公司、认证与紧急联系人，黑名单�
   }
   await expect(page.getByRole('row', { name: /验收承运司机/ })).toContainText('承运商司机')
   await expect(page.locator('.tms-driver__blocked').getByText('黑名单')).toBeVisible()
+  const blacklistedNameUsesDangerColor = await page
+    .locator('.tms-driver__blocked .business-record-link__control')
+    .evaluate((element) => {
+      const swatch = document.createElement('span')
+      swatch.style.color = 'var(--el-color-danger)'
+      document.body.append(swatch)
+      const matches = getComputedStyle(element).color === getComputedStyle(swatch).color
+      swatch.remove()
+      return matches
+    })
+  expect(blacklistedNameUsesDangerColor).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('driver-list.png'), fullPage: true })
   await page.locator('.tms-driver__blocked').getByRole('button', { name: '验收司机' }).click()
   await expect(page.getByText('查看司机', { exact: true })).toBeVisible()
