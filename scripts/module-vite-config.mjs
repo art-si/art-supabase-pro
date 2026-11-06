@@ -185,7 +185,11 @@ export async function createModuleViteConfig({
         dts: false,
         resolvers: [ElementPlusResolver({ importStyle: 'sass' })]
       }),
-      ElementPlus({ useSource: true }),
+      ElementPlus({
+        useSource: true,
+        include: [sourceTransformPattern],
+        exclude: [/[\\/]\.git[\\/]/]
+      }),
       createNoJekyllPlugin(appCode),
       ...(buildLogPolicy ? [buildLogPolicy.summaryPlugin] : [])
     ],
