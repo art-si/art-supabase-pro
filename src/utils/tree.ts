@@ -93,6 +93,7 @@ export default class TreeUtils {
 
   /** Iterative preorder; active-path identity detects cycles without dropping DAG branches. */
   private *walk(tree: TreeNode[]): Generator<TreeVisit> {
+    if (!Array.isArray(tree)) throw new TypeError('树形数据格式不正确，请重新加载')
     const frames: { nodes: TreeNode[]; index: number; parent: TreeVisit | null }[] = [
       { nodes: tree, index: 0, parent: null }
     ]

@@ -7,6 +7,7 @@
 - `listToTree` 处理**扁平列表**，仅以配置的父 ID 重建 children，忽略残留嵌套 children，避免重复挂载。输入已经是嵌套树时使用 `normalizeTreeData`，不能将两者混用。
 - 保留既有兼容规则：重复 ID 最后一条生效；找不到父节点时保留为根；默认根标记是 `null/undefined/0/''`。这不是判断数据库根节点的规则，后端根查询仍应明确约束 `parent_id IS NULL`。
 - `normalizeTreeData` 接受数组或 JSON 数组，过滤非对象条目，去掉非法 children。无效 JSON/非数组仍返回空数组；循环对象结构会抛出 `TreeDataError`，不能冒充空数据。
+- `treeToList/findNode/traverse/getPathToNode/getAncestors/getDescendants/getLabelPathIndex` 只接收树数组；非数组根输入会抛出 `TypeError`，避免错误数据造成无法结束的遍历。不可信的外部数据应先校验形状，确需兼容 JSON 数组或空值时使用 `normalizeTreeData`。
 - `treeToList` 按先序输出，保留业务父 ID，不复制 children。默认深拷贝业务字段；`deepClone: false` 时嵌套业务字段仍共享引用，结构数组不因此写回原输入。
 - `findNode` 返回输入树中的第一个匹配引用，不克隆。需要修改副本时先明确使用复制操作，不能将此方法误认为隔离编辑数据。
 - `traverse` 使用输入引用；每次回调得到独立的祖先 ID 数组，返回 `false` 立即停止。
