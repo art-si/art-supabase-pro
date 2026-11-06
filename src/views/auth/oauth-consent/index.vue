@@ -55,7 +55,10 @@
 </template>
 <script setup lang="ts">
   import '../login/style.css'
-  import { fetchOAuthAuthorization, decideOAuthAuthorization } from '@/api/oauth-authorization'
+  import {
+    resumeFirstPartyOAuthAuthorization,
+    decideOAuthAuthorization
+  } from '@/api/oauth-authorization'
   import { oauthConsentLoginTarget, resolveOAuthAuthorizationId } from '@/utils/oauth-authorization'
   import type { OAuthAuthorizationDetails } from '@supabase/supabase-js'
 
@@ -96,7 +99,7 @@
     Object.assign(consent, { loading: true, error: '', details: undefined })
     try {
       if (!authorizationId.value) throw new Error('缺少有效的授权请求，请返回应用重新发起登录')
-      const result = await fetchOAuthAuthorization(authorizationId.value)
+      const result = await resumeFirstPartyOAuthAuthorization(authorizationId.value)
       if (result.status === 'login-required') {
         await router.replace(oauthConsentLoginTarget(authorizationId.value))
         return

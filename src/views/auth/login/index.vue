@@ -1,7 +1,11 @@
 <!-- 登录页面 -->
 <template>
-  <div class="auth-page auth-login-page">
-    <LoginLeftView />
+  <div
+    class="auth-page auth-login-page"
+    :class="{ 'auth-login-page--sso': Boolean(ssoAuthorizationId) }"
+  >
+    <SsoIdentityIntro v-if="ssoAuthorizationId" />
+    <LoginLeftView v-else />
 
     <div class="auth-page__panel">
       <AuthTopBar />
@@ -10,18 +14,28 @@
         <div class="form">
           <div class="form__eyebrow">
             <span><ArtSvgIcon icon="ri:shield-check-line" /></span>
-            安全工作区
+            {{ ssoAuthorizationId ? '统一身份认证' : '安全工作区' }}
           </div>
           <h3 class="title">
-            {{ finishingOAuth ? '正在完成登录' : showFeishuQr ? '飞书扫码登录' : loginTitle }}
+            {{
+              finishingOAuth || continuingSso
+                ? '正在完成登录'
+                : showFeishuQr
+                  ? '飞书扫码登录'
+                  : ssoAuthorizationId
+                    ? '登录 BFF 平台'
+                    : loginTitle
+            }}
           </h3>
           <p class="sub-title">
             {{
-              finishingOAuth
+              finishingOAuth || continuingSso
                 ? '正在验证身份并准备工作台，请稍候'
                 : showFeishuQr
                   ? '使用飞书企业身份扫码，并在手机上确认'
-                  : loginSubtitle || $t('login.subTitle')
+                  : ssoAuthorizationId
+                    ? '使用统一账号，进入你的应用工作空间。'
+                    : loginSubtitle || $t('login.subTitle')
             }}
           </p>
           <ElAlert
@@ -42,7 +56,7 @@
             @close="oauthError = ''"
           />
           <div
-            v-if="finishingOAuth"
+            v-if="finishingOAuth || continuingSso"
             class="auth-callback-progress"
             role="status"
             aria-live="polite"
@@ -60,7 +74,7 @@
             @submit="handleSubmit"
             form-class="mt-[25px]"
           >
-            <ElFormItem prop="identifier">
+            <ElFormItem prop="identifier" :label="ssoAuthorizationId ? '统一账号' : undefined">
               <ElInput
                 ref="identifierInputRef"
                 class="custom-height"
@@ -75,7 +89,7 @@
                 <template #prefix><ArtSvgIcon icon="ri:user-3-line" /></template>
               </ElInput>
             </ElFormItem>
-            <ElFormItem prop="password">
+            <ElFormItem prop="password" :label="ssoAuthorizationId ? '登录密码' : undefined">
               <ElInput
                 ref="passwordInputRef"
                 class="custom-height"
@@ -143,7 +157,7 @@
           </ArtForm>
 
           <div
-            v-if="!finishingOAuth && !showFeishuQr && enabledAuthChannels.length"
+            v-if="!finishingOAuth && !continuingSso && !showFeishuQr && enabledAuthChannels.length"
             class="auth-channels"
           >
             <div class="auth-channels__divider"><span>其他方式</span></div>
@@ -176,7 +190,7 @@
           </div>
 
           <FeishuQrLogin
-            v-if="!finishingOAuth && showFeishuQr && feishuQrChannel"
+            v-if="!finishingOAuth && !continuingSso && showFeishuQr && feishuQrChannel"
             :channel="feishuQrChannel"
             :redirect-to="feishuQrRedirectTo"
             @back="showFeishuQr = false"
@@ -208,12 +222,16 @@
     signInWithAuthChannel
   } from '@/api/auth'
   import { MenuProcessor } from '@/router/core/menu-processor'
+  import { resumeFirstPartyOAuthAuthorization } from '@/api/oauth-authorization'
+  import { resolveSsoAuthorizationId } from '@/utils/oauth-authorization'
   import { clearAccessibleApplicationsCache } from '@/api/system-manage/application-access'
   import { getFirstMenuPath } from '@/utils/navigation/route'
   import { useWebsiteConfig } from '@/hooks/core/useWebsiteConfig'
   import ArtTurnstileCaptcha from '@/components/core/forms/art-turnstile-captcha/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import FeishuQrLogin from './modules/feishu-qr-login.vue'
+  import SsoIdentityIntro from './modules/sso-identity-intro.vue'
+  import './sso-login.css'
 
   import {
     isAbsoluteApplicationRedirect,
@@ -261,6 +279,9 @@
   const userStore = useUserStore()
   const router = useRouter()
   const route = useRoute()
+  const ssoAuthorizationId = computed(() =>
+    resolveSsoAuthorizationId(route.query.sso_authorization_id, route.query.redirect)
+  )
   const menuProcessor = new MenuProcessor()
   const POST_LOGIN_BACKGROUND_IDLE_MS = 5_000
   const turnstileToken = ref('')
@@ -278,15 +299,26 @@
   const formData = ref({
     account: '',
     username: '',
-    identifier: rememberedIdentifier || '624944977@qq.com',
-    password: rememberedIdentifier && rememberedIdentifier !== '624944977@qq.com' ? '' : '123456',
+    identifier: ssoAuthorizationId.value ? '' : rememberedIdentifier || '624944977@qq.com',
+    password: ssoAuthorizationId.value
+      ? ''
+      : rememberedIdentifier && rememberedIdentifier !== '624944977@qq.com'
+        ? ''
+        : '123456',
     rememberPassword: rememberPasswordPreference
   })
 
   const loading = ref(false)
   const oauthLoadingKey = ref('')
-  const oauthError = ref('')
+  const oauthError = ref(
+    ssoAuthorizationId.value && route.query.sso_error === 'access_denied'
+      ? '当前统一账号未开通 BFF 平台，请使用已开通账号重新登录。'
+      : ''
+  )
   const finishingOAuth = ref(route.query.auth_action === 'login')
+  const continuingSso = ref(
+    Boolean(ssoAuthorizationId.value) && route.query.sso_force !== '1' && !finishingOAuth.value
+  )
   const oauthProgressText = ref('正在接收授权结果…')
   const showFeishuQr = ref(false)
   const feishuQrChannel = ref<Api.Auth.AuthChannel | null>(null)
@@ -352,7 +384,13 @@
 
   onMounted(() => {
     void initializeLoginPage()
-    if (rememberedIdentifier && !finishingOAuth.value) void restoreBrowserPassword()
+    if (
+      rememberedIdentifier &&
+      !ssoAuthorizationId.value &&
+      !finishingOAuth.value &&
+      !continuingSso.value
+    )
+      void restoreBrowserPassword()
     void nextTick(syncBrowserAutofill)
   })
 
@@ -386,6 +424,18 @@
   useEventListener(window, 'pageshow', syncBrowserAutofill)
 
   const initializeLoginPage = async (): Promise<void> => {
+    if (continuingSso.value) {
+      let completed = false
+      try {
+        completed = await resumeSso()
+        if (completed) return
+      } catch {
+        oauthError.value = '统一登录暂时无法继续，请重新登录。'
+      } finally {
+        if (!completed) continuingSso.value = false
+      }
+      if (rememberedIdentifier && !ssoAuthorizationId.value) void restoreBrowserPassword()
+    }
     if (finishingOAuth.value) {
       void loadWebsiteConfig()
       await handleOAuthCallback()
@@ -401,6 +451,10 @@
     clearAccessibleApplicationsCache()
     userStore.setToken(tokens.accessToken, tokens.refreshToken)
     userStore.setLoginStatus(true)
+    if (ssoAuthorizationId.value) {
+      if (!(await resumeSso())) throw new Error('统一登录会话未建立，请重新登录')
+      return
+    }
     const { startDictionaries } = await preparePostLoginData({
       loadDictionaries: userStore.fetchDictList,
       loadUserProfile: userStore.fetchUserInfo,
@@ -418,6 +472,17 @@
 
     await router.push(targetPath)
     scheduleDictionariesAfterNavigationIdle(startDictionaries)
+  }
+
+  const resumeSso = async (): Promise<boolean> => {
+    const authorizationId = ssoAuthorizationId.value
+    if (!authorizationId) return false
+    const result = await resumeFirstPartyOAuthAuthorization(authorizationId)
+    if (result.status === 'login-required') return false
+    if (result.status === 'redirect') window.location.replace(result.url)
+    else
+      await router.replace({ name: 'OAuthConsent', query: { authorization_id: authorizationId } })
+    return true
   }
 
   const scheduleDictionariesAfterNavigationIdle = (

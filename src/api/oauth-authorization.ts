@@ -1,6 +1,10 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { checkCurrentUserAccess, recoverCurrentAuthSession } from '@/api/auth'
-import { resolveOAuthAuthorizationRedirect } from '@/utils/oauth-authorization'
+import {
+  isFirstPartyOAuthAuthorization,
+  resolveOAuthAuthorizationRedirect
+} from '@/utils/oauth-authorization'
+import { firstPartyOAuthClients } from '@/config/first-party-oauth'
 import { isCloudBaseBaas } from '@/config/baas-provider'
 import type { OAuthAuthorizationDetails } from '@supabase/supabase-js'
 
@@ -36,4 +40,17 @@ export async function decideOAuthAuthorization(
     : await supabase.auth.oauth.denyAuthorization(authorizationId, { skipBrowserRedirect: true })
   if (error || !data) throw new Error('授权处理失败，请重试或返回应用重新登录', { cause: error })
   return resolveOAuthAuthorizationRedirect(data.redirect_url)
+}
+
+/** The internal client policy replaces an end-user consent step for our own BFF. */
+export async function resumeFirstPartyOAuthAuthorization(
+  authorizationId: string
+): Promise<OAuthAuthorizationView> {
+  const result = await fetchOAuthAuthorization(authorizationId)
+  if (
+    result.status !== 'consent' ||
+    !isFirstPartyOAuthAuthorization(result.details, firstPartyOAuthClients)
+  )
+    return result
+  return { status: 'redirect', url: await decideOAuthAuthorization(authorizationId, true) }
 }
