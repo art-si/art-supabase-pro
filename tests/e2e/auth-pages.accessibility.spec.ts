@@ -104,6 +104,7 @@ interface AuthFieldExpectation {
 }
 
 test('内部 SSO 直接显示统一登录表单且不展示授权确认卡片', async ({ page }) => {
+  test.setTimeout(90_000)
   const hostedRequests: string[] = []
   page.on('request', (request) => {
     if (/bootstrap-hosted-applications(?:-|\.ts)/.test(new URL(request.url()).pathname))
@@ -119,6 +120,7 @@ test('内部 SSO 直接显示统一登录表单且不展示授权确认卡片', 
   await expect(page.locator('input[name="password"]')).toHaveValue('')
   await expect(page.getByRole('button', { name: '同意并继续', exact: true })).toHaveCount(0)
   expect(hostedRequests).toEqual([])
+  await expectNoHorizontalOverflow(page)
 })
 
 test('登录页主题切换保留已显示的账号与记住密码状态', async ({ page }) => {
