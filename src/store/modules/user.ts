@@ -182,6 +182,9 @@ export const useUserStore = defineStore(
       if (currentUserId) {
         localStorage.setItem(StorageConfig.LAST_USER_ID_KEY, String(currentUserId))
       }
+      // 先停止业务页的响应式加载，再撤销会话；旧页面在导航完成前仍可能存活。
+      isLogin.value = false
+      clearDictionaryCache()
       try {
         await logout()
       } finally {
@@ -192,7 +195,6 @@ export const useUserStore = defineStore(
         lockPassword.value = ''
         accessToken.value = ''
         refreshToken.value = ''
-        clearDictionaryCache()
         invalidateTableColumnConfig()
         // 注意：不清空工作台标签页，等下次登录时根据用户判断
         sessionStorage.removeItem('iframeRoutes')
@@ -272,19 +274,21 @@ export const useUserStore = defineStore(
       code: string,
       value?: string | number | null
     ): Promise<void> => {
-      if (!code || value == null || value === '') return
+      if (!isLogin.value || !code || value == null || value === '') return
+      const version = dictCacheVersion
       await ensureDictLoaded(code)
+      if (!isLogin.value || version !== dictCacheVersion) return
       if (getDictItemByValue(code, value)) return
       const key = JSON.stringify([code, String(value)])
       if (Object.hasOwn(displayDictItems.value, key)) return
       const active = displayDictRequests.get(key)
       if (active) return active
-      const version = dictCacheVersion
       const request = (async () => {
         const { fetchDictionaryDisplayItem } = await import('@/api/data-center')
+        if (!isLogin.value || version !== dictCacheVersion) return
         const { data, error } = await fetchDictionaryDisplayItem(code, String(value))
-        if (error) throw error
         if (version !== dictCacheVersion) return
+        if (error) throw error
         displayDictItems.value[key] = data?.[0] ?? null
       })()
       displayDictRequests.set(key, request)
@@ -350,19 +354,23 @@ export const useUserStore = defineStore(
     }
 
     const fetchDictList = async (): Promise<void> => {
+      if (!isLogin.value) return
       if (dictListRequest) return dictListRequest
 
       const loadVersion = dictCacheVersion
       const request = (async () => {
         const { fetchDictionaryList } = await import('@/api/data-center')
+        if (!isLogin.value || loadVersion !== dictCacheVersion) return
         const { data, error } = await fetchDictionaryList()
+        if (loadVersion !== dictCacheVersion) return
         if (error) throw error
-        if (!data || loadVersion !== dictCacheVersion) return
+        if (!data) return
 
         const { fetchMaterialUnitCompatibilityOptions } = await import('@/api/unit-of-measure')
+        if (!isLogin.value || loadVersion !== dictCacheVersion) return
         const units = await fetchMaterialUnitCompatibilityOptions()
-        if (units.error) throw units.error
         if (loadVersion !== dictCacheVersion) return
+        if (units.error) throw units.error
 
         const groupData = groupBy(
           [
@@ -393,6 +401,7 @@ export const useUserStore = defineStore(
     }
 
     const fetchDictByCode = async (dictCode: string): Promise<void> => {
+      if (!isLogin.value) return
       const activeRequest = dictCodeRequests.get(dictCode)
       if (activeRequest) return activeRequest
 
@@ -400,11 +409,12 @@ export const useUserStore = defineStore(
       const request = (async () => {
         const { fetchDictionaryListByTypeCode } = await import('@/api/data-center')
         const { fetchMaterialUnitCompatibilityOptions } = await import('@/api/unit-of-measure')
+        if (!isLogin.value || loadVersion !== dictCacheVersion) return
         const { data, error } = ['tmsCargoUnit', 'smisMaterialUnit'].includes(dictCode)
           ? await fetchMaterialUnitCompatibilityOptions(dictCode)
           : await fetchDictionaryListByTypeCode(dictCode)
-        if (error) throw error
         if (loadVersion !== dictCacheVersion) return
+        if (error) throw error
 
         dictMap.value = {
           ...dictMap.value,
@@ -422,6 +432,8 @@ export const useUserStore = defineStore(
     }
 
     const ensureDictLoaded = async (dictCode: keyof DictMap | string): Promise<void> => {
+      if (!isLogin.value) return
+      const loadVersion = dictCacheVersion
       const code = String(dictCode)
       // 全量缓存可能早于新增字典；缺失的类型需要单独补取。
       const listFetchedAt = Object.prototype.hasOwnProperty.call(dictMap.value, code)
@@ -432,6 +444,7 @@ export const useUserStore = defineStore(
       if (dictListRequest) {
         // 全量请求在途时复用其结果；若其失败，当前字典仍可按类型单独补取。
         await dictListRequest.catch(() => undefined)
+        if (!isLogin.value || loadVersion !== dictCacheVersion) return
         if (
           Object.prototype.hasOwnProperty.call(dictMap.value, code) &&
           isDictionaryCacheFresh(dictCodeFetchedAt.get(code), dictListFetchedAt)
