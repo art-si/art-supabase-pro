@@ -693,6 +693,8 @@ declare namespace Api {
   namespace DataCenter {
     /** 数据字典列表项 */
     interface DictListItem {
+      version?: number
+      collectionVersion?: number
       id?: string
       tenantId?: string
       typeId?: string
@@ -720,6 +722,8 @@ declare namespace Api {
     type DictTypeNodeType = 'directory' | 'dictionary'
 
     interface DictTypeItem {
+      version?: number
+      collectionVersion?: number
       id?: string
       tenantId?: string
       parentId?: string | null

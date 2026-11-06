@@ -6,6 +6,10 @@ import path from 'node:path'
 
 export function createModuleTypecheckConfig(applicationRoot, platformRoot, compilerOptions) {
   const paths = { ...compilerOptions.paths }
+  // Joint development must use the same package for global DTOs and deep
+  // imports as it uses for @/ source imports, rather than mixing two revisions.
+  paths['art-supabase-pro'] = [path.join(platformRoot, 'src/types/platform-runtime.d.ts')]
+  paths['art-supabase-pro/*'] = [path.join(platformRoot, '*')]
   const packagePrefix = 'node_modules/art-supabase-pro/'
   for (const [alias, alternatives] of Object.entries(paths)) {
     const platformPath = alternatives.find((candidate) => candidate.startsWith(packagePrefix))

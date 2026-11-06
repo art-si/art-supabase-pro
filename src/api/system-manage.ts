@@ -886,7 +886,7 @@ export async function fetchAllMenuList() {
 }
 
 /*删除菜单*/
-export async function deleteMenu(params: { ids: string[] }) {
+export async function deleteMenu(params: { ids: string[]; collectionVersion?: number }) {
   const { ids } = params
   if (!ids.length) throw new Error('未找到需要删除的菜单')
 
@@ -928,6 +928,22 @@ export async function editMenu(params: AppRouteRecord) {
   )
 }
 
+/** Hosts may replace this transport with one atomic server transaction. */
+export async function saveMenuDefinition(
+  params: AppRouteRecord,
+  sortUpdates: Array<{ id: string; sort: number }>,
+  _context: { version?: number; collectionVersion?: number } = {}
+): Promise<void> {
+  // Standalone transports consume this context; native pro keeps its existing API.
+  void _context
+  if (params.id) {
+    await editMenu(params)
+    await saveMenuSort(sortUpdates)
+  } else {
+    await addMenu(params)
+  }
+}
+
 export async function saveMenuSort(params: Array<{ id: string; sort: number }>) {
   const results = await mapWithConcurrency(params, 3, async ({ id, ...data }) =>
     supabase.from('sys_menu').update(keysToSnakeDeep(data), { count: 'exact' }).eq('id', id)
@@ -945,9 +961,11 @@ export async function saveMenuSort(params: Array<{ id: string; sort: number }>) 
 
 /*原子保存完整菜单树的父级关系和同级顺序*/
 export async function saveMenuTreeOrder(
-  updates: Array<{ id: string; parentId: string | null; sort: number }>
-) {
-  return await responseHandle(
+  updates: Array<{ id: string; parentId: string | null; sort: number }>,
+  _context: { collectionVersion?: number } = {}
+): Promise<{ collectionVersion?: number }> {
+  void _context
+  await responseHandle(
     () =>
       supabase.rpc('save_menu_tree_order', {
         p_updates: updates
@@ -957,6 +975,7 @@ export async function saveMenuTreeOrder(
       showMessage: false
     }
   )
+  return {}
 }
 
 export * from './system-manage/application-access'

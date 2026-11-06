@@ -281,8 +281,10 @@ export async function editDictType(params: Api.DataCenter.DictTypeItem) {
 }
 
 export async function saveDictTypeTreeOrder(
-  updates: Array<{ id: string; parentId: string | null; sort: number }>
+  updates: Array<{ id: string; parentId: string | null; sort: number }>,
+  _context: { collectionVersion?: number } = {}
 ) {
+  void _context
   return await responseHandle(
     () =>
       supabase.rpc('save_dict_type_tree_order', {
@@ -440,7 +442,11 @@ export async function deleteDict(params: Api.DataCenter.DictListItem) {
 }
 
 // 批量删除字典项
-export async function deleteDictBatch(ids: string[]) {
+export async function deleteDictBatch(
+  ids: string[],
+  _context: { collectionVersion?: number } = {}
+) {
+  void _context
   return await responseHandle(
     () => supabase.from('sys_dictionary').delete({ count: 'exact' }).in('id', ids),
     {

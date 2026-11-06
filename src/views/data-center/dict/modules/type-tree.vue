@@ -799,7 +799,9 @@
       applyExpandedKeys()
 
       const updates = buildTreeOrderUpdates(tree.data)
-      await saveDictTypeTreeOrder(updates)
+      await saveDictTypeTreeOrder(updates, {
+        collectionVersion: dragSourceData[0]?.collectionVersion
+      })
       ElMessage.success(
         batchKeys.length > 1 ? `已移动 ${batchKeys.length} 个字典类型` : '目录位置和排序已保存'
       )
