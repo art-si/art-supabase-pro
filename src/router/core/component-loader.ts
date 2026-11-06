@@ -106,12 +106,17 @@ export class ComponentLoader {
     const isPlatformHost = import.meta.env.VITE_APP_CODE === 'platform'
     const platformHostModules = isPlatformHost ? loadPlatformHostRouteModules() : {}
     const platformShellModules = import.meta.glob<RouteComponentModule>([
-      '../../views/auth/**/*.vue',
       '../../views/exception/**/*.vue',
       '../../views/index/**/*.vue',
       '../../views/outside/**/*.vue'
     ])
-    const platformModules = isPlatformHost ? platformHostModules : platformShellModules
+    const platformAuthModules =
+      import.meta.env.VITE_AUTH_SESSION_MODE === 'server'
+        ? {}
+        : import.meta.glob<RouteComponentModule>('../../views/auth/**/*.vue')
+    const platformModules = isPlatformHost
+      ? platformHostModules
+      : { ...platformShellModules, ...platformAuthModules }
     this.modules = {
       ...platformModules,
       ...registeredApplicationModules

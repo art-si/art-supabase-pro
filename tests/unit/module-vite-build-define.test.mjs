@@ -47,6 +47,8 @@ test('server-session consumers own their environment and never expose server cre
     assert.ok(!JSON.stringify(config.define).includes('private-test-marker'))
     assert.equal(config.resolve.alias['@'], path.join(platformRoot, 'src'))
     assert.equal(config.resolve.alias['@bff'], path.join(applicationRoot, 'src'))
+    assert.ok(config.optimizeDeps.exclude.includes('@'))
+    assert.ok(config.optimizeDeps.exclude.includes('@bff'))
     const anotherPort = await createModuleViteConfig({ ...options, defaultPort: 3020 })
     assert.notEqual(config.cacheDir, anotherPort.cacheDir)
   } finally {

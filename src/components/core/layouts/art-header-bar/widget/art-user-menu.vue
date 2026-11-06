@@ -46,13 +46,13 @@
           </div>
         </div>
         <ul class="py-4 mt-3 border-t border-g-300/80">
-          <li>
+          <li v-if="!externalAccount">
             <RouterLink class="btn-item" to="/system/user-center" @click="closeUserMenu">
               <ArtSvgIcon icon="ri:user-3-line" />
               <span>{{ $t('topBar.user.userCenter') }}</span>
             </RouterLink>
           </li>
-          <li>
+          <li v-if="!externalAccount">
             <a
               class="btn-item"
               :href="WEB_LINKS.GITEE"
@@ -64,7 +64,7 @@
               <span>{{ $t('topBar.user.gitee') }}</span>
             </a>
           </li>
-          <li>
+          <li v-if="!externalAccount">
             <a
               class="btn-item"
               :href="WEB_LINKS.GITHUB"
@@ -76,13 +76,13 @@
               <span>{{ $t('topBar.user.github') }}</span>
             </a>
           </li>
-          <li>
+          <li v-if="!externalAccount">
             <button type="button" class="btn-item" @click="lockScreen">
               <ArtSvgIcon icon="ri:lock-line" />
               <span>{{ $t('topBar.user.lockScreen') }}</span>
             </button>
           </li>
-          <li aria-hidden="true">
+          <li v-if="!externalAccount" aria-hidden="true">
             <div class="w-full h-px my-2 bg-g-300/80"></div>
           </li>
           <li>
@@ -100,7 +100,8 @@
   import { useI18n } from 'vue-i18n'
   import { useTimeoutFn } from '@vueuse/core'
   import type { PopoverInstance } from 'element-plus'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { platformAuthContextKey } from '@/utils/auth-context'
   import { useUserStore } from '@/store/modules/user'
   import { WEB_LINKS } from '@/utils/constants'
   import { mittBus } from '@/utils/sys'
@@ -112,7 +113,12 @@
   const { confirmAction } = useArtFeedback()
   const userStore = useUserStore()
 
-  const { getUserInfo: userInfo } = storeToRefs(userStore)
+  const externalAccount = inject(platformAuthContextKey, undefined)?.account
+  const userInfo = computed(() => {
+    if (!externalAccount) return userStore.getUserInfo
+    const user = externalAccount.user()
+    return { nickName: user?.name, email: user?.email, avatar: user?.avatar, userName: '' }
+  })
   const userMenuPopover = ref<PopoverInstance>()
   const userMenuButton = ref<HTMLButtonElement>()
   const { start: closeUserMenu } = useTimeoutFn(() => userMenuPopover.value?.hide(), 100, {
@@ -124,7 +130,9 @@
 
   const focusFirstMenuItem = async (): Promise<void> => {
     await nextTick()
-    document.querySelector<HTMLElement>('.user-menu-popover .btn-item')?.focus()
+    document
+      .querySelector<HTMLElement>('.user-menu-popover .btn-item, .user-menu-popover .log-out')
+      ?.focus()
   }
 
   /**
@@ -149,7 +157,15 @@
       } catch {
         return
       }
-      userStore.logOut()
+      if (externalAccount) {
+        try {
+          await externalAccount.logout()
+        } catch (error) {
+          notifyFriendlyError(error, '退出失败，请稍后重试')
+        }
+      } else {
+        userStore.logOut()
+      }
     },
     200,
     { immediate: false }

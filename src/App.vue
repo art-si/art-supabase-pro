@@ -31,25 +31,31 @@
   import { loadAppearanceConfig } from '@/hooks/core/useAppearanceConfig'
   import { LanguageEnum } from './enums/app-enum'
   import { useRoute } from 'vue-router'
+  import { platformAuthContextKey } from '@/utils/auth-context'
 
   const userStore = useUserStore()
+  const externalAccount = inject(platformAuthContextKey, undefined)?.account
+  const loggedIn = computed(() =>
+    externalAccount ? Boolean(externalAccount.user()) : userStore.isLogin
+  )
   const preferredLanguage = getPreferredLanguage()
   const initialLanguage = userStore.language
-  const GlobalReferenceFeedback = defineAsyncComponent(
-    () => import('@/components/business/master-data-delete-guard/global-reference-feedback.vue')
-  )
+  const GlobalReferenceFeedback =
+    import.meta.env.VITE_AUTH_SESSION_MODE === 'server'
+      ? undefined
+      : defineAsyncComponent(
+          () =>
+            import('@/components/business/master-data-delete-guard/global-reference-feedback.vue')
+        )
   const deleteReferenceContext = shallowRef<DeleteReferenceContext>()
   const showDeleteReferences = (context: DeleteReferenceContext): void => {
     deleteReferenceContext.value = context
   }
   onMounted(() => mittBus.on('deleteReferenceBlocked', showDeleteReferences))
   onUnmounted(() => mittBus.off('deleteReferenceBlocked', showDeleteReferences))
-  watch(
-    () => userStore.isLogin,
-    (loggedIn) => {
-      if (!loggedIn) deleteReferenceContext.value = undefined
-    }
-  )
+  watch(loggedIn, (loggedIn) => {
+    if (!loggedIn) deleteReferenceContext.value = undefined
+  })
   const settingStore = useSettingStore()
   const route = useRoute()
   const { language } = storeToRefs(userStore)
@@ -69,7 +75,7 @@
 
   // 放在 html 上，让传送到 body 的浮层继承工作区外观；认证页使用独立视觉。
   watch(
-    () => userStore.isLogin && !route.path.startsWith('/auth/'),
+    () => loggedIn.value && !route.path.startsWith('/auth/'),
     (isWorkspace) => {
       document.documentElement.dataset.uiScope = isWorkspace ? 'workspace' : 'public'
     },
@@ -91,6 +97,10 @@
   })
 
   onMounted(() => {
+    if (externalAccount) {
+      toggleTransition(false)
+      return
+    }
     if (userStore.isLogin) void loadAppearanceConfig()
     void Promise.all([loadWebsiteConfig(), fetchLoginDefaultLanguage()]).then(
       ([config, policy]) => {
@@ -117,7 +127,7 @@
   watch(
     () => userStore.isLogin,
     (loggedIn) => {
-      if (loggedIn) void loadAppearanceConfig()
+      if (loggedIn && !externalAccount) void loadAppearanceConfig()
     }
   )
 </script>
