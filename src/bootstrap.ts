@@ -1,13 +1,7 @@
 import App from './App.vue'
-import { createApp, type App as VueApp } from 'vue'
-import { initStore } from './store'
+import type { App as VueApp } from 'vue'
 import { initRouter } from './router'
-import language from './locales'
-import '@styles/core/tailwind.css'
-import '@styles/index.scss'
-import { setupGlobDirectives } from './directives'
-import { setupErrorHandle } from './utils/sys/error-handle'
-import { setupSupabaseSessionLifecycle } from './plugins/supabase-session'
+import { bootstrapRuntime } from './bootstrap-runtime'
 
 /**
  * 启动平台公共运行壳。
@@ -18,13 +12,8 @@ import { setupSupabaseSessionLifecycle } from './plugins/supabase-session'
 export function bootstrapPlatformApp(
   options: { loadHostedApplications?: () => Promise<unknown> } = {}
 ): VueApp<Element> {
-  const app = createApp(App)
-  initStore(app)
-  initRouter(app, options.loadHostedApplications)
-  setupSupabaseSessionLifecycle()
-  setupGlobDirectives(app)
-  setupErrorHandle(app)
-  app.use(language)
-  app.mount('#app')
-  return app
+  return bootstrapRuntime({
+    rootComponent: App,
+    installRouter: (app) => initRouter(app, options.loadHostedApplications)
+  })
 }

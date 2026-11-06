@@ -89,11 +89,13 @@ export async function createModuleViteConfig({
   componentScope = 'platform',
   defaultPort,
   mode,
-  platformRoot
+  platformRoot,
+  inheritPlatformEnv = true,
+  authSessionMode = 'client'
 }) {
   const platformSourceRoot = path.join(platformRoot, 'src')
   const sourceTransformPattern = createSourceTransformPattern(applicationRoot, platformSourceRoot)
-  const platformEnv = loadEnv(mode, platformRoot, '')
+  const platformEnv = inheritPlatformEnv ? loadEnv(mode, platformRoot, '') : {}
   const applicationEnv = loadEnv(mode, applicationRoot, '')
   const env = { ...platformEnv, ...applicationEnv, VITE_APP_CODE: appCode }
   const exposedEnv = Object.fromEntries(
@@ -106,12 +108,19 @@ export async function createModuleViteConfig({
   const buildLogPolicy = await loadBuildLogPolicy(platformRoot)
 
   return {
+    cacheDir: path.join(
+      applicationRoot,
+      'node_modules/.cache/platform-vite',
+      appCode,
+      String(port)
+    ),
     base: env.VITE_BASE_URL || '/',
     publicDir: path.join(platformRoot, 'public'),
     define: {
       __APP_VERSION__: JSON.stringify(env.VITE_VERSION || '1.0.0'),
       __CLOUDBASE_BUILD__: JSON.stringify(false),
-      ...exposedEnv
+      ...exposedEnv,
+      'import.meta.env.VITE_AUTH_SESSION_MODE': JSON.stringify(authSessionMode)
     },
     server: {
       host: true,
@@ -162,6 +171,7 @@ export async function createModuleViteConfig({
       tailwindcss(),
       AutoImport({
         imports: ['vue', 'vue-router', 'pinia', '@vueuse/core'],
+        viteOptimizeDeps: false,
         include: [sourceTransformPattern],
         exclude: [/[\\/]\.git[\\/]/],
         dts: false,
@@ -210,6 +220,12 @@ export async function createModuleViteConfig({
         'vue',
         'vue-router',
         'pinia',
+        '@vueuse/core',
+        'vue-i18n',
+        'pinia-plugin-persistedstate',
+        'dayjs/plugin/utc',
+        'dayjs/plugin/timezone',
+        'element-plus',
         'element-plus/es',
         'element-plus/es/components/table-v2/index.mjs'
       ]

@@ -16,15 +16,12 @@ for (const kind of ['gain', 'loss']) {
           organization_code: 'NEW-ORG',
           organization_name: '新增测试库存组织',
           organization_type: 'company',
-          status: '1'
-        }
-      ],
-      wms_inventory_initialization: [
-        {
-          organization_id: 'org-new',
-          enabled_on: '2026-10-30',
-          is_default: true,
-          initialization_closed_at: '2026-10-01'
+          status: '1',
+          initialization: {
+            enabled_on: '2026-10-30',
+            is_default: true,
+            initialization_closed_at: '2026-10-01'
+          }
         }
       ],
       mdm_document_type: [
@@ -77,11 +74,16 @@ for (const kind of ['gain', 'loss']) {
     const payloads: Record<string, unknown>[] = []
     await page.route('**/rest/v1/**', (route) => {
       const path = new URL(route.request().url()).pathname
+      const json = path.endsWith('/sys_menu')
+        ? { id: 'menu-new' }
+        : (records[path.split('/').at(-1) || ''] ?? [])
+      const rowCount = Array.isArray(json) ? json.length : 1
       return route.fulfill({
-        headers: { 'content-range': '0-1/2', 'access-control-expose-headers': 'content-range' },
-        json: path.endsWith('/sys_menu')
-          ? { id: 'menu-new' }
-          : (records[path.split('/').at(-1) || ''] ?? [])
+        headers: {
+          'content-range': rowCount ? `0-${rowCount - 1}/${rowCount}` : '*/0',
+          'access-control-expose-headers': 'content-range'
+        },
+        json
       })
     })
     await page.route('**/rest/v1/rpc/wms_save_count_adjustment_secure', (route) => {
@@ -93,15 +95,28 @@ for (const kind of ['gain', 'loss']) {
       )
     })
     await page.goto(`/tests/e2e/fixtures/wms-operation-retry.html?adjustmentKind=${kind}`)
+    const expectedLocalDate = await page.evaluate(() => {
+      const now = new Date()
+      const pad = (value: number) => String(value).padStart(2, '0')
+      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+    })
     const drawer = page.locator('.el-drawer:visible')
     for (const draft of [1, 2]) {
       await page.getByRole('button', { name: '测试盘盈单创建', exact: true }).click()
       const save = drawer.getByRole('button', { name: '保存', exact: true })
       await expect(save).toBeEnabled()
+      await expect(drawer.locator('[data-art-form-item-key="businessDate"] input')).toHaveValue(
+        expectedLocalDate
+      )
+      await expect(drawer.locator('[data-art-form-item-key="accountingDate"] input')).toHaveValue(
+        expectedLocalDate
+      )
       await expect(drawer.getByText('测试盘点单据类型', { exact: true })).toBeVisible()
       await expect(drawer.getByText('测试盘点业务类型', { exact: true })).toBeVisible()
       const remark = drawer.getByRole('textbox', { name: '备注', exact: true })
       await expect(remark).toHaveValue('')
+      await remark.fill(`新增${kind} ${draft}`)
+      await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
       await expect(drawer.locator('.el-table__body tr')).toHaveCount(0)
       await drawer.getByRole('button', { name: '添加物料', exact: true }).click()
       const picker = page.getByRole('dialog', {
@@ -132,12 +147,13 @@ for (const kind of ['gain', 'loss']) {
           .toBe(false)
         await quantity.press('Tab')
       }
-      await remark.fill(`新增${kind} ${draft}`)
       rejectSave = true
       await save.click()
       await expect(page.getByText('测试盘点保存失败', { exact: true })).toBeVisible()
-      await expect(remark).toHaveValue(`新增${kind} ${draft}`)
       await expect(rows).toHaveCount(2)
+      await drawer.getByRole('tab', { name: '单据表头', exact: true }).click()
+      await expect(remark).toHaveValue(`新增${kind} ${draft}`)
+      await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
       await drawer.getByRole('button', { name: '全屏', exact: true }).click()
       await drawer.locator('.art-drawer__scrollbar > .el-scrollbar__wrap').evaluate((element) => {
         element.scrollTop = element.scrollHeight

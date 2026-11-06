@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  readonly VITE_AUTH_SESSION_MODE?: 'client' | 'server'
   readonly VITE_BAAS_PROVIDER?: 'supabase' | 'cloudbase'
   readonly VITE_CLOUDBASE_ENV_ID?: string
   readonly VITE_CLOUDBASE_PUBLISHABLE_KEY?: string

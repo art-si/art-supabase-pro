@@ -5,7 +5,8 @@
  */
 
 import { useUserStore } from '@/store/modules/user'
-import type { App, Directive, DirectiveBinding } from 'vue'
+import { hasInjectionContext, inject, type App, type Directive, type DirectiveBinding } from 'vue'
+import { platformAuthContextKey } from '@/utils/auth-context'
 
 export type RolesDirective = Directive<HTMLElement, string | string[]>
 
@@ -14,6 +15,12 @@ function removeElement(el: HTMLElement): void {
 }
 
 function checkRolePermission(el: HTMLElement, binding: DirectiveBinding<string | string[]>): void {
+  const externalAuth = hasInjectionContext() ? inject(platformAuthContextKey, undefined) : undefined
+  if (externalAuth?.hasRole) {
+    const requiredRoles = Array.isArray(binding.value) ? binding.value : [binding.value]
+    if (!requiredRoles.some(externalAuth.hasRole)) removeElement(el)
+    return
+  }
   const userStore = useUserStore()
   const userRoles = userStore.getUserInfo.userRoles
 
@@ -30,11 +37,8 @@ function checkRolePermission(el: HTMLElement, binding: DirectiveBinding<string |
   }
 }
 
-const rolesDirective: RolesDirective = {
-  mounted: checkRolePermission,
-  updated: checkRolePermission
-}
-
 export function setupRolesDirective(app: App): void {
-  app.directive('roles', rolesDirective)
+  const check: typeof checkRolePermission = (el, binding) =>
+    app.runWithContext(() => checkRolePermission(el, binding))
+  app.directive('roles', { mounted: check, updated: check })
 }

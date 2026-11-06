@@ -794,10 +794,14 @@
   function prepareBackupUpdate(report: BackupUpdateReport): void {
     const operation = findSupabaseOperation('updateBackup')
     if (!operation) return
+    // An early failure may precede saving a new plan. Retain the submitted
+    // plan when present; otherwise let the update prepare its own fresh plan.
+    const submittedPlan = workspace.selectedRun.value?.parameters.PlanId
+    const planId = report.items.length ? report.planId : submittedPlan
     chooseOperation(operation)
     parameters.value.UpdateBackupPath = report.backupPath
-    parameters.value.PlanId = report.planId
-    ElMessage.info('更新计划已填入，请填写来源密码并核对后执行。')
+    if (typeof planId === 'string') parameters.value.PlanId = planId
+    ElMessage.info('更新参数已填入，请填写来源密码并核对后执行，无需单独检查远端变化。')
   }
   function prepareBackupCheck(backupPath: string): void {
     const operation = findSupabaseOperation('previewBackupUpdate')

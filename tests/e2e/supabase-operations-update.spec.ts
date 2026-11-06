@@ -158,7 +158,13 @@ test.describe('补充增量更新回归', () => {
     }
   }
 
-  async function open(page: Page, value?: BackupUpdateReport, theme = 'light', running = false) {
+  async function open(
+    page: Page,
+    value?: BackupUpdateReport,
+    theme = 'light',
+    running = false,
+    submittedPlan?: string
+  ) {
     await prepareIsolatedSession(page)
     const run: OperationRun = {
       id: '22222222-2222-4222-8222-222222222222',
@@ -170,7 +176,10 @@ test.describe('补充增量更新回归', () => {
       lastOutputAt: at,
       endedAt: running ? undefined : at,
       stage: '比较结构和表数据',
-      parameters: { UpdateBackupPath: backupPath },
+      parameters: {
+        UpdateBackupPath: backupPath,
+        ...(submittedPlan ? { PlanId: submittedPlan } : {})
+      },
       logs: [],
       updateReport: value
     }
@@ -243,7 +252,7 @@ test.describe('补充增量更新回归', () => {
       const panel = page.getByTestId('operations-update-report')
       await panel.scrollIntoViewIfNeeded()
       await expect(panel).toContainText('原备份保持不变')
-      await expect(panel.getByRole('button', { name: '使用同一计划重试' })).toBeVisible()
+      await expect(panel.getByRole('button', { name: '重试更新备份' })).toBeVisible()
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
@@ -254,6 +263,37 @@ test.describe('补充增量更新回归', () => {
       await expect(
         page.getByRole('button', { name: '执行检查远端变化', exact: true })
       ).toBeVisible()
+      expect(posts()).toBe(0)
+    })
+  }
+
+  for (const withPlan of [true, false]) {
+    test(`结构读取超时尚无变更列表时可以直接重试 · 原计划${withPlan ? '存在' : '未生成'}`, async ({
+      page
+    }, info) => {
+      test.setTimeout(90_000)
+      const failed = {
+        ...report('failed'),
+        items: [],
+        summary: { added: 0, changed: 0, removed: 0, unchanged: 0 },
+        errorCode: 'BACKUP_SOURCE_READ_TIMEOUT',
+        error: '来源数据库读取超时，原完整备份保留。'
+      }
+      const posts = await open(page, failed, 'light', false, withPlan ? failed.planId : undefined)
+      const panel = page.getByTestId('operations-update-report')
+      await panel.getByRole('button', { name: '重试更新备份' }).click()
+      await expect(page.getByRole('textbox', { name: '要更新的完整备份目录' })).toHaveValue(
+        backupPath
+      )
+      await expect(page.getByRole('textbox', { name: '更新计划编号（可选）' })).toHaveValue(
+        withPlan ? failed.planId : ''
+      )
+      await expect(page.getByLabel('来源数据库密码')).toHaveValue('')
+      await expect(
+        page.getByRole('button', { name: '执行更新已有备份', exact: true })
+      ).toBeVisible()
+      await expect(panel).toContainText('无需单独重新检查')
+      await page.screenshot({ path: info.outputPath(`update-early-timeout-${withPlan}.png`) })
       expect(posts()).toBe(0)
     })
   }

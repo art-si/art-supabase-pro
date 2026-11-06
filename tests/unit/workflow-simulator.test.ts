@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import test, { mock } from 'node:test'
 import {
   createWorkflowSimulationContext,
   inspectWorkflowConfig,
@@ -157,4 +157,21 @@ test('workflow simulator creates a sample that exercises configured conditions',
   assert.equal(context.amount, 20001)
   assert.equal(context.costType, 'fuel')
   assert.equal(simulateWorkflow({ nodes }, fields, context).matchedCount, 2)
+})
+
+test('workflow simulator uses the local calendar date for date samples', () => {
+  const originalTimezone = process.env.TZ
+  process.env.TZ = 'Asia/Shanghai'
+  mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-05T16:30:00Z') })
+  try {
+    const context = createWorkflowSimulationContext(
+      [{ key: 'businessDate', label: '业务日期', valueType: 'date' }],
+      []
+    )
+    assert.equal(context.businessDate, '2026-11-06')
+  } finally {
+    mock.timers.reset()
+    if (originalTimezone === undefined) delete process.env.TZ
+    else process.env.TZ = originalTimezone
+  }
 })

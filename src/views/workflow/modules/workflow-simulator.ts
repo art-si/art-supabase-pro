@@ -1,3 +1,4 @@
+import dayjs from 'dayjs'
 import { difference, isEqual, trim } from 'lodash-es'
 
 export type WorkflowSimulationNodeState = 'matched' | 'skipped'
@@ -429,7 +430,7 @@ export function createWorkflowSimulationContext(
       }
       if (field.valueType === 'number') return [field.key, 10000]
       if (field.valueType === 'boolean') return [field.key, true]
-      if (field.valueType === 'date') return [field.key, new Date().toISOString().slice(0, 10)]
+      if (field.valueType === 'date') return [field.key, dayjs().format('YYYY-MM-DD')]
       return [field.key, `示例${field.label}`]
     })
   )

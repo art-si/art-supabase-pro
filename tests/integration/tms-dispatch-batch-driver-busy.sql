@@ -1,5 +1,5 @@
 -- Same driver and vehicle can serve two executions of one authorized batch.
--- A following independent dispatch cannot reuse the busy driver. All writes roll back.
+-- A following independent dispatch may reuse it with an explicit advisory. All writes roll back.
 BEGIN;
 SELECT set_config('request.jwt.claims','{"sub":"0a872664-874c-447d-a256-d0dbdca6ed45","role":"authenticated"}',true);
 SELECT set_config('request.headers','{"x-art-tenant-scope":"2824c2b5-2774-4781-b995-f55e8bcee920"}',true);
@@ -14,7 +14,6 @@ DECLARE
   v_result jsonb;
   v_executions jsonb := '[]'::jsonb;
   v_index integer;
-  v_rejected boolean := false;
 BEGIN
   SELECT * INTO STRICT v_source FROM public.tms_order
   WHERE id='a8fd42f0-20ac-4832-99e3-a82bed6eca11';
@@ -86,8 +85,7 @@ BEGIN
     RAISE EXCEPTION '已配载司机仍被标记为空闲';
   END IF;
 
-  BEGIN
-    PERFORM public.tms_create_dispatch_plan_secure(jsonb_build_object(
+  v_result := public.tms_create_dispatch_plan_secure(jsonb_build_object(
       'kind','single','executions',jsonb_build_array(jsonb_build_object(
         'dispatch_mode','legacy_vehicle',
         'dispatch_vehicle_id',v_vehicle.id,
@@ -95,7 +93,7 @@ BEGIN
         'planned_departure_time',now()+interval '1 day',
         'planned_arrival_time',now()+interval '2 days',
         'certificate_risk_override',true,
-        'certificate_risk_override_reason','批次结束后应拒绝再次占用',
+        'certificate_risk_override_reason','独立批次的司机占用仅作提醒',
         'allocations',jsonb_build_array(jsonb_build_object(
           'order_id',v_order_ids[3],
           'lines',jsonb_build_array(jsonb_build_object(
@@ -104,8 +102,10 @@ BEGIN
         ))
       ))
     ));
-  EXCEPTION WHEN check_violation THEN v_rejected := true;
-  END;
-  IF NOT v_rejected THEN RAISE EXCEPTION '独立批次复用在途司机未被阻止'; END IF;
+  IF jsonb_array_length(v_result->'waybill_ids')<>1 OR NOT EXISTS(
+    SELECT 1 FROM jsonb_array_elements(v_result->'warnings') warning
+    WHERE warning->>'subject_label'=v_driver.driver_name
+      AND warning->>'message' LIKE '%未完成运输任务%'
+  ) THEN RAISE EXCEPTION '独立批次复用在途司机应成功并明确提醒：%',v_result; END IF;
 END $test$;
 ROLLBACK;

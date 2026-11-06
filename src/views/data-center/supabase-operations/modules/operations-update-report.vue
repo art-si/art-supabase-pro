@@ -39,11 +39,11 @@
           >使用此计划准备更新</ElButton
         >
         <ElButton
-          v-if="report.mode === 'apply' && report.status === 'failed' && report.items.length"
+          v-if="report.mode === 'apply' && report.status === 'failed'"
           v-auth="'SupabaseOperations:UpdateBackup'"
           type="primary"
           @click="emit('prepare-update', report)"
-          >使用同一计划重试</ElButton
+          >重试更新备份</ElButton
         >
         <ElButton
           v-if="report.status === 'failed'"
@@ -56,6 +56,9 @@
           ><ArtSvgIcon icon="ri:download-2-line" />下载更新报告</ElButton
         >
       </div>
+      <p v-if="report.mode === 'apply' && report.status === 'failed'" class="text-xs text-g-700">
+        无需单独重新检查；重试会校验远端状态，并复用有效的暂存文件。
+      </p>
       <p v-if="!connected" class="text-xs text-g-700"
         >当前未连接执行端，显示上次保存的报告；重新连接后再执行。</p
       >
