@@ -45,9 +45,10 @@ BEGIN
   IF jsonb_array_length(candidate->'records')<>1 OR (candidate->>'total')::integer<>2 THEN RAISE EXCEPTION '过滤后分页计数错误'; END IF;
   candidate:=public.tms_list_dispatch_candidates_secure('carrier_driver',tenant,drivers[2]::text,0,9);
   item:=candidate->'records'->0;
-  IF item->>'vehicle_id'<>vehicles[2]::text OR item->'vehicle'->>'id'<>vehicles[2]::text OR item->>'gender'<>'male' THEN
+  IF item->>'vehicle_id'<>vehicles[2]::text OR item->'vehicle'->>'id'<>vehicles[2]::text OR item->>'gender'<>'1' THEN
     RAISE EXCEPTION '司机关联车辆或新增资料未带出：%',item;
   END IF;
+  IF (SELECT gender FROM public.mdm_driver WHERE id=drivers[2])<>'male' THEN RAISE EXCEPTION '参选读取错误地改写了原始性别'; END IF;
   IF item->'phone' IS DISTINCT FROM (SELECT app_private.tms_driver_to_secure_json(d,null)->'phone' FROM public.mdm_driver d WHERE d.id=drivers[2]) THEN
     RAISE EXCEPTION '司机电话绕过字段权限投影';
   END IF;
@@ -83,7 +84,8 @@ BEGIN
       IF NOT denied THEN RAISE EXCEPTION '不同承运商的司机与车辆被错误合并'; END IF;
     END IF;
     result:=public.tms_create_dispatch_plan_secure(jsonb_build_object('kind','single','executions',jsonb_build_array(jsonb_build_object(
-      'dispatch_mode',mode,'dispatch_vehicle_id',vehicles[i],'dispatch_driver_id',drivers[i],'dispatch_carrier_id',chosen_carrier,
+      'dispatch_mode',mode,'dispatch_vehicle_id',vehicles[i],'dispatch_driver_id',drivers[i],
+      'dispatch_carrier_id',case when i in (1,4) then carriers[2] else chosen_carrier end,
       'planned_departure_time',now()+interval '1 day','planned_arrival_time',now()+interval '2 days',
       'allocations',jsonb_build_array(jsonb_build_object('order_id',created->>'id','lines',jsonb_build_array(jsonb_build_object('line_index',0,'quantity',1,'weight_kg',100,'volume_m3',1))))))));
     IF NOT EXISTS(SELECT 1 FROM public.tms_waybill w WHERE w.id=(result->'waybill_ids'->>0)::uuid AND w.vehicle_id=vehicles[i] AND w.driver_id=drivers[i] AND w.dispatch_mode=mode AND w.carrier_id IS NOT DISTINCT FROM chosen_carrier) THEN

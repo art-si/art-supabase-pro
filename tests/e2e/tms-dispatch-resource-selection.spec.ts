@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
-import { prepareAppearance } from './support/appearance'
+import { prepareAppearance, assertAppearance } from './support/appearance'
 import { dispatchFixtureDictionaryRows } from './support/tms-dispatch-dictionaries'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
@@ -53,7 +53,7 @@ const baseDriver = (id: string, name: string, ownership: string, vehicle: typeof
   driver_ownership: ownership,
   driver_status: 'on_duty',
   phone: '13800000001',
-  gender: 'male',
+  gender: '1',
   license_type: 'A2',
   portrait_url: 'https://example.test/dispatch-photo.svg',
   vehicle_id: vehicle.id,
@@ -77,7 +77,11 @@ const withDriver = (vehicle: typeof vehicleA, driver: typeof driverA) => ({
 async function setup(page: Page) {
   const writes: Array<{ kind: string; executions: Array<Record<string, unknown>> }> = []
   await prepareIsolatedSession(page)
-  await prepareAppearance(page, { theme: 'light', boxBorderMode: true })
+  const appearance = {
+    theme: test.info().project.name.includes('dark') ? ('dark' as const) : ('light' as const),
+    boxBorderMode: !test.info().project.name.includes('shadow')
+  }
+  await prepareAppearance(page, appearance)
   await page.route('https://example.test/dispatch-photo.svg', (route) =>
     route.fulfill({
       contentType: 'image/svg+xml',
@@ -123,6 +127,7 @@ async function setup(page: Page) {
   await expect(page.getByRole('button', { name: '打开调度', exact: true })).toBeVisible({
     timeout: 120_000
   })
+  await assertAppearance(page, appearance)
   return writes
 }
 

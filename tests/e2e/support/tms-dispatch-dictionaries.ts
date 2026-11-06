@@ -28,7 +28,7 @@ export const dispatchFixtureDictionaries: Record<string, DispatchFixtureDictiona
     dict('carrier', '承运商司机'),
     dict('individual', '个体司机')
   ],
-  sex: [dict('male', '男'), dict('female', '女')],
+  sex: [dict('1', '男'), dict('2', '女')],
   tmsDriverLicenseType: [dict('A2', 'A2')],
   vehicleType: [dict('truck', '高栏车')],
   tmsDriverStatus: [dict('on_duty', '在岗'), dict('off_duty', '非在岗')],
