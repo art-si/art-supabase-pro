@@ -52,6 +52,9 @@ test('server-session consumers own their environment and never expose server cre
     const packageRoot = path.join(applicationRoot, 'node_modules/art-supabase-pro')
     mkdirSync(packageRoot, { recursive: true })
     const packaged = await createModuleViteConfig({ ...options, platformRoot: packageRoot })
+    for (const dependency of ['ohash', 'vue-draggable-plus']) {
+      assert.ok(packaged.optimizeDeps.include.includes(`art-supabase-pro > ${dependency}`))
+    }
     const elementPlus = packaged.plugins
       .flat(Infinity)
       .find((plugin) => plugin?.name === 'unplugin-element-plus')
