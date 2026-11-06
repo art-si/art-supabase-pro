@@ -22,18 +22,17 @@ import {
 } from '@/utils/table/column-profile'
 import type { ColumnOption } from '@/types/component'
 import type { TableColumnRuntime } from '@/types/table-column-config'
+import {
+  tableColumnRuntimeCache,
+  tableColumnRuntimeRevision,
+  tableColumnRuntimeWarnings,
+  type TableColumnRuntimeCacheEntry
+} from '@/utils/table/column-runtime-cache'
+
+export { invalidateTableColumnConfig } from '@/utils/table/column-runtime-cache'
 import configuredTableRoutes from '@/config/table-column-routes.generated.json'
 
 const registeredRoutes = new Set(configuredTableRoutes)
-
-const cache = new Map<string, { expires: number; value: Promise<TableColumnRuntime | null> }>()
-const revision = ref(0)
-const warned = new Set<string>()
-
-export function invalidateTableColumnConfig(): void {
-  cache.clear()
-  revision.value += 1
-}
 
 /** Read only this menu's effective mode; frontend mode transfers no column definitions. */
 export function useConfiguredTableColumns<T>(factory: () => ColumnOption<T>[]): {
@@ -58,7 +57,7 @@ export function useConfiguredTableColumns<T>(factory: () => ColumnOption<T>[]): 
   let active = false
   const context = computed(
     () =>
-      `${user.getUserInfo.userId ?? ''}:${tenant.effectiveTenantId ?? 'all'}:${tenant.revision}:${revision.value}`
+      `${user.getUserInfo.userId ?? ''}:${tenant.effectiveTenantId ?? 'all'}:${tenant.revision}:${tableColumnRuntimeRevision.value}`
   )
 
   async function load(): Promise<void> {
@@ -74,22 +73,27 @@ export function useConfiguredTableColumns<T>(factory: () => ColumnOption<T>[]): 
     const element = owner?.proxy?.$el
     if (element instanceof Element && element.closest('.el-dialog, .el-drawer')) return
     const key = `${context.value}:${routePath}`
+    let requestEntry: TableColumnRuntimeCacheEntry | undefined
     try {
       const now = Date.now()
-      let entry = cache.get(key)
+      let entry = tableColumnRuntimeCache.get(key)
       if (!entry || entry.expires < now) {
         entry = {
           expires: now + 60_000,
           value: fetchTableColumnRuntime(routePath)
         }
-        cache.set(key, entry)
+        tableColumnRuntimeCache.set(key, entry)
       }
-      const value = await entry.value
-      if (current === request) runtime.value = value
+      requestEntry = entry
+      const value = await requestEntry.value
+      const currentKey = `${context.value}:${routePath}`
+      if (current === request && currentKey === key) runtime.value = value
     } catch {
-      cache.delete(key)
-      if (current !== request || warned.has(key)) return
-      warned.add(key)
+      if (requestEntry && tableColumnRuntimeCache.get(key) === requestEntry)
+        tableColumnRuntimeCache.delete(key)
+      const currentKey = `${context.value}:${routePath}`
+      if (current !== request || currentKey !== key || tableColumnRuntimeWarnings.has(key)) return
+      tableColumnRuntimeWarnings.add(key)
       ElNotification({
         title: '已使用前端默认列',
         message: '列配置暂时无法加载，列表仍可使用；重新进入页面可重试。',

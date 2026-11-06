@@ -1,6 +1,28 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 test.setTimeout(90_000)
+for (const status of ['unknown', 'prototype']) {
+  test('运单详情不显示原始状态码 ' + status, async ({ page }) => {
+    await prepareIsolatedSession(page)
+    await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+    await page.goto('/tests/e2e/fixtures/tms-waybill-date-reuse.html?status=' + status, {
+      waitUntil: 'domcontentloaded'
+    })
+    const statusFact = page
+      .locator('.waybill-info-panel')
+      .getByText('运单状态', { exact: true })
+      .locator('..')
+    await expect(statusFact).toContainText('状态待核对')
+    await expect(statusFact).not.toContainText(
+      status === 'prototype' ? 'constructor' : 'unexpected_waybill_status'
+    )
+    const tracking = page.locator('.waybill-tracking')
+    await expect(tracking).toContainText('运输节点待核对')
+    await expect(tracking).not.toContainText(
+      status === 'prototype' ? 'constructor' : 'unexpected_waybill_event'
+    )
+  })
+}
 for (const mode of ['valid', 'empty', 'invalid', 'time-only']) {
   test('运单详情日期共享规则 ' + mode, async ({ page }, info) => {
     await prepareIsolatedSession(page)

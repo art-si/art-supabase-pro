@@ -24,6 +24,7 @@ const permissions = [
   'TmsCustomer:View',
   'TmsCustomer:Edit',
   'TmsCustomer:Add',
+  'TmsCustomer:Delete',
   ...['Contact', 'Finance'].flatMap((kind) =>
     ['Add', 'Edit', 'Copy', 'Delete'].map((action) => `TmsCustomer:${kind}${action}`)
   ),

@@ -1,5 +1,15 @@
 <template>
+  <ArtOverlayLoading
+    v-if="loading"
+    class="art-picker-empty"
+    loading
+    size="compact"
+    :min-height="112"
+    :text="loadingText"
+    description="正在获取最新选项，请稍候"
+  />
   <ArtEmptyState
+    v-else
     class="art-picker-empty"
     :title="title"
     :description="description"
@@ -10,6 +20,7 @@
 
 <script setup lang="ts">
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
+  import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
 
   defineOptions({ name: 'ArtPickerEmpty' })
 
@@ -17,8 +28,10 @@
     defineProps<{
       title?: string
       description?: string
+      loading?: boolean
+      loadingText?: string
     }>(),
-    { title: '暂无可选数据', description: '' }
+    { title: '暂无可选数据', description: '', loading: false, loadingText: '正在加载选项…' }
   )
 </script>
 

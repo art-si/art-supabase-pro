@@ -64,3 +64,55 @@ for (const mode of ['cargo', 'station']) {
     expect(errors).toEqual([])
   })
 }
+
+test('站点删除引用提示翻译未知状态且不显示原始 code', async ({ page }) => {
+  test.slow()
+  const stationId = '11111111-1111-4111-8111-111111111119'
+  await page.route('**/rest/v1/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1)
+    const json =
+      name === 'mdm_station'
+        ? [
+            {
+              id: stationId,
+              station_code: 'ZD-DELETE-01',
+              station_name: '删除校验测试站',
+              station_type: 'shipping',
+              enabled: true,
+              tenant_id: '11111111-1111-4111-8111-111111111111'
+            }
+          ]
+        : name === 'get_tms_station_delete_dependency_details'
+          ? [
+              {
+                resourceId: stationId,
+                dependencyCode: 'station_order',
+                recordId: 'order-test',
+                targetId: 'order-test',
+                recordNo: 'YD-DELETE-01',
+                recordSummary: '发货站',
+                recordStatus: 'future_status_code',
+                recordAmount: null,
+                cleanupAllowed: false
+              }
+            ]
+          : []
+    return route.fulfill({
+      json,
+      headers: {
+        'content-range': name === 'mdm_station' ? '0-0/1' : '*/0',
+        'access-control-expose-headers': 'content-range'
+      }
+    })
+  })
+  await page.goto('/tests/e2e/fixtures/tms-import-normalization.html?mode=station')
+  const row = page.getByRole('row').filter({ hasText: '删除校验测试站' })
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: '更多操作' }).click()
+  await page.getByRole('menuitem', { name: '删除' }).click()
+  const guard = page.getByRole('dialog').filter({ hasText: '暂时无法删除站点' })
+  await expect(guard).toContainText('YD-DELETE-01')
+  await expect(guard).toContainText('待核对')
+  await expect(guard).not.toContainText('future_status_code')
+  await expect(page.getByRole('dialog', { name: '删除确认' })).toHaveCount(0)
+})

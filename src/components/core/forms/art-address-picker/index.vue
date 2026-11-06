@@ -16,14 +16,26 @@
             :placeholder="regionPlaceholder"
             :clearable="clearable"
             :filterable="filterable"
-            :disabled="disabled"
+            :disabled="disabled || regionLoading || regionError"
             :loading="regionLoading"
             @change="handleRegionChange"
           >
             <template #empty>
-              <ArtPickerEmpty title="暂无可选地区" />
+              <ArtPickerEmpty :loading="regionLoading" title="暂无可选地区" />
             </template>
           </ElCascader>
+          <ArtOverlayLoading
+            v-if="regionLoading"
+            loading
+            size="compact"
+            :min-height="112"
+            text="正在加载地区…"
+          />
+          <div v-else-if="regionError" class="art-address-picker__region-status" role="alert">
+            地区选项加载失败。<ElButton link type="primary" @click="loadRegionOptions"
+              >重新加载</ElButton
+            >
+          </div>
         </ElFormItem>
       </ElCol>
 
@@ -192,6 +204,7 @@
   import { trim } from 'lodash-es'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import ArtPickerEmpty from '@/components/core/feedback/art-picker-empty/index.vue'
+  import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import {
     useAmapGeolocation,
@@ -326,6 +339,7 @@
   const regionFormItemRef = ref<FormItemExpose>()
   const detailFormItemRef = ref<FormItemExpose>()
   const regionLoading = ref(false)
+  const regionError = ref(false)
   const loadedRegionOptions = ref<AddressRegionOption[]>([])
   const searchKeyword = ref('')
   const draftAddress = ref('')
@@ -839,10 +853,13 @@
 
   const loadRegionOptions = async (): Promise<void> => {
     if (!props.regionApi || props.regionOptions.length) return
+    regionError.value = false
     regionLoading.value = true
     try {
       loadedRegionOptions.value = await props.regionApi()
       regionAdcode.value = findRegionAdcode(loadedRegionOptions.value, regionPath.value)
+    } catch {
+      regionError.value = !props.regionOptions.length
     } finally {
       regionLoading.value = false
     }
@@ -852,6 +869,7 @@
     () => props.regionOptions,
     (options) => {
       if (!options.length) return
+      regionError.value = false
       regionAdcode.value = findRegionAdcode(options, regionPath.value)
     },
     { deep: true }
@@ -884,6 +902,16 @@
 
     &__control {
       width: 100%;
+    }
+
+    &__region-status {
+      display: flex;
+      gap: var(--art-control-icon-gap-compact, 6px);
+      align-items: center;
+      min-height: 20px;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
     }
 
     &__detail {

@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
+test.setTimeout(90_000)
+test.beforeEach(async ({ page }) => {
+  await prepareIsolatedSession(page)
+})
 
 test('远程选项失败有重试且保留输入', async ({ page }, testInfo) => {
   let failed = true
@@ -40,6 +45,36 @@ test('远程选项失败有重试且保留输入', async ({ page }, testInfo) =>
   expect(errors).toEqual([])
 })
 
+for (const fieldType of ['select', 'selectV2']) {
+  test(`${fieldType} 在请求期间显示与表格同源的加载状态`, async ({ page }, testInfo) => {
+    test.setTimeout(180_000)
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.route('**/form-options-test?**', async (route) => {
+      await held
+      await route.fulfill({ json: { data: [{ label: '已加载成员', value: 'member' }] } })
+    })
+    const theme = testInfo.project.name.includes('dark') ? 'dark' : 'light'
+    const box = theme === 'dark' ? 'shadow-mode' : 'border-mode'
+    await page.goto(
+      `/tests/e2e/fixtures/form-remote-options.html?fieldType=${fieldType}&theme=${theme}&box=${box}`,
+      { waitUntil: 'commit' }
+    )
+    const picker = page.getByRole('combobox')
+    await expect(picker).toBeEnabled({ timeout: 60_000 })
+    await picker.click()
+    const loading = page.locator('.el-popper:visible .art-overlay-loading')
+    await expect(loading).toContainText('正在获取最新选项，请稍候')
+    await expect(page.locator('.el-popper:visible .art-empty-state')).toHaveCount(0)
+    await page.screenshot({ path: testInfo.outputPath(`picker-loading-${fieldType}.png`) })
+    release()
+    await expect(loading).toHaveCount(0)
+    await expect(page.getByTestId('member')).toHaveText('member')
+  })
+}
+
 for (const phase of ['before', 'api', 'after']) {
   test(`选项 ${phase} 异常可重试且不产生未捕获错误`, async ({ page }) => {
     const errors: string[] = []
@@ -62,7 +97,7 @@ for (const phase of ['before', 'api', 'after']) {
   })
 }
 
-test('旧请求完成不会解除新请求加载状态', async ({ page }) => {
+test('旧请求完成不会解除新请求加载状态', async ({ page }, testInfo) => {
   let releaseOld: () => void = () => {}
   let releaseNew: () => void = () => {}
   const oldHeld = new Promise<void>((resolve) => {
@@ -94,12 +129,18 @@ test('旧请求完成不会解除新请求加载状态', async ({ page }) => {
   await expect.poll(() => newStarted).toBe(true)
   releaseOld()
   await expect.poll(() => oldReturned).toBe(true)
-  await expect(page.getByRole('combobox')).toBeDisabled()
+  await expect(page.getByRole('combobox')).toBeEnabled()
+  await page.getByRole('combobox').click()
+  await expect(page.locator('.el-select-dropdown:visible .art-overlay-loading')).toContainText(
+    '正在获取最新选项，请稍候'
+  )
+  await page.screenshot({ path: testInfo.outputPath('remote-options-loading.png') })
   await expect(page.getByRole('button', { name: '提交表单', exact: true })).toBeDisabled()
   await expect(page.getByTestId('member')).toHaveText('')
   releaseNew()
   await expect(page.getByTestId('member')).toHaveText('b')
   await expect(page.getByRole('combobox')).toBeEnabled()
+  await expect(page.locator('.el-select-dropdown:visible .art-overlay-loading')).toHaveCount(0)
 })
 
 test('手动加载字段切换租户后旧选项失效', async ({ page }) => {

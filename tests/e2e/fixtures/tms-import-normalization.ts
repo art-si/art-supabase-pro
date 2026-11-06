@@ -23,7 +23,8 @@ useUserStore(store).setUserInfo({
 })
 useMenuStore(store).setButtonList([
   { name: 'TmsCargo:Import', type: 'button', path: '', meta: { title: '导入货物' } },
-  { name: 'TmsStation:Import', type: 'button', path: '', meta: { title: '导入站点' } }
+  { name: 'TmsStation:Import', type: 'button', path: '', meta: { title: '导入站点' } },
+  { name: 'TmsStation:Delete', type: 'button', path: '', meta: { title: '删除站点' } }
 ])
 useUserStore(store).setDictMap({
   tmsStationType: [

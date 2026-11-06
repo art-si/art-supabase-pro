@@ -51,6 +51,7 @@ userStore.setDictMap(
 useMenuStore(store).setButtonList(
   [
     'VehicleArchive:Add',
+    'VehicleArchive:Copy',
     'VehicleArchive:Edit',
     'VehicleArchive:TabBasic',
     'VehicleArchive:TabBody',
@@ -87,8 +88,11 @@ useTheme().switchThemeStyles(
 document.documentElement.dataset.boxMode =
   params.get('theme') === 'dark' ? 'shadow-mode' : 'border-mode'
 const editId = params.get('editId')
+const copyFrom = params.get('copyFrom')
 await router.push(
-  editId ? `/vms/vehicle-archive-edit/${encodeURIComponent(editId)}` : '/vms/vehicle-archive-edit'
+  editId
+    ? `/vms/vehicle-archive-edit/${encodeURIComponent(editId)}`
+    : { path: '/vms/vehicle-archive-edit', query: copyFrom ? { copyFrom } : {} }
 )
 await router.isReady()
 app.mount('#vehicle-asset-form')

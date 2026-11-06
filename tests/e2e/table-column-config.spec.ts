@@ -817,6 +817,28 @@ test('清除登录用户后旧列方案请求迟到不能覆盖前端列', async
   }
 })
 
+test('实际退出登录后同账号重新进入会读取新列方案', async ({ page }) => {
+  const state = await mockApi(page)
+  state.profiles = [
+    profile([{ ...columns[1], label: '旧方案编码' }, { ...columns[0], visible: false }, columns[2]])
+  ]
+  await page.goto('/tests/e2e/fixtures/table-column-config.html?runtime=1&logout-lifecycle=1')
+  const headers = page.locator('.el-table__header th .cell')
+  await expect(headers).toHaveText(['旧方案编码', '金额'])
+  expect(state.runtimeCalls).toBe(1)
+
+  state.profiles = [
+    profile([{ ...columns[1], label: '新方案编码' }, { ...columns[0], visible: false }, columns[2]])
+  ]
+  await page.getByRole('button', { name: '卸载表格并退出登录' }).click()
+  await expect(page.getByText('已卸载表格', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('logout-lifecycle-status')).toHaveText('logged-out')
+  await page.getByRole('button', { name: '同账号重新进入表格' }).click()
+  await expect(page.getByTestId('logout-lifecycle-status')).toHaveText('reentered')
+  await expect(headers).toHaveText(['新方案编码', '金额'])
+  expect(state.runtimeCalls).toBe(2)
+})
+
 test('超级管理员为租户、角色和用户分别保存当前表格方案', async ({ page }) => {
   const state = await mockApi(page)
   await openEditor(page)

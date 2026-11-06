@@ -224,3 +224,70 @@ test('仅查看权限打开同一客户档案，基础字段和维护按钮不�
   await dialog.getByRole('tab', { name: '联系人', exact: true }).click()
   await expect(dialog.getByRole('button', { name: '新增联系人', exact: true })).toHaveCount(0)
 })
+
+test('客户删除引用提示隐藏未知状态码并保留可识别的业务记录', async ({ page }) => {
+  test.slow()
+  const customerId = '11111111-1111-4111-8111-111111111118'
+  await page.route('**/rest/v1/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1)
+    const json =
+      name === 'tms_list_customers_secure'
+        ? {
+            records: [
+              {
+                id: customerId,
+                customerCode: 'KH-DELETE-01',
+                customerName: '删除校验测试客户',
+                enabled: true,
+                fieldAccess: {},
+                isRecordOwner: true
+              }
+            ],
+            total: 1,
+            fieldAccess: {}
+          }
+        : name === 'get_tms_customer_delete_dependency_details_secure'
+          ? [
+              {
+                customerId,
+                dependencyCode: 'contract',
+                recordId: 'contract-test',
+                targetId: 'contract-test',
+                recordNo: 'HT-DELETE-01',
+                recordSummary: '年度运输合同',
+                recordStatus: 'future_status_code',
+                recordAmount: null,
+                cleanupAllowed: false
+              },
+              {
+                customerId,
+                dependencyCode: 'contract',
+                recordId: 'contract-prototype-test',
+                targetId: 'contract-prototype-test',
+                recordNo: 'HT-DELETE-02',
+                recordSummary: '专项线路合同',
+                recordStatus: 'constructor',
+                recordAmount: null,
+                cleanupAllowed: false
+              }
+            ]
+          : name === 'get_table_column_runtime'
+            ? { enabled: false, profiles: [] }
+            : []
+    return route.fulfill({ json })
+  })
+  await page.goto('/tests/e2e/fixtures/tms-customer-workspace.html', {
+    waitUntil: 'domcontentloaded'
+  })
+  const row = page.getByRole('row').filter({ hasText: '删除校验测试客户' })
+  await expect(row).toBeVisible({ timeout: 60_000 })
+  await row.getByRole('button', { name: '更多操作' }).click()
+  await page.getByRole('menuitem', { name: '删除客户' }).click()
+  const guard = page.getByRole('dialog').filter({ hasText: '暂时无法删除客户' })
+  await expect(guard).toContainText('HT-DELETE-01')
+  await expect(guard).toContainText('HT-DELETE-02')
+  await expect(guard).toContainText('待核对')
+  await expect(guard).not.toContainText('future_status_code')
+  await expect(guard).not.toContainText('constructor')
+  await expect(page.getByRole('dialog', { name: '删除确认' })).toHaveCount(0)
+})

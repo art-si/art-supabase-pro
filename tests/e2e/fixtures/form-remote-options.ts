@@ -3,6 +3,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import language from '@/locales'
 import { store } from '@/store'
 import { setupGlobDirectives } from '@/directives'
+import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
+import { SystemThemeEnum } from '@/enums/app-enum'
 import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
@@ -10,8 +12,10 @@ import '@styles/index.scss'
 const form = ref<InstanceType<typeof ArtForm>>()
 const tenant = ref('a')
 const model = ref({ member: '', reason: '' })
-const manual = new URLSearchParams(location.search).has('manual')
-const phase = new URLSearchParams(location.search).get('phase')
+const params = new URLSearchParams(location.search)
+const manual = params.has('manual')
+const phase = params.get('phase')
+const fieldType = params.get('fieldType') === 'selectV2' ? 'selectV2' : 'select'
 let callbackFailure = true
 const validity = ref('未校验')
 const submissions = ref(0)
@@ -19,7 +23,7 @@ const items = computed<FormItem[]>(() => [
   {
     key: 'member',
     label: '审批成员',
-    type: 'select',
+    type: fieldType,
     resultField: 'data',
     params: { tenant: tenant.value },
     autoSelect: 'one',
@@ -118,5 +122,11 @@ app.use(store)
 app.use(router)
 app.use(language)
 setupGlobDirectives(app)
+initializeTheme()
+useTheme().switchThemeStyles(
+  params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+)
+document.documentElement.dataset.boxMode =
+  params.get('box') === 'shadow-mode' ? 'shadow-mode' : 'border-mode'
 await router.isReady()
 app.mount('#form-options')
