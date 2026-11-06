@@ -9,7 +9,7 @@ test('两员工获取新增、切换旧组织不覆盖、银行必填及保存�
     tenant_id: tenant,
     employee_name: `验收员工${index}`,
     employee_no: `EMP${index}`,
-    organization_id: `department-${index}`,
+    organization_id: index === 1 ? 'department-1' : 'company-2',
     employment_status: 'active'
   }))
   const organizations = [
@@ -34,10 +34,24 @@ test('两员工获取新增、切换旧组织不覆盖、银行必填及保存�
         status: '1',
         sort: index
       },
+      ...(index === 1
+        ? [
+            {
+              id: 'company-inner-1',
+              tenant_id: tenant,
+              parent_id: 'company-1',
+              organization_code: 'CO-INNER-1',
+              organization_name: '验收内层公司1',
+              organization_type: 'company',
+              status: '1',
+              sort: 1
+            }
+          ]
+        : []),
       {
         id: `department-${index}`,
         tenant_id: tenant,
-        parent_id: `company-${index}`,
+        parent_id: index === 1 ? 'company-inner-1' : `company-${index}`,
         organization_code: `DEPT${index}`,
         organization_name: `验收部门${index}`,
         organization_type: 'department',
@@ -121,6 +135,7 @@ test('两员工获取新增、切换旧组织不覆盖、银行必填及保存�
     `/tests/e2e/fixtures/receivable-workspace.html?kind=expense_payee&theme=${theme}&permissions=FinancePayeeInformation:View,FinancePayeeInformation:Add,FinancePayeeInformation:Get`
   )
   for (const index of [1, 2]) {
+    const expectedCompanyName = index === 1 ? '验收内层公司1' : '验收公司2'
     await page.getByRole('button', { name: '一键获取员工', exact: true }).click()
     const editor = page.getByRole('dialog', { name: '一键获取员工收款信息', exact: true })
     const choose = async (employee: number, delayed = false) => {
@@ -137,12 +152,12 @@ test('两员工获取新增、切换旧组织不覆盖、银行必填及保存�
     await expect.poll(() => Boolean(release)).toBe(true)
     await choose(index)
     await expect(editor.locator('.el-form-item').filter({ hasText: '费用承担公司' })).toContainText(
-      `验收公司${index}`
+      expectedCompanyName
     )
     release?.()
     await page.waitForLoadState('networkidle')
     await expect(editor.locator('.el-form-item').filter({ hasText: '费用承担公司' })).toContainText(
-      `验收公司${index}`
+      expectedCompanyName
     )
     await expect(editor.getByRole('textbox', { name: /账户名称/ })).toHaveValue(`验收员工${index}`)
     failOrganization = true
@@ -153,17 +168,17 @@ test('两员工获取新增、切换旧组织不覆盖、银行必填及保存�
     failOrganization = false
     await expect(
       editor.locator('.el-form-item').filter({ hasText: '费用承担公司' })
-    ).not.toContainText(`验收公司${index}`)
+    ).not.toContainText(expectedCompanyName)
     await choose(index)
     await expect(editor.locator('.el-form-item').filter({ hasText: '费用承担公司' })).toContainText(
-      `验收公司${index}`
+      expectedCompanyName
     )
     await editor.getByRole('button', { name: '清空', exact: true }).click()
     await expect(editor.getByPlaceholder('选择收款员工', { exact: true })).toHaveValue('')
     await expect(editor.getByRole('textbox', { name: /账户名称/ })).toHaveValue('')
     await expect(
       editor.locator('.el-form-item').filter({ hasText: '费用承担公司' })
-    ).not.toContainText(`验收公司${index}`)
+    ).not.toContainText(expectedCompanyName)
     const beforeClearSubmit = saves.length
     await editor.getByRole('button', { name: '保存收款信息', exact: true }).click()
     await expect(editor.getByText('请选择收款员工', { exact: true })).toBeVisible()
@@ -202,8 +217,8 @@ test('两员工获取新增、切换旧组织不覆盖、银行必填及保存�
     expect(saves.at(-1)).toMatchObject({
       tenant_id: tenant,
       employee_id: `employee-${index}`,
-      organization_id: `department-${index}`,
-      cost_company_id: `company-${index}`,
+      organization_id: index === 1 ? 'department-1' : 'company-2',
+      cost_company_id: index === 1 ? 'company-inner-1' : 'company-2',
       account_name: index === 2 ? '自定义验收户名' : `验收员工${index}`
     })
   }

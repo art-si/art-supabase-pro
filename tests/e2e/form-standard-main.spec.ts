@@ -479,6 +479,48 @@ for (const [type, label] of [
   })
 }
 
+test('已有目录更换父级时保留组件路径，新目录仍按父级使用默认组件', async ({ page }) => {
+  const dialog = await open(page, 'menu', '&menuType=folder&menuMove=1')
+  const component = input(dialog, '组件路径')
+  await expect(component).toHaveValue('/legacy/folder-view')
+  await expect(component).toBeDisabled()
+
+  await field(dialog, '父级菜单').getByRole('combobox').click()
+  await page.getByRole('treeitem', { name: '目标目录', exact: true }).click()
+  await expect(component).toHaveValue('/legacy/folder-view')
+
+  const saved: Array<Record<string, unknown>> = []
+  await page.route('**/rest/v1/sys_menu?**', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      if ('component' in body) saved.push(body)
+    }
+    await route.fulfill({
+      status: 204,
+      headers: { 'content-range': '*/1', 'access-control-expose-headers': 'content-range' }
+    })
+  })
+  await dialog.locator('.art-dialog__footer .el-button--primary').click()
+  await expect(page.getByLabel('保存次数')).toHaveText('1')
+  expect(saved).toHaveLength(1)
+  expect(saved[0]).toMatchObject({
+    parent_id: 'target-folder',
+    path: '/legacy/folder',
+    component: '/legacy/folder-view'
+  })
+  await page.unroute('**/rest/v1/sys_menu?**')
+
+  await page.goto(
+    '/tests/e2e/fixtures/form-standard-main.html?feature=menu&mode=add&menuType=folder&menuMove=1'
+  )
+  const newDialog = page.getByRole('dialog').last()
+  await expect(newDialog).toBeVisible()
+  await expect(input(newDialog, '组件路径')).toHaveValue('/index/index')
+  await field(newDialog, '父级菜单').getByRole('combobox').click()
+  await page.getByRole('treeitem', { name: '目标目录', exact: true }).click()
+  await expect(input(newDialog, '组件路径')).toHaveValue('')
+})
+
 test('字典类型短模式同屏保留归属、级联与展示，校验后可保存', async ({ page }, info) => {
   const optionWarnings: string[] = []
   page.on('console', (message) => {

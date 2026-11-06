@@ -56,6 +56,7 @@ const runtimeRows = parameters.has('filters')
 const runtimePage = defineComponent({
   setup() {
     const allowed = ref(true)
+    const user = useUserStore()
     const { columns } = useTableColumns(() => [
       { prop: 'name', label: '名称' },
       { prop: 'code', label: '编码' },
@@ -66,6 +67,15 @@ const runtimePage = defineComponent({
       h('div', { class: 'h-full flex flex-col gap-4' }, [
         h('div', { class: 'flex gap-4' }, [
           h(ElButton, { onClick: invalidateTableColumnConfig }, () => '重新读取配置'),
+          h(
+            ElButton,
+            {
+              onClick: () => {
+                user.info = {}
+              }
+            },
+            () => '模拟清除登录用户'
+          ),
           h(
             ElButton,
             {

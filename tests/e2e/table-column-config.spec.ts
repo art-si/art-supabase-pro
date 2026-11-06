@@ -750,6 +750,73 @@ test('业务列表统一使用配置列或前端列，权限收紧始终生效',
   await expect(headers).toHaveText(['名称', '编码'])
 })
 
+test('清除登录用户后立即丢弃已加载的列方案', async ({ page }) => {
+  test.setTimeout(120_000)
+  const state = await mockApi(page)
+  state.profiles = [
+    profile([{ ...columns[1], label: '配置编码' }, { ...columns[0], visible: false }, columns[2]])
+  ]
+  await page.goto('/tests/e2e/fixtures/table-column-config.html?runtime=1')
+  const headers = page.locator('.el-table__header th .cell')
+  await expect(headers).toHaveText(['配置编码', '金额'])
+  await page.getByRole('button', { name: '模拟清除登录用户' }).click()
+  await expect(headers).toHaveText(['名称', '编码', '金额'])
+  expect(state.runtimeCalls).toBe(1)
+})
+
+test('清除登录用户后旧列方案请求迟到不能覆盖前端列', async ({ page }) => {
+  test.setTimeout(120_000)
+  await mockApi(page)
+  let requested!: () => void
+  const requestStarted = new Promise<void>((resolve) => {
+    requested = resolve
+  })
+  let release!: () => void
+  const holdResponse = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route(/\/rest\/v1\/rpc\/get_table_column_runtime(?:\?.*)?$/, async (route) => {
+    requested()
+    await holdResponse
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        enabled: true,
+        catalog,
+        profiles: [
+          profile([
+            { ...columns[1], label: '配置编码' },
+            { ...columns[0], visible: false },
+            columns[2]
+          ])
+        ]
+      })
+    })
+  })
+  try {
+    await page.goto('/tests/e2e/fixtures/table-column-config.html?runtime=1')
+    await requestStarted
+    const headers = page.locator('.el-table__header th .cell')
+    await expect(headers).toHaveText(['名称', '编码', '金额'])
+    await page.getByRole('button', { name: '模拟清除登录用户' }).click()
+    const response = page.waitForResponse((result) =>
+      new URL(result.url()).pathname.endsWith('/rpc/get_table_column_runtime')
+    )
+    release()
+    await response
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        })
+    )
+    await expect(headers).toHaveText(['名称', '编码', '金额'])
+  } finally {
+    release?.()
+  }
+})
+
 test('超级管理员为租户、角色和用户分别保存当前表格方案', async ({ page }) => {
   const state = await mockApi(page)
   await openEditor(page)

@@ -62,7 +62,13 @@ export function useConfiguredTableColumns<T>(factory: () => ColumnOption<T>[]): 
   )
 
   async function load(): Promise<void> {
-    if (!active || !user.getUserInfo.userId || !factory().length) return
+    if (!active) return
+    if (!user.getUserInfo.userId) {
+      request += 1
+      runtime.value = null
+      return
+    }
+    if (!factory().length) return
     const current = ++request
     runtime.value = null
     const element = owner?.proxy?.$el

@@ -2,6 +2,28 @@ import { expect, test } from '@playwright/test'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
+test('665px 窄屏保留可读表格并由工作区滚动', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 665, height: 700 })
+  await page.goto('/tests/e2e/fixtures/scrollbar-workspace.html?page=focus-search', {
+    waitUntil: 'domcontentloaded'
+  })
+  const table = page.locator('.art-table-query .art-table')
+  await expect(page.getByText('工作区记录 1', { exact: true })).toBeAttached()
+  await expect
+    .poll(() => table.evaluate((element) => element.getBoundingClientRect().height))
+    .toBeGreaterThan(200)
+  const scrollWrap = page.locator('.app-main__scroll-wrap')
+  await expect
+    .poll(() => scrollWrap.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(200)
+  await page.getByText('工作区记录 10', { exact: true }).scrollIntoViewIfNeeded()
+  await expect(page.getByText('工作区记录 10', { exact: true })).toBeInViewport()
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+  ).toBeLessThanOrEqual(1)
+  await page.screenshot({ path: testInfo.outputPath('narrow-workspace-table.png') })
+})
+
 test('短筛选在普通与专注模式按内容高度排列', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/tests/e2e/fixtures/scrollbar-workspace.html?page=focus-search&short=true')

@@ -68,7 +68,20 @@ useMenuStore(store).setButtonList(
 
 const router = createRouter({
   history: createMemoryHistory(),
-  routes: [{ name: 'TmsElectronicContract', path: '/', component: ElectronicContractPage }]
+  routes: [
+    { name: 'TmsElectronicContract', path: '/', component: ElectronicContractPage },
+    { name: 'TmsContract', path: '/tms/basic-data/contract', component: { template: '<div />' } }
+  ]
+})
+document.addEventListener('electronic-contract-fixture-leave', () => {
+  void router
+    .push({
+      name: 'TmsContract',
+      query: { recordId: '33333333-3333-4333-8333-333333333331' }
+    })
+    .then(() => {
+      document.documentElement.dataset.electronicFixtureLeft = 'true'
+    })
 })
 const app = createApp({
   render: () =>

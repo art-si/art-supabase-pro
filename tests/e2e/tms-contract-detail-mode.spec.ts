@@ -44,6 +44,7 @@ const dictionaryRows = [
   ['tmsContractCategory', 'annual_framework', '年度框架'],
   ['tmsContractTransportMode', 'road', '公路'],
   ['tmsContractBillingMethod', 'by_weight', '按重量'],
+  ['tmsCargoUnit', 'ton', '吨'],
   ['commonBoolean', 'true', '是'],
   ['commonBoolean', 'false', '否']
 ].map(([code, value, label], index) => ({
@@ -105,6 +106,17 @@ test('运输合同切换按明细后查询后端明细分页并导出每一行',
   await page.goto('/tests/e2e/fixtures/tms-contract-customer-tab.html')
   await expect(page.getByText('验收明细框架合同')).toBeVisible({ timeout: 60_000 })
   await expect(page.locator('#contract-customer-tab .el-pagination__total')).toContainText('1')
+  for (const label of ['合同类别', '计费单位', '客户/货主', '业务联系人', '签约日期']) {
+    await expect(
+      page.locator('#contract-customer-tab').getByRole('columnheader', { name: label })
+    ).toBeVisible()
+  }
+  await expect(
+    page.locator('#contract-customer-tab').getByText('年度框架', { exact: true })
+  ).toBeVisible()
+  await expect(
+    page.locator('#contract-customer-tab').getByText('吨', { exact: true })
+  ).toBeVisible()
   await page.getByText('按明细', { exact: true }).click()
   await expect(page.getByText('钢材甲')).toBeVisible()
   await expect(page.getByText('钢材乙')).toBeVisible()

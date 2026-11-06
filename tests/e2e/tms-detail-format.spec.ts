@@ -129,7 +129,9 @@ test('承运商主档通过公共参数设置标签宽度', async ({ page }, inf
     })
   )
   await page.goto('/tests/e2e/fixtures/tms-detail-format.html?kind=carrier-master')
-  await expect(page.getByRole('heading', { name: '标签宽度测试承运商', exact: true })).toBeVisible()
+  await expect(page.locator('.carrier-detail-dialog .art-entity-summary')).toContainText(
+    '标签宽度测试承运商'
+  )
   await expect(page.locator('.art-descriptions .el-descriptions__label').first()).toHaveCSS(
     'width',
     '132px'

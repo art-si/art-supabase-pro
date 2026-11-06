@@ -26,6 +26,7 @@ import '@styles/index.scss'
 const params = new URLSearchParams(location.search)
 const feature = params.get('feature') || 'tenant'
 const mode = params.get('mode') || 'edit'
+const menuMove = params.has('menuMove')
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const recordId = '22222222-2222-4222-8222-222222222222'
 const components: Record<string, () => Promise<{ default: Component }>> = {
@@ -72,12 +73,28 @@ const user = {
 const menu = {
   id: recordId,
   name: 'FixtureMenu',
-  path: '/system/fixture',
-  component: '/system/fixture',
+  path: menuMove ? '/legacy/folder' : '/system/fixture',
+  component: menuMove ? '/legacy/folder-view' : '/system/fixture',
   type: params.get('menuType') || 'menu',
+  ...(menuMove ? { sort: 1 } : {}),
   meta: { title: '验收菜单', isEnable: true, sort: 1 },
   children: []
 }
+const menuTree = menuMove
+  ? [
+      menu,
+      {
+        id: 'target-folder',
+        name: 'TargetFolder',
+        path: '/target',
+        component: '/index/index',
+        type: 'folder',
+        sort: 2,
+        meta: { title: '目标目录', isEnable: true },
+        children: []
+      }
+    ]
+  : []
 const rows: Record<string, Record<string, unknown>> = {
   user,
   tenant: {
@@ -168,8 +185,7 @@ function openArguments(): unknown[] {
     return [{ type: editing ? 'edit' : 'add', roleData: editing ? rows.role : undefined }]
   if (feature === 'organization')
     return [{ type: editing ? 'edit' : 'add', row: editing ? rows.organization : undefined }]
-  if (feature === 'menu')
-    return [{ type: menu.type, row: editing ? menu : undefined, menuTree: [] }]
+  if (feature === 'menu') return [{ type: menu.type, row: editing ? menu : undefined, menuTree }]
   if (feature === 'ai')
     return [
       {
