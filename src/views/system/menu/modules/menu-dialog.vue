@@ -170,6 +170,7 @@
 
   const syncComponentByType = (): void => {
     if (form.value.type === 'folder') {
+      if (form.value.id != null) return
       form.value.component = resolveFolderComponent(form.value.parentId)
       return
     }
@@ -540,7 +541,9 @@
       const submitPath = type === 'button' ? '' : path
       const submitComponent =
         type === 'folder'
-          ? resolveFolderComponent(normalizedParentId)
+          ? id != null
+            ? component
+            : resolveFolderComponent(normalizedParentId)
           : type === 'button'
             ? ''
             : component

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
@@ -65,7 +65,14 @@ test.beforeEach(async ({ page }) => {
           }
         ]
       })
-    if (endpoint === 'tms_expense_item') return route.fulfill({ json: expenseItems })
+    if (endpoint === 'tms_expense_item')
+      return route.fulfill({
+        json: expenseItems.map((item) => ({
+          ...item,
+          tenant_id: '11111111-1111-4111-8111-111111111111',
+          tenant: { id: '11111111-1111-4111-8111-111111111111' }
+        }))
+      })
     if (endpoint === 'tms_list_waybill_cost_options_secure')
       return route.fulfill({
         json: {
@@ -139,7 +146,8 @@ test.beforeEach(async ({ page }) => {
 async function captureVariants(
   page: Page,
   info: import('@playwright/test').TestInfo,
-  prefix: string
+  prefix: string,
+  focus?: Locator
 ) {
   for (const theme of ['light', 'dark']) {
     await page.evaluate((value) => {
@@ -151,6 +159,7 @@ async function captureVariants(
       { width: 390, height: 844 }
     ]) {
       await page.setViewportSize(viewport)
+      await focus?.scrollIntoViewIfNeeded()
       await expect
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
         .toBeLessThanOrEqual(1)
@@ -323,7 +332,19 @@ test('平台超级管理员按工作台租户读取费用项目', async ({ page 
 
 test('运单费用新增表单显示两条追加费用行', async ({ page }, info) => {
   const errors: string[] = []
+  let savedBatch:
+    { p_base: Record<string, unknown>; p_lines: Array<Record<string, unknown>> } | undefined
   page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/rest/v1/rpc/tms_save_waybill_cost_batch_secure', (route) => {
+    savedBatch = route.request().postDataJSON() as typeof savedBatch
+    return route.fulfill({
+      json: [
+        { id: '11111111-1111-4111-8111-111111111601' },
+        { id: '11111111-1111-4111-8111-111111111602' },
+        { id: '11111111-1111-4111-8111-111111111603' }
+      ]
+    })
+  })
   await page.getByRole('button', { name: '打开运单费用' }).click()
   const dialog = page.getByRole('dialog', { name: '新增运单费用' })
   await expect(dialog).toBeVisible()
@@ -338,8 +359,38 @@ test('运单费用新增表单显示两条追加费用行', async ({ page }, inf
   await expect(lines).toHaveCount(3)
   for (const lineNo of ['10', '20', '30'])
     await expect(lines.filter({ hasText: lineNo })).toHaveCount(1)
-  await captureVariants(page, info, 'waybill-cost')
+  const amounts = dialog.getByRole('spinbutton', { name: '费用金额' })
+  await expect(amounts).toHaveCount(3)
+  for (let index = 0; index < 3; index += 1) await expect(amounts.nth(index)).toHaveValue('')
+  await dialog.getByRole('textbox', { name: '费用单号' }).first().fill('FY-TEST-001')
+  for (const row of await lines.all()) {
+    await row.getByRole('combobox', { name: '费用项目' }).click()
+    await page.getByRole('option', { name: '异常搬运费' }).click()
+  }
+  await dialog.getByRole('button', { name: '保存草稿' }).click()
+  await expect(
+    dialog.locator('.el-alert__title').getByText('第 10 行：费用金额必须大于 0')
+  ).toBeVisible()
+  expect(savedBatch).toBeUndefined()
+  await amounts.first().fill('12.5')
+  await expect(amounts.first()).toHaveValue('12.5')
+  await expect(amounts.nth(1)).toHaveValue('')
+  await expect(amounts.nth(2)).toHaveValue('')
+  await dialog.getByRole('button', { name: '保存草稿' }).click()
+  await expect(
+    dialog.locator('.el-alert__title').getByText('第 20 行：费用金额必须大于 0')
+  ).toBeVisible()
+  expect(savedBatch).toBeUndefined()
+  await amounts.first().fill('')
+  await expect(amounts.first()).toHaveValue('')
+  await captureVariants(page, info, 'waybill-cost', amounts.nth(1))
   await dialog.getByText('YD-LOADED-001').scrollIntoViewIfNeeded()
   await page.screenshot({ path: info.outputPath('waybill-cost-identity-390-dark.png') })
+  for (const [index, value] of ['12.5', '20', '30'].entries()) {
+    await amounts.nth(index).fill(value)
+  }
+  await dialog.getByRole('button', { name: '保存草稿' }).click()
+  await expect.poll(() => savedBatch).toBeDefined()
+  expect(savedBatch?.p_lines.map((line) => line.amount)).toEqual([12.5, 20, 30])
   expect(errors).toEqual([])
 })

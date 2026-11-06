@@ -301,6 +301,13 @@ html[data-ui-scope='workspace'][data-box-mode='shadow-mode'] {
   height: var(--art-full-height);
   min-height: 0;
 
+  // 搜索栏在窄屏改为纵向排列后，让业务工作区滚动，避免列表被挤到零高度。
+  @media (width <= 768px) {
+    &.business-workspace-page {
+      height: auto;
+    }
+  }
+
   @media (width <= 640px) {
     height: auto;
   }

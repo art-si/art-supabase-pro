@@ -1,10 +1,38 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
 
 const waybillId = '11111111-1111-4111-8111-111111111401'
 const tenantId = '11111111-1111-4111-8111-111111111111'
+
+async function revealAlignedAppointmentCell(page: Page, label: string, headerName: string) {
+  const value = page.getByLabel(label)
+  await value.scrollIntoViewIfNeeded()
+  const cell = value.locator('xpath=ancestor::td[1]')
+  const header = page.getByRole('columnheader', { name: headerName })
+  const viewport = page.locator('.el-table__body-wrapper .el-scrollbar__wrap').first()
+  await expect
+    .poll(async () => {
+      const [cellBox, headerBox, viewportBox] = await Promise.all([
+        cell.boundingBox(),
+        header.boundingBox(),
+        viewport.boundingBox()
+      ])
+      if (!cellBox || !headerBox || !viewportBox) return false
+      const visibleLeft = Math.max(cellBox.x, viewportBox.x)
+      const visibleRight = Math.min(
+        cellBox.x + cellBox.width,
+        viewportBox.x + viewportBox.width - 86
+      )
+      return (
+        visibleRight - visibleLeft >= Math.min(cellBox.width * 0.5, 70) &&
+        Math.abs(cellBox.x - headerBox.x) <= 6 &&
+        Math.abs(cellBox.width - headerBox.width) <= 6
+      )
+    })
+    .toBe(true)
+}
 const waybill = {
   id: waybillId,
   tenantId,
@@ -118,6 +146,10 @@ for (const kind of ['pickup', 'delivery'] as const) {
       [2, '13.5']
     ] as const)
       await expect(page.getByLabel(`第 ${index} 条预约：${value}`)).toBeAttached()
+    const tableScroll = page.locator('.el-table__body-wrapper .el-scrollbar__wrap').first()
+    await expect
+      .poll(() => tableScroll.evaluate((element) => element.scrollWidth > element.clientWidth))
+      .toBe(true)
     for (const theme of ['light', 'dark']) {
       await page.evaluate(
         (value) => document.documentElement.classList.toggle('dark', value === 'dark'),
@@ -131,6 +163,28 @@ for (const kind of ['pickup', 'delivery'] as const) {
         await page.screenshot({
           path: info.outputPath(`${kind}-${width}-${theme}.png`),
           animations: 'disabled'
+        })
+        await revealAlignedAppointmentCell(
+          page,
+          `第 2 条预约：${kind === 'pickup' ? 'TH' : 'SH'}202611-002`,
+          '预约单号'
+        )
+        await page.screenshot({
+          path: info.outputPath(`${kind}-${width}-${theme}-appointment-number.png`),
+          animations: 'disabled'
+        })
+        await revealAlignedAppointmentCell(page, '第 2 条预约：测A67890', '车牌号')
+        await page.screenshot({
+          path: info.outputPath(`${kind}-${width}-${theme}-appointment-driver-plate.png`),
+          animations: 'disabled'
+        })
+        await revealAlignedAppointmentCell(page, '第 2 条预约：13.5', '车长（米）')
+        await page.screenshot({
+          path: info.outputPath(`${kind}-${width}-${theme}-appointment-details.png`),
+          animations: 'disabled'
+        })
+        await tableScroll.evaluate((element) => {
+          element.scrollLeft = 0
         })
       }
     }

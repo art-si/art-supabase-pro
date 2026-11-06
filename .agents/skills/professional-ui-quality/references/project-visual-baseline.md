@@ -40,6 +40,8 @@ The product is an enterprise logistics and operations system. It should feel cal
 
 - Use the 4/8/12/16/24/32px rhythm unless an established component owns spacing.
 - Keep a clear page identity, decision summary, main work area, and supporting evidence order.
+- For field-heavy business forms, arrange ordinary short fields in three or four columns per row when the content width supports it. Collapse to two and then one column as space narrows; give long labels, addresses, descriptions, attachments, and composite controls the span they need. Configure field spans and visibility through `ArtForm` metadata rather than shrinking controls or hiding fields to meet a column count.
+- When a record has several distinct categories of content, organize them into clear tabs instead of one long stack of sections. Keep the record identity and primary action stable across tabs, and group each field, validation message, helper text, and related table with its category. A short form with one concern does not need tabs.
 - Keep form placeholders visually quieter than entered or selected values. Verify empty, filled, and disabled controls together before changing shared text tokens; a contrast check of isolated text samples does not prove that these states remain distinguishable.
 - Align major edges across headers, query panels, tables, cards, and sticky action regions.
 - Prefer tonal grouping and whitespace to stacks of bordered white cards.

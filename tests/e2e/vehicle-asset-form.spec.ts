@@ -99,6 +99,10 @@ test('车辆公司可编辑、承运商联动与复制、新能源必选和重�
   await carrier.click()
   await page.getByRole('option', { name: '验收承运商（CYS001）' }).click()
   await expect(company).toHaveValue('')
+  await page.screenshot({
+    path: info.outputPath('vehicle-ownership-carrier.png'),
+    animations: 'disabled'
+  })
   await expect(company).toBeDisabled()
   await expect(page.locator('[data-art-form-item-key="carrierId"] .el-form-item')).toHaveClass(
     /is-required/
@@ -177,6 +181,10 @@ test('车辆归属切回自营时清空承运商并恢复所属租户默认公�
   await carrier.click()
   await page.getByRole('option', { name: '验收承运商（CYS001）' }).click()
   await expect(company).toHaveValue('')
+  await page.screenshot({
+    path: info.outputPath('vehicle-ownership-carrier.png'),
+    animations: 'disabled'
+  })
 
   await ownership.getByText('自营车辆', { exact: true }).click()
   await expect.poll(() => companyRequests.length).toBe(2)
@@ -201,6 +209,22 @@ test('车辆归属切回自营时清空承运商并恢复所属租户默认公�
     await ownership.getByText(label, { exact: true }).click()
     await expect(company).toHaveValue('')
     await expect(company).toBeDisabled()
+    if (label === '个人挂靠') {
+      await page.screenshot({
+        path: info.outputPath('vehicle-ownership-individual.png'),
+        animations: 'disabled'
+      })
+      await page.setViewportSize({ width: 390, height: 844 })
+      await ownership.scrollIntoViewIfNeeded()
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBeLessThanOrEqual(1)
+      await page.screenshot({
+        path: info.outputPath('vehicle-ownership-individual-390.png'),
+        animations: 'disabled'
+      })
+      await page.setViewportSize({ width: 1440, height: 900 })
+    }
     await ownership.getByText('自营车辆', { exact: true }).click()
     await expect(company).toHaveValue('验收法人公司')
     await expect(company).toBeEnabled()

@@ -509,8 +509,10 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
   { menuName: 'PmisPreventiveAnalysis', buttons: [button('Export', '导出')] },
   { menuName: 'PmisPreventiveDetail', buttons: [button('View', '查看'), button('Export', '导出')] },
   { menuName: 'TmsCargo', buttons: crud({ import: true, export: true }) },
-  { menuName: 'TmsCarrier', buttons: crud({ view: true, import: true, export: true }) },
-  { menuName: 'TmsCarrierDetail', buttons: [button('AiAnalyze', 'AI 经营评估')] },
+  {
+    menuName: 'TmsCarrier',
+    buttons: [...crud({ view: true, import: true, export: true }), button('AiAnalyze', 'AI 经营评估')]
+  },
   { menuName: 'TmsCarrierPrice', buttons: crud({ view: true, export: true }) },
   { menuName: 'TmsCarrierPriceEdit', buttons: [button('Save', '保存承运商协议价')] },
   {

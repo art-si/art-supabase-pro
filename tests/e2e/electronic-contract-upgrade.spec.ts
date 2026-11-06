@@ -182,6 +182,22 @@ test('缺少查看权限时合同号不可打开全文，深链也不请求详�
   expect(mock.detailRequests()).toBe(0)
 })
 
+test('其他业务的 recordId 不触发缓存电子合同弹窗', async ({ page }) => {
+  const mock = await openFixture(page)
+  await expect(page.getByText('月度干线运输合同')).toBeVisible()
+  await page.evaluate(() => document.dispatchEvent(new Event('electronic-contract-fixture-leave')))
+  await expect(page.locator('html[data-electronic-fixture-left="true"]')).toHaveCount(1)
+  await expect(page.getByRole('dialog', { name: /电子合同/ })).toHaveCount(0)
+  expect(mock.detailRequests()).toBe(0)
+})
+
+test('电子合同本页合同号仍可打开详情', async ({ page }) => {
+  const mock = await openFixture(page)
+  await page.getByRole('link', { name: 'HT-202611-001' }).click()
+  await expect(page.getByRole('dialog', { name: '电子合同 · HT-202611-001' })).toBeVisible()
+  expect(mock.detailRequests()).toBe(1)
+})
+
 test('两条电子合同可预览、编辑结算约定并提交审批', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))

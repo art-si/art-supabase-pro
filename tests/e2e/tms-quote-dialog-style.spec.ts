@@ -101,6 +101,7 @@ test('报价补充费用按订单租户树形多选，新增金额为空且不�
   await picker.getByRole('button', { name: '取消', exact: true }).click()
   await page.screenshot({ path: info.outputPath('quote-tree-fees.png'), animations: 'disabled' })
   await page.setViewportSize({ width: 390, height: 844 })
+  await card.getByText('等候补费', { exact: true }).scrollIntoViewIfNeeded()
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
     .toBeLessThanOrEqual(1)
