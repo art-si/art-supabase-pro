@@ -8,6 +8,7 @@ import {
   resolveCatalogPermissionCode,
   systemButtonPermissionCatalog
 } from './business-button-permission-catalog'
+import { findActionPermissionIssues } from './business-action-permission-audit'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const migrationDirectory = join(projectRoot, 'supabase/migrations')
@@ -573,12 +574,22 @@ const availableSourceModules = new Set<ManagedModule>(
 )
 const uncataloguedReferences: string[] = []
 const forbiddenPlatformSuperReferences: string[] = []
+const implicitActionPermissionIssues: string[] = []
 const sourceText = new Map<string, string>()
 
 for (const { filePath, moduleName } of sourceFiles) {
   const source = readFileSync(filePath, 'utf8')
   const projectPath = toProjectPath(filePath)
   sourceText.set(projectPath, source)
+  for (const issue of findActionPermissionIssues(
+    source,
+    filePath,
+    ['tms', 'vms', 'fms', 'hr'].includes(moduleName)
+  )) {
+    implicitActionPermissionIssues.push(
+      `${projectPath}: ${issue.label} (${issue.key}) — ${issue.kind}`
+    )
+  }
 
   for (const match of source.matchAll(permissionPattern)) {
     const code = match[1]
@@ -620,6 +631,11 @@ assert.deepEqual(
   `Every catalogued action must declare its exact permission code in page source; inference is fallback only:\n${missingExplicitReferences
     .map((row) => row.code)
     .join('\n')}`
+)
+assert.deepEqual(
+  implicitActionPermissionIssues,
+  [],
+  `动作配置可能静默隐藏或忽略权限：\n${implicitActionPermissionIssues.join('\n')}`
 )
 
 console.log(

@@ -1,11 +1,18 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
+import { installDictionaryOptions } from './support/dictionary-options'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 test('批量出库按装车行和库存批次分配、阻止共享库存超量并生成流水', async ({ page }, testInfo) => {
   const tenant = await prepareIsolatedSession(page)
+  await installDictionaryOptions(page, {
+    commonDocumentDisplayMode: [
+      { value: 'document', label: '按单据' },
+      { value: 'line', label: '按明细' }
+    ]
+  })
   await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
   await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
     route.fulfill({ json: [{ code: 'scm', name: '测试供应链', baseUrl: '/scm/' }] })

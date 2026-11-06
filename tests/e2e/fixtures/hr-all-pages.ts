@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
+import { useMenuStore } from '@/store/modules/menu'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useSettingStore } from '@/store/modules/setting'
 import { initializeTheme } from '@/hooks/core/useTheme'
@@ -16,6 +17,13 @@ const pages = import.meta.glob<Component>(
   { import: 'default' }
 )
 const page = new URLSearchParams(location.search).get('page')
+const ordinary = new URLSearchParams(location.search).get('role') === 'ordinary'
+const readEntry =
+  page === 'personnel/organization-design'
+    ? { name: 'HrOrganizationDesign', permission: 'Hr:OrganizationDesign:View' }
+    : page === 'operations/policy-acknowledgement'
+      ? { name: 'HrPolicyAcknowledgement', permission: 'Hr:PolicyAcknowledgement:View' }
+      : undefined
 const loader = pages[`../../../modules/art-supabase-hr/src/views/${page}/index.vue`]
 if (!page || !loader) throw new Error('Unknown HR page fixture')
 document.documentElement.style.setProperty('--art-full-height', 'calc(100vh - 32px)')
@@ -83,6 +91,7 @@ const router = createRouter({
   history: createMemoryHistory(),
   routes: [
     { path: '/', component: {} },
+    ...(readEntry ? [{ path: `/hr/${page}`, name: readEntry.name, component: {} }] : []),
     { path: '/employee/:id', component: {} }
   ]
 })
@@ -91,8 +100,15 @@ setupGlobDirectives(app)
 useUserStore(store).setUserInfo({
   userId: 'hr-all-pages-test',
   tenantId: '11111111-1111-4111-8111-111111111111',
-  platformSuper: true
+  platformSuper: !ordinary
 })
+if (ordinary && readEntry) {
+  useMenuStore(store).setButtonList([
+    { name: readEntry.permission, type: 'button', path: '', meta: { title: readEntry.permission } }
+  ])
+  await router.push(`/hr/${page}`)
+  await router.isReady()
+}
 if (page === 'personnel/employee-detail')
   await router.push('/employee/11111111-1111-4111-8111-111111111113')
 app.mount('#hr-all-pages')

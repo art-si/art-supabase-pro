@@ -1,14 +1,32 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
+import {
+  expectCompactDocumentForm,
+  expectUnifiedDocumentDetail
+} from './support/scm-document-layout'
+import { installDictionaryOptions } from './support/dictionary-options'
+import { prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(180_000)
+test.beforeEach(async ({ page }, info) => {
+  await prepareAppearance(page, {
+    theme: info.project.name.includes('dark') ? 'dark' : 'light',
+    boxBorderMode: !info.project.name.includes('shadow')
+  })
+})
 
 test('销售合同逐行删除、空数量和报价余量，订单实际交货数量与物料参选', async ({
   page
 }, testInfo) => {
   const tenant = await prepareIsolatedSession(page)
+  await installDictionaryOptions(page, {
+    commonDocumentDisplayMode: [
+      { value: 'document', label: '按单据' },
+      { value: 'line', label: '按明细' }
+    ]
+  })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   const contractPath = '/scm/sales-management/sales-contract'
@@ -245,6 +263,22 @@ test('销售合同逐行删除、空数量和报价余量，订单实际交货�
   })
   const guide = page.getByText('知道了', { exact: true })
   if (await guide.isVisible()) await guide.click()
+  await page.getByRole('switch', { name: '进入专注模式' }).locator('..').click()
+  await expect(page.locator('.business-workspace-header')).not.toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.business-workspace-header')).toBeVisible()
+  await page.getByRole('switch', { name: '进入专注模式' }).locator('..').click()
+  await page.getByRole('button', { name: /退出专注/ }).click()
+  await expect(page.locator('.business-workspace-header')).toBeVisible()
+  await page.getByRole('button', { name: 'QA-CONTRACT', exact: true }).click()
+  const contractDetail = page.getByRole('dialog', { name: '查看销售合同', exact: true })
+  await expectUnifiedDocumentDetail(contractDetail, '测试合同')
+  await expect(contractDetail.getByRole('tab', { name: '合同明细', exact: true })).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('sales-contract-unified-detail.png'),
+    animations: 'disabled'
+  })
+  await contractDetail.getByRole('button', { name: '关闭抽屉', exact: true }).click()
   await page.getByRole('radio', { name: '按明细' }).locator('..').click()
   const rows = page.locator('.el-table__body-wrapper tbody tr')
   await expect(rows).toHaveCount(2)
@@ -258,6 +292,9 @@ test('销售合同逐行删除、空数量和报价余量，订单实际交货�
   await page.getByRole('button', { name: '编辑', exact: true }).first().click()
   const dialog = page.getByRole('dialog', { name: '编辑销售合同 · QA-CONTRACT', exact: true })
   await expect(dialog).toBeVisible()
+  await dialog.getByRole('tab', { name: '单据信息', exact: true }).click()
+  await expectCompactDocumentForm(dialog, '合同编号', '合同名称')
+  await dialog.getByRole('tab', { name: '合同明细', exact: true }).click()
   const quantityHeader = dialog.getByRole('columnheader', { name: '数量', exact: true })
   await expect(quantityHeader).toBeVisible()
   await dialog.getByRole('button', { name: '参选报价明细', exact: true }).click()
@@ -275,6 +312,14 @@ test('销售合同逐行删除、空数量和报价余量，订单实际交货�
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await page.goto(`#${orderPath}`)
   await expect(page.getByRole('button', { name: 'QA-SALES-ORDER', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'QA-SALES-ORDER', exact: true }).click()
+  const orderDetail = page.getByRole('dialog', { name: '查看销售订单', exact: true })
+  await expect(orderDetail.getByRole('tab', { name: '订单明细', exact: true })).toBeVisible()
+  await orderDetail.getByRole('tab', { name: '收款计划', exact: true }).click()
+  await expect(orderDetail.getByText('暂无收款计划', { exact: true })).toBeVisible()
+  await orderDetail.getByRole('tab', { name: '发货计划', exact: true }).click()
+  await expect(orderDetail.getByText('暂无发货计划', { exact: true })).toBeVisible()
+  await orderDetail.getByRole('button', { name: '关闭抽屉', exact: true }).click()
   await page.getByRole('radio', { name: '按明细' }).locator('..').click()
   for (const [label, expected] of [
     ['已发货通知数量', ['4', '0']],
@@ -297,6 +342,11 @@ test('销售合同逐行删除、空数量和报价余量，订单实际交货�
   const orderDialog = page.getByRole('dialog', {
     name: '编辑销售订单 · QA-SALES-ORDER',
     exact: true
+  })
+  await expectCompactDocumentForm(orderDialog, '销售订单号', '销售部门')
+  await page.screenshot({
+    path: testInfo.outputPath('sales-order-three-column.png'),
+    animations: 'disabled'
   })
   await orderDialog.getByRole('button', { name: '添加物料', exact: true }).click()
   const materialPicker = page.getByRole('dialog', { name: '参选物料编码', exact: true })
@@ -327,7 +377,9 @@ test('销售合同逐行删除、空数量和报价余量，订单实际交货�
   await orderDialog.getByRole('button', { name: '取消', exact: true }).click()
   order.status = 'approved'
   await page.reload()
-  await expect(page.getByRole('button', { name: 'QA-SALES-ORDER', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'QA-SALES-ORDER', exact: true })).toBeVisible({
+    timeout: 90_000
+  })
   await page.getByRole('radio', { name: '按明细' }).locator('..').click()
   await page
     .locator('.el-table__body-wrapper tbody tr')

@@ -30,6 +30,27 @@ async function mockAddressDictionaries(page: Page) {
   })
 }
 
+test('普通开单用户无需虚构的识别选择权限即可使用收发地址入口', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+  await mockAddressDictionaries(page)
+  await page.goto('/tests/e2e/fixtures/order-numeric.html?role=ordinary', { waitUntil: 'commit' })
+  await page
+    .getByRole('radiogroup')
+    .getByText('完整表单', { exact: true })
+    .click({ timeout: 60_000 })
+  for (const name of ['发货地址操作', '收货地址操作']) {
+    await page.getByRole('button', { name, exact: true }).click()
+    await expect(page.getByRole('menuitem', { name: '地址识别', exact: true })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: '选择地址', exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+  }
+  await page.screenshot({
+    path: info.outputPath('ordinary-order-address-actions.png'),
+    animations: 'disabled'
+  })
+})
+
 test('开单收发地址图标提供识别和原有地址选择，并把识别结果带回对应端', async ({ page }, info) => {
   await prepareIsolatedSession(page)
   const errors: string[] = []

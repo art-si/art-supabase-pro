@@ -16,8 +16,11 @@ useUserStore(store).setUserInfo({
 useMenuStore(store).setButtonList(
   [
     'VehicleQuery:View',
+    'VehicleQuery:TabBasic',
     'VehicleQuery:Export',
     'VehicleArchive:View',
+    'VehicleInspection:View',
+    'VehicleArchive:TabBasic',
     'VehicleArchive:Edit',
     'VehicleArchive:Export',
     'FuelCardArchive:View',
@@ -26,12 +29,28 @@ useMenuStore(store).setButtonList(
     'ElectricCardLedger:View',
     'TmsOrderQuery:View',
     'TmsDriverQuery:View'
-  ].map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
+  ]
+    .filter(
+      (name) =>
+        name !== 'VehicleInspection:View' ||
+        new URLSearchParams(location.search).get('inspection-view') !== 'denied'
+    )
+    .map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
 )
 
 const router = createRouter({
   history: createMemoryHistory(),
   routes: [
+    {
+      path: '/vms/vehicle-manage/vehicle-inspection',
+      name: 'VehicleInspection',
+      component: () => import('@vms/views/vehicle-manage/vehicle-inspection/index.vue')
+    },
+    {
+      path: '/vms/vehicle-manage/vehicle-inspection-detail/:id',
+      name: 'VehicleInspectionDetail',
+      component: () => import('@vms/views/vehicle-manage/vehicle-inspection-detail/index.vue')
+    },
     {
       path: '/vms/vehicle-query',
       name: 'VehicleQuery',
@@ -63,11 +82,13 @@ app.use(router)
 app.use(language)
 setupGlobDirectives(app)
 await router.push(
-  new URLSearchParams(location.search).get('page') === 'archive'
-    ? '/vms/vehicle-archive-manage'
-    : new URLSearchParams(location.search).get('page') === 'detail'
-      ? '/vms/vehicle-query/detail/11111111-1111-4111-8111-111111111101'
-      : '/vms/vehicle-query'
+  new URLSearchParams(location.search).get('page') === 'inspection'
+    ? '/vms/vehicle-manage/vehicle-inspection'
+    : new URLSearchParams(location.search).get('page') === 'archive'
+      ? '/vms/vehicle-archive-manage'
+      : new URLSearchParams(location.search).get('page') === 'detail'
+        ? '/vms/vehicle-query/detail/11111111-1111-4111-8111-111111111101'
+        : '/vms/vehicle-query'
 )
 await router.isReady()
 app.mount('#vehicle-query-visual')

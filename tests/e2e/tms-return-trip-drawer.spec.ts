@@ -192,7 +192,7 @@ test('发货与收货地址图标沿用开单的识别及常用地址入口', as
   const { drawer } = await openReturnDrawer(page, true)
   await drawer.getByRole('button', { name: '发货地址操作' }).click()
   await page.getByRole('menuitem', { name: /地址识别/ }).click()
-  await expect(page.getByText('智能填写地址', { exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '地址识别', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await drawer.getByRole('button', { name: '收货地址操作' }).click()
   await page.getByRole('menuitem', { name: /选择地址/ }).click()

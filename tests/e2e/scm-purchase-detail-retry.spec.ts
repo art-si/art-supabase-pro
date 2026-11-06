@@ -88,6 +88,19 @@ test('采购详情失败可重试且旧单据不会覆盖新单据', async ({ pa
     if (emptyDetail) return route.fulfill({ json: null })
     return route.fulfill({ json: documents.find((document) => id === `eq.${document.id}`) })
   })
+  await page.route('**/rest/v1/rpc/scm_purchase_line_progress_secure', (route) =>
+    route.fulfill({
+      json: documents.flatMap((document) =>
+        document.lines.map((line) => ({
+          document_id: document.id,
+          line_id: line.line_id,
+          delivered_quantity: 0,
+          received_quantity: 0,
+          returned_quantity: 0
+        }))
+      )
+    })
+  )
   await page.route('**/rest/v1/rpc/scm_purchase_order_inbound_progress_secure', (route) =>
     route.fulfill({ json: [] })
   )
@@ -115,7 +128,7 @@ test('采购详情失败可重试且旧单据不会覆盖新单据', async ({ pa
   fails = false
   await drawer.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(drawer.getByText('当前采购记录1', { exact: true })).toBeVisible()
-  await drawer.locator('.el-drawer__close-btn').click()
+  await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
   await expect(drawer).not.toBeVisible()
   emptyDetail = true
   await first.click()
@@ -130,7 +143,7 @@ test('采购详情失败可重试且旧单据不会覆盖新单据', async ({ pa
   emptyDetail = false
   await drawer.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(drawer.getByText('当前采购记录1', { exact: true })).toBeVisible()
-  await drawer.locator('.el-drawer__close-btn').click()
+  await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
   await expect(drawer).not.toBeVisible()
   unitFailure = true
   await first.click()
@@ -138,12 +151,12 @@ test('采购详情失败可重试且旧单据不会覆盖新单据', async ({ pa
   unitFailure = false
   await drawer.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(drawer.getByText('当前采购记录1', { exact: true })).toBeVisible()
-  await drawer.locator('.el-drawer__close-btn').click()
+  await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
   await expect(drawer).not.toBeVisible()
   holdNext = true
   await first.click()
   await expect.poll(() => pending.length).toBe(1)
-  await drawer.locator('.el-drawer__close-btn').click()
+  await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
   await expect(drawer).not.toBeVisible()
   await second.click()
   await expect(drawer.getByText('当前采购记录2', { exact: true })).toBeVisible()
@@ -166,6 +179,7 @@ test('采购详情失败可重试且旧单据不会覆盖新单据', async ({ pa
     path: testInfo.outputPath('purchase-current.png'),
     animations: 'disabled'
   })
+  await drawer.getByRole('tab', { name: '订单明细', exact: true }).click()
   await drawer.getByText('测试采购物料2', { exact: true }).scrollIntoViewIfNeeded()
   await page.screenshot({ path: testInfo.outputPath('purchase-lines.png'), animations: 'disabled' })
 })

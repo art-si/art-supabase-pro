@@ -1,9 +1,20 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
+import { prepareAppearance } from './support/appearance'
+import {
+  expectCompactDocumentForm,
+  expectUnifiedDocumentDetail
+} from './support/scm-document-layout'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(180_000)
+test.beforeEach(async ({ page }, info) => {
+  await prepareAppearance(page, {
+    theme: info.project.name.includes('dark') ? 'dark' : 'light',
+    boxBorderMode: !info.project.name.includes('shadow')
+  })
+})
 
 test('采购订单逐行批量操作、收料带入和参选布局', async ({ page }, testInfo) => {
   const tenant = await prepareIsolatedSession(page)
@@ -200,6 +211,15 @@ test('采购订单逐行批量操作、收料带入和参选布局', async ({ pa
   )
   const guide = page.getByText('知道了', { exact: true })
   if (await guide.isVisible()) await guide.click()
+  await page.getByRole('button', { name: 'QA-ORDER-001', exact: true }).first().click()
+  const detail = page.getByRole('dialog', { name: '查看采购订单', exact: true })
+  await expectUnifiedDocumentDetail(detail, '测试采购员')
+  await expect(detail.getByRole('tab', { name: '订单明细', exact: true })).toBeVisible()
+  await detail.getByRole('tab', { name: '付款计划', exact: true }).click()
+  await expect(detail.getByText('暂无付款计划', { exact: true })).toBeVisible()
+  await detail.getByRole('tab', { name: '交货计划', exact: true }).click()
+  await expect(detail.getByText('暂无交货计划', { exact: true })).toBeVisible()
+  await detail.getByRole('button', { name: '关闭抽屉', exact: true }).click()
   await expect(page.getByRole('button', { name: '选单', exact: true })).toHaveCount(0)
   await page.getByRole('radio', { name: '按明细' }).locator('..').click()
   const rows = page.locator('.el-table__body-wrapper tbody tr')
@@ -242,6 +262,7 @@ test('采购订单逐行批量操作、收料带入和参选布局', async ({ pa
   await page.getByRole('button', { name: '下推收料通知单', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '新增收料通知单', exact: true })
   await expect(dialog).toBeVisible()
+  await expectCompactDocumentForm(dialog, '收料通知单号', '采购组织')
   await expect(dialog.getByRole('textbox', { name: '采购员', exact: true })).toHaveValue(
     '测试采购员'
   )
