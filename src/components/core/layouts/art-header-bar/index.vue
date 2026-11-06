@@ -51,11 +51,12 @@
 
         <!-- 当前路由设计参考（仅平台超级管理员） -->
         <PageDesignReference
-          v-if="isPlatformSuper && shouldShowRefreshButton && !isHeaderLeftMenu"
+          v-if="!externalAccount && isPlatformSuper && shouldShowRefreshButton && !isHeaderLeftMenu"
         />
 
         <!-- 全局专注偏好：所有已登录用户均可使用 -->
         <ArtIconButton
+          v-if="!externalAccount"
           :icon="globalFocusEnabled ? 'ri:focus-2-line' : 'ri:focus-3-line'"
           :label="globalFocusEnabled ? '关闭自动专注浏览' : '开启自动专注浏览'"
           :aria-pressed="globalFocusEnabled"
@@ -92,8 +93,8 @@
       </div>
 
       <div class="art-header-bar__actions flex-c">
-        <PlatformTenantScopeSwitcher />
-        <ArtApplicationSwitcher />
+        <PlatformTenantScopeSwitcher v-if="!externalAccount" />
+        <ArtApplicationSwitcher v-if="!externalAccount" />
 
         <!-- 搜索 -->
         <button
@@ -148,7 +149,7 @@
 
         <!-- 通知按钮 -->
         <ElBadge
-          v-if="shouldShowNotification"
+          v-if="shouldShowNotification && !externalAccount"
           :value="notificationUnreadCount"
           :max="99"
           :hidden="notificationUnreadCount === 0"
@@ -164,7 +165,7 @@
 
         <!-- 聊天按钮 -->
         <ArtIconButton
-          v-if="shouldShowChat"
+          v-if="shouldShowChat && !externalAccount"
           icon="ri:message-3-line"
           label="打开智能助手"
           class="chat-button relative"
@@ -221,7 +222,11 @@
     <ArtWorkTab v-if="props.showWorkTab" />
 
     <!-- 通知 -->
-    <ArtNotification v-model:value="showNotice" @unread-change="handleUnreadChange" />
+    <ArtNotification
+      v-if="!externalAccount"
+      v-model:value="showNotice"
+      @unread-change="handleUnreadChange"
+    />
   </div>
 </template>
 
@@ -244,6 +249,7 @@
   import ArtApplicationSwitcher from './widget/art-application-switcher.vue'
   import PlatformTenantScopeSwitcher from '@/components/business/platform-tenant-scope-switcher/index.vue'
   import PageDesignReference from '@/components/business/page-design-reference/index.vue'
+  import { platformAuthContextKey } from '@/utils/auth-context'
 
   defineOptions({ name: 'ArtHeaderBar' })
 
@@ -266,6 +272,7 @@
 
   const settingStore = useSettingStore()
   const userStore = useUserStore()
+  const externalAccount = inject(platformAuthContextKey, undefined)?.account
   const menuStore = useMenuStore()
 
   // 顶部栏功能配置
@@ -318,7 +325,7 @@
 
   onMounted(() => {
     initLanguage()
-    if (!globalFocusPreference.initialized.value) {
+    if (!externalAccount && !globalFocusPreference.initialized.value) {
       void globalFocusPreference.load().catch((error: unknown) => {
         notifyFriendlyError(error, '自动专注设置加载失败，请稍后重试')
       })

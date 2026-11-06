@@ -1,11 +1,7 @@
 <!-- 登录页面 -->
 <template>
-  <div
-    class="auth-page auth-login-page"
-    :class="{ 'auth-login-page--sso': Boolean(ssoAuthorizationId) }"
-  >
-    <SsoIdentityIntro v-if="ssoAuthorizationId" />
-    <LoginLeftView v-else />
+  <div class="auth-page auth-login-page">
+    <LoginLeftView />
 
     <div class="auth-page__panel">
       <AuthTopBar />
@@ -74,7 +70,7 @@
             @submit="handleSubmit"
             form-class="mt-[25px]"
           >
-            <ElFormItem prop="identifier" :label="ssoAuthorizationId ? '统一账号' : undefined">
+            <ElFormItem prop="identifier">
               <ElInput
                 ref="identifierInputRef"
                 class="custom-height"
@@ -89,7 +85,7 @@
                 <template #prefix><ArtSvgIcon icon="ri:user-3-line" /></template>
               </ElInput>
             </ElFormItem>
-            <ElFormItem prop="password" :label="ssoAuthorizationId ? '登录密码' : undefined">
+            <ElFormItem prop="password">
               <ElInput
                 ref="passwordInputRef"
                 class="custom-height"
@@ -230,8 +226,6 @@
   import ArtTurnstileCaptcha from '@/components/core/forms/art-turnstile-captcha/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import FeishuQrLogin from './modules/feishu-qr-login.vue'
-  import SsoIdentityIntro from './modules/sso-identity-intro.vue'
-  import './sso-login.css'
 
   import {
     isAbsoluteApplicationRedirect,

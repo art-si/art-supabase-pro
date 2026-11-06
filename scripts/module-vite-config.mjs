@@ -215,20 +215,45 @@ export async function createModuleViteConfig({
     },
     optimizeDeps: {
       entries: ['index.html', 'src/views/**/*.vue'],
-      exclude: getElementPlusStyleDeps(applicationRoot),
+      // Aliased platform TypeScript remains application source even inside node_modules.
+      // Prebundling it can duplicate Pinia contexts and mis-detect enum exports as CommonJS.
+      exclude: [
+        '@',
+        `@${appCode}`,
+        '@views',
+        '@imgs',
+        '@icons',
+        '@utils',
+        '@stores',
+        '@styles',
+        ...getElementPlusStyleDeps(applicationRoot)
+      ],
       include: [
-        'vue',
-        'vue-router',
-        'pinia',
-        '@vueuse/core',
-        'vue-i18n',
+        ...hostedModuleSharedDependencies,
+        'axios',
+        'crypto-js',
+        'file-saver',
+        'mitt',
+        'nprogress',
         'pinia-plugin-persistedstate',
         'dayjs/plugin/utc',
         'dayjs/plugin/timezone',
-        'element-plus',
         'element-plus/es',
         'element-plus/es/components/table-v2/index.mjs'
-      ]
+      ].map((dependency) =>
+        !existsSync(
+          path.join(
+            applicationRoot,
+            'node_modules',
+            dependency
+              .split('/')
+              .slice(0, dependency.startsWith('@') ? 2 : 1)
+              .join('/')
+          )
+        ) && existsSync(path.join(applicationRoot, 'node_modules/art-supabase-pro'))
+          ? `art-supabase-pro > ${dependency}`
+          : dependency
+      )
     }
   }
 }

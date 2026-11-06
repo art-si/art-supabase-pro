@@ -21,6 +21,7 @@
     "src",
     "public",
     "scripts/ui-audit.ts",
+    "scripts/lib/form-schema-audit.ts",
     "scripts/generate-offline-icons.ts",
     "scripts/module-vite-config.mjs",
     "scripts/module-vite-config.d.mts",

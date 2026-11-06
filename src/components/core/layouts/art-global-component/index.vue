@@ -19,12 +19,19 @@
   import { getCurrentScope, type Component } from 'vue'
   import { useEventListener } from '@vueuse/core'
   import { useWorkspaceInteraction } from '@/hooks/core/useWorkspaceInteraction'
+  import { platformAuthContextKey } from '@/utils/auth-context'
 
   defineOptions({ name: 'ArtGlobalComponent' })
 
   const componentScope = getCurrentScope()
   const { isLocked, lockRevision, captureIntent } = useWorkspaceInteraction()
-  const enabledComponents = computed(() => getEnabledGlobalComponents())
+  const externalAccount = inject(platformAuthContextKey, undefined)?.account
+  const enabledComponents = computed(() =>
+    getEnabledGlobalComponents().filter(
+      (config) =>
+        !externalAccount || !['screen-lock', 'chat-window', 'watermark'].includes(config.key)
+    )
+  )
   const loadedComponents = shallowReactive(new Map<string, Component>())
   const mountedComponents = new Set<string>()
   const pendingActivations = new Map<
