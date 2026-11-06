@@ -49,6 +49,25 @@ test('server-session consumers own their environment and never expose server cre
     assert.equal(config.resolve.alias['@bff'], path.join(applicationRoot, 'src'))
     assert.ok(config.optimizeDeps.exclude.includes('@'))
     assert.ok(config.optimizeDeps.exclude.includes('@bff'))
+    const packageRoot = path.join(applicationRoot, 'node_modules/art-supabase-pro')
+    mkdirSync(packageRoot, { recursive: true })
+    const packaged = await createModuleViteConfig({ ...options, platformRoot: packageRoot })
+    const elementPlus = packaged.plugins
+      .flat(Infinity)
+      .find((plugin) => plugin?.name === 'unplugin-element-plus')
+    const sourceId = path
+      .join(packageRoot, 'src/hooks/core/useArtFeedback.ts')
+      .replaceAll('\\', '/')
+    const filter = elementPlus.transform.filter.id
+    assert.ok(filter.include.some((pattern) => pattern instanceof RegExp && pattern.test(sourceId)))
+    assert.ok(!filter.exclude.some((pattern) => pattern.test(sourceId)))
+    const transformed = await elementPlus.transform.handler(
+      "import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'; export const confirm = ElMessageBox.confirm;",
+      sourceId
+    )
+    for (const service of ['message', 'message-box', 'notification']) {
+      assert.ok(transformed.code.includes(`element-plus/es/components/${service}/style/index`))
+    }
     const anotherPort = await createModuleViteConfig({ ...options, defaultPort: 3020 })
     assert.notEqual(config.cacheDir, anotherPort.cacheDir)
   } finally {
