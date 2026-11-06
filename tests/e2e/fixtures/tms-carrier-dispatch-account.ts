@@ -1,3 +1,4 @@
+import { dispatchFixtureDictionaries } from '../support/tms-dispatch-dictionaries'
 import { createApp, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import language from '@/locales'
@@ -5,34 +6,29 @@ import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
 import { setupGlobDirectives } from '@/directives'
+import { initializeTheme } from '@/hooks/core/useTheme'
+import { useSettingStore } from '@/store/modules/setting'
 import DispatchDialog from '@tms/views/waybill-management/modules/dispatch-dialog.vue'
+import SplitDispatchDialog from '@tms/views/waybill-management/modules/split-dispatch-dialog.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const dispatchRef = ref<InstanceType<typeof DispatchDialog>>()
-const dict = (value: string, label: string) => ({
-  name: label,
-  code: value,
-  value,
-  label,
-  status: '1',
-  sort: 0
-})
+const splitRef = ref<InstanceType<typeof SplitDispatchDialog>>()
 useUserStore(store).setUserInfo({
   userId: 'tms-carrier-dispatch-account',
   tenantId,
   platformSuper: false
 })
-useUserStore(store).setDictMap({
-  tmsDispatchOperatorMode: [
-    dict('carrier', '承运方'),
-    dict('self_operated', '自营'),
-    dict('individual_driver', '个体司机')
-  ]
-})
+useUserStore(store).setDictMap(dispatchFixtureDictionaries)
 useMenuStore(store).setButtonList(
-  ['TmsPendingWaybillList:Dispatch', 'TmsPendingWaybillList:View'].map((name) => ({
+  [
+    'TmsPendingWaybillList:Dispatch',
+    'TmsPendingWaybillList:View',
+    'TmsPendingWaybillList:Split',
+    'TmsPendingWaybillList:Merge'
+  ].map((name) => ({
     name,
     path: '',
     type: 'button',
@@ -69,16 +65,39 @@ const app = createApp({
         },
         '打开调度'
       ),
-      h(DispatchDialog, { ref: dispatchRef })
+      h(
+        'button',
+        { type: 'button', onClick: () => void splitRef.value?.handleOpen(row) },
+        '打开拆单'
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          onClick: () =>
+            void dispatchRef.value?.handleOpen({
+              rows: [row, { ...row, id: 'order-2', orderNo: 'YD-TEST-002' }],
+              mode: 'merge'
+            })
+        },
+        '打开合单'
+      ),
+      h(DispatchDialog, { ref: dispatchRef }),
+      h(SplitDispatchDialog, { ref: splitRef })
     ])
 })
 app.use(store).use(language)
 const router = createRouter({
   history: createMemoryHistory(),
-  routes: [{ path: '/:pathMatch(.*)*', component: {} }]
+  routes: [{ path: '/tms/waybill-pending-list', name: 'TmsPendingWaybillList', component: {} }]
 })
 app.use(router)
 setupGlobDirectives(app)
-await router.push('/')
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
+await router.push('/tms/waybill-pending-list')
 await router.isReady()
 app.mount('#app')

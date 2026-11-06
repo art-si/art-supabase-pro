@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "jsx": "preserve",
+    "jsxImportSource": "vue",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "lib": ["esnext", "dom"],
+    "types": ["node", "vite/client", "element-plus/global"],
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0"
+  }
+}

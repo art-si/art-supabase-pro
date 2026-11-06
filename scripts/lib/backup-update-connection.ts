@@ -290,7 +290,7 @@ export function backupUpdateErrorMessage(cause: unknown): string {
   if (code === 'BACKUP_COPY_FORMAT')
     return '本地备份数据格式无法用于增量更新，请校验备份并查看更新报告；原完整备份保留。'
   if (['57014', 'BACKUP_SOURCE_READ_TIMEOUT'].includes(code))
-    return '来源数据库读取超时，请稍后重试；若持续失败，请根据更新报告中的阶段和错误编号排查；原完整备份保留。'
+    return '来源数据库读取超时，可直接重试更新，无需单独重新检查远端变化；若持续失败，请根据报告中的阶段和错误编号排查；原完整备份保留。'
   if (code === '25P04')
     return '来源数据库事务达到时间上限，备份更新已停止；请检查更新报告中的阶段与事务超时设置后重试；原完整备份保留。'
   if (code === '25P03')

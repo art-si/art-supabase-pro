@@ -29,12 +29,16 @@
  * @module useAuth
  */
 import { storeToRefs } from 'pinia'
+import { hasInjectionContext, inject } from 'vue'
+import { platformAuthContextKey } from '@/utils/auth-context'
 import { useUserStore } from '@/store/modules/user'
 import { useAppMode } from '@/hooks/core/useAppMode'
 import type { AppRouteRecord } from '@/types/router'
 import { useMenuStore } from '@/store/modules/menu'
 
 export const useAuth = () => {
+  const externalAuth = hasInjectionContext() ? inject(platformAuthContextKey, undefined) : undefined
+  if (externalAuth) return permissionChecks(externalAuth.hasAuth)
   const { isFrontendMode } = useAppMode()
   const userStore = useUserStore()
   const menuStore = useMenuStore()
@@ -67,13 +71,13 @@ export const useAuth = () => {
     return getBackendAuthList().some((item) => item?.name === auth)
   }
 
-  const hasAnyAuth = (authList: string[]): boolean => authList.some(hasAuth)
+  return permissionChecks(hasAuth)
+}
 
-  const hasAllAuth = (authList: string[]): boolean => authList.every(hasAuth)
-
+function permissionChecks(hasAuth: (permission: string) => boolean) {
   return {
     hasAuth,
-    hasAnyAuth,
-    hasAllAuth
+    hasAnyAuth: (permissions: string[]): boolean => permissions.some(hasAuth),
+    hasAllAuth: (permissions: string[]): boolean => permissions.every(hasAuth)
   }
 }

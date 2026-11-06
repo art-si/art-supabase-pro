@@ -4,6 +4,26 @@ import { prepareIsolatedSession } from './support/isolated-session'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
+test('培训工作区明确标注当前页指标口径', async ({ page }) => {
+  await prepareIsolatedSession(page)
+  await page.route('**/rest/v1/hr_training_plan**', (route) =>
+    route.fulfill({
+      headers: { 'content-range': '0-0/1' },
+      json: [
+        {
+          id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+          plan_name: '测试培训',
+          plan_code: 'PLAN-001',
+          status: 'draft'
+        }
+      ]
+    })
+  )
+  await page.goto('/tests/e2e/fixtures/hr-delete-workflows.html?page=workspace')
+  await expect(page.getByText('本页待关注', { exact: true })).toBeVisible()
+  await expect(page.getByText('本页已完成', { exact: true })).toBeVisible()
+})
+
 for (const mode of ['blocked', 'error', 'clear', 'concurrent'] as const) {
   test(`培训工作区删除：${mode}`, async ({ page }, testInfo) => {
     await prepareIsolatedSession(page)

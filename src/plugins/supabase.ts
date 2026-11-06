@@ -16,9 +16,11 @@ import {
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost'
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'java-api-provider'
+const serverSessionMode = import.meta.env.VITE_AUTH_SESSION_MODE === 'server'
 const tenantScopeHeader = __CLOUDBASE_BUILD__ ? CLOUDBASE_TENANT_SCOPE_HEADER : TENANT_SCOPE_HEADER
 if (
   isSupabaseApi &&
+  !serverSessionMode &&
   !__CLOUDBASE_BUILD__ &&
   (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_KEY)
 ) {
@@ -195,14 +197,26 @@ const createCloudBaseClient = (): SupabaseClient => {
   }) as SupabaseClient
 }
 
-export const supabase = __CLOUDBASE_BUILD__
-  ? createCloudBaseClient()
-  : createClient(supabaseUrl, supabaseKey, {
-      global: { fetch: tenantScopeFetch },
-      auth: {
-        // OAuth 与密码找回使用查询参数中的一次性授权码，避免 implicit token fragment
-        // 和 Vue Hash 路由同时占用 `#`，造成回调后无法恢复 Supabase 会话。
-        detectSessionInUrl: true,
-        flowType: 'pkce'
+const createServerSessionClient = (): SupabaseClient =>
+  createClient('http://localhost', 'server-session-only', {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: {
+      fetch: async () => {
+        throw new Error('此业务数据需要接入应用的服务端 API')
       }
-    })
+    }
+  })
+
+export const supabase = serverSessionMode
+  ? createServerSessionClient()
+  : __CLOUDBASE_BUILD__
+    ? createCloudBaseClient()
+    : createClient(supabaseUrl, supabaseKey, {
+        global: { fetch: tenantScopeFetch },
+        auth: {
+          // OAuth 与密码找回使用查询参数中的一次性授权码，避免 implicit token fragment
+          // 和 Vue Hash 路由同时占用 `#`，造成回调后无法恢复 Supabase 会话。
+          detectSessionInUrl: true,
+          flowType: 'pkce'
+        }
+      })

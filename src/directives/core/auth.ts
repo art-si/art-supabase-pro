@@ -51,11 +51,8 @@ function removeElement(el: HTMLElement): void {
   }
 }
 
-const authDirective: AuthDirective = {
-  mounted: checkAuthPermission,
-  updated: checkAuthPermission
-}
-
 export function setupAuthDirective(app: App): void {
-  app.directive('auth', authDirective)
+  const check: typeof checkAuthPermission = (el, binding) =>
+    app.runWithContext(() => checkAuthPermission(el, binding))
+  app.directive('auth', { mounted: check, updated: check })
 }

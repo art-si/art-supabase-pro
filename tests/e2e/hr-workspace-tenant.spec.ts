@@ -96,6 +96,24 @@ const expectRpcTenant = async (
     .toMatchObject({ p_tenant_id: tenantId })
 }
 
+test('新建岗位编制使用浏览器本地当天作为生效日期', async ({ page }) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  await mockWorkspaceApi(page)
+  await page.goto(`${previewPath}?mode=ordinary`)
+  const dialog = page.locator('.el-dialog:visible').filter({ hasText: '新增岗位编制' })
+  await expect(dialog).toBeVisible()
+  const expectedLocalDate = await page.evaluate(() => {
+    const now = new Date()
+    const pad = (value: number) => String(value).padStart(2, '0')
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  })
+  await expect(dialog.locator('[data-art-form-item-key="effectiveFrom"] input')).toHaveValue(
+    expectedLocalDate
+  )
+  expect(pageErrors).toEqual([])
+})
+
 for (const [mode, targetTenantId] of [
   ['platform-all', platformTenantId],
   ['platform-selected', businessTenantId],

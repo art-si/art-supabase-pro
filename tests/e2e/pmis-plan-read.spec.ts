@@ -188,6 +188,21 @@ test('默认导出不改变当前页指标', async ({ page }) => {
   await expect(page.getByText('启用方案').locator('..')).toContainText('20')
 })
 
+test('东八区凌晨新增临时任务默认当天计划日期', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-06T00:30:00+08:00'))
+  await prepareIsolatedSession(page)
+  await page.route('**/rest/v1/pmis_plan?*', (route) => fulfillPlans(route, [plan('可选方案')], 1))
+  await page.goto(fixture('editor'), { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: '打开任务编辑弹窗' }).click()
+  const dialog = page.locator('.el-dialog:visible')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('[data-art-form-item-key="plannedDate"] input')).toHaveValue(
+    '2026-11-06'
+  )
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(dialog).toBeHidden()
+})
+
 test('任务方案失败关闭弹窗并提示一次，重开可选方案', async ({ page }) => {
   await prepareIsolatedSession(page)
   let calls = 0
