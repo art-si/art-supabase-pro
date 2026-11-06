@@ -511,6 +511,25 @@ test('normalization rejects invalid entries without changing JSON and shallow-cl
   assert.deepEqual(custom.normalizeTreeData('[null,{"id":2}]'), [{ id: 2 }])
 })
 
+test('read traversals reject a malformed root instead of reporting empty success', () => {
+  const invalidRoot = {} as never
+  const actions: Array<() => unknown> = [
+    () => utils.treeToList(invalidRoot),
+    () => utils.findNode(invalidRoot, 1),
+    () => utils.traverse(invalidRoot, () => undefined),
+    () => utils.getPathToNode(invalidRoot, 1),
+    () => utils.getAncestors(invalidRoot, 1),
+    () => utils.getDescendants(invalidRoot, 1),
+    () => utils.getLabelPathIndex<Node>(invalidRoot, (node) => String(node.id))
+  ]
+  for (const action of actions) {
+    assert.throws(action, {
+      name: 'TypeError',
+      message: '树形数据格式不正确，请重新加载'
+    })
+  }
+})
+
 test('flatten clones each payload once instead of once for every ancestor', () => {
   let reads = 0
   const count = 300
