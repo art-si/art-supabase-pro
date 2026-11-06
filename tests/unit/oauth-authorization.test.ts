@@ -19,17 +19,16 @@ test('OAuth login resumes only the local consent route and retains its request i
   })
 })
 
-test('internal SSO is limited to an exact client, callback and permitted scopes', () => {
+test('internal SSO trusts registered clients/scopes and supports deployment callbacks validated by Auth', () => {
   const policy = [
     {
       clientId: 'internal-bff',
-      redirectUri: 'http://localhost:3010/api/auth/callback',
       scopes: ['email', 'profile']
     }
   ]
   const details = {
     client: { id: 'internal-bff', name: 'BFF' },
-    redirect_uri: policy[0].redirectUri,
+    redirect_uri: 'http://localhost:3010/api/auth/callback',
     scope: 'email profile'
   }
   assert.equal(isFirstPartyOAuthAuthorization(details, policy), true)
@@ -42,11 +41,17 @@ test('internal SSO is limited to an exact client, callback and permitted scopes'
   )
   assert.equal(
     isFirstPartyOAuthAuthorization(
-      { ...details, redirect_uri: 'https://evil.example/callback' },
+      { ...details, redirect_uri: 'https://bff.example.com/api/auth/callback' },
       policy
     ),
-    false
+    true
   )
+  for (const redirect_uri of [
+    'http://bff.example.com/api/auth/callback',
+    'javascript:alert(1)',
+    'https://user:secret@example.com/callback'
+  ])
+    assert.equal(isFirstPartyOAuthAuthorization({ ...details, redirect_uri }, policy), false)
   assert.equal(
     isFirstPartyOAuthAuthorization({ ...details, scope: 'email profile phone' }, policy),
     false

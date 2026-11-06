@@ -2,7 +2,6 @@ import type { OAuthAuthorizationDetails } from '@supabase/supabase-js'
 
 export interface FirstPartyOAuthClient {
   clientId: string
-  redirectUri: string
   scopes: readonly string[]
 }
 
@@ -11,10 +10,21 @@ export function isFirstPartyOAuthAuthorization(
   clients: readonly FirstPartyOAuthClient[]
 ): boolean {
   const requestedScopes = details.scope.split(' ').filter(Boolean)
+  // Auth validates redirect_uri against the client's registered allowlist before
+  // returning these details. Deployment addresses therefore belong to Auth/BFF
+  // configuration, rather than a second callback list in the identity UI.
+  let callback: URL
+  try {
+    callback = new URL(resolveOAuthAuthorizationRedirect(details.redirect_uri))
+  } catch {
+    return false
+  }
+  const localDevelopment =
+    callback.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(callback.hostname)
+  if (callback.protocol !== 'https:' && !localDevelopment) return false
   return clients.some(
     (client) =>
       client.clientId === details.client.id &&
-      client.redirectUri === details.redirect_uri &&
       requestedScopes.length > 0 &&
       requestedScopes.every((scope) => client.scopes.includes(scope))
   )
