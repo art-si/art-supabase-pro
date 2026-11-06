@@ -228,7 +228,7 @@ declare namespace Api {
     type RoleList = Api.Common.PaginatedResponse<RoleListItem>
 
     /** 角色列表项 */
-    type RoleBuiltinType = 'platform_super' | 'default_register'
+    type RoleBuiltinType = 'platform_super' | 'default_register' | 'tenant_admin' | 'member'
 
     interface RoleListItem {
       id?: string
@@ -245,6 +245,10 @@ declare namespace Api {
       builtinType?: RoleBuiltinType | null
       description?: string
       enabled?: boolean
+      /** Host-owned optimistic write token; absent for native pro records. */
+      version?: number
+      /** Host-owned collection snapshot; absent for native pro records. */
+      collectionVersion?: number
       createTime?: string
       createBy?: string
       startTime?: string

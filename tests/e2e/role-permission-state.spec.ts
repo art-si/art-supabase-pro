@@ -122,6 +122,7 @@ test('a selected child shows its ancestor as half checked without granting it on
   await save.click()
   await expect.poll(() => savedPayloads.length).toBe(1)
   expect(savedPayloads[0].p_menu_ids).toEqual([menuId(0)])
+  expect(Object.keys(savedPayloads[0]).sort()).toEqual(['p_menu_ids', 'p_role_id'])
   expect(pageErrors).toEqual([])
 })
 

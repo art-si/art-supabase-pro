@@ -1,5 +1,24 @@
 # Role dialogs
 
+## Shared role page contract
+
+The Role page accepts `organizationScope` (default `true`). Hosts without an organization
+model pass `false`: the splitter's organization panel, mobile organization filter,
+organization table column, and edit form field are hidden; the organization API is not
+called. The native pro route keeps the default layout and behavior.
+
+`RoleListItem.version` and `collectionVersion` are optional host-owned write tokens.
+The edit dialog retains both from the opened row. Native pro `addRole` and `editRole`
+remove these tokens before writing `sys_role`.
+
+The permission dialog keeps the complete opening set of role-menu IDs (including IDs
+not present in the current menu catalog). A host may return `revision`, `menuRevision`,
+and `roleVersion` with `getCurrentRoleMenus`; `fetchMenuCatalog` may return a `revision`
+for the exact displayed catalog. The save call passes these optional values and
+`expectedMenuIds` to a host adapter. Native pro `saveRoleMenuList` sends only
+`p_role_id` and `p_menu_ids` to its existing RPC. The host must compare the supplied
+snapshot and enforce authorization in its own transaction.
+
 ## Assign users from a role
 
 `role-user-dialog.vue` opens from the role row's **分配用户** action. Both the action and the database RPCs require `System:Role:AssignUser`, registered under the exact `Role` page menu. The initial rollout granted this button once to existing holders of that page; future roles receive it through ordinary permission assignment.

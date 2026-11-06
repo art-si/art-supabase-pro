@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-  import { ROLE_BUILTIN_TYPES } from '@/config/builtin-roles'
+  import { isBuiltinMemberRole, isProtectedAdminRole } from '@/config/builtin-roles'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import type { FormRules } from 'element-plus'
@@ -59,6 +59,8 @@
   type RoleListItem = Api.SystemManage.RoleListItem
   type TenantListItem = Api.SystemManage.TenantListItem
   type DialogType = 'add' | 'edit'
+
+  const { organizationScope = true } = defineProps<{ organizationScope?: boolean }>()
 
   interface RoleEditDialogOpenData {
     type: DialogType
@@ -92,13 +94,11 @@
   )
 
   const isBuiltinRegisterRole = computed(
-    () =>
-      dialogType.value === 'edit' && form.value.builtinType === ROLE_BUILTIN_TYPES.DEFAULT_REGISTER
+    () => dialogType.value === 'edit' && isBuiltinMemberRole(form.value.builtinType)
   )
 
   const isSuperRole = computed(
-    () =>
-      dialogType.value === 'edit' && form.value.builtinType === ROLE_BUILTIN_TYPES.PLATFORM_SUPER
+    () => dialogType.value === 'edit' && isProtectedAdminRole(form.value.builtinType)
   )
 
   const isSystemBuiltinRole = computed(() => isBuiltinRegisterRole.value || isSuperRole.value)
@@ -115,6 +115,8 @@
     id: undefined,
     tenantId: undefined,
     organizationId: null,
+    version: undefined,
+    collectionVersion: undefined,
     roleName: '',
     roleCode: '',
     builtinType: null,
@@ -195,6 +197,7 @@
       key: 'organizationId',
       type: 'treeSelect',
       span: 18,
+      hidden: !organizationScope,
       api: fetchEnabledOrganizationTree,
       immediate: false,
       beforeFetch: () => ({ tenantId: form.value.tenantId }),
@@ -263,7 +266,9 @@
         builtinType,
         description,
         enabled,
-        createBy
+        createBy,
+        version,
+        collectionVersion
       } = data.roleData
       Object.assign(form.value, {
         id,
@@ -274,7 +279,9 @@
         builtinType,
         description,
         enabled,
-        createBy
+        createBy,
+        version,
+        collectionVersion
       })
       return
     }
@@ -288,6 +295,8 @@
     const payload = { ...toRaw(form.value) }
     delete payload.id
     delete payload.builtinType
+
+    if (!organizationScope) delete payload.organizationId
 
     if (!canSelectTenant.value) {
       payload.tenantId = currentTenantId.value
@@ -334,7 +343,7 @@
 
   const handleTenantChange = (): void => {
     form.value.organizationId = null
-    void formRef.value?.reloadOptions('organizationId')
+    if (organizationScope) void formRef.value?.reloadOptions('organizationId')
     if (form.value.roleCode) {
       void formRef.value?.validateField('roleCode')
     }
@@ -350,7 +359,7 @@
         try {
           await loadTenantOptions()
           await initializeForm(data)
-          await formRef.value?.reloadOptions('organizationId')
+          if (organizationScope) await formRef.value?.reloadOptions('organizationId')
         } finally {
           api.setLoading(false)
         }
