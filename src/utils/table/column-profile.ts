@@ -164,10 +164,14 @@ export function resolveColumnProfiles(profiles: TableColumnProfile[]): {
   for (const profile of ordered) {
     if (profile.source !== 'inherit') configured = profile.source === 'configured'
     if (profile.columns.length) {
+      const inheritedByKey = new Map<string, TableColumnSetting>()
+      for (const column of columns) {
+        if (!inheritedByKey.has(column.key)) inheritedByKey.set(column.key, column)
+      }
       const overrides = new Map(profile.columns.map((column) => [column.key, column]))
       columns = [
         ...profile.columns.map((column) => ({
-          ...columns.find((inherited) => inherited.key === column.key),
+          ...inheritedByKey.get(column.key),
           ...column,
           // Each saved row owns its size; omitted dimensions mean automatic sizing.
           width: column.width,

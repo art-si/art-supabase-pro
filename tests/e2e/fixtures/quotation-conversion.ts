@@ -182,6 +182,70 @@ const app = createApp({
         {
           onClick: () => {
             useUserStore(store).setUserInfo({
+              userId: 'contract-reminder-test',
+              tenantId: 'tenant-a',
+              platformSuper: true
+            })
+            useUserStore(store).setDictMap({
+              ...useUserStore(store).getDictMap,
+              commonContractClauseType: [
+                {
+                  label: '验收条款',
+                  name: '验收条款',
+                  code: 'reminder-clause',
+                  status: '1',
+                  value: '验收条款'
+                }
+              ],
+              scmTaxRate: [
+                { label: '0%', name: '0%', code: 'reminder-tax', status: '1', value: '0' }
+              ]
+            })
+            const empty = new URLSearchParams(location.search).get('contractScenario') === 'empty'
+            void salesDocument.value?.handleOpen({
+              kind: 'sales_contract',
+              effectiveTenantId: 'tenant-a',
+              tenantOptions: [{ label: '测试租户', value: 'tenant-a' }],
+              record: {
+                ...quotation,
+                id: 'contract-reminder',
+                kind: 'sales_contract',
+                documentNo: 'CONTRACT-REMINDER',
+                documentTypeId: 'type-a',
+                projectId: 'project-a',
+                customerId: 'customer-a',
+                details: { title: '提醒合同', contractTotalAmount: 100, paymentPlanMode: 'amount' },
+                lines: [
+                  {
+                    ...quotation.lines[0],
+                    quantity: 3,
+                    sourceDocumentId: quotation.id,
+                    sourceLineId: quotation.lines[0].lineId
+                  }
+                ],
+                paymentPlans: empty
+                  ? []
+                  : [
+                      {
+                        id: 'payment-reminder',
+                        dueDate: '',
+                        ratio: 0,
+                        amount: 30,
+                        isAdvance: false
+                      }
+                    ],
+                clauses: empty ? [] : [{ id: 'clause-reminder', title: '验收条款', content: '' }]
+              }
+            })
+          }
+        },
+        '编辑待提醒合同'
+      ),
+      h(
+        'button',
+        {
+          onClick: () => {
+            useUserStore(store).setUserInfo({
               userId: 'scope-test-user',
               tenantId: 'tenant-a',
               platformSuper: true

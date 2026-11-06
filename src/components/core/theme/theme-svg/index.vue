@@ -8,6 +8,7 @@
 
 <script setup lang="ts">
   import { ref, computed, watchEffect } from 'vue'
+  import DOMPurify from 'dompurify'
 
   interface Props {
     size?: string | number
@@ -58,28 +59,34 @@
   }
 
   // 加载 SVG 文件内容
-  const loadSvgContent = async () => {
+  const loadSvgContent = async (signal: AbortSignal) => {
     if (!props.src) {
       svgContent.value = ''
       return
     }
 
     try {
-      const response = await fetch(props.src)
+      const response = await fetch(props.src, { signal })
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
       const content = await response.text()
-      svgContent.value = applyThemeToSvg(content)
+      if (signal.aborted) return
+      svgContent.value = DOMPurify.sanitize(applyThemeToSvg(content), {
+        USE_PROFILES: { svg: true, svgFilters: true }
+      })
     } catch (error) {
+      if (signal.aborted) return
       console.error('Failed to load SVG:', error)
       svgContent.value = ''
     }
   }
 
-  watchEffect(() => {
-    loadSvgContent()
+  watchEffect((onCleanup) => {
+    const controller = new AbortController()
+    void loadSvgContent(controller.signal)
+    onCleanup(() => controller.abort())
   })
 </script>
 
