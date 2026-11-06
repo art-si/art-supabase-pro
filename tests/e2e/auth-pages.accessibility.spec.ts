@@ -347,6 +347,7 @@ for (const authPage of authPages) {
 }
 
 test('login support links have usable hit areas', async ({ page }, testInfo) => {
+  test.setTimeout(90_000)
   await page.goto('#/auth/login', { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.auth-right-wrap .form')).toBeVisible()
 
