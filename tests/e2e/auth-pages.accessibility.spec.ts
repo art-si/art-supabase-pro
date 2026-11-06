@@ -1,9 +1,112 @@
 import { expect, test, type Page } from '@playwright/test'
+import { firstPartyOAuthClients } from '../../src/config/first-party-oauth'
+
+for (const existingSession of [false, true]) {
+  test(`BFF SSO ${existingSession ? '已有会话' : '密码登录'}返回本地回调并跳过 pro 工作台`, async ({
+    page
+  }) => {
+    test.setTimeout(120_000)
+    const client = firstPartyOAuthClients[0]
+    const authorizationId = 'isolated_bff_return_test'
+    const user = {
+      id: '00000000-0000-4000-8000-000000000001',
+      email: 'bff-test@example.invalid',
+      aud: 'authenticated',
+      role: 'authenticated'
+    }
+    const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+    const accessToken = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 })}.test-signature`
+    const session = {
+      access_token: accessToken,
+      refresh_token: 'isolated-test-refresh',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: 3600,
+      token_type: 'bearer',
+      user
+    }
+    if (existingSession)
+      await page.addInitScript((value) => {
+        localStorage.setItem('sb-ckbftoopuyophiebamwy-auth-token', JSON.stringify(value))
+      }, session)
+    let approvals = 0
+    const businessRequests: string[] = []
+    page.on('request', (request) => {
+      if (/bootstrap-hosted-applications|sys_menu|sys_dictionary|sys_user\?/.test(request.url()))
+        businessRequests.push(request.url())
+    })
+    await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+    await page.route('**/functions/v1/check_user_status', (route) =>
+      route.fulfill({ json: { allowed: true } })
+    )
+    await page.route('**/auth/v1/**', async (route) => {
+      const url = new URL(route.request().url())
+      if (url.pathname.endsWith('/token')) return route.fulfill({ json: session })
+      if (url.pathname.endsWith('/user')) return route.fulfill({ json: user })
+      if (url.pathname.endsWith(`/oauth/authorizations/${authorizationId}`))
+        return route.fulfill({
+          json: {
+            authorization_id: authorizationId,
+            client: { id: client.clientId, name: 'BFF test' },
+            redirect_uri: client.redirectUri,
+            scope: 'email profile',
+            user
+          }
+        })
+      if (url.pathname.endsWith(`/${authorizationId}/consent`)) {
+        expect(route.request().postDataJSON()).toEqual({ action: 'approve' })
+        approvals++
+        return route.fulfill({
+          json: { redirect_url: `${client.redirectUri}?code=isolated-code&state=isolated-state` }
+        })
+      }
+      return route.fulfill({ status: 400, json: { message: 'Unexpected isolated test request' } })
+    })
+    await page.route('http://localhost:3010/api/auth/callback?**', (route) =>
+      route.fulfill({
+        contentType: 'text/html; charset=utf-8',
+        body: '<h1>本地 BFF 回调已接收</h1>'
+      })
+    )
+    await page.goto(
+      `#/auth/login?sso_authorization_id=${authorizationId}${existingSession ? '' : '&sso_force=1'}`,
+      { waitUntil: 'domcontentloaded' }
+    )
+    if (!existingSession) {
+      await page.locator('input[name="username"]').fill(user.email)
+      await page.locator('input[name="password"]').fill('isolated-test-password')
+      await page.locator('button[type="submit"]').click()
+    }
+    await expect(page).toHaveURL(`${client.redirectUri}?code=isolated-code&state=isolated-state`, {
+      timeout: 60_000
+    })
+    await expect(page.getByRole('heading', { name: '本地 BFF 回调已接收' })).toBeVisible()
+    expect(approvals).toBe(1)
+    expect(businessRequests).toEqual([])
+  })
+}
 
 interface AuthFieldExpectation {
   name: string
   autocomplete: string
 }
+
+test('内部 SSO 直接显示统一登录表单且不展示授权确认卡片', async ({ page }) => {
+  const hostedRequests: string[] = []
+  page.on('request', (request) => {
+    if (/bootstrap-hosted-applications(?:-|\.ts)/.test(new URL(request.url()).pathname))
+      hostedRequests.push(request.url())
+  })
+  await page.goto('#/auth/login?sso_authorization_id=layout_test_request&sso_force=1', {
+    waitUntil: 'domcontentloaded'
+  })
+  await expect(page.getByRole('heading', { name: '登录 BFF 平台', exact: true })).toBeVisible({
+    timeout: 60_000
+  })
+  await expect(page.locator('input[name="username"]')).toHaveValue('')
+  await expect(page.locator('input[name="password"]')).toHaveValue('')
+  await expect(page.getByRole('button', { name: '同意并继续', exact: true })).toHaveCount(0)
+  expect(hostedRequests).toEqual([])
+})
 
 test('登录页主题切换保留已显示的账号与记住密码状态', async ({ page }) => {
   await page.goto('#/auth/login', { waitUntil: 'domcontentloaded' })

@@ -41,6 +41,7 @@ import type {
   Router
 } from 'vue-router'
 import { nextTick } from 'vue'
+import { resolveSsoAuthorizationId } from '@/utils/oauth-authorization'
 import NProgress from 'nprogress'
 import { useSettingStore } from '@/store/modules/setting'
 import { useUserStore } from '@/store/modules/user'
@@ -247,6 +248,15 @@ async function handleRouteGuard(
   if (loginRedirect) {
     return loginRedirect
   }
+
+  // The consent page validates the Auth session and account access itself.
+  // It must also work while business menus or hosted modules are unavailable.
+  if (
+    to.name === 'OAuthConsent' ||
+    (to.name === 'Login' &&
+      resolveSsoAuthorizationId(to.query.sso_authorization_id, to.query.redirect))
+  )
+    return true
 
   // 2. 检查路由初始化是否已失败（防止死循环）
   if (routeInitFailed) {
