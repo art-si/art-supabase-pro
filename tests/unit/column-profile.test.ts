@@ -270,6 +270,43 @@ test('automatic sizing on a saved row clears a width inherited from another scop
   )
 })
 
+test('overrides inherit from the first duplicate key and retain untouched columns without mutating profiles', () => {
+  const platform: TableColumnProfile = {
+    ...profile('platform', 'platform'),
+    columns: [
+      { key: 'name', label: '首个名称', visible: true, align: 'right', width: 240 },
+      { key: 'name', label: '重复名称', visible: true, align: 'left', width: 80 },
+      { key: 'amount', label: '金额', visible: true, fixed: 'right' }
+    ]
+  }
+  const user: TableColumnProfile = {
+    ...profile('user', 'user'),
+    columns: [{ key: 'name', label: '用户名称', visible: false }]
+  }
+  const profiles = [user, platform]
+  const original = structuredClone(profiles)
+  const result = resolveColumnProfiles(profiles)
+  assert.deepEqual(result.columns, [
+    {
+      key: 'name',
+      label: '用户名称',
+      visible: false,
+      align: 'right',
+      width: undefined,
+      minWidth: undefined
+    },
+    {
+      key: 'amount',
+      label: '金额',
+      visible: true,
+      fixed: 'right',
+      width: undefined,
+      minWidth: undefined
+    }
+  ])
+  assert.deepEqual(profiles, original)
+})
+
 test('permission-dependent columns do not reject an authorized main list or turn a partial detail into it', () => {
   const catalog: TableColumnSetting[] = [
     ...['name', 'code', 'status'].map((key) => ({ key, label: key, visible: true })),
