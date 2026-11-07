@@ -1,4 +1,4 @@
-import { createApp, h, ref } from 'vue'
+import { createApp, getCurrentInstance, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { useEventListener } from '@vueuse/core'
 import { store } from '@/store'
@@ -6,7 +6,10 @@ import language from '@/locales'
 import { setupGlobDirectives } from '@/directives'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
+import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+import { writePlatformTenantScopeActive } from '@/utils/tenant-scope-context'
 import ExpenseDialog from '@fms/views/settlement/waybill-cost/modules/waybill-expense-dialog.vue'
+import ArtTable from '@/components/core/tables/art-table/index.vue'
 import { createExpenseOcrResult } from '../support/expense-ocr-result'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
@@ -40,6 +43,31 @@ const app = createApp({
         },
         waybillNoSnapshot: `合成运单-${id}`
       }
+      const params = new URLSearchParams(location.search)
+      if (params.has('lineValidation') || params.has('artifact')) {
+        Object.assign(row, {
+          expenseLocation: '合成发生地点',
+          expenseLongitude: 116.4,
+          expenseLatitude: 39.9,
+          expenseCoordinateSystem: 'gcj02',
+          expenseCoordinateSource: 'import',
+          expenseCoordinateStatus: 'located'
+        })
+      }
+      if (new URLSearchParams(location.search).has('optionRaces')) {
+        row.waybill = {
+          id: ids[id],
+          waybillNo: `合成运单-${id}`,
+          status: 'completed',
+          tenantId: row.tenantId,
+          driverId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          driver: {
+            id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            driverName: '合成司机',
+            phone: ''
+          }
+        }
+      }
       const deferred = id === 'A' && new URLSearchParams(location.search).has('deferredOcr')
       await dialog.value?.handleOpen({
         row,
@@ -62,6 +90,12 @@ const app = createApp({
     }
     useEventListener(window, 'keydown', (event) => {
       if (event.key === 'F8') void open('B')
+      if (event.key === 'F7') useMenuStore().setButtonList([])
+      if (event.key === 'F6') {
+        const scope = useTenantScopeStore(store)
+        scope.setTenantScope('22222222-2222-4222-8222-222222222222')
+        document.documentElement.dataset.expenseScope = scope.selectedTenantId ?? 'all'
+      }
     })
     return () =>
       h('main', { class: 'min-h-screen p-4' }, [
@@ -71,6 +105,51 @@ const app = createApp({
       ])
   }
 })
+if (new URLSearchParams(location.search).has('lineValidation')) {
+  let holdValidation = true
+  app.mixin({
+    beforeMount() {
+      const instance = getCurrentInstance()
+      if (instance?.type !== ArtTable) return
+      const columns: unknown = instance.props.columns
+      if (!Array.isArray(columns)) return
+      const amountColumn = columns.find(
+        (column: unknown): column is Record<string, unknown> =>
+          typeof column === 'object' &&
+          column !== null &&
+          'prop' in column &&
+          column.prop === 'amount'
+      )
+      if (!amountColumn) return
+      const existingRules: unknown = amountColumn.rules
+      amountColumn.rules = [
+        ...(Array.isArray(existingRules) ? existingRules : existingRules ? [existingRules] : []),
+        {
+          validator: () => {
+            if (!holdValidation) return true
+            holdValidation = false
+            document.documentElement.dataset.lineValidation = 'pending'
+            return new Promise<boolean>((resolve) => {
+              document.addEventListener(
+                'expense-line-validation-result',
+                (event) => {
+                  const detail: unknown = event instanceof CustomEvent ? event.detail : undefined
+                  const valid =
+                    typeof detail === 'object' && detail !== null && 'valid' in detail
+                      ? detail.valid === true
+                      : true
+                  document.documentElement.dataset.lineValidation = 'resolved'
+                  resolve(valid)
+                },
+                { once: true }
+              )
+            })
+          }
+        }
+      ]
+    }
+  })
+}
 app
   .use(store)
   .use(language)
@@ -83,8 +162,26 @@ app
 useUserStore(store).setUserInfo({
   userId: 'synthetic-user',
   tenantId: '11111111-1111-4111-8111-111111111111',
-  platformSuper: false
+  platformSuper: new URLSearchParams(location.search).has('platformScope')
 })
+if (new URLSearchParams(location.search).has('platformScope')) {
+  const scope = useTenantScopeStore(store)
+  scope.selectedTenantId = null
+  scope.scopeOwnerUserId = 'synthetic-user'
+  scope.tenantOptions = [
+    {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantCode: 'A',
+      tenantName: '合成租户 A'
+    },
+    {
+      id: '22222222-2222-4222-8222-222222222222',
+      tenantCode: 'B',
+      tenantName: '合成租户 B'
+    }
+  ]
+  writePlatformTenantScopeActive(true)
+}
 useMenuStore().setButtonList(
   ['FinanceWaybillCost:Add', 'FinanceWaybillCost:Edit'].map((name) => ({
     name,
