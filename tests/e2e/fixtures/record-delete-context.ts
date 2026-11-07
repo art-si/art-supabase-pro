@@ -335,7 +335,9 @@ const waybillExpensePermission = new URLSearchParams(location.search).get(
 )
 useUserStore(store).setUserInfo({
   userId: 'context-test-user',
-  tenantId: 'context-test-tenant',
+  tenantId: waybillExpensePermission
+    ? '11111111-1111-4111-8111-111111111111'
+    : 'context-test-tenant',
   platformSuper:
     !expensePermission &&
     !assetPermission &&
