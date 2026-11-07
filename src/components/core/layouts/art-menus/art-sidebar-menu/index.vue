@@ -24,7 +24,7 @@
             <ArtTooltip
               class="box-item"
               effect="dark"
-              :content="$t(menu.meta.title)"
+              :content="formatMenuTitle(menu.meta.title)"
               placement="right"
               :offset="15"
               :hide-after="0"
@@ -37,7 +37,7 @@
                   'is-active': isFirstLevelMenuActive(menu)
                 }"
                 :aria-current="isFirstLevelMenuActive(menu) ? 'page' : undefined"
-                :aria-label="$t(menu.meta.title)"
+                :aria-label="formatMenuTitle(menu.meta.title)"
                 :style="{
                   height: dualMenuShowText ? '60px' : '46px'
                 }"
@@ -51,7 +51,7 @@
                   }"
                 />
                 <span v-if="dualMenuShowText" class="text-md text-g-700">
-                  {{ $t(menu.meta.title) }}
+                  {{ formatMenuTitle(menu.meta.title) }}
                 </span>
                 <div v-if="menu.meta.showBadge" class="art-badge art-badge-dual" />
               </button>
@@ -151,6 +151,7 @@
   import { isIframe } from '@/utils/navigation'
   import { startMenuJump } from '@/utils/navigation'
   import { resolveMenuRootPath } from '@/utils/navigation/route'
+  import { formatMenuTitle } from '@/utils/router'
   import SidebarSubmenu from './widget/sidebar-submenu.vue'
   import { useCommon } from '@/hooks/core/useCommon'
   import { useWindowSize, useTimeoutFn } from '@vueuse/core'

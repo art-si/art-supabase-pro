@@ -273,7 +273,7 @@
           size="compact"
           :visual-size="80"
           title="数据加载失败"
-          description="暂时无法获取列表，请检查网络后重试。"
+          :description="managedTable.error.value?.message || '暂时无法获取列表，请稍后重试。'"
         >
           <ElButton type="primary" @click="handleRefresh">重新加载</ElButton>
         </ArtEmptyState>

@@ -5,6 +5,7 @@ import { mockApplicationMenus } from './support/menu-rpc'
 import { prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
+const platformSourceRoot = process.env.E2E_PLATFORM_SOURCE_ROOT || '/src'
 
 const sheetRows = [
   {
@@ -233,12 +234,23 @@ test('盘点表双单据列表与明细可读', async ({ page }, testInfo) => {
   if (await designGuide.isVisible()) await designGuide.click()
   await expect(page.getByText('PDB202610-001', { exact: true })).toBeVisible()
   await expect(page.getByText('PDB202610-002', { exact: true })).toBeVisible()
+  const mobileMenu = (page.viewportSize()?.width ?? 1440) < 800
+  if (mobileMenu) await page.getByRole('button', { name: '展开或收起侧边菜单' }).click()
   await expect(
     page.locator('#app-sidebar').getByRole('menuitem', { name: '盘点业务' })
   ).toBeVisible()
   await expect(
     page.locator('#app-sidebar').getByRole('menuitem', { name: '库存盘点' })
   ).toBeVisible()
+  if (mobileMenu) {
+    await page
+      .locator('#app-sidebar')
+      .getByRole('menuitem', { name: '盘点表', exact: true })
+      .click()
+    await expect(
+      page.locator('#app-sidebar').getByRole('menuitem', { name: '盘点业务' })
+    ).toBeHidden()
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({
     path: testInfo.outputPath('count-sheet-list.png'),
@@ -387,6 +399,7 @@ test('盘点表暗色与阴影模式保持可读', async ({ page }, testInfo) =>
   await page.getByRole('button', { name: '查看盘点表', exact: true }).first().click()
   const drawer = page.getByRole('dialog', { name: '盘点表', exact: true })
   await expect(drawer).toBeVisible()
+  await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
   await drawer.getByText('R00-0013', { exact: false }).scrollIntoViewIfNeeded()
   await page.screenshot({
     path: testInfo.outputPath('count-sheet-dark-detail.png'),
@@ -452,6 +465,7 @@ test('盘点表普通查看用户不能执行录入、审核或删除', async ({
   const drawer = page.getByRole('dialog', { name: '盘点表', exact: true })
   await expect(drawer).toBeVisible()
   await expect(drawer.getByRole('button', { name: '保存人员信息' })).toHaveCount(0)
+  await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
   await expect(drawer.getByRole('button', { name: '新增账外物料' })).toHaveCount(0)
   await expect(drawer.getByRole('button', { name: '提交审核' })).toHaveCount(0)
 })
@@ -498,6 +512,22 @@ test('盘点表删除前展示阻塞引用并停止删除', async ({ page }) => 
 })
 
 test('盘点表可导入 SN 并保存逐件实盘', async ({ page }, testInfo) => {
+  test.setTimeout(60_000)
+  await page.addInitScript(() => {
+    type Gate = { entered: boolean; readComplete: boolean; release: () => void }
+    const browserWindow = window as Window & { __serialReadGate?: Gate }
+    const original = File.prototype.arrayBuffer
+    const { promise: hold, resolve: release } = Promise.withResolvers<void>()
+    browserWindow.__serialReadGate = { entered: false, readComplete: false, release }
+    File.prototype.arrayBuffer = async function () {
+      if (this.name !== 'revoked-count-serials.xlsx') return original.call(this)
+      browserWindow.__serialReadGate!.entered = true
+      await hold
+      const result = await original.call(this)
+      browserWindow.__serialReadGate!.readComplete = true
+      return result
+    }
+  })
   const draft = {
     ...sheetRows[0],
     status: 'draft',
@@ -505,7 +535,11 @@ test('盘点表可导入 SN 并保存逐件实盘', async ({ page }, testInfo) =
     submitted_at: null,
     plan: { ...sheetRows[0].plan, status: 'counting', completion_status: 'pending' }
   }
-  await installCountSheetMenu(page, { sheets: [draft] })
+  await installCountSheetMenu(page, {
+    ordinary: true,
+    actions: ['View', 'Count', 'ImportSerial'],
+    sheets: [draft]
+  })
   await page.route('**/rest/v1/wms_count_line?*', (route) =>
     route.fulfill({
       json: [
@@ -563,9 +597,26 @@ test('盘点表可导入 SN 并保存逐件实盘', async ({ page }, testInfo) =
   })
   await page.goto('#/wms/count-business/count-sheet')
   await page.getByRole('button', { name: '查看盘点表', exact: true }).click()
+  await page
+    .getByRole('dialog', { name: '盘点表', exact: true })
+    .getByRole('tab', { name: '物料明细', exact: true })
+    .click()
   await page.getByRole('button', { name: '录入 / 查看 SN', exact: true }).click()
   const serialDialog = page.getByRole('dialog', { name: '盘点序列号', exact: true })
   await expect(serialDialog).toBeVisible()
+  const granted = await page.evaluate(async (sourceRoot) => {
+    const userPath = `${sourceRoot}/store/modules/user.ts`
+    const menuPath = `${sourceRoot}/store/modules/menu.ts`
+    const { useUserStore } = await import(/* @vite-ignore */ userPath)
+    const { useMenuStore } = await import(/* @vite-ignore */ menuPath)
+    const permissions = useMenuStore().buttonList.map((item: { name?: string }) => item.name)
+    return {
+      platformSuper: useUserStore().isPlatformSuper,
+      count: permissions.includes('WmsCountSheet:Count'),
+      importSerial: permissions.includes('WmsCountSheet:ImportSerial')
+    }
+  }, platformSourceRoot)
+  expect(granted).toEqual({ platformSuper: false, count: true, importSerial: true })
   const workbook = new ExcelJS.Workbook()
   workbook.addWorksheet('序列号').addRows([['序列号'], ['SN-IMPORTED-001']])
   const chooserPromise = page.waitForEvent('filechooser')
@@ -579,6 +630,46 @@ test('盘点表可导入 SN 并保存逐件实盘', async ({ page }, testInfo) =
   await expect(serialDialog.getByPlaceholder('每行一个实物中新增的 SN')).toHaveValue(
     'SN-IMPORTED-001'
   )
+  await expect(page.getByText('已导入 1 条序列号，请核对后保存')).toHaveCount(0)
+  const revokedWorkbook = new ExcelJS.Workbook()
+  revokedWorkbook.addWorksheet('序列号').addRows([['序列号'], ['SN-REVOKED-001']])
+  const revokedChooserPromise = page.waitForEvent('filechooser')
+  await serialDialog.getByRole('button', { name: '导入序列号' }).click()
+  const revokedChooser = await revokedChooserPromise
+  await revokedChooser.setFiles({
+    name: 'revoked-count-serials.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from(await revokedWorkbook.xlsx.writeBuffer())
+  })
+  await page.waitForFunction(
+    () => (window as Window & { __serialReadGate?: { entered: boolean } }).__serialReadGate?.entered
+  )
+  await page.evaluate(async (sourceRoot) => {
+    const modulePath = `${sourceRoot}/store/modules/menu.ts`
+    const { useMenuStore } = await import(/* @vite-ignore */ modulePath)
+    const menu = useMenuStore()
+    menu.setButtonList(menu.buttonList.filter((item) => item.name !== 'WmsCountSheet:ImportSerial'))
+  }, platformSourceRoot)
+  await page.evaluate(() => {
+    ;(window as Window & { __serialReadGate?: { release: () => void } }).__serialReadGate?.release()
+  })
+  await page.waitForFunction(
+    () =>
+      (window as Window & { __serialReadGate?: { readComplete: boolean } }).__serialReadGate
+        ?.readComplete
+  )
+  await expect(serialDialog.getByRole('button', { name: '导入序列号' })).toHaveCount(0)
+  await expect(page.getByText('已导入 1 条序列号，请核对后保存')).toHaveCount(0)
+  await expect(serialDialog.getByPlaceholder('每行一个实物中新增的 SN')).toHaveValue(
+    'SN-IMPORTED-001'
+  )
+  const summary = serialDialog.getByText(/^实盘件数：/)
+  await summary.scrollIntoViewIfNeeded()
+  const summaryBounds = await summary.boundingBox()
+  const footerBounds = await serialDialog.locator('.el-dialog__footer').boundingBox()
+  if (!summaryBounds || !footerBounds) throw new Error('盘点件数或确认区未显示')
+  expect(summaryBounds.y + summaryBounds.height).toBeLessThanOrEqual(footerBounds.y + 1)
+  await expect(serialDialog.getByRole('button', { name: '确定', exact: true })).toBeInViewport()
   await page.screenshot({
     path: testInfo.outputPath('count-sheet-serial-import.png'),
     animations: 'disabled'
@@ -723,6 +814,7 @@ test('盘点表选单调整可合并入库与出库并保存', async ({ page }, 
   await page.goto('#/wms/count-business/count-sheet')
   await page.getByRole('button', { name: '查看盘点表', exact: true }).click()
   const sheetDialog = page.getByRole('dialog', { name: '盘点表', exact: true })
+  await sheetDialog.getByRole('tab', { name: '物料明细', exact: true }).click()
   await sheetDialog.getByRole('button', { name: '选单调整', exact: true }).click()
   const adjustmentDialog = page.getByRole('dialog', { name: '选单调整', exact: true })
   await expect(adjustmentDialog).toBeVisible()
@@ -793,6 +885,7 @@ test('盘点表可多选两项账外物料并新增明细', async ({ page }, tes
   await page.goto('#/wms/count-business/count-sheet')
   await page.getByRole('button', { name: '查看盘点表', exact: true }).click()
   const sheetDialog = page.getByRole('dialog', { name: '盘点表', exact: true })
+  await sheetDialog.getByRole('tab', { name: '物料明细', exact: true }).click()
   await sheetDialog.getByRole('button', { name: '新增账外物料', exact: true }).click()
   const addDialog = page.getByRole('dialog', { name: '新增账外物料', exact: true })
   await expect(addDialog).toBeVisible()
