@@ -41,7 +41,11 @@ import type {
   Router
 } from 'vue-router'
 import { nextTick } from 'vue'
-import { resolveSsoAuthorizationId } from '@/utils/oauth-authorization'
+import {
+  resolveFirstPartySsoAuthorize,
+  resolveSsoAuthorizationId
+} from '@/utils/oauth-authorization'
+import { firstPartyOAuthClients } from '@/config/first-party-oauth'
 import NProgress from 'nprogress'
 import { useSettingStore } from '@/store/modules/setting'
 import { useUserStore } from '@/store/modules/user'
@@ -254,7 +258,13 @@ async function handleRouteGuard(
   if (
     to.name === 'OAuthConsent' ||
     (to.name === 'Login' &&
-      resolveSsoAuthorizationId(to.query.sso_authorization_id, to.query.redirect))
+      (resolveSsoAuthorizationId(to.query.sso_authorization_id, to.query.redirect) ||
+        resolveFirstPartySsoAuthorize(
+          to.query.sso_authorize,
+          import.meta.env.VITE_SUPABASE_URL,
+          firstPartyOAuthClients,
+          to.query.redirect
+        )))
   )
     return true
 
