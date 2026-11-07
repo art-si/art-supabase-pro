@@ -22,7 +22,8 @@
 <script setup lang="ts">
   import { genFileId } from 'element-plus'
   import type { UploadFile, UploadRawFile } from 'element-plus'
-  import type { Component } from 'vue'
+  import { shallowRef, type Component } from 'vue'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { importExcelFile } from '@/utils/file'
 
   defineOptions({ name: 'ArtExcelImport' })
@@ -53,26 +54,26 @@
 
   const fileInputRef = ref<HTMLInputElement>()
   const isParsing = ref(false)
+  const captureImportScope = useTenantOperationGuard()
+  const activeScope = shallowRef<(() => boolean) | null>(null)
   watch(isParsing, (value) => emit('parsing-change', value), { flush: 'sync' })
   let parseRequest = 0
+  const invalidateParsing = (): void => {
+    parseRequest += 1
+    activeScope.value = null
+    if (fileInputRef.value) fileInputRef.value.value = ''
+    isParsing.value = false
+  }
+  watch(() => props.contextKey, invalidateParsing, { flush: 'sync' })
   watch(
-    () => props.contextKey,
-    () => {
-      parseRequest += 1
-      isParsing.value = false
-      if (fileInputRef.value) fileInputRef.value.value = ''
+    () => activeScope.value?.(),
+    (current) => {
+      if (activeScope.value && current === false) invalidateParsing()
     },
     { flush: 'sync' }
   )
-  onDeactivated(() => {
-    parseRequest += 1
-    isParsing.value = false
-    if (fileInputRef.value) fileInputRef.value.value = ''
-  })
-  onBeforeUnmount(() => {
-    parseRequest += 1
-    isParsing.value = false
-  })
+  onDeactivated(invalidateParsing)
+  onBeforeUnmount(invalidateParsing)
   const isDisabled = computed(
     () => props.disabled || isParsing.value || Boolean(props.buttonProps?.loading)
   )
@@ -96,24 +97,29 @@
       raw: rawFile
     }
 
-    isParsing.value = true
     const request = ++parseRequest
+    const scopeCurrent = captureImportScope()
+    const isCurrent = () => request === parseRequest && scopeCurrent()
+    activeScope.value = scopeCurrent
+    isParsing.value = true
     try {
+      if (!isCurrent()) return
       if (!props.parseExcel) {
         emit('file-change', rawFile, uploadFile)
         return
       }
       const results = await importExcelFile(rawFile)
-      if (request !== parseRequest) return
+      if (!isCurrent()) return
       emit('import-success', results, rawFile, uploadFile)
     } catch (error) {
-      if (request !== parseRequest) return
+      if (!isCurrent()) return
       emit(
         'import-error',
         error instanceof Error ? error : new Error('导入文件解析失败', { cause: error })
       )
     } finally {
       if (request === parseRequest) {
+        activeScope.value = null
         input.value = ''
         isParsing.value = false
       }

@@ -1,24 +1,24 @@
-import { onScopeDispose, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import { onScopeDispose, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useRoute } from 'vue-router'
 import type { ArtTableQueryExpose } from '@/components/core/tables/art-table-query/index.vue'
 
 /** Capture a route lifetime before awaiting work that will open or navigate UI. */
 export function useRouteOperationGuard(): () => () => boolean {
   const route = useRoute()
-  let version = 0
+  const version = ref(0)
   let active = true
   watch(
     () => route.fullPath,
-    () => version++,
+    () => version.value++,
     { flush: 'sync' }
   )
   onScopeDispose(() => {
     active = false
-    version++
+    version.value++
   })
   return () => {
-    const capturedVersion = version
-    return () => active && capturedVersion === version
+    const capturedVersion = version.value
+    return () => active && capturedVersion === version.value
   }
 }
 
