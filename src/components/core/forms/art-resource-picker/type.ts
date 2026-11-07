@@ -1,19 +1,6 @@
 import type { DialogEmits } from 'element-plus'
 
-export interface Resource {
-  id?: number
-  tenantId?: string
-  storageMode?: number
-  originName?: string
-  objectName?: string
-  hash?: string
-  mimeType?: string
-  storagePath?: string
-  suffix?: string
-  sizeByte?: number
-  sizeInfo?: string
-  url?: string
-}
+export type Resource = Api.DataCenter.Resources.ResourceListItem
 
 export interface FileType {
   value: string
@@ -26,6 +13,11 @@ export interface FileType {
 // 定义 Props 类型
 export interface ResourcePanelProps {
   resourceTenantId?: string
+  /** Permission capabilities supplied by a host application; defaults preserve native pro behavior. */
+  canView?: boolean
+  canUpload?: boolean
+  canRename?: boolean
+  canDelete?: boolean
   multiple?: boolean
   limit?: number
   pageSize?: number

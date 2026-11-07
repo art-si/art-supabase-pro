@@ -6,6 +6,7 @@
 - 编辑态复用 Element Plus 上传列表，`disabled`、租户目标、文件数量和文件大小限制沿用上传契约。
 - 预览按钮使用 Element Plus 图片查看器，可用 Enter / Space 打开，Esc、关闭按钮或遮罩关闭。图片列表直接从当前模型派生，上传中的无 URL 文件不进入预览。
 - `resourceTenantId` 指定资源所属租户，`uploadRequest` 可提供业务上传实现；资源选择结果必须属于目标租户。
+- `resourceCanView` 控制资源库入口；`resourceCanUpload` 控制直接上传及资源库内上传。两者独立：允许查看但不能上传时，仍可从现有资源中选图。`resourceCanEdit` 与 `resourceCanDelete` 分别控制资源库内重命名和删除，不影响移除当前表单中的图片引用。四项默认均为 `true`，保持既有调用行为。
 - 目标租户变化时会移除旧的待上传项、关闭选择器与预览，并忽略旧上传回调。业务表单负责同时清理不兼容的已保存图片，组件不迁移资源归属。
 - `size` 或 `width` / `height` 控制缩略图尺寸，`previewFit` 控制缩略图裁切。多张图片在可用宽度内换行。
 

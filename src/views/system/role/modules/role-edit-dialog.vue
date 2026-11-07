@@ -55,29 +55,22 @@
   import { fetchEnabledTenantList } from '@/api/system-manage/tenant'
   import { uniqueValidator } from '@/utils/form/validator'
   import { useUserStore } from '@/store/modules/user'
-
   type RoleListItem = Api.SystemManage.RoleListItem
   type TenantListItem = Api.SystemManage.TenantListItem
   type DialogType = 'add' | 'edit'
-
-  const { organizationScope = true } = defineProps<{ organizationScope?: boolean }>()
-
   interface RoleEditDialogOpenData {
     type: DialogType
     roleData?: RoleListItem
   }
-
   interface ArtFormExpose {
     validate: () => Promise<boolean>
     clearValidate: () => void
     validateField: (prop: string) => void
     reloadOptions: (key?: string) => Promise<void>
   }
-
   interface Emits {
     (e: 'success'): void
   }
-
   const emit = defineEmits<Emits>()
   const userStore = useUserStore()
   const { getUserInfo, isPlatformSuper } = storeToRefs(userStore)
@@ -88,19 +81,20 @@
   const canSelectTenant = computed(() => isPlatformSuper.value)
   const currentTenantId = computed(() => getUserInfo.value.tenantId)
   const selectableTenantOptions = computed(() =>
-    tenantOptions.value.filter((tenant): tenant is TenantListItem & { id: string } =>
-      Boolean(tenant.id)
+    tenantOptions.value.filter(
+      (
+        tenant
+      ): tenant is TenantListItem & {
+        id: string
+      } => Boolean(tenant.id)
     )
   )
-
   const isBuiltinRegisterRole = computed(
     () => dialogType.value === 'edit' && isBuiltinMemberRole(form.value.builtinType)
   )
-
   const isSuperRole = computed(
     () => dialogType.value === 'edit' && isProtectedAdminRole(form.value.builtinType)
   )
-
   const isSystemBuiltinRole = computed(() => isBuiltinRegisterRole.value || isSuperRole.value)
   const contextTitle = computed(() =>
     dialogType.value === 'add' ? '创建新的职责角色' : '调整角色定义与可用状态'
@@ -110,7 +104,6 @@
       ? '角色编码用于权限关联，建议采用稳定、清晰的职责命名。'
       : '角色定义会影响关联用户的权限识别，保存前请确认职责边界。'
   )
-
   const createInitialForm = (): RoleListItem => ({
     id: undefined,
     tenantId: undefined,
@@ -124,9 +117,7 @@
     enabled: true,
     createBy: undefined
   })
-
   const form = ref<RoleListItem>(createInitialForm())
-
   const rules = computed<FormRules>(() => ({
     tenantId: canSelectTenant.value
       ? [{ required: true, message: '请选择所属租户', trigger: 'change' }]
@@ -151,10 +142,8 @@
     ],
     description: [{ required: true, message: '请输入角色描述', trigger: 'change' }]
   }))
-
   const formatTenantOption = (tenant: TenantListItem): string =>
     tenant.tenantCode ? `${tenant.tenantName}（${tenant.tenantCode}）` : tenant.tenantName
-
   const formItems = computed<FormItem[]>(() => [
     {
       label: '所属租户',
@@ -197,7 +186,6 @@
       key: 'organizationId',
       type: 'treeSelect',
       span: 18,
-      hidden: !organizationScope,
       api: fetchEnabledOrganizationTree,
       immediate: false,
       beforeFetch: () => ({ tenantId: form.value.tenantId }),
@@ -245,17 +233,14 @@
       help: '清晰的职责说明有助于后续权限审计。'
     }
   ])
-
   const resetForm = async (): Promise<void> => {
     Object.assign(form.value, createInitialForm())
     await nextTick()
     formRef.value?.clearValidate()
   }
-
   const initializeForm = async (data: RoleEditDialogOpenData): Promise<void> => {
     await resetForm()
     dialogType.value = data.type
-
     if (data.roleData) {
       const {
         id,
@@ -285,43 +270,33 @@
       })
       return
     }
-
     if (!canSelectTenant.value) {
       form.value.tenantId = currentTenantId.value
     }
   }
-
   const buildRolePayload = (): Omit<RoleListItem, 'id'> => {
     const payload = { ...toRaw(form.value) }
     delete payload.id
     delete payload.builtinType
 
-    if (!organizationScope) delete payload.organizationId
-
     if (!canSelectTenant.value) {
       payload.tenantId = currentTenantId.value
     }
-
     if (isSystemBuiltinRole.value) {
       payload.enabled = true
     }
-
     return payload
   }
-
   const handleSubmit = async (): Promise<boolean> => {
     if (!formRef.value) return false
-
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
     } catch (error) {
       notifyFriendlyError(error, '表单校验未完成，请稍后重试', 'warning')
       return false
     }
-
     try {
       const payload = buildRolePayload()
-
       if (dialogType.value === 'add') {
         await addRole(payload)
       } else {
@@ -334,21 +309,18 @@
       return false
     }
   }
-
   const loadTenantOptions = async (): Promise<void> => {
     if (!canSelectTenant.value) return
     const { data } = await fetchEnabledTenantList()
     tenantOptions.value = data ?? []
   }
-
   const handleTenantChange = (): void => {
     form.value.organizationId = null
-    if (organizationScope) void formRef.value?.reloadOptions('organizationId')
+    void formRef.value?.reloadOptions('organizationId')
     if (form.value.roleCode) {
       void formRef.value?.validateField('roleCode')
     }
   }
-
   const handleOpen = async (data: RoleEditDialogOpenData): Promise<void> => {
     await initializeForm(data)
     await dialogRef.value?.handleOpen(data, {
@@ -359,7 +331,7 @@
         try {
           await loadTenantOptions()
           await initializeForm(data)
-          if (organizationScope) await formRef.value?.reloadOptions('organizationId')
+          await formRef.value?.reloadOptions('organizationId')
         } finally {
           api.setLoading(false)
         }
@@ -370,7 +342,6 @@
       }
     })
   }
-
   defineExpose({
     handleOpen,
     handleSubmit,

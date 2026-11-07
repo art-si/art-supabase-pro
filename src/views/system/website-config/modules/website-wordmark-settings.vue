@@ -26,6 +26,7 @@
           v-if="!disabled"
           v-auth="'System:WebsiteConfig:GenerateWordmark'"
           :loading="generating"
+          :disabled="!resources.canUpload"
           @click="handleGenerate"
         >
           <ArtSvgIcon icon="ri:magic-line" aria-hidden="true" />
@@ -49,6 +50,10 @@
             <ArtUploadImage
               :model-value="lightUrl"
               :resource-tenant-id="resourceTenantId"
+              :resource-can-view="resources.canView"
+              :resource-can-upload="resources.canUpload"
+              :resource-can-edit="resources.canRename"
+              :resource-can-delete="resources.canDelete"
               title="选择浅色菜单字图"
               width="100%"
               :height="150"
@@ -75,6 +80,10 @@
             <ArtUploadImage
               :model-value="darkUrl"
               :resource-tenant-id="resourceTenantId"
+              :resource-can-view="resources.canView"
+              :resource-can-upload="resources.canUpload"
+              :resource-can-edit="resources.canRename"
+              :resource-can-delete="resources.canDelete"
               title="选择深色菜单字图"
               width="100%"
               :height="150"
@@ -92,6 +101,7 @@
 
 <script setup lang="ts">
   import { ElMessage } from 'element-plus'
+  import { fetchResourceCapabilities } from '@/api/data-center'
   import { uploadAttachment } from '@/api/attachments'
   import { generateWebsiteWordmark } from '@/api/system-manage/website-config'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
@@ -115,6 +125,19 @@
     (event: 'update:darkUrl', value: string): void
   }>()
 
+  const resources = reactive({
+    canView: false,
+    canUpload: false,
+    canRename: false,
+    canDelete: false
+  })
+  onMounted(async () => {
+    try {
+      Object.assign(resources, await fetchResourceCapabilities())
+    } catch {
+      ElMessage.error('资源操作权限暂时无法加载，请刷新页面重试')
+    }
+  })
   const generating = ref(false)
 
   const handleEnabledChange = (value: string | number | boolean): void => {

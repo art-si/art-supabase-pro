@@ -1,10 +1,11 @@
 <template>
   <div class="resource-panel h-full flex flex-col">
     <div class="flex flex-col justify-between gap-y-1 md:flex-row">
-      <div>
+      <div class="min-w-0 max-w-full overflow-x-auto">
         <el-segmented
           v-model="segment.active"
           :options="segment.options"
+          class="min-w-max"
           size="default"
           block
           @change="handleFileTypesChange"
@@ -33,7 +34,7 @@
     </div>
 
     <button
-      v-if="props.showPasteUpload"
+      v-if="props.showPasteUpload && props.canUpload"
       type="button"
       class="resource-paste-zone"
       :class="{ 'is-uploading': uploading }"
@@ -128,9 +129,13 @@
       </component>
       <div v-else class="h-full w-full flex flex-1 items-center justify-center">
         <ArtEmptyState
-          :title="loadError ? '资源加载失败' : '暂无可用资源'"
+          :title="!props.canView ? '暂无资源查看权限' : loadError ? '资源加载失败' : '暂无可用资源'"
           :description="
-            loadError ? '请检查网络后重新加载' : '可以切换资源类型，或尝试更换搜索关键词'
+            !props.canView
+              ? '请联系管理员开通资源查看权限'
+              : loadError
+                ? '请检查网络后重新加载'
+                : '可以切换资源类型，或尝试更换搜索关键词'
           "
           size="compact"
           :visual-size="76"
@@ -186,7 +191,7 @@
           </div>
         </div>
 
-        <div class="resource-dock" aria-label="资源上传入口">
+        <div v-if="props.canUpload" class="resource-dock" aria-label="资源上传入口">
           <template v-for="(btn, index) in resourceStore.getAllButton()" :key="btn.name">
             <div class="res-app-container">
               <input
@@ -256,6 +261,10 @@
   defineOptions({ name: 'ArtResourcePanel' })
 
   const props = withDefaults(defineProps<ResourcePanelProps>(), {
+    canView: true,
+    canUpload: true,
+    canRename: true,
+    canDelete: true,
     multiple: false,
     limit: undefined,
     internalScroll: true,
@@ -303,7 +312,7 @@
         label: () => '图片',
         value: 'image',
         icon: 'ri:image-line',
-        suffix: 'png,jpg,jpeg,gif,bmp,webp'
+        suffix: 'png,jpg,jpeg,gif,bmp,webp,ico'
       },
       {
         label: () => '视频',
@@ -361,7 +370,8 @@
     pageSize: props.pageSize,
     total: 0,
     originName: '',
-    suffix: ''
+    suffix:
+      segment.value.options.find((option) => option.value === segment.value.active)?.suffix ?? ''
   })
   let resourceRequestId = 0
   const searchResources = useDebounceFn(() => {
@@ -518,7 +528,7 @@
             ]
           : []),
         ...copyItems,
-        ...(props.showRenameAction
+        ...(props.showRenameAction && props.canRename
           ? [
               {
                 key: 'rename',
@@ -529,14 +539,11 @@
               }
             ]
           : []),
-        {
-          key: 'delete',
-          label: '删除',
-          icon: 'ri-delete-bin-2-line'
-        }
+        ...(props.canDelete ? [{ key: 'delete', label: '删除', icon: 'ri-delete-bin-2-line' }] : [])
       ]
     }),
     handleSelect(item: MenuItemType) {
+      if (!props.canView) return
       const { resource } = menu.value
       if (item.key === 'select') {
         select(resource)
@@ -549,6 +556,7 @@
         select(resource)
       }
       if (item.key === 'view') {
+        if (!props.canView) return
         viewAttachment({
           name: resource.originName,
           url: resource.url,
@@ -589,6 +597,7 @@
    * 右键菜单
    */
   function executeContextmenu(e: MouseEvent, resource: Resource) {
+    if (!props.canView) return
     e.preventDefault()
     e.stopPropagation()
     menu.value.resource = resource
@@ -607,7 +616,7 @@
 
   function isImageResource(resource: Resource): boolean {
     if (resource.mimeType?.toLowerCase().startsWith('image/')) return true
-    return /^(bmp|gif|jpe?g|png|webp)$/i.test(resource.suffix?.trim() ?? '')
+    return /^(bmp|gif|ico|jpe?g|png|webp)$/i.test(resource.suffix?.trim() ?? '')
   }
 
   function isVideoResource(resource: Resource): boolean {
@@ -629,7 +638,7 @@
   }
 
   function toggleMediaPlayback(resource: Resource): void {
-    if (!isPlayableMediaResource(resource)) return
+    if (!props.canView || !isPlayableMediaResource(resource)) return
     const key = getResourcePlaybackKey(resource)
     playingResourceKey.value = playingResourceKey.value === key ? undefined : key
   }
@@ -644,6 +653,7 @@
   }
 
   async function handleCopyLink(resource: Resource): Promise<void> {
+    if (!props.canView) return
     const url = resource.url?.trim()
     if (!url) {
       ElMessage.warning('当前资源没有可复制的访问链接')
@@ -652,13 +662,14 @@
 
     try {
       await copyTextToClipboard(url, { legacyFallback: true })
-      ElMessage.success('资源链接已复制，可粘贴到浏览器或消息中')
+      ElMessage.success('资源链接已复制；访问仍受资源权限控制')
     } catch {
       ElMessage.error('链接复制失败，请检查浏览器剪贴板权限后重试')
     }
   }
 
   async function handleCopyImage(resource: Resource): Promise<void> {
+    if (!props.canView) return
     const url = resource.url?.trim()
     if (!url || !isImageResource(resource)) {
       ElMessage.warning('当前资源不是可复制的图片')
@@ -690,7 +701,7 @@
   }
 
   async function fetchClipboardImage(url: string): Promise<Blob> {
-    const response = await fetch(url, { credentials: 'omit', mode: 'cors' })
+    const response = await fetch(url, { credentials: 'same-origin', mode: 'cors' })
     if (!response.ok) throw new Error('RESOURCE_FETCH_FAILED')
 
     const source = await response.blob()
@@ -729,6 +740,7 @@
   }
 
   async function handleRename(resource: Resource): Promise<void> {
+    if (!props.canRename || !props.canView) return
     if (!resource.id) return
 
     const extension = getResourceExtension(resource)
@@ -751,7 +763,7 @@
       if (originName === resource.originName) return
 
       loading.value = true
-      await renameResource({ id: String(resource.id), originName })
+      await renameResource({ id: String(resource.id), originName, version: resource.version })
       resource.originName = originName
       await handleGetResourceList()
       ElMessage.success('附件名称已更新，原访问链接保持不变')
@@ -776,6 +788,7 @@
    * 选中资源
    */
   function select(resource: Resource) {
+    if (!props.canView) return
     const key = resource.url
     if (!key || selectedKeys.value.includes(key)) return
 
@@ -816,6 +829,7 @@
   }
 
   function confirm() {
+    if (!props.canView) return
     emit('confirm', selected.value)
   }
 
@@ -823,6 +837,7 @@
    * 删除选中
    */
   async function handleDelete(resource: Resource): Promise<void> {
+    if (!props.canDelete || !props.canView) return
     if (!resource.id) return
     const guard = deleteGuardRef.value
     if (!guard) {
@@ -848,7 +863,10 @@
 
       loading.value = true
       deleteStarted = true
-      const { storageCleanupFailed } = await deleteResource({ id: resource.id })
+      const { storageCleanupFailed } = await deleteResource({
+        id: resource.id,
+        version: resource.version
+      })
       deleteCommitted = true
       unSelect(resource)
       await handleGetResourceList()
@@ -877,6 +895,7 @@
    * 处理点击资源事件
    */
   function handleClick(resource: Resource) {
+    if (!props.canView) return
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     isSelected(resource) ? unSelect(resource) : select(resource)
   }
@@ -885,6 +904,7 @@
    * 处理双击资源事件
    */
   function handleDbClick(resource: Resource) {
+    if (!props.canView) return
     if (!props.dbClickConfirm) return
     // 双击确认选中单个元素
     clearSelected()
@@ -901,6 +921,7 @@
   }
 
   function handleUploadButtonClick(btn: Api.DataCenter.Resources.Button): void {
+    if (!props.canUpload) return
     if (uploading.value) return
     if (btn.click) {
       btn.click(btn, selected.value)
@@ -961,7 +982,7 @@
     files: File | File[],
     btn: Api.DataCenter.Resources.Button
   ): Promise<void> {
-    if (!btn.upload || uploading.value) return
+    if (!props.canUpload || !btn.upload || uploading.value) return
     if (!activeUploadTenantId.value) throw new Error('当前账号缺少租户信息，请刷新后重试')
     prepareUploadProgress(files)
     uploading.value = true
@@ -1005,12 +1026,13 @@
   async function handleFile(ev: Event, btn: Api.DataCenter.Resources.Button): Promise<void> {
     const target = ev.target
     if (!(target instanceof HTMLInputElement)) return
-    const files = target.files
+    // FileList is live in Chromium; snapshot files before clearing the input for repeat uploads.
+    const files = Array.from(target.files ?? [])
     target.value = ''
-    if (!files?.length) return
+    if (!props.canUpload || !files.length) return
 
     try {
-      await uploadFiles(files.length === 1 ? files[0] : Array.from(files), btn)
+      await uploadFiles(files.length === 1 ? files[0] : files, btn)
       ElMessage.success(files.length === 1 ? '文件上传成功' : `${files.length} 个文件上传成功`)
     } catch (error: unknown) {
       ElMessage.error(getFriendlySupabaseErrorMessage(error, '文件上传失败，请检查文件后重试'))
@@ -1018,6 +1040,7 @@
   }
 
   async function handlePasteFiles(event: ClipboardEvent): Promise<void> {
+    if (!props.canUpload) return
     if (uploading.value) return
     const sourceFiles = getClipboardFiles(event.clipboardData)
 
@@ -1060,6 +1083,13 @@
 
   const handleGetResourceList = async () => {
     const requestId = ++resourceRequestId
+    if (!props.canView) {
+      resources.value = []
+      queryParams.value.total = 0
+      loadError.value = false
+      loading.value = false
+      return
+    }
     try {
       playingResourceKey.value = undefined
       loading.value = true
@@ -1074,10 +1104,11 @@
         from,
         to
       }
-      const { data, error } = await fetchResourceList(params)
+      const { data, error, total } = await fetchResourceList(params)
       if (requestId !== resourceRequestId) return
       loadError.value = Boolean(error)
       resources.value = data ?? []
+      queryParams.value.total = error ? 0 : (total ?? 0)
     } catch (error) {
       if (requestId !== resourceRequestId) return
       loadError.value = true
@@ -1092,6 +1123,15 @@
     queryParams.value.page = 1
     void handleGetResourceList()
   })
+
+  watch(
+    () => props.canView,
+    () => {
+      selectedKeys.value = []
+      queryParams.value.page = 1
+      void handleGetResourceList()
+    }
+  )
 
   onMounted(() => void handleGetResourceList())
 </script>

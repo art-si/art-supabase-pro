@@ -1,3 +1,4 @@
+import type { AuthChannel } from '../../types/platform/website-config'
 import { uniqBy } from 'lodash-es'
 
 const BUILTIN_PROVIDERS = new Set([
@@ -36,7 +37,7 @@ const readText = (value: unknown, maxLength: number): string =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
 
-export const AUTH_CHANNEL_PRESETS: Api.Auth.AuthChannel[] = [
+export const AUTH_CHANNEL_PRESETS: AuthChannel[] = [
   {
     key: 'wechat',
     label: '微信',
@@ -108,10 +109,10 @@ export function isSupportedAuthProvider(provider: string): boolean {
   return BUILTIN_PROVIDERS.has(provider) || SAFE_CUSTOM_PROVIDER.test(provider)
 }
 
-export function normalizeAuthChannels(value: unknown): Api.Auth.AuthChannel[] {
+export function normalizeAuthChannels(value: unknown): AuthChannel[] {
   if (!Array.isArray(value)) return []
 
-  const channels = value.flatMap((item): Api.Auth.AuthChannel[] => {
+  const channels = value.flatMap((item): AuthChannel[] => {
     if (!isRecord(item)) return []
 
     const key = readText(item.key, 40).toLowerCase()
@@ -189,7 +190,7 @@ export function buildAuthCallbackUrl(
 }
 
 export function getAuthChannelQueryParams(
-  channel: Api.Auth.AuthChannel
+  channel: AuthChannel
 ): Record<string, string> | undefined {
   if (!channel.queryParamName || !channel.queryParamValue) return undefined
   return { [channel.queryParamName]: channel.queryParamValue }

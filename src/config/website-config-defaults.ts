@@ -1,6 +1,7 @@
-import { AUTH_CHANNEL_PRESETS } from '@/utils/supabase/auth-channels'
+import type { WebsiteConfigValues } from '../types/platform/website-config'
+import { AUTH_CHANNEL_PRESETS } from '../utils/supabase/auth-channels'
 
-export const WEBSITE_CONFIG_DEFAULTS: Api.SystemManage.WebsiteConfigItem = {
+export const WEBSITE_CONFIG_DEFAULTS: WebsiteConfigValues = {
   siteName: '亿企工场',
   siteShortName: '亿企工场',
   siteDescription: '商业化中后台管理系统',
@@ -39,7 +40,7 @@ export const WEBSITE_CONFIG_DEFAULTS: Api.SystemManage.WebsiteConfigItem = {
   enabled: true
 }
 
-export const createWebsiteConfigDefaults = (): Api.SystemManage.WebsiteConfigItem => ({
+export const createWebsiteConfigDefaults = (): WebsiteConfigValues => ({
   ...WEBSITE_CONFIG_DEFAULTS,
   authChannels: WEBSITE_CONFIG_DEFAULTS.authChannels.map((channel) => ({ ...channel }))
 })

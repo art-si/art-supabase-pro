@@ -1,10 +1,21 @@
 <template>
   <div
-    v-if="readonly || (uploadDisabled && fileList.length > 0)"
+    v-if="
+      readonly ||
+      (uploadDisabled && fileList.length > 0) ||
+      (!resourceCanUpload && !resourceCanView && fileList.length === 0)
+    "
     class="art-upload is-readonly flex flex-wrap gap-1.5"
     :class="{ 'is-full-width': width === '100%' }"
     v-bind="$attrs"
   >
+    <div
+      v-if="!fileList.length && !readonly && !resourceCanUpload && !resourceCanView"
+      class="upload-container is-disabled"
+      :style="getSize"
+    >
+      <div class="upload-prompt"><span class="upload-prompt__title">暂无图片资源权限</span></div>
+    </div>
     <div
       v-for="(file, index) in fileList"
       :key="file.url"
@@ -46,7 +57,7 @@
     :multiple="multiple"
     :limit="effectiveLimit"
     :accept="fileType"
-    :disabled="readonly || uploadDisabled"
+    :disabled="readonly || uploadDisabled || !resourceCanUpload"
     v-bind="$attrs"
   >
     <template #trigger>
@@ -123,6 +134,10 @@
       v-if="canPickResource"
       v-model:visible="isOpenResource"
       :resource-tenant-id="resourceTenantId"
+      :can-view="resourceCanView"
+      :can-upload="resourceCanUpload"
+      :can-rename="resourceCanEdit"
+      :can-delete="resourceCanDelete"
       :multiple="multiple"
       :limit="multiple ? Math.max(effectiveLimit - fileList.length, 0) : 1"
       default-file-type="image"
@@ -182,6 +197,10 @@
     disabled = false,
     showResourcePicker = true,
     resourceTenantId = '',
+    resourceCanView = true,
+    resourceCanUpload = true,
+    resourceCanEdit = true,
+    resourceCanDelete = true,
     uploadRequest
   } = defineProps<{
     modelValue?: string | string[] | null
@@ -198,6 +217,10 @@
     disabled?: boolean
     showResourcePicker?: boolean
     resourceTenantId?: string
+    resourceCanView?: boolean
+    resourceCanUpload?: boolean
+    resourceCanEdit?: boolean
+    resourceCanDelete?: boolean
     uploadRequest?: (file: File) => Promise<Api.DataCenter.Resources.ResourceListItem[]>
   }>()
 
@@ -213,13 +236,20 @@
   )
   const uploadDisabled = computed(() => disabled || (missingTenantTarget.value && !uploadRequest))
   const canPickResource = computed(
-    () => showResourcePicker && !readonly && !uploadDisabled.value && !missingTenantTarget.value
+    () =>
+      showResourcePicker &&
+      resourceCanView &&
+      !readonly &&
+      !uploadDisabled.value &&
+      !missingTenantTarget.value
   )
   const previewList = computed(() => fileList.value.flatMap((file) => (file.url ? [file.url] : [])))
   const previewVisible = ref(false)
   const previewIndex = ref(0)
   const effectiveLimit = computed(() => (multiple ? limit : 1))
-  const canUpload = computed(() => fileList.value.length < effectiveLimit.value)
+  const canUpload = computed(
+    () => resourceCanUpload && fileList.value.length < effectiveLimit.value
+  )
 
   const getSize = computed(() => {
     const toCssSize = (value: number | string): string =>
@@ -328,7 +358,7 @@
   }
 
   function beforeUpload(rawFile: File) {
-    if (readonly || uploadDisabled.value) return false
+    if (readonly || uploadDisabled.value || !resourceCanUpload) return false
     if (!isAcceptedFileType(rawFile, fileType)) {
       ElMessage.warning('图片格式不符合当前上传要求')
       return false
@@ -370,7 +400,7 @@
   }
 
   const handleConfirm = (selected: ResourceListItem[]) => {
-    if (readonly || uploadDisabled.value || missingTenantTarget.value) return
+    if (readonly || uploadDisabled.value || missingTenantTarget.value || !resourceCanView) return
     if (resourceTenantId && selected.some((resource) => resource.tenantId !== resourceTenantId)) {
       ElMessage.warning('所选图片不属于当前目标租户，请重新选择')
       return
@@ -405,6 +435,8 @@
   }
 
   const handleUpload = async (options: UploadRequestOptions): Promise<unknown> => {
+    if (readonly || uploadDisabled.value || !resourceCanUpload)
+      throw new Error('当前账号没有上传图片的权限')
     uploadTenants.set(options.file.uid, resourceTenantId)
     return await (uploadRequest?.(options.file) ??
       uploadAttachment(options.file, { targetTenantId: resourceTenantId || undefined }))
