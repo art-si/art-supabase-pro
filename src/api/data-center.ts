@@ -794,3 +794,15 @@ export async function generateSqlByAi(
     returnRawError: true
   })
 }
+
+/** Standard resource actions. The native backend retains its existing authorization checks. */
+export interface ResourceCapabilities {
+  canView: boolean
+  canUpload: boolean
+  canRename: boolean
+  canDelete: boolean
+}
+
+export async function fetchResourceCapabilities(): Promise<ResourceCapabilities> {
+  return { canView: true, canUpload: true, canRename: true, canDelete: true }
+}

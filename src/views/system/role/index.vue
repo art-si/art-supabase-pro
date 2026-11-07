@@ -22,16 +22,9 @@
     </BusinessWorkspaceHeader>
 
     <div class="role-page__workspace">
-      <ArtWorkspaceSplitter
-        :breakpoint="1200"
-        narrow-mode="hide"
-        :primary-collapsed="!organizationScope"
-      >
+      <ArtWorkspaceSplitter :breakpoint="1200" narrow-mode="hide">
         <template #primary>
-          <aside
-            v-if="organizationScope && isDesktopOrganizationLayout"
-            class="role-page__organization-panel"
-          >
+          <aside v-if="isDesktopOrganizationLayout" class="role-page__organization-panel">
             <OrganizationScopeFilter
               scope-type="role"
               :data="organizationTree"
@@ -48,7 +41,7 @@
 
         <div class="role-page__table-workspace">
           <BusinessMobileFilterContext
-            v-if="organizationScope && !isDesktopOrganizationLayout"
+            v-if="!isDesktopOrganizationLayout"
             label="当前组织范围"
             :value="selectedOrganizationLabel"
             action-label="组织筛选"
@@ -80,15 +73,11 @@
       </ArtWorkspaceSplitter>
     </div>
 
-    <RoleEditDialog
-      ref="roleEditDialogRef"
-      :organization-scope="organizationScope"
-      @success="refreshData"
-    />
+    <RoleEditDialog ref="roleEditDialogRef" @success="refreshData" />
     <RolePermissionDialog ref="rolePermissionDialogRef" @success="refreshData" />
     <RoleUserDialog ref="roleUserDialogRef" @success="refreshData" />
     <MasterDataDeleteGuard ref="deleteGuardRef" @cleared="refreshData" />
-    <ArtDrawer v-if="organizationScope" ref="organizationDrawerRef">
+    <ArtDrawer ref="organizationDrawerRef">
       <OrganizationScopeFilter
         scope-type="role"
         class="role-page__drawer-filter"
@@ -145,20 +134,14 @@
   import OrganizationScopeFilter from '../shared/organization-scope-filter.vue'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import MasterDeleteProcessingNotice from '@/components/business/master-delete-processing-notice/index.vue'
-
   defineOptions({ name: 'Role' })
-
-  const { organizationScope = true } = defineProps<{ organizationScope?: boolean }>()
-
   const route = useRoute()
   const tableQueryRef = ref<ArtTableQueryExpose>()
-
   type RoleListItem = Api.SystemManage.RoleListItem
   type OrganizationFilterItem = Api.SystemManage.OrganizationScopeFilterItem
   type RoleSearchParams = Api.SystemManage.RoleSearchParams & {
     daterange?: [string, string] | null
   }
-
   const searchForm = ref({
     roleName: undefined,
     roleCode: undefined,
@@ -166,7 +149,6 @@
     enabled: undefined,
     daterange: undefined
   })
-
   const showSearchBar = ref(false)
   const { getDictMap, isPlatformSuper } = storeToRefs(useUserStore())
   const { effectiveTenantId, isAllTenants } = storeToRefs(useTenantScopeStore())
@@ -200,7 +182,6 @@
     const organization = selectedOrganization.value
     if (!organization?.id) return []
     if (!includeDescendantOrganizations.value) return [organization.id]
-
     return organizationTreeUtils
       .getDescendants(organizationTree.value, organization.id, true)
       .map((item) => item.id)
@@ -212,7 +193,6 @@
       value: item.value === 'true'
     }))
   )
-
   const searchItems = computed<SearchFormItem[]>(() => [
     {
       label: '角色名称',
@@ -265,11 +245,9 @@
       }
     }
   ])
-
   const searchBarProps = computed<ArtTableQuerySearchBarProps>(() => ({
     items: searchItems.value
   }))
-
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
     {
       type: 'add',
@@ -278,34 +256,27 @@
       onClick: () => showDialog('add')
     }
   ])
-
   const tableProps: ArtTableQueryTableProps = {
     rowKey: 'id',
     tableLayout: 'fixed',
     emptyText: '暂无符合条件的角色',
     emptyDescription: '可调整筛选条件，或新增角色后再配置菜单权限。'
   }
-
   interface RoleEditDialogExpose {
     handleOpen: (data: { type: 'add' | 'edit'; roleData?: RoleListItem }) => Promise<void>
   }
-
   interface RolePermissionDialogExpose {
     handleOpen: (data: RoleListItem) => Promise<void>
   }
-
   const roleEditDialogRef = ref<RoleEditDialogExpose>()
   const rolePermissionDialogRef = ref<RolePermissionDialogExpose>()
   const roleUserDialogRef = ref<InstanceType<typeof RoleUserDialog>>()
   const isBuiltinRegisterRole = (row: RoleListItem): boolean => isBuiltinMemberRole(row.builtinType)
-
   const isSuperRole = (row: RoleListItem): boolean => isProtectedAdminRole(row.builtinType)
-
   const getRoleMoreActions = (row: RoleListItem): ButtonMoreItem[] => {
     if (isSuperRole(row)) {
       return []
     }
-
     const actions: ButtonMoreItem[] = [
       {
         key: 'users',
@@ -328,14 +299,11 @@
         disabled: deleteBusy.value
       }
     ]
-
     return isBuiltinRegisterRole(row) ? actions.filter((item) => item.key !== 'delete') : actions
   }
-
   const showPermissionDialog = (row: RoleListItem) => {
     void rolePermissionDialogRef.value?.handleOpen(row)
   }
-
   const {
     columns,
     columnChecks,
@@ -404,30 +372,28 @@
                 : null
             ])
         },
-        ...(organizationScope
-          ? [
-              {
-                prop: 'organization',
-                label: '适用组织',
-                minWidth: 180,
-                formatter: (row: RoleListItem) =>
-                  row.organization
-                    ? h('div', { class: 'role-organization-cell' }, [
-                        h(
-                          'strong',
-                          { title: row.organization.organizationName },
-                          row.organization.organizationName
-                        ),
-                        h(
-                          'small',
-                          { title: row.organization.organizationCode },
-                          row.organization.organizationCode
-                        )
-                      ])
-                    : h('span', { class: 'role-organization-cell__empty' }, '待归入组织')
-              } as ColumnOption<RoleListItem>
-            ]
-          : []),
+        ...[
+          {
+            prop: 'organization',
+            label: '适用组织',
+            minWidth: 180,
+            formatter: (row: RoleListItem) =>
+              row.organization
+                ? h('div', { class: 'role-organization-cell' }, [
+                    h(
+                      'strong',
+                      { title: row.organization.organizationName },
+                      row.organization.organizationName
+                    ),
+                    h(
+                      'small',
+                      { title: row.organization.organizationCode },
+                      row.organization.organizationCode
+                    )
+                  ])
+                : h('span', { class: 'role-organization-cell__empty' }, '待归入组织')
+          } as ColumnOption<RoleListItem>
+        ],
         {
           prop: 'description',
           label: '角色描述',
@@ -460,7 +426,6 @@
             if (isSuperRole(row)) {
               return h('span', { class: 'role-operation-cell__protected' }, '受保护')
             }
-
             return h('div', { class: 'role-operation-cell' }, [
               !isBuiltinRegisterRole(row) || isPlatformSuper.value
                 ? h(ArtButtonTable, {
@@ -481,7 +446,6 @@
       ]
     }
   })
-
   const enabledRoleCount = computed(() => data.value.filter((row) => row.enabled).length)
   const protectedRoleCount = computed(
     () => data.value.filter((row) => isSuperRole(row) || isBuiltinRegisterRole(row)).length
@@ -508,21 +472,18 @@
       tone: 'warning'
     }
   ])
-
   const showDialog = (type: 'add' | 'edit', row?: RoleListItem) => {
     void roleEditDialogRef.value?.handleOpen({
       type,
       roleData: row
     })
   }
-
   const handleSearch = (params: Record<string, unknown>) => {
     const { daterange, ...filtersParams } = params
     const [startTime, endTime] = Array.isArray(daterange) ? daterange : [null, null]
     Object.assign(searchParams, { ...filtersParams, startTime, endTime })
     void getData()
   }
-
   const buttonMoreClick = (item: ButtonMoreItem, row: RoleListItem) => {
     switch (item.key) {
       case 'users':
@@ -539,7 +500,6 @@
         break
     }
   }
-
   const handleDeleteRole = async (row: RoleListItem): Promise<void> => {
     if (!row.id || row.builtinType) return
     await deleteRecord({
@@ -552,16 +512,14 @@
       onDeleted: refreshData
     })
   }
-
   const handleGetRoleList = async () => {
     const { roleName, roleCode, description, enabled, startTime, endTime } =
       searchParams as RoleSearchParams
     const { from, to } = buildSupabasePageRange(pagination)
     return await fetchRoleList({
       tenantId: selectedTenantId.value || undefined,
-      organizationIds: organizationScope ? selectedOrganizationIds.value : [],
-      organizationUnassigned:
-        organizationScope && selectedOrganizationKey.value === UNASSIGNED_ORGANIZATION_KEY,
+      organizationIds: selectedOrganizationIds.value,
+      organizationUnassigned: selectedOrganizationKey.value === UNASSIGNED_ORGANIZATION_KEY,
       roleName,
       roleCode,
       description,
@@ -573,7 +531,6 @@
       to
     })
   }
-
   const loadOrganizationTree = async (): Promise<void> => {
     organizationFilterLoading.value = true
     try {
@@ -581,7 +538,6 @@
         tenantId: selectedTenantId.value || undefined
       })
       organizationTree.value = response.data ?? []
-
       if (
         selectedOrganizationKey.value !== ALL_ORGANIZATIONS_KEY &&
         selectedOrganizationKey.value !== UNASSIGNED_ORGANIZATION_KEY &&
@@ -593,23 +549,19 @@
       organizationFilterLoading.value = false
     }
   }
-
   const handleOrganizationSelect = async (key: string): Promise<void> => {
     if (selectedOrganizationKey.value === key) return
     selectedOrganizationKey.value = key
     await getData()
   }
-
   const handleIncludeDescendantsChange = async (value: boolean): Promise<void> => {
     includeDescendantOrganizations.value = value
     if (selectedOrganization.value) await getData()
   }
-
   const handleOrganizationRefresh = async (): Promise<void> => {
-    if (organizationScope) await loadOrganizationTree()
+    await loadOrganizationTree()
     await refreshData()
   }
-
   const openOrganizationDrawer = async (): Promise<void> => {
     await organizationDrawerRef.value?.handleOpen(
       {},
@@ -626,11 +578,9 @@
       }
     )
   }
-
   onMounted(async () => {
-    if (organizationScope) await loadOrganizationTree()
+    await loadOrganizationTree()
   })
-
   watch(
     () => route.query.recordId,
     (recordId, previousRecordId) => {

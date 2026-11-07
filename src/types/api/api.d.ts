@@ -111,18 +111,7 @@ declare namespace Api {
     }
 
     /** 登录页与个人中心共用的第三方认证渠道。敏感凭据只配置在认证服务端。 */
-    interface AuthChannel {
-      key: string
-      label: string
-      provider: string
-      icon: string
-      description?: string | null
-      scopes?: string | null
-      queryParamName?: string | null
-      queryParamValue?: string | null
-      enabled: boolean
-      allowLinking: boolean
-    }
+    type AuthChannel = import('../platform/website-config').AuthChannel
 
     interface LinkedIdentity {
       id: string
@@ -245,9 +234,9 @@ declare namespace Api {
       builtinType?: RoleBuiltinType | null
       description?: string
       enabled?: boolean
-      /** Host-owned optimistic write token; absent for native pro records. */
+      /** Optimistic write version when provided by the API. */
       version?: number
-      /** Host-owned collection snapshot; absent for native pro records. */
+      /** Collection revision when provided by the API. */
       collectionVersion?: number
       createTime?: string
       createBy?: string
@@ -595,11 +584,12 @@ declare namespace Api {
       lastUpdateTime?: string
     }
 
-    type WebsiteWatermarkContentType = 'username' | 'username_time' | 'site_name' | 'custom'
-    type WebsiteCaptchaType = 'turnstile'
-    type WebsiteTurnstileSize = 'normal' | 'compact' | 'flexible' | 'hidden'
-    type WebsiteTurnstileTheme = 'light' | 'dark' | 'auto'
-    type WebsiteDefaultLanguage = 'zh' | 'en'
+    type WebsiteWatermarkContentType =
+      import('../platform/website-config').WebsiteWatermarkContentType
+    type WebsiteCaptchaType = import('../platform/website-config').WebsiteCaptchaType
+    type WebsiteTurnstileSize = import('../platform/website-config').WebsiteTurnstileSize
+    type WebsiteTurnstileTheme = import('../platform/website-config').WebsiteTurnstileTheme
+    type WebsiteDefaultLanguage = import('../platform/website-config').WebsiteDefaultLanguage
     type WebsiteConfigParamMeta = Pick<
       SystemParamItem,
       | 'paramName'
@@ -615,48 +605,11 @@ declare namespace Api {
       | 'remark'
     >
 
-    interface WebsiteConfigItem {
+    type WebsiteConfigItem = import('../platform/website-config').WebsiteConfigValues & {
       id?: string
-      /** Host-owned optimistic-lock revision; pro's native sys_param payload does not persist it. */
       version?: number
       tenantId?: string
       paramMeta?: WebsiteConfigParamMeta
-      siteName: string
-      siteShortName?: string | null
-      siteDescription?: string | null
-      logoUrl?: string | null
-      faviconUrl?: string | null
-      wordmarkImageEnabled: boolean
-      wordmarkLightUrl?: string | null
-      wordmarkDarkUrl?: string | null
-      watermarkEnabled: boolean
-      watermarkContentType: WebsiteWatermarkContentType
-      watermarkCustomText?: string | null
-      loginTitle: string
-      loginSubtitle?: string | null
-      loginDescription?: string | null
-      defaultLanguage: WebsiteDefaultLanguage
-      captchaEnabled: boolean
-      captchaType: WebsiteCaptchaType
-      turnstileSiteKey: string
-      turnstileSize?: WebsiteTurnstileSize
-      turnstileTheme?: WebsiteTurnstileTheme
-      captchaMaxAttempts: number
-      captchaLockMinutes: number
-      registerEnabled: boolean
-      authChannels: Api.Auth.AuthChannel[]
-      maintenanceEnabled: boolean
-      maintenanceMessage?: string | null
-      seoTitle?: string | null
-      seoKeywords?: string | null
-      seoDescription?: string | null
-      contactEmail?: string | null
-      contactPhone?: string | null
-      contactAddress?: string | null
-      copyrightText?: string | null
-      icpRecord?: string | null
-      policeRecord?: string | null
-      enabled: boolean
       createBy?: string
       createTime?: string
       updateBy?: string

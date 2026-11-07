@@ -6,12 +6,8 @@
     @retry="loadPage"
   >
     <ArtPageHeader
-      :title="isBranding ? '系统品牌' : '网站配置'"
-      :subtitle="
-        isBranding
-          ? '维护系统名称、图标和水印，保存后同步到工作台与浏览器。'
-          : '统一维护品牌、登录体验、SEO、站点状态与对外联系资料，发布后同步影响所有公共品牌展示。'
-      "
+      title="网站配置"
+      subtitle="统一维护品牌、登录体验、SEO、站点状态与对外联系资料，发布后同步影响所有公共品牌展示。"
     >
       <template #status>
         <ElTag
@@ -25,7 +21,7 @@
         <div class="website-config-page__header-meta">
           <span>最近更新：{{ lastUpdateText }}</span>
           <span>更新人：{{ form.updateBy || form.createBy || 'admin' }}</span>
-          <span v-if="!isBranding">备用语言：{{ defaultLanguageLabel }}</span>
+          <span>备用语言：{{ defaultLanguageLabel }}</span>
         </div>
       </template>
     </ArtPageHeader>
@@ -34,7 +30,7 @@
       ref="formRef"
       v-model="form"
       :items="allFormItems"
-      :rules="formRules"
+      :rules="rules"
       :disabled="isReadOnly"
       root-class="px-0! pt-0!"
       :span="8"
@@ -63,9 +59,8 @@
             </div>
             <template #footer>
               <div class="website-config-page__publish-tip">
-                <strong>{{ isBranding ? '保存影响' : '发布影响' }}</strong>
-                <p v-if="isBranding">保存后会同步到当前应用的侧边栏、浏览器标题与水印。</p>
-                <p v-else>配置保存后会立即同步到登录页、公共配置缓存和系统品牌展示。</p>
+                <strong>发布影响</strong>
+                <p>配置保存后会立即同步到登录页、公共配置缓存和系统品牌展示。</p>
               </div>
             </template>
           </ArtSectionCard>
@@ -112,32 +107,7 @@
                   :actions="false"
                 />
                 <template v-if="section.key === 'preview'">
-                  <div v-if="isBranding" class="website-config-page__preview-grid">
-                    <div>
-                      <span>品牌名称</span>
-                      <strong>{{ form.siteName || '-' }}</strong>
-                    </div>
-                    <div>
-                      <span>系统简称</span>
-                      <strong>{{ form.siteShortName || '-' }}</strong>
-                    </div>
-                    <div>
-                      <span>水印内容</span>
-                      <strong>{{ form.watermarkEnabled ? watermarkLabel : '已关闭' }}</strong>
-                    </div>
-                    <div>
-                      <span>Logo 预览</span>
-                      <img
-                        class="website-config-page__brand-preview"
-                        :src="previewLogoUrl"
-                        :alt="form.siteName ? `${form.siteName} Logo` : '系统 Logo'"
-                        width="48"
-                        height="48"
-                        @error="previewLogoFailed"
-                      />
-                    </div>
-                  </div>
-                  <div v-else class="website-config-page__preview-grid">
+                  <div class="website-config-page__preview-grid">
                     <div>
                       <span>品牌名称</span>
                       <strong>{{ form.siteName || '-' }}</strong>
@@ -158,18 +128,6 @@
                 </template>
               </div>
             </ArtSectionCard>
-
-            <ElAlert
-              v-if="isBranding && saveError"
-              :title="saveError"
-              type="error"
-              :closable="false"
-              show-icon
-            >
-              <template v-if="saveConflict" #default>
-                <ElButton size="small" @click="reloadBranding">重新加载配置</ElButton>
-              </template>
-            </ElAlert>
 
             <ArtStickyActionBar
               class="website-config-page__actions"
@@ -192,15 +150,6 @@
                   撤销未发布修改
                 </ElButton>
                 <ElButton
-                  v-if="isBranding"
-                  type="primary"
-                  :disabled="!hasUnsavedChanges"
-                  :loading="page.saving"
-                  @click="handleSave"
-                  >保存品牌配置</ElButton
-                >
-                <ElButton
-                  v-else
                   v-auth="'System:WebsiteConfig:Publish'"
                   type="primary"
                   :disabled="!hasUnsavedChanges"
@@ -211,9 +160,7 @@
               </div>
               <div v-else class="website-config-page__readonly-badge">
                 <ArtSvgIcon icon="ri:lock-2-line" />
-                <span>{{
-                  isBranding ? '当前账号没有品牌配置编辑权限' : '仅平台超级管理员可发布'
-                }}</span>
+                <span>仅平台超级管理员可发布</span>
               </div>
             </ArtStickyActionBar>
           </div>
@@ -241,6 +188,7 @@
   import { ElMessage, type FormRules } from 'element-plus'
   import { cloneDeep, isEqual, omit } from 'lodash-es'
   import { useEventListener } from '@vueuse/core'
+  import { fetchResourceCapabilities, type ResourceCapabilities } from '@/api/data-center'
   import { fetchWebsiteConfig, saveWebsiteConfig } from '@/api/system-manage/website-config'
   import { createWebsiteConfigDefaults } from '@/config/website-config-defaults'
   import { useWebsiteConfig } from '@/hooks/core/useWebsiteConfig'
@@ -253,31 +201,8 @@
   import { createAuthChannelFormItems } from './modules/auth-channel-form-items'
   import WebsiteWordmarkSettings from './modules/website-wordmark-settings.vue'
   import { getAuthChannelValidationMessage, normalizeAuthChannels } from '@/utils/supabase'
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
-  import defaultLogo from '@imgs/common/logo.webp'
 
   defineOptions({ name: 'WebsiteConfig' })
-  const props = withDefaults(
-    defineProps<{
-      profile?: 'full' | 'branding'
-      /** Host permission; the native full profile retains its existing platform-super gate. */
-      canEdit?: boolean
-      /** Resource capabilities are supplied by a host; native pro defaults remain enabled. */
-      resourceTenantId?: string
-      resourceCanView?: boolean
-      resourceCanUpload?: boolean
-      resourceCanEdit?: boolean
-      resourceCanDelete?: boolean
-    }>(),
-    {
-      profile: 'full',
-      canEdit: false,
-      resourceCanView: true,
-      resourceCanUpload: true,
-      resourceCanEdit: true,
-      resourceCanDelete: true
-    }
-  )
 
   type WebsiteConfig = Api.SystemManage.WebsiteConfigItem
   type SectionKey = 'overview' | 'identity' | 'login' | 'auth' | 'seo' | 'contact' | 'preview'
@@ -298,6 +223,8 @@
     loading: boolean
     saving: boolean
     error: Error | null
+    canPublish: boolean
+    resources: ResourceCapabilities
   }
 
   const formRef = ref<InstanceType<typeof ArtForm>>()
@@ -305,37 +232,17 @@
     activeSection: 'identity',
     loading: false,
     saving: false,
-    error: null
+    error: null,
+    canPublish: false,
+    resources: { canView: false, canUpload: false, canRename: false, canDelete: false }
   })
   const form = ref<WebsiteConfig>(createWebsiteConfigDefaults())
   const originalForm = ref<WebsiteConfig>(createWebsiteConfigDefaults())
   const pageScrollContainer = shallowRef<HTMLElement | null>(null)
-  const saveError = ref('')
-  const saveConflict = ref(false)
-  const { confirmAction } = useArtFeedback()
   const { setWebsiteConfig, loadWebsiteConfig } = useWebsiteConfig()
   const userStore = useUserStore()
-  const { isPlatformSuper } = storeToRefs(userStore)
-  const isBranding = computed(() => props.profile === 'branding')
   const platformTenantId = computed(() => userStore.getUserInfo.tenantId || '')
-  const imageResourceTenantId = computed(() =>
-    isBranding.value ? props.resourceTenantId || platformTenantId.value : platformTenantId.value
-  )
-  const isReadOnly = computed(() => (isBranding.value ? !props.canEdit : !isPlatformSuper.value))
-  const failedPreviewLogoUrl = ref('')
-  const previewLogoUrl = computed(() => {
-    const configured = form.value.logoUrl?.trim() || ''
-    return configured && failedPreviewLogoUrl.value !== configured ? configured : defaultLogo
-  })
-  const previewLogoFailed = (): void => {
-    failedPreviewLogoUrl.value = form.value.logoUrl?.trim() || ''
-  }
-  watch(
-    () => form.value.logoUrl,
-    () => {
-      failedPreviewLogoUrl.value = ''
-    }
-  )
+  const isReadOnly = computed(() => !page.canPublish)
   const hasUnsavedChanges = computed(
     () => !isEqual(normalizePayload(form.value), normalizePayload(originalForm.value))
   )
@@ -343,31 +250,25 @@
     if (isReadOnly.value) {
       return {
         title: '当前为只读查看',
-        description: isBranding.value
-          ? '你可以查看当前应用品牌，编辑权限由所属应用单独授权。'
-          : '你可以浏览全部站点配置，但发布权限仅向平台超级管理员开放。',
+        description: '你可以浏览全部站点配置，但发布权限仅向平台超级管理员开放。',
         icon: 'ri:shield-keyhole-line'
       }
     }
     if (hasUnsavedChanges.value) {
       return {
         title: '存在未发布修改',
-        description: isBranding.value
-          ? '请检查品牌预览；保存后会同步到当前应用的标题、侧边栏与水印。'
-          : '请检查发布预览；保存后会同步影响登录页、浏览器标题与系统品牌展示。',
+        description: '请检查发布预览；保存后会同步影响登录页、浏览器标题与系统品牌展示。',
         icon: 'ri:draft-line'
       }
     }
     return {
-      title: `${form.value.siteName || (isBranding.value ? '系统品牌' : '网站配置')}已同步`,
-      description: isBranding.value
-        ? '当前品牌配置已同步。'
-        : '当前表单与线上配置一致，可继续编辑后再统一发布。',
+      title: `${form.value.siteName || '网站配置'}已同步`,
+      description: '当前表单与线上配置一致，可继续编辑后再统一发布。',
       icon: 'ri:checkbox-circle-line'
     }
   })
 
-  const fullNavigationItems: NavigationItem[] = [
+  const navigationItems: NavigationItem[] = [
     { key: 'overview', label: '状态概览', icon: 'ri:pulse-line' },
     { key: 'identity', label: '系统标识', icon: 'ri:dashboard-line' },
     { key: 'login', label: '登录体验', icon: 'ri:shield-user-line' },
@@ -377,13 +278,7 @@
     { key: 'preview', label: '发布预览', icon: 'ri:edit-box-line' }
   ]
 
-  const navigationItems = computed(() =>
-    isBranding.value
-      ? fullNavigationItems.filter((item) => ['overview', 'identity', 'preview'].includes(item.key))
-      : fullNavigationItems
-  )
-
-  const fullFormSections: FormSection[] = [
+  const formSections: FormSection[] = [
     {
       key: 'identity',
       label: '系统标识',
@@ -427,24 +322,15 @@
       description: '保存前快速确认即将影响公共展示的核心配置。'
     }
   ]
-  const formSections = computed(() =>
-    isBranding.value
-      ? fullFormSections.filter((section) => ['identity', 'preview'].includes(section.key))
-      : fullFormSections
-  )
 
-  const languageOptions =
-    props.profile === 'branding' ? [] : useDictionaryOptions('sysWebsiteLanguage')
+  const languageOptions = useDictionaryOptions('sysWebsiteLanguage')
   const watermarkOptions = useDictionaryOptions('sysWatermarkContentType')
-  const captchaDictionaryOptions =
-    props.profile === 'branding' ? [] : useDictionaryOptions('sysCaptchaProvider')
+  const captchaDictionaryOptions = useDictionaryOptions('sysCaptchaProvider')
   const captchaOptions = computed(() =>
     captchaDictionaryOptions.filter((item) => item.value === 'turnstile')
   )
-  const turnstileSizeOptions =
-    props.profile === 'branding' ? [] : useDictionaryOptions('sysTurnstileSize')
-  const turnstileThemeOptions =
-    props.profile === 'branding' ? [] : useDictionaryOptions('sysTurnstileTheme')
+  const turnstileSizeOptions = useDictionaryOptions('sysTurnstileSize')
+  const turnstileThemeOptions = useDictionaryOptions('sysTurnstileTheme')
 
   const rules: FormRules<WebsiteConfig> = {
     siteName: [{ required: true, message: '请输入系统名称', trigger: 'blur' }],
@@ -492,9 +378,6 @@
       }
     ]
   }
-  const formRules = computed<FormRules<WebsiteConfig>>(() =>
-    isBranding.value ? { siteName: rules.siteName } : rules
-  )
 
   const lastUpdateText = computed(() =>
     form.value.updateTime || form.value.createTime
@@ -515,69 +398,38 @@
     () => captchaOptions.value.find((item) => item.value === form.value.captchaType)?.label || '-'
   )
 
-  const summaryCards = computed(() =>
-    isBranding.value
-      ? [
-          {
-            label: '系统名称',
-            value: form.value.siteName || '-',
-            description: '用于侧边栏、页面标题和品牌展示。',
-            icon: 'ri:bookmark-3-line'
-          },
-          {
-            label: 'Logo',
-            value: form.value.logoUrl?.trim() ? '已配置' : '使用默认图标',
-            description: '图片加载失败时自动回退到默认图标。',
-            icon: 'ri:dashboard-line'
-          },
-          {
-            label: '水印',
-            value: form.value.watermarkEnabled ? '已启用' : '已关闭',
-            description: form.value.watermarkEnabled
-              ? watermarkLabel.value
-              : '页面不显示系统水印。',
-            icon: 'ri:edit-box-line'
-          },
-          {
-            label: '浏览器图标',
-            value: form.value.faviconUrl?.trim() ? '已配置' : '使用默认图标',
-            description: '通过当前站点或 HTTPS 图片地址提供。',
-            icon: 'ri:search-eye-line'
-          }
-        ]
-      : [
-          {
-            label: '站点状态',
-            value: form.value.maintenanceEnabled ? '维护模式已开启' : '正常运行',
-            description: form.value.maintenanceEnabled
-              ? '登录页将展示维护公告。'
-              : '登录页将按常规流程展示。',
-            icon: form.value.maintenanceEnabled ? 'ri:alarm-warning-line' : 'ri:sun-line'
-          },
-          {
-            label: '开放注册',
-            value: form.value.registerEnabled ? '已开启' : '已关闭',
-            description: form.value.registerEnabled
-              ? '新用户可从登录页进入注册流程。'
-              : '登录页不展示注册入口。',
-            icon: 'ri:user-add-line'
-          },
-          {
-            label: '登录验证',
-            value: form.value.captchaEnabled ? captchaLabel.value : '未启用',
-            description: form.value.captchaEnabled
-              ? '登录页将要求完成人机验证。'
-              : '登录页不会显示验证码。',
-            icon: 'ri:shield-check-line'
-          },
-          {
-            label: '品牌名称',
-            value: form.value.siteName || '-',
-            description: '影响登录页、标题、水印和系统品牌展示。',
-            icon: 'ri:bookmark-3-line'
-          }
-        ]
-  )
+  const summaryCards = computed(() => [
+    {
+      label: '站点状态',
+      value: form.value.maintenanceEnabled ? '维护模式已开启' : '正常运行',
+      description: form.value.maintenanceEnabled
+        ? '登录页将展示维护公告。'
+        : '登录页将按常规流程展示。',
+      icon: form.value.maintenanceEnabled ? 'ri:alarm-warning-line' : 'ri:sun-line'
+    },
+    {
+      label: '开放注册',
+      value: form.value.registerEnabled ? '已开启' : '已关闭',
+      description: form.value.registerEnabled
+        ? '新用户可从登录页进入注册流程。'
+        : '登录页不展示注册入口。',
+      icon: 'ri:user-add-line'
+    },
+    {
+      label: '登录验证',
+      value: form.value.captchaEnabled ? captchaLabel.value : '未启用',
+      description: form.value.captchaEnabled
+        ? '登录页将要求完成人机验证。'
+        : '登录页不会显示验证码。',
+      icon: 'ri:shield-check-line'
+    },
+    {
+      label: '品牌名称',
+      value: form.value.siteName || '-',
+      description: '影响登录页、标题、水印和系统品牌展示。',
+      icon: 'ri:bookmark-3-line'
+    }
+  ])
 
   const setForm = (config: WebsiteConfig): void => {
     Object.assign(form.value, createWebsiteConfigDefaults(), config, {
@@ -588,7 +440,12 @@
   }
 
   const fetchConfig = async (): Promise<void> => {
-    const { data } = await fetchWebsiteConfig()
+    const [{ data, canPublish }, resources] = await Promise.all([
+      fetchWebsiteConfig(),
+      fetchResourceCapabilities()
+    ])
+    page.resources = resources
+    page.canPublish = canPublish
     setForm({
       ...createWebsiteConfigDefaults(),
       ...(data ?? {})
@@ -645,19 +502,15 @@
       ElMessage.info('当前配置没有需要发布的变更')
       return
     }
-    if (!isBranding.value) {
-      const authChannelError = getAuthChannelValidationMessage(form.value.authChannels)
-      if (authChannelError) {
-        ElMessage.warning(authChannelError)
-        scrollToSection('auth')
-        return
-      }
+    const authChannelError = getAuthChannelValidationMessage(form.value.authChannels)
+    if (authChannelError) {
+      ElMessage.warning(authChannelError)
+      scrollToSection('auth')
+      return
     }
 
     await formRef.value?.validate()
     page.saving = true
-    saveError.value = ''
-    saveConflict.value = false
 
     try {
       const payload = normalizePayload()
@@ -665,14 +518,7 @@
       await fetchConfig()
       setWebsiteConfig(form.value)
       await loadWebsiteConfig(true)
-      ElMessage.success(isBranding.value ? '品牌配置已保存' : '网站配置已发布')
-    } catch (error) {
-      if (!isBranding.value) throw error
-      saveConflict.value =
-        error !== null && typeof error === 'object' && 'status' in error && error.status === 409
-      saveError.value = saveConflict.value
-        ? '配置已被其他人更新。当前输入已保留；请先复制需要保留的内容，再重新加载。'
-        : '品牌配置保存失败，当前输入已保留，请稍后重试。'
+      ElMessage.success('网站配置已发布')
     } finally {
       page.saving = false
     }
@@ -703,7 +549,7 @@
   }
 
   const getSectionElements = (): Array<{ key: SectionKey; element: HTMLElement }> => {
-    return navigationItems.value.flatMap(({ key }) => {
+    return navigationItems.flatMap(({ key }) => {
       const element = document.getElementById(key)
       return element ? [{ key, element }] : []
     })
@@ -760,20 +606,6 @@
     }
   }
 
-  const reloadBranding = async (): Promise<void> => {
-    const confirmed = await confirmAction(
-      '重新加载会丢弃当前未保存的输入，建议先复制需要保留的内容。',
-      { title: '重新加载品牌配置', confirmButtonText: '重新加载' }
-    ).then(
-      () => true,
-      () => false
-    )
-    if (!confirmed) return
-    saveError.value = ''
-    saveConflict.value = false
-    await loadPage()
-  }
-
   onMounted(() => void loadPage())
 
   onBeforeUnmount(() => {
@@ -789,18 +621,14 @@
         key: 'siteName',
         label: '系统名称',
         type: 'input',
-        description: isBranding.value
-          ? '用于顶部栏、侧边栏、页面标题和系统品牌展示。'
-          : '用于登录页、顶部栏、侧边栏、页面标题和系统品牌展示。',
+        description: '用于登录页、顶部栏、侧边栏、页面标题和系统品牌展示。',
         props: { maxlength: '60', showWordLimit: true, modelModifiers: { trim: true } }
       },
       {
         key: 'siteShortName',
         label: '系统简称',
         type: 'input',
-        description: isBranding.value
-          ? '用于空间受限的紧凑场景；侧边栏品牌文字仍以系统名称为准。'
-          : '用于空间受限的紧凑场景；菜单品牌文字和 AI 字图均以系统名称为准。',
+        description: '用于空间受限的紧凑场景；菜单品牌文字和 AI 字图均以系统名称为准。',
         props: { maxlength: '40', modelModifiers: { trim: true } }
       },
       {
@@ -824,54 +652,12 @@
         span: 24,
         props: { resize: 'none', maxlength: '255', showWordLimit: true, rows: 3 }
       },
-      ...(isBranding.value
-        ? [
-            {
-              key: 'logoUrl',
-              label: '系统 Logo',
-              type: 'uploadImage',
-              span: 12,
-              description: '可上传新图片或从资源库选择；加载失败会使用默认图标。',
-              props: {
-                resourceTenantId: imageResourceTenantId.value,
-                resourceCanView: props.resourceCanView,
-                resourceCanUpload: props.resourceCanUpload,
-                resourceCanEdit: props.resourceCanEdit,
-                resourceCanDelete: props.resourceCanDelete,
-                title: '上传 Logo',
-                size: 120,
-                limit: 1,
-                readonly: isReadOnly.value
-              }
-            },
-            {
-              key: 'faviconUrl',
-              label: '浏览器图标',
-              type: 'uploadImage',
-              span: 12,
-              description: '可上传新图标或从资源库选择。',
-              props: {
-                resourceTenantId: imageResourceTenantId.value,
-                resourceCanView: props.resourceCanView,
-                resourceCanUpload: props.resourceCanUpload,
-                resourceCanEdit: props.resourceCanEdit,
-                resourceCanDelete: props.resourceCanDelete,
-                title: '上传浏览器图标',
-                size: 120,
-                limit: 1,
-                readonly: isReadOnly.value,
-                fileType: 'image/*,.ico'
-              }
-            }
-          ]
-        : [
-            {
-              key: 'wordmarkImageEnabled',
-              label: '菜单品牌字图',
-              type: 'wordmarkSettings',
-              span: 24
-            }
-          ]),
+      {
+        key: 'wordmarkImageEnabled',
+        label: '菜单品牌字图',
+        type: 'wordmarkSettings',
+        span: 24
+      },
       {
         key: 'watermarkEnabled',
         label: '启用水印',
@@ -1002,6 +788,10 @@
         type: 'uploadImage',
         props: {
           resourceTenantId: platformTenantId.value,
+          resourceCanView: page.resources.canView,
+          resourceCanUpload: page.resources.canUpload,
+          resourceCanEdit: page.resources.canRename,
+          resourceCanDelete: page.resources.canDelete,
           title: '上传 Logo',
           size: 120,
           limit: 1,
@@ -1014,6 +804,10 @@
         type: 'uploadImage',
         props: {
           resourceTenantId: platformTenantId.value,
+          resourceCanView: page.resources.canView,
+          resourceCanUpload: page.resources.canUpload,
+          resourceCanEdit: page.resources.canRename,
+          resourceCanDelete: page.resources.canDelete,
           title: '上传 Favicon',
           size: 120,
           limit: 1,
@@ -1063,16 +857,12 @@
       }
     ]
   }))
-  const allFormItems = computed<FormItem[]>(() =>
-    isBranding.value
-      ? formSections.value.flatMap((section) => sectionFormItems.value[section.key])
-      : [
-          ...Object.values(sectionFormItems.value).flat(),
-          ...form.value.authChannels.flatMap((_channel, index) =>
-            createAuthChannelFormItems(index, isReadOnly.value)
-          )
-        ]
-  )
+  const allFormItems = computed<FormItem[]>(() => [
+    ...Object.values(sectionFormItems.value).flat(),
+    ...form.value.authChannels.flatMap((_channel, index) =>
+      createAuthChannelFormItems(index, isReadOnly.value)
+    )
+  ])
 </script>
 
 <style scoped lang="scss">
@@ -1311,13 +1101,6 @@
         font-size: 14px;
         color: var(--el-text-color-primary);
       }
-    }
-
-    &__brand-preview {
-      display: block;
-      width: 48px;
-      height: 48px;
-      object-fit: contain;
     }
 
     &__actions {

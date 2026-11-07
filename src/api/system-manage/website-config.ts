@@ -1,5 +1,6 @@
 import { omit } from 'lodash-es'
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { useUserStore } from '@/store/modules/user'
 import { WRITE_PERMISSION_DENIED_MESSAGE } from '@/hooks/core/useSupabase'
 import { createFriendlySupabaseFunctionError } from '@/utils/supabase/error'
 import { invokeSupabaseFunctionWithSessionRecovery } from '@/utils/supabase/functions'
@@ -48,6 +49,7 @@ const parseWebsiteConfigParam = (row: SystemParamItem | null): WebsiteConfigItem
 export async function fetchWebsiteConfig(): Promise<{
   data: WebsiteConfigItem | null
   error: unknown | null
+  canPublish: boolean
 }> {
   const { data, error } = await responseHandle<SystemParamItem | null>(
     () =>
@@ -64,7 +66,8 @@ export async function fetchWebsiteConfig(): Promise<{
 
   return {
     data: parseWebsiteConfigParam(data),
-    error
+    error,
+    canPublish: useUserStore().isPlatformSuper
   }
 }
 

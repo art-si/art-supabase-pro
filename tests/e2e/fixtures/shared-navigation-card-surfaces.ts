@@ -8,18 +8,10 @@ import { setupGlobDirectives } from '@/directives'
 import OrganizationScopeFilter from '@/views/system/shared/organization-scope-filter.vue'
 import ProductionWorkCenterNavigator from '@/components/business/production-work-center-navigator/index.vue'
 import WebsiteConfig from '@/views/system/website-config/index.vue'
-import { useWebsiteConfig } from '@/hooks/core/useWebsiteConfig'
-import { createWebsiteConfigDefaults } from '@/config/website-config-defaults'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 const query = new URLSearchParams(location.search)
-if (query.get('page') === 'branding') {
-  const { setWebsiteConfig } = useWebsiteConfig()
-  ;(window as Window & { __setFixtureFavicon?: (url: string) => void }).__setFixtureFavicon = (
-    url
-  ) => setWebsiteConfig({ ...createWebsiteConfigDefaults(), siteName: 'BFF平台', faviconUrl: url })
-}
 document.documentElement.dataset.uiScope = 'workspace'
 document.documentElement.dataset.boxMode = query.get('box') || 'border-mode'
 document.documentElement.classList.toggle('dark', query.get('theme') === 'dark')
@@ -57,24 +49,11 @@ const organizations = [
 
 const app = createApp({
   setup() {
-    if (query.get('page') === 'website' || query.get('page') === 'branding') {
+    if (query.get('page') === 'website') {
       return () =>
         h('main', { id: 'app-main' }, [
           h(ElScrollbar, { class: 'app-main__scrollbar', wrapClass: 'app-main__scroll-wrap' }, () =>
-            h(WebsiteConfig, {
-              class: 'website-fixture-page',
-              ...(query.get('page') === 'branding'
-                ? {
-                    profile: 'branding' as const,
-                    canEdit: query.get('canEdit') !== 'false',
-                    resourceTenantId: 'navigation-fixture-tenant',
-                    resourceCanView: query.get('resourceView') !== 'false',
-                    resourceCanUpload: query.get('resourceUpload') !== 'false',
-                    resourceCanEdit: query.get('resourceEdit') !== 'false',
-                    resourceCanDelete: query.get('resourceDelete') !== 'false'
-                  }
-                : {})
-            })
+            h(WebsiteConfig, { class: 'website-fixture-page' })
           )
         ])
     }
