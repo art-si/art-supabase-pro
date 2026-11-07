@@ -64,7 +64,15 @@ const app = createApp({
             h(WebsiteConfig, {
               class: 'website-fixture-page',
               ...(query.get('page') === 'branding'
-                ? { profile: 'branding' as const, canEdit: true }
+                ? {
+                    profile: 'branding' as const,
+                    canEdit: query.get('canEdit') !== 'false',
+                    resourceTenantId: 'navigation-fixture-tenant',
+                    resourceCanView: query.get('resourceView') !== 'false',
+                    resourceCanUpload: query.get('resourceUpload') !== 'false',
+                    resourceCanEdit: query.get('resourceEdit') !== 'false',
+                    resourceCanDelete: query.get('resourceDelete') !== 'false'
+                  }
                 : {})
             })
           )

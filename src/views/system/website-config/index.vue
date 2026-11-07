@@ -262,8 +262,21 @@
       profile?: 'full' | 'branding'
       /** Host permission; the native full profile retains its existing platform-super gate. */
       canEdit?: boolean
+      /** Resource capabilities are supplied by a host; native pro defaults remain enabled. */
+      resourceTenantId?: string
+      resourceCanView?: boolean
+      resourceCanUpload?: boolean
+      resourceCanEdit?: boolean
+      resourceCanDelete?: boolean
     }>(),
-    { profile: 'full', canEdit: false }
+    {
+      profile: 'full',
+      canEdit: false,
+      resourceCanView: true,
+      resourceCanUpload: true,
+      resourceCanEdit: true,
+      resourceCanDelete: true
+    }
   )
 
   type WebsiteConfig = Api.SystemManage.WebsiteConfigItem
@@ -305,6 +318,9 @@
   const { isPlatformSuper } = storeToRefs(userStore)
   const isBranding = computed(() => props.profile === 'branding')
   const platformTenantId = computed(() => userStore.getUserInfo.tenantId || '')
+  const imageResourceTenantId = computed(() =>
+    isBranding.value ? props.resourceTenantId || platformTenantId.value : platformTenantId.value
+  )
   const isReadOnly = computed(() => (isBranding.value ? !props.canEdit : !isPlatformSuper.value))
   const failedPreviewLogoUrl = ref('')
   const previewLogoUrl = computed(() => {
@@ -812,17 +828,40 @@
         ? [
             {
               key: 'logoUrl',
-              label: 'Logo 图片地址',
-              type: 'input',
-              description: '填写 HTTPS 图片地址或当前站点的 / 相对路径；加载失败会使用默认图标。',
-              props: { maxlength: '2000', modelModifiers: { trim: true } }
+              label: '系统 Logo',
+              type: 'uploadImage',
+              span: 12,
+              description: '可上传新图片或从资源库选择；加载失败会使用默认图标。',
+              props: {
+                resourceTenantId: imageResourceTenantId.value,
+                resourceCanView: props.resourceCanView,
+                resourceCanUpload: props.resourceCanUpload,
+                resourceCanEdit: props.resourceCanEdit,
+                resourceCanDelete: props.resourceCanDelete,
+                title: '上传 Logo',
+                size: 120,
+                limit: 1,
+                readonly: isReadOnly.value
+              }
             },
             {
               key: 'faviconUrl',
-              label: '浏览器图标地址',
-              type: 'input',
-              description: '填写 HTTPS 图片地址或当前站点的 / 相对路径。',
-              props: { maxlength: '2000', modelModifiers: { trim: true } }
+              label: '浏览器图标',
+              type: 'uploadImage',
+              span: 12,
+              description: '可上传新图标或从资源库选择。',
+              props: {
+                resourceTenantId: imageResourceTenantId.value,
+                resourceCanView: props.resourceCanView,
+                resourceCanUpload: props.resourceCanUpload,
+                resourceCanEdit: props.resourceCanEdit,
+                resourceCanDelete: props.resourceCanDelete,
+                title: '上传浏览器图标',
+                size: 120,
+                limit: 1,
+                readonly: isReadOnly.value,
+                fileType: 'image/*,.ico'
+              }
             }
           ]
         : [

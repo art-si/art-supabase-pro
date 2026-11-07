@@ -115,7 +115,7 @@
     tone: PresentationTone
   }
 
-  const IMAGE_SUFFIXES = new Set(['bmp', 'gif', 'jpeg', 'jpg', 'png', 'svg', 'webp'])
+  const IMAGE_SUFFIXES = new Set(['bmp', 'gif', 'ico', 'jpeg', 'jpg', 'png', 'svg', 'webp'])
   const VIDEO_SUFFIXES = new Set(['avi', 'flv', 'mkv', 'mov', 'mp4', 'webm', 'wmv'])
   const AUDIO_SUFFIXES = new Set([
     'aac',

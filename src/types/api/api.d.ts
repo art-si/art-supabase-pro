@@ -792,6 +792,7 @@ declare namespace Api {
 
       interface ResourceListItem {
         id?: number
+        version?: number
         tenantId?: string
         storageMode?: number
         originName?: string

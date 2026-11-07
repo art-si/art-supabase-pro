@@ -523,6 +523,8 @@ export async function fetchResourceList(
 interface RenameResourceParams {
   id: string
   originName: string
+  /** Host providers may use optimistic concurrency; native Supabase ignores it. */
+  version?: number
 }
 
 // 重命名仅更新业务展示名；Storage 对象继续使用内容哈希路径，链接不会失效。

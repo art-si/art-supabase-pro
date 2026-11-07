@@ -2,7 +2,7 @@
   <div class="resource-manager art-full-height business-workspace-page">
     <BusinessWorkspaceHeader
       eyebrow="DIGITAL ASSET LIBRARY"
-      title="附件管理"
+      :title="title"
       description="统一管理业务图片、文档与媒体资源，并支持分类检索和安全预览。"
       icon="ri:attachment-2"
     />
@@ -13,6 +13,9 @@
         show-copy-actions
         show-paste-upload
         show-rename-action
+        :can-upload="canUpload"
+        :can-rename="canRename"
+        :can-delete="canDelete"
       />
     </section>
   </div>
@@ -21,6 +24,15 @@
 <script setup lang="ts">
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import ArtResourcePanel from '@/components/core/forms/art-resource-picker/panel.vue'
+  withDefaults(
+    defineProps<{
+      title?: string
+      canUpload?: boolean
+      canRename?: boolean
+      canDelete?: boolean
+    }>(),
+    { title: '附件管理', canUpload: true, canRename: true, canDelete: true }
+  )
   const model = ref<string | string[]>()
 </script>
 

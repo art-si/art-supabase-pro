@@ -66,6 +66,10 @@
 
   const panelProps = computed<ResourcePanelProps>(() => ({
     resourceTenantId: props.resourceTenantId,
+    canView: props.canView,
+    canUpload: props.canUpload,
+    canRename: props.canRename,
+    canDelete: props.canDelete,
     multiple: props.multiple,
     limit: props.limit,
     pageSize: props.pageSize,
