@@ -237,6 +237,8 @@ export async function createModuleViteConfig({
         '@cloudbase/js-sdk',
         'axios',
         'crypto-js',
+        'crypto-js/aes',
+        'crypto-js/enc-utf8',
         'decimal.js-light',
         'exceljs',
         'file-saver',

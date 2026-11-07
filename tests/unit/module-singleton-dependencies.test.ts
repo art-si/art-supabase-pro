@@ -5,9 +5,40 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { hostedApplicationSourceDirectories } from '../../scripts/hosted-module-dependencies.mjs'
+import { createModuleViteConfig } from '../../scripts/module-vite-config.mjs'
 
 const projectRoot = fileURLToPath(new URL('../../', import.meta.url))
 const dependencies = { vue: '^3.5.43', pinia: '4.0.3', 'vue-router': '^5.4.0' }
+
+test('standalone config prebundles the focused CommonJS entries used by screen lock', async () => {
+  const source = await readFile(
+    path.join(projectRoot, 'src/components/core/layouts/art-screen-lock/index.vue'),
+    'utf8'
+  )
+  const entries = [...source.matchAll(/import \w+ from '(crypto-js\/[^']+)'/g)].map(
+    (match) => match[1]
+  )
+  assert.equal(entries.length, 2)
+  for (const applicationRoot of [projectRoot, path.join(projectRoot, 'modules/art-supabase-wms')]) {
+    const config = await createModuleViteConfig({
+      appCode: 'wms',
+      applicationRoot,
+      defaultPort: 3026,
+      mode: 'e2e',
+      platformRoot: projectRoot
+    })
+    for (const entry of entries) {
+      const resolved = config.optimizeDeps?.include?.filter(
+        (dependency) => dependency === entry || dependency === `art-supabase-pro > ${entry}`
+      )
+      assert.equal(
+        resolved?.length,
+        1,
+        `${applicationRoot}: missing explicit prebundle for ${entry}`
+      )
+    }
+  }
+})
 
 test('module audit rejects missing framework singletons even for auto-imported hooks', async () => {
   const parent = path.join(projectRoot, '.artifacts/unit-module-singletons')
