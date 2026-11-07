@@ -1,24 +1,36 @@
 import { expect, test } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
 test('检验类别弹窗区分字段校验与服务拒绝', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'sb-ckbftoopuyophiebamwy-auth-token',
-      JSON.stringify({
-        access_token: 'a.b.c',
-        refresh_token: 'test-refresh-token',
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
-        token_type: 'bearer',
-        user: {
-          id: '00000000-0000-0000-0000-000000000000',
-          aud: 'authenticated',
-          role: 'authenticated'
-        }
-      })
-    )
+  await prepareIsolatedSession(page)
+  const unexpected: string[] = []
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  await page.route('**/rest/v1/**', (route) => {
+    unexpected.push(`${route.request().method()} ${route.request().url()}`)
+    return route.fulfill({ status: 400, json: { message: 'unexpected isolated request' } })
+  })
+  await page.route('**/rest/v1/sys_param?*', (route) => {
+    const request = route.request()
+    if (
+      request.method() === 'GET' &&
+      new URL(request.url()).searchParams.get('param_key') === 'eq.ui.appearance.config'
+    ) {
+      return route.fulfill({ json: [] })
+    }
+    unexpected.push(`${request.method()} ${request.url()}`)
+    return route.fulfill({ status: 400, json: { message: 'unexpected isolated parameter' } })
+  })
+  const registry = Promise.withResolvers<void>()
+  const registryRequested = Promise.withResolvers<void>()
+  page.once('close', () => registry.resolve())
+  await page.route('**/components/core/forms/art-form/components.ts*', async (route) => {
+    registryRequested.resolve()
+    await registry.promise
+    await route.continue()
   })
 
   let saveRequests = 0
@@ -34,7 +46,19 @@ test('检验类别弹窗区分字段校验与服务拒绝', async ({ page }, tes
   await page.getByRole('button', { name: '打开检验类别弹窗' }).click()
   const dialog = page.getByRole('dialog', { name: '新增检验类别' })
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('button', { name: '保存检验类别' }).click()
+  const save = dialog.getByRole('button', { name: '保存检验类别' })
+  await registryRequested.promise
+  await expect(dialog.locator('.el-skeleton').first()).toBeVisible()
+  await expect(save).toBeDisabled()
+  expect(saveRequests).toBe(0)
+  await page.screenshot({
+    path: testInfo.outputPath('controls-loading.png'),
+    animations: 'disabled'
+  })
+  registry.resolve()
+  await expect(dialog.getByRole('textbox', { name: '检验类别编码' })).toBeVisible()
+  await expect(save).toBeEnabled()
+  await save.click()
   await expect(dialog.getByText('请输入检验类别编码')).toBeVisible()
   expect(saveRequests).toBe(0)
   await expect(page.locator('.el-message')).toHaveCount(0)
@@ -54,14 +78,16 @@ test('检验类别弹窗区分字段校验与服务拒绝', async ({ page }, tes
   }))
   expect(widths.content).toBeLessThanOrEqual(widths.viewport + 1)
   await page.screenshot({
-    path: `.artifacts/smis-inspection-category-${testInfo.project.name}-error.png`,
+    path: testInfo.outputPath('inspection-category-error.png'),
     animations: 'disabled'
   })
   await dialog.getByText('备注', { exact: true }).scrollIntoViewIfNeeded()
   await expect(dialog.getByText('备注', { exact: true })).toBeInViewport()
   await expect(dialog.getByRole('button', { name: '保存检验类别' })).toBeInViewport()
   await page.screenshot({
-    path: `.artifacts/smis-inspection-category-${testInfo.project.name}-lower.png`,
+    path: testInfo.outputPath('inspection-category-lower.png'),
     animations: 'disabled'
   })
+  expect(unexpected).toEqual([])
+  expect(pageErrors).toEqual([])
 })
