@@ -1,10 +1,11 @@
 <template>
   <div class="resource-panel h-full flex flex-col">
     <div class="flex flex-col justify-between gap-y-1 md:flex-row">
-      <div>
+      <div class="min-w-0 max-w-full overflow-x-auto">
         <el-segmented
           v-model="segment.active"
           :options="segment.options"
+          class="min-w-max"
           size="default"
           block
           @change="handleFileTypesChange"

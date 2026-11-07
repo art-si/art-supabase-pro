@@ -110,6 +110,22 @@ test('只读资源权限隐藏上传与修改，两个私有资源可分页浏�
       animations: 'disabled'
     })
   }
+  const documents = page.getByText('文档', { exact: true })
+  await documents.scrollIntoViewIfNeeded()
+  await expect(documents).toBeInViewport()
+  await documents.click()
+  await expect(page.getByRole('button', { name: '选择资源 合成验收资源一.pdf' })).toBeVisible()
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+      )
+    )
+    .toBeLessThanOrEqual(1)
+  await page.screenshot({
+    path: info.outputPath('resources-readonly-mobile-document-390.png'),
+    animations: 'disabled'
+  })
 })
 
 test('资源面板清空文件输入后仍向上传处理器传递所选文件', async ({ page }) => {
