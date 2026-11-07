@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createSSRApp, effectScope } from 'vue'
+import { createSSRApp, effectScope, watch } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { useRouteOperationGuard } from '../../src/hooks/core/useRouteTableContext'
 
-test('route operation capture stays invalid after its Vue scope is disposed', async () => {
+test('route operation invalidation is reactive and stays invalid after scope disposal', async () => {
   const app = createSSRApp({})
   const router = createRouter({
     history: createMemoryHistory(),
@@ -26,10 +26,13 @@ test('route operation capture stays invalid after its Vue scope is disposed', as
       })
     )
     const firstRoute = capture()
+    const observed: boolean[] = []
+    scope.run(() => watch(firstRoute, (current) => observed.push(current), { flush: 'sync' }))
     assert.equal(firstRoute(), true)
 
     await router.push('/second')
     assert.equal(firstRoute(), false)
+    assert.deepEqual(observed, [false])
     const secondRoute = capture()
     assert.equal(secondRoute(), true)
 

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { installDictionaryOptions } from './support/dictionary-options'
+import { prepareIsolatedSession } from './support/isolated-session'
+import { isPlainObjectRecord } from '../../src/utils/type-guards'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(300_000)
@@ -15,7 +17,7 @@ const baseCard = {
   driverPhone: '138****0001',
   cardNo: 'YK2026001',
   issuer: '亿油卡',
-  imagePath: null,
+  imagePath: '11111111-1111-4111-8111-111111111111/synthetic-preview.svg',
   ownerEmployeeId: null,
   ownerEmployeeName: null,
   openerEmployeeId: null,
@@ -97,9 +99,59 @@ const electricEntry = {
 async function setup(page: Page, kind: string) {
   const requests: Array<Record<string, unknown>> = []
   const unexpected: string[] = []
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  await prepareIsolatedSession(page)
   await page.route('**/rest/v1/**', (route) => {
     unexpected.push(route.request().url())
     return route.fulfill({ status: 400, json: { message: 'unexpected test request' } })
+  })
+  await page.route('**/rest/v1/sys_param?*', (route) => {
+    const query = new URL(route.request().url()).searchParams
+    if (
+      route.request().method() === 'GET' &&
+      query.get('param_key') === 'eq.ui.appearance.config'
+    ) {
+      return route.fulfill({ json: [] })
+    }
+    unexpected.push(route.request().url())
+    return route.fulfill({ status: 400, json: { message: 'unexpected isolated parameter' } })
+  })
+  await page.route('**/storage/v1/object/sign/**', (route) => {
+    const url = new URL(route.request().url())
+    const bucket = kind.startsWith('fuel') ? 'vms-fuel-card-private' : 'vms-electric-card-private'
+    if (!url.pathname.includes(`/object/sign/${bucket}`)) {
+      unexpected.push(url.pathname)
+      return route.fulfill({ status: 400, json: { message: 'unexpected isolated bucket' } })
+    }
+    if (
+      route.request().method() === 'GET' &&
+      url.searchParams.get('token') === 'synthetic-preview'
+    ) {
+      return route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72"><rect width="72" height="72" fill="#334155"/><text x="36" y="43" text-anchor="middle" fill="white" font-family="sans-serif" font-size="18">SYN</text></svg>'
+      })
+    }
+    if (route.request().method() !== 'POST') {
+      unexpected.push(route.request().method() + ' ' + url.pathname)
+      return route.fulfill({ status: 400, json: { message: 'unexpected isolated signing method' } })
+    }
+    const body: unknown = route.request().postDataJSON()
+    if (
+      !isPlainObjectRecord(body) ||
+      !Array.isArray(body.paths) ||
+      !body.paths.every((value: unknown) => value === baseCard.imagePath)
+    ) {
+      unexpected.push(route.request().method() + ' ' + url.pathname)
+      return route.fulfill({ status: 400, json: { message: 'unexpected isolated signing' } })
+    }
+    return route.fulfill({
+      json: body.paths.map((value: string) => ({
+        path: value,
+        signedURL: `/object/sign/${bucket}/${value}?token=synthetic-preview`
+      }))
+    })
   })
   await installDictionaryOptions(page, {
     vehicleOwnership: [{ value: 'carrier', label: '承运商' }],
@@ -163,12 +215,12 @@ async function setup(page: Page, kind: string) {
       route.fulfill({ json: { records: [record], total: 1 } })
     )
   }
-  return { requests, unexpected }
+  return { requests, unexpected, pageErrors }
 }
 
 for (const kind of ['fuel', 'electric', 'fuel-ledger', 'electric-ledger']) {
   test(`${kind} 分类级联和关联字段`, async ({ page }, testInfo) => {
-    const { requests, unexpected } = await setup(page, kind)
+    const { requests, unexpected, pageErrors } = await setup(page, kind)
     const isFuel = kind === 'fuel' || kind === 'fuel-ledger'
     await page.goto(
       `/tests/e2e/fixtures/vms-operations-optimization.html?kind=${kind}${isFuel ? '&withActions=1' : ''}`,
@@ -177,9 +229,20 @@ for (const kind of ['fuel', 'electric', 'fuel-ledger', 'electric-ledger']) {
       }
     )
     const navigation = page.locator('.vehicle-classification-panel')
-    await expect(navigation.getByText('半挂车', { exact: true })).toBeVisible({ timeout: 180_000 })
+    await expect(navigation.getByText('半挂车', { exact: true })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByRole('columnheader', { name: '车辆归属', exact: true })).toBeVisible()
     await expect(page.getByRole('columnheader', { name: '所属承运商', exact: true })).toBeVisible()
+    if (kind === 'fuel' || kind === 'electric') {
+      const thumbnail = page.locator('img[alt$="卡面照片"]').first()
+      await expect(thumbnail).toBeVisible()
+      await expect
+        .poll(() => thumbnail.evaluate((element: HTMLImageElement) => element.naturalWidth))
+        .toBeGreaterThan(0)
+      await page.screenshot({
+        path: testInfo.outputPath(`${kind}-list-with-private-preview.png`),
+        fullPage: true
+      })
+    }
     if (isFuel) {
       const operationRow = page.locator('.business-workspace-header__actions')
       await expect(
@@ -262,5 +325,6 @@ for (const kind of ['fuel', 'electric', 'fuel-ledger', 'electric-ledger']) {
     await page.screenshot({ path: testInfo.outputPath(`${kind}.png`), fullPage: true })
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
     expect(unexpected).toEqual([])
+    expect(pageErrors).toEqual([])
   })
 }
