@@ -4,11 +4,12 @@
     <img
       v-if="variant !== 'wordmark'"
       :style="logoStyle"
-      src="@imgs/common/logo.webp"
+      :src="logoUrl"
       width="36"
       height="36"
       :alt="variant === 'mark' ? `${brandName} Logo` : ''"
       class="art-logo__mark"
+      @error="handleLogoError"
     />
     <span
       v-if="variant !== 'mark' && !useWordmarkImage"
@@ -33,6 +34,7 @@
 <script setup lang="ts">
   import type { CSSProperties } from 'vue'
   import { useWebsiteConfig } from '@/hooks/core/useWebsiteConfig'
+  import defaultLogo from '@imgs/common/logo.webp'
 
   defineOptions({ name: 'ArtLogo' })
 
@@ -52,7 +54,12 @@
   })
 
   const { brandName, websiteConfig } = useWebsiteConfig()
+  const failedLogoUrl = ref('')
   const failedWordmarkUrl = ref('')
+  const logoUrl = computed(() => {
+    const configured = websiteConfig.value.logoUrl?.trim() || ''
+    return configured && failedLogoUrl.value !== configured ? configured : defaultLogo
+  })
 
   const logoSize = computed(() => {
     if (typeof props.size === 'number') return `${props.size}px`
@@ -93,7 +100,16 @@
   const handleWordmarkImageError = (): void => {
     failedWordmarkUrl.value = wordmarkImageUrl.value
   }
+  const handleLogoError = (): void => {
+    failedLogoUrl.value = websiteConfig.value.logoUrl?.trim() || ''
+  }
 
+  watch(
+    () => websiteConfig.value.logoUrl,
+    () => {
+      failedLogoUrl.value = ''
+    }
+  )
   watch(wordmarkImageUrl, () => {
     failedWordmarkUrl.value = ''
   })

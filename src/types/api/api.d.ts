@@ -617,6 +617,8 @@ declare namespace Api {
 
     interface WebsiteConfigItem {
       id?: string
+      /** Host-owned optimistic-lock revision; pro's native sys_param payload does not persist it. */
+      version?: number
       tenantId?: string
       paramMeta?: WebsiteConfigParamMeta
       siteName: string

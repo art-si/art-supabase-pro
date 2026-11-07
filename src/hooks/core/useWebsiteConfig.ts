@@ -12,6 +12,8 @@ const loaded = ref(false)
 let pendingLoad: Promise<UseWebsiteConfig> | null = null
 let loadVersion = 0
 let lastLoadFailed = false
+let initialFavicon: { href: string; rel: string; type: string | null } | null | undefined
+let customFaviconApplied = false
 
 const mergeWebsiteConfig = (config?: Partial<UseWebsiteConfig> | null): UseWebsiteConfig => {
   const defaults = createWebsiteConfigDefaults()
@@ -33,22 +35,43 @@ const applyFavicon = (href?: string | null): void => {
   const head = getDocumentHead()
   if (!head) return
 
-  const faviconHref = href?.trim()
-  if (!faviconHref) return
-
   const iconLinks = Array.from(head.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]'))
   let link = iconLinks[0]
+  if (initialFavicon === undefined)
+    initialFavicon = link
+      ? {
+          href: link.getAttribute('href') || '',
+          rel: link.rel,
+          type: link.getAttribute('type')
+        }
+      : null
 
+  const configured = href?.trim()
+  if (!configured && !customFaviconApplied) return
   iconLinks.slice(1).forEach((item) => item.remove())
+  if (!configured) {
+    if (initialFavicon) {
+      if (!link) {
+        link = document.createElement('link')
+        head.appendChild(link)
+      }
+      link.rel = initialFavicon.rel
+      if (initialFavicon.type) link.type = initialFavicon.type
+      else link.removeAttribute('type')
+      link.href = initialFavicon.href
+    } else link?.remove()
+    customFaviconApplied = false
+    return
+  }
 
   if (!link) {
     link = document.createElement('link')
     head.appendChild(link)
   }
-
   link.rel = 'icon'
   link.removeAttribute('type')
-  link.href = faviconHref
+  link.href = configured
+  customFaviconApplied = true
 }
 
 const applySeoMeta = (name: string, content?: string | null): void => {

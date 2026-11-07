@@ -72,6 +72,7 @@ export async function saveWebsiteConfig(params: WebsiteConfigItem) {
   const { id, paramMeta } = params
   const payload = omit(params, [
     'id',
+    'version',
     'tenantId',
     'paramMeta',
     'createBy',
