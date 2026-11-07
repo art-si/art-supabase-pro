@@ -10,7 +10,7 @@
         <div class="form">
           <div class="form__eyebrow">
             <span><ArtSvgIcon icon="ri:shield-check-line" /></span>
-            {{ ssoAuthorizationId ? '统一身份认证' : '安全工作区' }}
+            {{ hasSsoRequest ? '统一身份认证' : '安全工作区' }}
           </div>
           <h3 class="title">
             {{
@@ -18,7 +18,7 @@
                 ? '正在完成登录'
                 : showFeishuQr
                   ? '飞书扫码登录'
-                  : ssoAuthorizationId
+                  : hasSsoRequest
                     ? '登录 BFF 平台'
                     : loginTitle
             }}
@@ -29,7 +29,7 @@
                 ? '正在验证身份并准备工作台，请稍候'
                 : showFeishuQr
                   ? '使用飞书企业身份扫码，并在手机上确认'
-                  : ssoAuthorizationId
+                  : hasSsoRequest
                     ? '使用统一账号，进入你的应用工作空间。'
                     : loginSubtitle || $t('login.subTitle')
             }}
@@ -51,6 +51,9 @@
             :title="oauthError"
             @close="oauthError = ''"
           />
+          <ElButton v-if="ssoConnectionUnavailable" text class="mt-2" @click="goBackToApplication">
+            返回应用重新发起
+          </ElButton>
           <div
             v-if="finishingOAuth || continuingSso"
             class="auth-callback-progress"
@@ -215,11 +218,18 @@
     checkCurrentUserAccess,
     getCurrentAuthSession,
     login,
+    recoverCurrentAuthSession,
     signInWithAuthChannel
   } from '@/api/auth'
   import { MenuProcessor } from '@/router/core/menu-processor'
   import { resumeFirstPartyOAuthAuthorization } from '@/api/oauth-authorization'
-  import { resolveSsoAuthorizationId } from '@/utils/oauth-authorization'
+  import {
+    hasSsoAuthorizeInput,
+    resolveFirstPartySsoAuthorize,
+    resolveSsoRequestError,
+    resolveSsoAuthorizationId
+  } from '@/utils/oauth-authorization'
+  import { firstPartyOAuthClients } from '@/config/first-party-oauth'
   import { clearAccessibleApplicationsCache } from '@/api/system-manage/application-access'
   import { getFirstMenuPath } from '@/utils/navigation/route'
   import { useWebsiteConfig } from '@/hooks/core/useWebsiteConfig'
@@ -276,6 +286,28 @@
   const ssoAuthorizationId = computed(() =>
     resolveSsoAuthorizationId(route.query.sso_authorization_id, route.query.redirect)
   )
+  const ssoAuthorizeUrl = computed(() =>
+    resolveFirstPartySsoAuthorize(
+      route.query.sso_authorize,
+      import.meta.env.VITE_SUPABASE_URL,
+      firstPartyOAuthClients,
+      route.query.redirect
+    )
+  )
+  const invalidSsoAuthorize = computed(
+    () =>
+      hasSsoAuthorizeInput(route.query.sso_authorize, route.query.redirect) &&
+      !ssoAuthorizeUrl.value
+  )
+  const ssoError = computed(() =>
+    resolveSsoRequestError(route.query.sso_error, route.query.redirect)
+  )
+  const ssoConnectionUnavailable = computed(
+    () => Boolean(ssoAuthorizeUrl.value) && ssoError.value === 'service_unavailable'
+  )
+  const hasSsoRequest = computed(() =>
+    Boolean(ssoAuthorizationId.value || ssoAuthorizeUrl.value || invalidSsoAuthorize.value)
+  )
   const menuProcessor = new MenuProcessor()
   const POST_LOGIN_BACKGROUND_IDLE_MS = 5_000
   const turnstileToken = ref('')
@@ -293,8 +325,8 @@
   const formData = ref({
     account: '',
     username: '',
-    identifier: ssoAuthorizationId.value ? '' : rememberedIdentifier || '624944977@qq.com',
-    password: ssoAuthorizationId.value
+    identifier: hasSsoRequest.value ? '' : rememberedIdentifier || '624944977@qq.com',
+    password: hasSsoRequest.value
       ? ''
       : rememberedIdentifier && rememberedIdentifier !== '624944977@qq.com'
         ? ''
@@ -305,13 +337,25 @@
   const loading = ref(false)
   const oauthLoadingKey = ref('')
   const oauthError = ref(
-    ssoAuthorizationId.value && route.query.sso_error === 'access_denied'
-      ? '当前统一账号未开通 BFF 平台，请使用已开通账号重新登录。'
-      : ''
+    ssoConnectionUnavailable.value
+      ? '应用暂时无法连接，请返回 BFF 平台重新发起登录。'
+      : invalidSsoAuthorize.value
+        ? '统一登录请求无效，请返回应用重新发起登录。'
+        : hasSsoRequest.value && ssoError.value === 'access_denied'
+          ? '当前统一账号未开通 BFF 平台，请使用已开通账号重新登录。'
+          : hasSsoRequest.value && ssoError.value === 'login_failed'
+            ? '上次统一登录未完成，请重新登录。'
+            : hasSsoRequest.value && ssoError.value === 'authorization_cancelled'
+              ? '上次授权已取消，请重新登录。'
+              : ''
   )
   const finishingOAuth = ref(route.query.auth_action === 'login')
   const continuingSso = ref(
-    Boolean(ssoAuthorizationId.value) && route.query.sso_force !== '1' && !finishingOAuth.value
+    hasSsoRequest.value &&
+      !invalidSsoAuthorize.value &&
+      !ssoConnectionUnavailable.value &&
+      route.query.sso_force !== '1' &&
+      !finishingOAuth.value
   )
   const oauthProgressText = ref('正在接收授权结果…')
   const showFeishuQr = ref(false)
@@ -380,7 +424,7 @@
     void initializeLoginPage()
     if (
       rememberedIdentifier &&
-      !ssoAuthorizationId.value &&
+      !hasSsoRequest.value &&
       !finishingOAuth.value &&
       !continuingSso.value
     )
@@ -415,6 +459,11 @@
     if (password && password !== formData.value.password) formData.value.password = password
   }
 
+  const goBackToApplication = (): void => {
+    if (window.history.length > 1) window.history.back()
+    else oauthError.value = '请在 BFF 平台页面重新发起登录。'
+  }
+
   useEventListener(window, 'pageshow', syncBrowserAutofill)
 
   const initializeLoginPage = async (): Promise<void> => {
@@ -428,7 +477,7 @@
       } finally {
         if (!completed) continuingSso.value = false
       }
-      if (rememberedIdentifier && !ssoAuthorizationId.value) void restoreBrowserPassword()
+      if (rememberedIdentifier && !hasSsoRequest.value) void restoreBrowserPassword()
     }
     if (finishingOAuth.value) {
       void loadWebsiteConfig()
@@ -445,8 +494,14 @@
     clearAccessibleApplicationsCache()
     userStore.setToken(tokens.accessToken, tokens.refreshToken)
     userStore.setLoginStatus(true)
-    if (ssoAuthorizationId.value) {
-      if (!(await resumeSso())) throw new Error('统一登录会话未建立，请重新登录')
+    if (ssoConnectionUnavailable.value || invalidSsoAuthorize.value) {
+      oauthError.value = ssoConnectionUnavailable.value
+        ? '应用暂时无法连接，请返回 BFF 平台重新发起登录。'
+        : '统一登录请求无效，请返回应用重新发起登录。'
+      return
+    }
+    if (hasSsoRequest.value) {
+      if (!(await resumeSso(true))) throw new Error('统一登录会话未建立，请重新登录')
       return
     }
     const { startDictionaries } = await preparePostLoginData({
@@ -468,7 +523,13 @@
     scheduleDictionariesAfterNavigationIdle(startDictionaries)
   }
 
-  const resumeSso = async (): Promise<boolean> => {
+  const resumeSso = async (alreadyAuthenticated = false): Promise<boolean> => {
+    if (ssoAuthorizeUrl.value) {
+      if (!alreadyAuthenticated && (await recoverCurrentAuthSession()).status === 'expired')
+        return false
+      window.location.replace(ssoAuthorizeUrl.value)
+      return true
+    }
     const authorizationId = ssoAuthorizationId.value
     if (!authorizationId) return false
     const result = await resumeFirstPartyOAuthAuthorization(authorizationId)
@@ -529,9 +590,19 @@
   }
 
   const handleAuthChannelLogin = async (channel: Api.Auth.AuthChannel): Promise<void> => {
+    if (invalidSsoAuthorize.value) {
+      oauthError.value = '统一登录请求无效，请返回应用重新发起登录。'
+      return
+    }
     oauthError.value = ''
-    const requestedRedirect =
-      typeof route.query.redirect === 'string' ? route.query.redirect : undefined
+    const requestedRedirect = ssoAuthorizeUrl.value
+      ? `/auth/login?${new URLSearchParams({
+          sso_authorize: ssoAuthorizeUrl.value,
+          ...(ssoError.value ? { sso_error: ssoError.value } : {})
+        })}`
+      : typeof route.query.redirect === 'string'
+        ? route.query.redirect
+        : undefined
     const redirectTo = buildAuthCallbackUrl(
       window.location.href,
       '/auth/login',
