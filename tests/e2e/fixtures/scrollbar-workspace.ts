@@ -280,6 +280,8 @@ const formWorkspace = defineComponent({
 const appointmentWorkspace = defineComponent({
   setup() {
     const drawer = ref<InstanceType<typeof AppointmentDrawer>>()
+    const kind =
+      new URLSearchParams(window.location.search).get('kind') === 'delivery' ? 'delivery' : 'pickup'
     return () =>
       h('main', {}, [
         h(
@@ -309,7 +311,7 @@ const appointmentWorkspace = defineComponent({
         ),
         h(AppointmentDrawer, {
           ref: drawer,
-          kind: 'pickup',
+          kind,
           permissions: {
             add: 'TmsPickupAppointment:Add',
             edit: 'TmsPickupAppointment:Edit',
