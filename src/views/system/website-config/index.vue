@@ -185,6 +185,8 @@
 <script setup lang="ts">
   import { getScrollBehavior } from '@/utils/ui/scroll'
   import { normalizeNullableText } from '@/utils/form/normalize'
+  import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { ElMessage, type FormRules } from 'element-plus'
   import { cloneDeep, isEqual, omit } from 'lodash-es'
   import { useEventListener } from '@vueuse/core'
@@ -494,6 +496,7 @@
   }
 
   const handleSave = async (): Promise<void> => {
+    if (page.saving) return
     if (isReadOnly.value) {
       ElMessage.warning('当前账号只有查看权限，不能保存网站配置')
       return
@@ -509,16 +512,22 @@
       return
     }
 
-    await formRef.value?.validate()
     page.saving = true
 
     try {
+      if (!(await validateArtFormForSubmit(formRef.value))) return
       const payload = normalizePayload()
-      await saveWebsiteConfig(payload)
+      const result = await saveWebsiteConfig(payload)
+      if (result.error) {
+        notifyFriendlyError(result.error, '网站配置发布失败，当前输入已保留，请稍后重试')
+        return
+      }
       await fetchConfig()
       setWebsiteConfig(form.value)
       await loadWebsiteConfig(true)
       ElMessage.success('网站配置已发布')
+    } catch (error) {
+      notifyFriendlyError(error, '网站配置发布失败，当前输入已保留，请稍后重试')
     } finally {
       page.saving = false
     }

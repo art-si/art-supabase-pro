@@ -127,6 +127,6 @@ setupGlobDirectives(app)
 useUserStore(store).setUserInfo({
   userId: 'navigation-fixture-user',
   tenantId: 'navigation-fixture-tenant',
-  platformSuper: false
+  platformSuper: query.get('super') === 'true'
 })
 app.mount('#navigation-card-fixture')
