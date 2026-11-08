@@ -113,6 +113,8 @@
   flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
+  // The flex host already reserves header/footer space. Do not subtract it twice
+  // through ArtTable's legacy inline height calculation.
   height: 100% !important;
   min-height: 0;
 }
@@ -332,6 +334,15 @@
 
   .art-table-query__selection-divider {
     display: none;
+  }
+}
+
+// Narrow business pages use document scrolling. Give their table a bounded
+// viewport instead of resolving percentage heights against an auto-height page.
+@media (width <= 768px) {
+  .art-table-query:not(.is-focus-mode) .art-table-query__table-host {
+    flex: none;
+    height: clamp(320px, 60vh, 480px);
   }
 }
 
