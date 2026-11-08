@@ -322,7 +322,11 @@ export async function fetchBffPage(
   input: Record<string, BffScalar>,
   page: { current: number; size: number }
 ): Promise<
-  QueryResult<Array<Record<string, BffScalar>>> & { requestId?: string; version?: number }
+  QueryResult<Array<Record<string, BffScalar>>> & {
+    requestId?: string
+    version?: number
+    gatewayResult?: BffGatewayResult
+  }
 > {
   try {
     if (
@@ -380,7 +384,8 @@ export async function fetchBffPage(
       total: Number(value.total),
       error: null,
       requestId: response.requestId,
-      version: response.version
+      version: response.version,
+      gatewayResult: response
     }
   } catch (error) {
     return { data: null, error: error instanceof BffBridgeError ? error : failure(503) }

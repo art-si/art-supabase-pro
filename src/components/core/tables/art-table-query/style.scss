@@ -99,6 +99,34 @@
   min-height: 100%;
 }
 
+// Keep the pagination footer at the bottom of full-height workspaces, even when
+// the current page contains fewer rows than the available table area.
+.art-table-query__table-host {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+:deep(.art-table-query__table-host > .art-table) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+}
+
+:deep(.art-table-query__table-host > .art-table > .el-table) {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+:deep(.art-table-query__table-host > .art-table > .pagination) {
+  flex: 0 0 auto;
+  padding-bottom: 4px;
+}
+
 :deep(.art-table-card:not(.has-table-header) .art-table > .el-table) {
   margin-top: 0;
 }

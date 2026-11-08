@@ -349,10 +349,9 @@ VITE_AMAP_SECURITY_JS_CODE=your-amap-security-code
 
 > 前端使用 Supabase 公开 publishable key 或兼容的 `anon` key。不要把 `service_role` key、AI Provider 密钥或其他服务端凭证放进 Vite 环境变量；权限安全必须由 RLS、数据库函数和 Edge Functions 在服务端边界保证。
 
-本地联调可选在忽略的 `.env.development.local` 开启 BFF 接入中心；关闭时不请求 BFF，也不改变原有登录和业务菜单：
+本地联调可在忽略的 `.env.development.local` 配置 BFF 同源桥接：
 
 ```env
-VITE_BFF_ENABLED=true
 VITE_BFF_DEV_ENDPOINT=/__bff_bridge
 BFF_DEV_PROXY_TARGET=http://127.0.0.1:3037
 BFF_DEV_BRIDGE_PORT=3037
@@ -363,6 +362,8 @@ BFF_PRO_BRIDGE_SECRET=
 ```
 
 `BFF_DEV_PROXY_TARGET` 仅由本地 Vite 服务读取，必须指向本机 HTTP 源站；浏览器只调用同源 `/__bff_bridge` 并使用已有 pro 登录会话。后端验证该身份，再按 BFF 成员和应用授权执行调用。未配置独立 HTTPS BFF 域名时只做本地演示；正式站点默认调用 `bff-gateway` Edge Function。桥接签名密钥、BFF 服务密钥和数据库密钥只能配置在服务端，不能使用 `VITE_` 前缀。
+
+菜单管理中的 `BffIntegration` 位于“数据中心”目录，访问地址保持 `/examples/bff-integration`，视图组件为 `/data-center/bff-integration/index`。入口是否可见由 `sys_menu`、`sys_role_menu` 中的菜单与角色授权决定，页面内的接口目录和调用仍由 BFF 服务端单独授权。菜单登记后可运行 `tests/integration/bff-menu-placement.sql` 核验层级、地址和授权。
 
 本地先运行 `pnpm bff:dev-bridge`，再启动指定端口的 Pro。该适配器与正式 Edge Function 复用同一 handler 和 Pro 用户检查。正式部署 `bff-gateway` 时配置 HTTPS `BFF_SERVICE_URL`、专用 `BFF_PRO_BRIDGE_SECRET` 和准确的允许来源；函数自行使用 `Auth.getUser` 验证 JWT，再检查启用的 Pro 用户资料，不接受浏览器提交的用户 ID 或管理员身份。
 

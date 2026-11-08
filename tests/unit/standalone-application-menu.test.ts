@@ -157,6 +157,35 @@ test('moving a relative child changes its full URL unless its old URL is preserv
   assert.equal(pathAfterNormalization('target-folder', '/legacy/folder'), '/legacy/folder')
 })
 
+test('BFF menu under Data Center keeps its published URL and new component path', () => {
+  const menu = normalizeApplicationMenuPaths(
+    buildApplicationMenuTree([
+      {
+        id: 'data-center',
+        name: 'DataCenter',
+        path: '/data-center',
+        component: '/index/index',
+        type: 'folder',
+        meta: { title: '数据中心' }
+      },
+      {
+        id: 'bff',
+        parentId: 'data-center',
+        name: 'BffIntegration',
+        path: '/examples/bff-integration',
+        component: '/data-center/bff-integration/index',
+        type: 'menu',
+        meta: { title: 'BFF 接入中心' }
+      }
+    ])
+  )
+  assert.equal(menu[0].name, 'DataCenter')
+  assert.equal(menu[0].children?.[0].path, '/examples/bff-integration')
+  assert.equal(menu[0].children?.[0].component, '/data-center/bff-integration/index')
+  assert.equal(menu[0].redirect, '/examples/bff-integration')
+  assert.equal(new RouteValidator().validate(menu).valid, true)
+})
+
 test('route diagnostics retain the absolute child URL', () => {
   const menu: AppRouteRecord[] = [
     {

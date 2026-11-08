@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_BFF_ENABLED?: 'true' | 'false'
   readonly VITE_BFF_DEV_ENDPOINT?: string
   readonly VITE_AUTH_SESSION_MODE?: 'client' | 'server'
   readonly VITE_BAAS_PROVIDER?: 'supabase' | 'cloudbase'

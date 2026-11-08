@@ -109,6 +109,7 @@ async function mockBridge(page: Page): Promise<MockState> {
 }
 
 async function selectAndRun(page: Page, source: string, firstId: string, secondId: string) {
+  if (await page.locator('.el-drawer:visible').count()) await page.keyboard.press('Escape')
   await page
     .getByRole('row')
     .filter({ hasText: `${source} 订单列表` })
@@ -167,15 +168,16 @@ test('synthetic bridge catalog renders three published sources and two real-resu
   expect(state.requests).toEqual(['java-demo', 'supabase-demo', 'cloudbase-demo'])
 
   await page.screenshot({ path: path.join(evidence, 'catalog-results-light-1440.png') })
+  await page.keyboard.press('Escape')
   await page.getByRole('switch', { name: '进入专注模式' }).locator('..').click()
-  await expect(page.locator('.bff-integration__catalog-scope > .art-table-query')).toHaveClass(
+  await expect(page.locator('.bff-integration > .art-table-query')).toHaveClass(
     /is-focus-mode/
   )
   await expect(page.getByRole('heading', { name: 'BFF 接入中心' })).toBeHidden()
-  await expect(page.getByText('常见响应格式')).toBeHidden()
+  await expect(page.getByRole('button', { name: '响应格式说明' })).toBeVisible()
   await page.screenshot({ path: path.join(evidence, 'catalog-focus-1440.png') })
   await page.keyboard.press('Escape')
-  await expect(page.locator('.bff-integration__catalog-scope > .art-table-query')).not.toHaveClass(
+  await expect(page.locator('.bff-integration > .art-table-query')).not.toHaveClass(
     /is-focus-mode/
   )
   await page.setViewportSize({ width: 1280, height: 800 })
