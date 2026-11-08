@@ -10,6 +10,16 @@ export const TENANT_SCOPE_MODE_STORAGE_KEY = 'art-platform-tenant-scope-active'
 let tenantScopeRevision = 0
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+/** The database gateway's scope header is shared by request options and transport adapters. */
+export const getDataApiTenantScopeHeader = (): string =>
+  typeof __CLOUDBASE_BUILD__ !== 'undefined' && __CLOUDBASE_BUILD__
+    ? CLOUDBASE_TENANT_SCOPE_HEADER
+    : TENANT_SCOPE_HEADER
+
+export const assertTenantReadTargetId = (tenantId: string): void => {
+  if (!UUID_PATTERN.test(tenantId)) throw new Error('目标租户无效，请重新选择')
+}
 const TABLES_WITH_EXPLICIT_TENANT_READ_FILTERS = new Set([
   'hr_candidate',
   'hr_competency',
@@ -128,7 +138,11 @@ export const readPlatformTenantScopeActive = (): boolean => {
  * platform shell is the canonical read scope, so remove only top-level/nested tenant_id filters
  * from table reads and let the database scope policy apply "all" or the selected tenant.
  */
-export const normalizePlatformTenantReadUrl = (requestUrl: string): string => {
+export const normalizePlatformTenantReadUrl = (
+  requestUrl: string,
+  preserveExplicitTenantFilters = false
+): string => {
+  if (preserveExplicitTenantFilters) return requestUrl
   try {
     const url = new URL(requestUrl)
     const dataApiPrefix = resolveDataApiPrefix(url.pathname)

@@ -1,6 +1,6 @@
 {
   "name": "art-supabase-pro",
-  "version": "1.0.1",
+  "version": "1.1.1",
   "type": "module",
   "packageManager": "pnpm@11.28.2",
   "types": "./src/types/platform-runtime.d.ts",
@@ -36,7 +36,10 @@
     "scripts/build-log-policy.mjs",
     "scripts/build-log-policy.d.mts",
     "scripts/module-typecheck.mjs",
-    "scripts/module-typecheck.d.mts"
+    "scripts/module-typecheck.d.mts",
+    "supabase/functions/_shared/bff-gateway-handler.ts",
+    "supabase/functions/_shared/bff-pro-user.ts",
+    "supabase/functions/bff-gateway"
   ],
   "engines": {
     "node": ">=22.13.0",
@@ -98,7 +101,8 @@
     "git-hooks:install": "husky",
     "commit": "git-cz",
     "dependencies:audit": "tsx scripts/audit-module-dependencies.ts",
-    "dependencies:sync-patches": "tsx scripts/audit-module-dependencies.ts --sync-patches"
+    "dependencies:sync-patches": "tsx scripts/audit-module-dependencies.ts --sync-patches",
+    "bff:dev-bridge": "node --use-env-proxy --import tsx scripts/start-bff-dev-bridge.ts"
   },
   "config": {
     "commitizen": {

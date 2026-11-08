@@ -1,4 +1,11 @@
-import { normalizeOcrRawText } from 'https://raw.githubusercontent.com/869123771/art-supabase-pro/e1297b558a4856b89910d9991d397e22fb7a992a/supabase/functions/_shared/ai-ocr-text.ts'
+import { normalizeOcrRawText } from './ai-ocr-text.ts'
+import {
+  normalizeOcrConfidence,
+  normalizeOcrDate,
+  normalizeOcrNonNegativeNumber,
+  normalizeOcrStringArray,
+  normalizeOcrTextValue
+} from './ai-ocr-values.ts'
 
 export const AI_CASH_VOUCHER_FIELDS = [
   'payerName',
@@ -62,45 +69,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function textValue(value: unknown, maxLength = 500): string | null {
-  if (typeof value !== 'string') return null
-  const normalized = value.trim()
-  return normalized ? normalized.slice(0, maxLength) : null
-}
-
-function numberValue(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null
-  const normalized = Number(value)
-  return Number.isFinite(normalized) && normalized >= 0 ? normalized : null
-}
-
-function confidenceValue(value: unknown): number {
-  const normalized = Number(value)
-  return Number.isFinite(normalized) ? Math.min(1, Math.max(0, normalized)) : 0
-}
-
-function stringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .map((item) => textValue(item))
-    .filter((item): item is string => Boolean(item))
-    .slice(0, 20)
-}
-
-function normalizeDate(value: unknown): string | null {
-  const source = textValue(value, 40)
-  if (!source) return null
-  const match = source.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/)
-  if (!match) return null
-  const normalized = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
-  const date = new Date(`${normalized}T00:00:00Z`)
-  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== normalized
-    ? null
-    : normalized
-}
-
 function normalizePaymentMethod(value: unknown): AiCashVoucherDraft['paymentMethod'] {
-  const source = textValue(value, 40)
+  const source = normalizeOcrTextValue(value, 40)
   return source && PAYMENT_METHODS.has(source)
     ? (source as AiCashVoucherDraft['paymentMethod'])
     : 'bank_transfer'
@@ -152,18 +122,18 @@ export function normalizeAiCashVoucherResponse(
 ): AiCashVoucherNormalizedResponse {
   const source = isRecord(payload.voucher) ? payload.voucher : {}
   const voucher: AiCashVoucherDraft = {
-    payerName: textValue(source.payerName, 300),
-    payeeName: textValue(source.payeeName, 300),
-    transactionDate: normalizeDate(source.transactionDate),
-    amount: numberValue(source.amount),
-    bankReference: textValue(source.bankReference, 160),
+    payerName: normalizeOcrTextValue(source.payerName, 300),
+    payeeName: normalizeOcrTextValue(source.payeeName, 300),
+    transactionDate: normalizeOcrDate(source.transactionDate),
+    amount: normalizeOcrNonNegativeNumber(source.amount),
+    bankReference: normalizeOcrTextValue(source.bankReference, 160),
     paymentMethod: normalizePaymentMethod(source.paymentMethod)
   }
   const fieldConfidence: Partial<Record<AiCashVoucherField, number>> = {}
   if (isRecord(payload.fieldConfidence)) {
     for (const field of AI_CASH_VOUCHER_FIELDS) {
       if (payload.fieldConfidence[field] !== undefined) {
-        fieldConfidence[field] = confidenceValue(payload.fieldConfidence[field])
+        fieldConfidence[field] = normalizeOcrConfidence(payload.fieldConfidence[field])
       }
     }
   }
@@ -173,11 +143,11 @@ export function normalizeAiCashVoucherResponse(
   if (!voucher.payerName && !voucher.payeeName) missingFields.push('付款方/收款方')
   return {
     rawText: normalizeOcrRawText(payload.rawText),
-    summary: textValue(payload.summary) ?? '付款凭证识别完成，请核对后应用。',
-    confidence: confidenceValue(payload.confidence),
+    summary: normalizeOcrTextValue(payload.summary) ?? '付款凭证识别完成，请核对后应用。',
+    confidence: normalizeOcrConfidence(payload.confidence),
     fieldConfidence,
     missingFields,
-    warnings: [...new Set(stringArray(payload.warnings))],
+    warnings: [...new Set(normalizeOcrStringArray(payload.warnings))],
     voucher
   }
 }
@@ -254,7 +224,9 @@ export function matchAiCashVoucherStatements(
       }
     })
     .filter((candidate) => candidate.score >= 30)
-    .sort((left, right) => right.score - left.score || right.outstandingAmount - left.outstandingAmount)
+    .sort(
+      (left, right) => right.score - left.score || right.outstandingAmount - left.outstandingAmount
+    )
     .slice(0, 5)
 }
 
@@ -277,4 +249,3 @@ export function compareAiCashVoucherPayloads(
   }
   return { acceptedFields, correctedFields }
 }
-

@@ -1,0 +1,3 @@
+{
+  "imports": { "@supabase/supabase-js": "npm:@supabase/supabase-js@2.117.3" }
+}

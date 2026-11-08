@@ -387,6 +387,14 @@
   })
 
   const dependencyMeta: Record<string, DependencyMeta> = {
+    attachment_website_configuration: {
+      label: '网站配置',
+      unit: '项',
+      description: '图片正在用于网站标识或菜单品牌字图，请先在网站配置中替换后再删除。',
+      actionLabel: '查看网站配置',
+      routeName: 'WebsiteConfig',
+      order: 10
+    },
     carrier_price: {
       label: '承运商价格方案',
       unit: '条',

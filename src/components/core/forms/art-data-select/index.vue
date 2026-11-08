@@ -744,6 +744,13 @@
   const getSourceRow = (row: DataSelectRecord): T | undefined =>
     Reflect.get(row, fallbackRowMarker) === true ? undefined : (row as T)
 
+  // Model-only bindings retain rows confirmed on earlier pages. Explicit resolvers remain authoritative.
+  const retainedSelectedRows = computed(() =>
+    props.resolveSelected || !props.apiFn || props.mode !== 'table'
+      ? []
+      : confirmedRows.value.filter((row) => getSourceRow(row) !== undefined)
+  )
+
   const createFallbackRow = (key: DataSelectKey): DataSelectRecord => {
     if (typeof props.rowKey === 'string' && typeof props.labelKey === 'string') {
       return {
@@ -768,6 +775,7 @@
   const syncConfirmedFromProps = () => {
     const keys = normalizeModelKeys(props.modelValue)
     const sourceRows = [
+      ...retainedSelectedRows.value,
       ...resolvedSelectedRows.value,
       ...props.selectedData,
       ...flattenRows(props.data),
@@ -785,6 +793,7 @@
     resolvingSelected.value = false
     const keys = normalizeModelKeys(props.modelValue)
     const knownRows = [
+      ...retainedSelectedRows.value,
       ...props.selectedData,
       ...flattenRows(props.data),
       ...flattenRows(tableRows.value)

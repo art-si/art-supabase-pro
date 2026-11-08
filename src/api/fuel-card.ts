@@ -1,3 +1,4 @@
+import { prepareVehicleDriverPortraits } from '@/api/vehicle-driver-select'
 import { useSupabase } from '@/hooks/core/useSupabase'
 import type { RunQueryOptions } from '@/hooks/core/useSupabase'
 import { buildSupabasePageRange } from '@/utils/supabase/pagination'
@@ -365,6 +366,7 @@ export async function fetchFuelCardDriverOptions(params: {
       }),
     { breakReturn: true, showErrorMessage: false, errorMessage: '司机候选加载失败，请重试' }
   )
+  await prepareVehicleDriverPortraits(data?.records ?? [])
   return { data: data?.records ?? [], total: data?.total ?? 0 }
 }
 

@@ -10,14 +10,13 @@ import {
   readTenantScopeId,
   shouldAttachTenantScopeHeader,
   shouldAttachStorageTenantScopeHeader,
-  CLOUDBASE_TENANT_SCOPE_HEADER,
-  TENANT_SCOPE_HEADER
+  getDataApiTenantScopeHeader
 } from '@/utils/tenant-scope-context'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost'
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'java-api-provider'
 const serverSessionMode = import.meta.env.VITE_AUTH_SESSION_MODE === 'server'
-const tenantScopeHeader = __CLOUDBASE_BUILD__ ? CLOUDBASE_TENANT_SCOPE_HEADER : TENANT_SCOPE_HEADER
+const tenantScopeHeader = getDataApiTenantScopeHeader()
 if (
   isSupabaseApi &&
   !serverSessionMode &&
@@ -37,6 +36,13 @@ const tenantScopeFetch: typeof fetch = async (input, init) => {
   const isDataApiRequest = shouldAttachTenantScopeHeader(requestUrl)
   const isPlatformScopeActive = readPlatformTenantScopeActive()
   const isReadRequest = requestMethod === 'GET' || requestMethod === 'HEAD'
+  const headers = new Headers(input instanceof Request ? input.headers : undefined)
+  new Headers(init?.headers).forEach((value, key) => headers.set(key, value))
+  const hasExplicitReadTenantScope =
+    isReadRequest && isDataApiRequest && headers.has(tenantScopeHeader)
+  const explicitReadTenantScopeId = hasExplicitReadTenantScope
+    ? (headers.get(tenantScopeHeader)?.trim() ?? '')
+    : null
   const shouldNormalizeRead = isPlatformScopeActive && isReadRequest && isDataApiRequest
   const mutationTenantScopeId =
     isPlatformScopeActive && !isReadRequest && isDataApiRequest
@@ -44,9 +50,9 @@ const tenantScopeFetch: typeof fetch = async (input, init) => {
           init?.body ?? (input instanceof Request ? await input.clone().text() : null)
         )
       : null
-  const tenantScopeId = selectedTenantScopeId ?? mutationTenantScopeId
+  const tenantScopeId = selectedTenantScopeId ?? explicitReadTenantScopeId ?? mutationTenantScopeId
   const normalizedUrl = shouldNormalizeRead
-    ? normalizePlatformTenantReadUrl(requestUrl)
+    ? normalizePlatformTenantReadUrl(requestUrl, hasExplicitReadTenantScope)
     : requestUrl
 
   if (!tenantScopeId || (!isDataApiRequest && !isStorageObjectRequest)) {
@@ -56,8 +62,6 @@ const tenantScopeFetch: typeof fetch = async (input, init) => {
     return fetch(normalizedInput, init)
   }
 
-  const headers = new Headers(input instanceof Request ? input.headers : undefined)
-  new Headers(init?.headers).forEach((value, key) => headers.set(key, value))
   headers.set(tenantScopeHeader, tenantScopeId)
 
   const normalizedInput =
@@ -92,9 +96,14 @@ const createCloudBaseClient = (): SupabaseClient => {
     const requestMethod = String(options.method ?? 'GET').toUpperCase()
     const isReadRequest = requestMethod === 'GET' || requestMethod === 'HEAD'
     const isPlatformScopeActive = readPlatformTenantScopeActive()
+    const headers = new Headers(options.headers)
+    const hasExplicitReadTenantScope = isReadRequest && headers.has(tenantScopeHeader)
+    const explicitReadTenantScopeId = hasExplicitReadTenantScope
+      ? (headers.get(tenantScopeHeader)?.trim() ?? '')
+      : null
     const normalizedUrl =
       isPlatformScopeActive && isReadRequest
-        ? normalizePlatformTenantReadUrl(requestUrl)
+        ? normalizePlatformTenantReadUrl(requestUrl, hasExplicitReadTenantScope)
         : requestUrl
     const requestBody =
       typeof options.body === 'string'
@@ -104,16 +113,16 @@ const createCloudBaseClient = (): SupabaseClient => {
           : JSON.stringify(options.body)
     const tenantScopeId =
       readTenantScopeId() ??
+      explicitReadTenantScopeId ??
       (isPlatformScopeActive && !isReadRequest ? readMutationTenantScopeId(requestBody) : null)
     if (!tenantScopeId && normalizedUrl === requestUrl) return cloudBaseFetch(options)
+
+    if (tenantScopeId) headers.set(tenantScopeHeader, tenantScopeId)
 
     return cloudBaseFetch({
       ...options,
       url: normalizedUrl,
-      headers: {
-        ...options.headers,
-        ...(tenantScopeId ? { [tenantScopeHeader]: tenantScopeId } : {})
-      }
+      headers: Object.fromEntries(headers)
     })
   }
 

@@ -1,5 +1,6 @@
 import { toDateStartTimestamp, toDateEndTimestamp } from '@/utils/time/date-boundary'
 import type { ApiRequestOptions } from '@/types/api/request'
+import { assertTenantReadTargetId, getDataApiTenantScopeHeader } from '@/utils/tenant-scope-context'
 
 interface SupabaseQueryResponse {
   data?: unknown
@@ -10,12 +11,21 @@ interface SupabaseQueryResponse {
   }
 }
 
-interface SupabaseAbortableQuery {
+interface SupabaseRequestQuery {
   abortSignal(signal: AbortSignal): this
+  setHeader(name: string, value: string): this
+}
+
+export interface SupabaseRequestOptions extends ApiRequestOptions {
+  /**
+   * Omit for standard workspace reads. A UUID scopes platform-all reference reads;
+   * null preserves an intentional tenant subset. Selected scope and server authorization win.
+   */
+  readTenantId?: string | null
 }
 
 export interface SupabaseQueryLike
-  extends PromiseLike<SupabaseQueryResponse>, SupabaseAbortableQuery {
+  extends PromiseLike<SupabaseQueryResponse>, SupabaseRequestQuery {
   eq(column: string, value: unknown): this
   gt(column: string, value: unknown): this
   gte(column: string, value: unknown): this
@@ -31,10 +41,16 @@ export interface SupabaseQueryLike
   range(from: number, to: number): this
 }
 
-export const withRequestOptions = <TQuery extends SupabaseAbortableQuery>(
+export const withRequestOptions = <TQuery extends SupabaseRequestQuery>(
   query: TQuery,
-  options?: ApiRequestOptions
-): TQuery => (options?.signal ? query.abortSignal(options.signal) : query)
+  options?: SupabaseRequestOptions
+): TQuery => {
+  if (options?.readTenantId !== undefined) {
+    if (options.readTenantId !== null) assertTenantReadTargetId(options.readTenantId)
+    query = query.setHeader(getDataApiTenantScopeHeader(), options.readTenantId ?? '')
+  }
+  return options?.signal ? query.abortSignal(options.signal) : query
+}
 
 export const normalizeBooleanFilter = (value: unknown): boolean | undefined => {
   if (value === true || value === 'true') return true

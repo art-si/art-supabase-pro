@@ -6,6 +6,8 @@ import { setupGlobDirectives } from '@/directives'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import Batch from '@fms/views/settlement/cash-transaction/modules/cash-bank-batch-import-dialog.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
@@ -34,6 +36,11 @@ const app = createApp({
 })
 app.use(store)
 app.use(language)
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 app.use(createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: {} }] }))
 setupGlobDirectives(app)
 userStore.setUserInfo({

@@ -143,11 +143,12 @@ function ownerOf(file: string): string {
 }
 
 function normalizeBody(body: ts.Node, source: ts.SourceFile): string {
-  return body
-    .getText(source)
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\r\n]*/g, '')
-    .replace(/\s+/g, '')
+  if (ts.isJSDoc(body)) return ''
+  if (ts.isJsxText(body)) return body.text
+  const children = body.getChildren(source)
+  return children.length
+    ? children.map((child) => normalizeBody(child, source)).join('')
+    : body.getText(source)
 }
 
 function isCopiedCurrencyFormatter(body: ts.Node): boolean {

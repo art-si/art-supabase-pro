@@ -63,7 +63,8 @@ user.setDictMap({
   hrEthnicity: [],
   tmsDriverOwnership: [
     { name: '自营司机', code: 'self', value: 'self', label: '自营司机', status: '1' },
-    { name: '承运商司机', code: 'carrier', value: 'carrier', label: '承运商司机', status: '1' }
+    { name: '承运商司机', code: 'carrier', value: 'carrier', label: '承运商司机', status: '1' },
+    { name: '个体司机', code: 'individual', value: 'individual', label: '个体司机', status: '1' }
   ],
   tmsDriverStatus: [
     { name: '在岗', code: 'on_duty', value: 'on_duty', label: '在岗', status: '1' }

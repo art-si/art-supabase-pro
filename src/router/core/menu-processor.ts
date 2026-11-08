@@ -16,6 +16,7 @@ import {
   fetchCurrentUserMenus
 } from '@/api/system-manage/application-access'
 import { asyncRoutes } from '../routes/async-routes'
+import { fetchBffCatalog } from '@/api/bff'
 import { RoutesAlias } from '../routes-alias'
 import {
   APPLICATION_CODES,
@@ -44,7 +45,27 @@ export class MenuProcessor {
 
     // 规范化路径（将相对路径转换为完整路径）
     const normalizedMenuList = normalizeApplicationMenuPaths(menuList)
-    return flattenStandaloneApplicationMenu(normalizedMenuList, currentApplication.code)
+    const visible = flattenStandaloneApplicationMenu(normalizedMenuList, currentApplication.code)
+    if (import.meta.env.VITE_BFF_ENABLED !== 'true' || currentApplication.code !== 'platform')
+      return visible
+    try {
+      // Optional BFF discovery must not delay the native Pro workspace indefinitely.
+      await fetchBffCatalog({ signal })
+      if (!visible.some((route) => route.path === '/examples/bff-integration'))
+        visible.push({
+          name: 'BffIntegration',
+          path: '/examples/bff-integration',
+          component: '/examples/bff-integration/index',
+          type: 'menu',
+          sort: 900,
+          meta: { title: 'BFF 接入中心', icon: 'ri:links-line', isEnable: true }
+        })
+    } catch (error) {
+      console.warn('[BFF] 接入中心目录暂不可用', {
+        kind: error instanceof Error ? error.name : 'UnknownError'
+      })
+    }
+    return visible
   }
 
   /**

@@ -2,6 +2,8 @@ import { uniq } from 'lodash-es'
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { fetchAllRangePages } from '@/utils/supabase/pagination'
 import type { UnitDisplayOption } from '@/utils/business/unit-display'
+import { withRequestOptions } from '@/api/providers/supabase/query'
+import { assertTenantReadTargetId, createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
 
 const { supabase, responseHandle } = useSupabase()
 
@@ -18,20 +20,28 @@ export async function fetchMaterialUnitCompatibilityOptions(sourceCode?: string)
 
 export async function fetchUnitDisplayOptions(tenantIds: string[]): Promise<UnitDisplayOption[]> {
   const tenants = uniq(tenantIds.filter(Boolean))
+  tenants.forEach(assertTenantReadTargetId)
+  const assertTenantScope = createTenantScopeReadGuard()
   const unitBatches: UnitDisplayOption[][] = []
   for (let offset = 0; offset < tenants.length; offset += 100) {
+    assertTenantScope()
+    const batch = tenants.slice(offset, offset + 100)
     const result = await fetchAllRangePages<UnitDisplayOption>(({ from, to }) =>
       responseHandle<UnitDisplayOption[]>(
         () =>
-          supabase
-            .from('mdm_unit_of_measure')
-            .select('id,tenant_id,unit_code,unit_name,symbol')
-            .in('tenant_id', tenants.slice(offset, offset + 100))
-            .order('id')
-            .range(from, to),
+          withRequestOptions(
+            supabase
+              .from('mdm_unit_of_measure')
+              .select('id,tenant_id,unit_code,unit_name,symbol')
+              .in('tenant_id', batch)
+              .order('id')
+              .range(from, to),
+            { readTenantId: batch.length === 1 ? batch[0] : null }
+          ),
         { breakReturn: true, showErrorMessage: false, errorMessage: '计量单位名称加载失败，请重试' }
       )
     )
+    assertTenantScope()
     if (result.error) throw result.error
     unitBatches.push(result.data ?? [])
   }

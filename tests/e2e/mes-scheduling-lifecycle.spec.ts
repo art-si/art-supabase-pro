@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import ExcelJS from 'exceljs'
+import { collectAppRuntimeErrors } from './support/runtime-errors'
+import { captureBusinessEvidence } from './support/capture-business-evidence'
 import { prepareIsolatedSession } from './support/isolated-session'
 import {
   installActionFeedbackHistory,
@@ -190,9 +192,7 @@ async function waitForScheduleWrite(page: Page, quantity: number): Promise<void>
 }
 
 test.beforeEach(async ({ page }) => {
-  const errors: string[] = []
-  runtimeErrors.set(page, errors)
-  page.on('pageerror', (error) => errors.push(error.stack ?? error.message))
+  runtimeErrors.set(page, collectAppRuntimeErrors(page))
   await prepareIsolatedSession(page)
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
   await page.route('**/rest/v1/sys_tenant?*', (route) =>
@@ -263,24 +263,23 @@ test(
       ).toBeLessThanOrEqual(1)
     }
     await assertLayout()
+    await expect(page.locator('html')).toHaveAttribute('data-ui-scope', 'workspace')
+    await expect(tasks).toHaveCSS('font-family', /HarmonyOS/)
     await tasks.scrollIntoViewIfNeeded()
-    await page.screenshot({
-      path: testInfo.outputPath('schedule-task-layout.png'),
-      animations: 'disabled'
+    await captureBusinessEvidence(page, {
+      path: testInfo.outputPath('schedule-task-layout.png')
     })
     await overview.scrollIntoViewIfNeeded()
-    await page.screenshot({
-      path: testInfo.outputPath('schedule-center-layout.png'),
-      animations: 'disabled'
+    await captureBusinessEvidence(page, {
+      path: testInfo.outputPath('schedule-center-layout.png')
     })
     await page.getByRole('switch', { name: '进入专注模式' }).locator('..').click()
     await expect(page.getByRole('heading', { name: '排产工作台' })).toBeHidden()
     await expect(page.getByRole('region', { name: '排产查询条件' })).toBeHidden()
     await assertLayout()
     await tasks.scrollIntoViewIfNeeded()
-    await page.screenshot({
-      path: testInfo.outputPath('schedule-focus-layout.png'),
-      animations: 'disabled'
+    await captureBusinessEvidence(page, {
+      path: testInfo.outputPath('schedule-focus-layout.png')
     })
     await page.getByRole('switch', { name: '退出专注模式' }).locator('..').click()
     await expect(page.getByRole('heading', { name: '排产工作台' })).toBeVisible()
@@ -294,9 +293,8 @@ test(
         await page.setViewportSize({ width, height: 800 })
         await assertLayout()
         await tasks.scrollIntoViewIfNeeded()
-        await page.screenshot({
-          path: testInfo.outputPath(`schedule-layout-${width}.png`),
-          animations: 'disabled'
+        await captureBusinessEvidence(page, {
+          path: testInfo.outputPath(`schedule-layout-${width}.png`)
         })
       }
     }
@@ -395,9 +393,8 @@ test('首笔 POST 等待时切 B 并启动新批，旧批不续写也不清除�
   try {
     await uploadSchedule(page, [1, 1])
     await requested[0].promise
-    await page.screenshot({
+    await captureBusinessEvidence(page, {
       path: testInfo.outputPath('schedule-writing-a.png'),
-      animations: 'disabled',
       fullPage: true
     })
     await page.getByRole('button', { name: '切换测试租户' }).click()
@@ -408,9 +405,8 @@ test('首笔 POST 等待时切 B 并启动新批，旧批不续写也不清除�
     held[0].resolve()
     await oldCompleted
     await expect(page.getByRole('button', { name: '导入', exact: true })).toBeDisabled()
-    await page.screenshot({
+    await captureBusinessEvidence(page, {
       path: testInfo.outputPath('schedule-writing-b-after-old-a.png'),
-      animations: 'disabled',
       fullPage: true
     })
     expect(writes).toEqual([
@@ -424,9 +420,8 @@ test('首笔 POST 等待时切 B 并启动新批，旧批不续写也不清除�
       .toEqual([{ kind: 'success', text: '已导入并确认 1 条排产任务' }])
     expect(writes).toHaveLength(2)
     expect(errors).toEqual([])
-    await page.screenshot({
+    await captureBusinessEvidence(page, {
       path: testInfo.outputPath('schedule-import-b-success.png'),
-      animations: 'disabled',
       fullPage: true
     })
   } finally {
@@ -529,9 +524,8 @@ test('全部租户同编号任务拒绝歧义引用且不发送排产写入', as
     .toEqual([{ kind: 'warning', text: expect.stringContaining('多个匹配记录') }])
   expect(writes).toEqual([])
   expect(errors).toEqual([])
-  await page.screenshot({
+  await captureBusinessEvidence(page, {
     path: testInfo.outputPath('ambiguous-import-blocked.png'),
-    animations: 'disabled',
     fullPage: true
   })
 })
@@ -582,9 +576,8 @@ test('全部租户唯一任务按该任务租户解析同编号工作中心', as
     .poll(() => readActionFeedbackHistory(page))
     .toEqual([{ kind: 'success', text: '已导入并确认 1 条排产任务' }])
   expect(errors).toEqual([])
-  await page.screenshot({
+  await captureBusinessEvidence(page, {
     path: testInfo.outputPath('all-tenant-task-b-success.png'),
-    animations: 'disabled',
     fullPage: true
   })
 })

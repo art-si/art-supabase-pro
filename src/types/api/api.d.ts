@@ -607,6 +607,7 @@ declare namespace Api {
 
     type WebsiteConfigItem = import('../platform/website-config').WebsiteConfigValues & {
       id?: string
+      /** Optimistic configuration revision when provided by the API. */
       version?: number
       tenantId?: string
       paramMeta?: WebsiteConfigParamMeta

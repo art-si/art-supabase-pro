@@ -7,6 +7,8 @@ import { store } from '@/store'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import SchedulingPage from '../../../modules/art-supabase-mes/src/views/production-plan/scheduling/index.vue'
 import GanttPage from '@mes/views/production-plan/gantt-scheduling/index.vue'
 import '@styles/core/tailwind.css'
@@ -134,6 +136,11 @@ const app = createApp(
 )
 app.use(store)
 app.use(language)
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 app.use(
   createRouter({
     history: createMemoryHistory(),

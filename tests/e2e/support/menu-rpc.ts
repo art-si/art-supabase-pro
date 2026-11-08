@@ -9,7 +9,11 @@ export async function mockApplicationMenus(
     .flat()
     .filter(
       (item): item is Record<string, unknown> =>
-        Boolean(item) && typeof item === 'object' && !Array.isArray(item) && item.type === 'button'
+        item !== null &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        'type' in item &&
+        item.type === 'button'
     )
 
   await page.route('**/rest/v1/rpc/get_menus_for_current_applications', async (route) => {

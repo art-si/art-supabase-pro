@@ -111,6 +111,14 @@ rollback;
 
 -- Direct Data API reads must require both tenant scope and business permission.
 begin;
+create temp table fuel_rls_expected on commit drop as
+select
+ (select count(*) from public.vms_fuel_card where tenant_id=(select tenant_id from public.sys_user where auth_user_id='ab881b32-87d4-4dce-9014-ce488b8069df')) as own_cards,
+ (select count(*) from public.vms_fuel_card_entry where tenant_id=(select tenant_id from public.sys_user where auth_user_id='ab881b32-87d4-4dce-9014-ce488b8069df')) as own_entries,
+ (select count(*) from public.vms_fuel_card where tenant_id='2824c2b5-2774-4781-b995-f55e8bcee920') as selected_cards,
+ (select count(*) from public.vms_fuel_card_entry where tenant_id='2824c2b5-2774-4781-b995-f55e8bcee920') as selected_entries,
+ (select count(*) from public.vms_fuel_card) as all_cards,
+ (select count(*) from public.vms_fuel_card_entry) as all_entries;
 create temp table fuel_rls_probe(label text primary key,card_count int,entry_count int) on commit drop;
 grant insert on fuel_rls_probe to authenticated;
 set local role authenticated;
@@ -125,12 +133,18 @@ select set_config('request.jwt.claims',jsonb_build_object('sub','9850d41a-77e9-4
 insert into fuel_rls_probe select 'no-role',(select count(*) from vms_fuel_card),(select count(*) from vms_fuel_card_entry);
 reset role;
 do $rls$
+declare expected record;
 begin
- if (select card_count from fuel_rls_probe where label='ordinary-forged')<>2
-   or (select entry_count from fuel_rls_probe where label='ordinary-forged')<2
-   or (select card_count from fuel_rls_probe where label='super-selected')<>0
-   or (select entry_count from fuel_rls_probe where label='super-selected')<>0
-   or (select card_count from fuel_rls_probe where label='super-all')<>2
+ select * into strict expected from fuel_rls_expected;
+ if expected.own_cards<1 or expected.own_entries<1 then
+   raise exception 'Fuel-card RLS fixtures missing';
+ end if;
+ if (select card_count from fuel_rls_probe where label='ordinary-forged')<>expected.own_cards
+   or (select entry_count from fuel_rls_probe where label='ordinary-forged')<>expected.own_entries
+   or (select card_count from fuel_rls_probe where label='super-selected')<>expected.selected_cards
+   or (select entry_count from fuel_rls_probe where label='super-selected')<>expected.selected_entries
+   or (select card_count from fuel_rls_probe where label='super-all')<>expected.all_cards
+   or (select entry_count from fuel_rls_probe where label='super-all')<>expected.all_entries
    or (select card_count from fuel_rls_probe where label='no-role')<>0
    or (select entry_count from fuel_rls_probe where label='no-role')<>0 then
    raise exception 'Fuel-card direct RLS scope or permission regression';

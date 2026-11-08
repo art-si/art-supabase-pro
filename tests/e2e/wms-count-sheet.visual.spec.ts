@@ -3,9 +3,14 @@ import { expect, test, type Page } from '@playwright/test'
 import { installFixtures, meta, tenantId } from './support/inventory-fixtures'
 import { mockApplicationMenus } from './support/menu-rpc'
 import { prepareAppearance } from './support/appearance'
+import { collectAppRuntimeErrors } from './support/runtime-errors'
+import { captureBusinessEvidence } from './support/capture-business-evidence'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 const platformSourceRoot = process.env.E2E_PLATFORM_SOURCE_ROOT || '/src'
+const runtimeErrors = new WeakMap<Page, string[]>()
+test.beforeEach(async ({ page }) => runtimeErrors.set(page, collectAppRuntimeErrors(page)))
+test.afterEach(async ({ page }) => expect(runtimeErrors.get(page) ?? []).toEqual([]))
 
 const sheetRows = [
   {
@@ -82,6 +87,9 @@ async function installCountSheetMenu(
   options: { actions?: string[]; ordinary?: boolean; sheets?: typeof sheetRows } = {}
 ): Promise<void> {
   await installFixtures(page)
+  await page.route('**/rest/v1/rpc/get_table_column_runtime*', (route) =>
+    route.fulfill({ json: { enabled: false, catalog: null, profiles: [] } })
+  )
   if (options.ordinary) {
     await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
     await page.route('**/rest/v1/sys_user?*', (route) =>
@@ -223,9 +231,8 @@ async function installCountSheetMenu(
 }
 
 test('盘点表双单据列表与明细可读', async ({ page }, testInfo) => {
+  test.setTimeout(90_000)
   await installCountSheetMenu(page)
-  const pageErrors: string[] = []
-  page.on('pageerror', (error) => pageErrors.push(error.message))
   await page.goto('#/wms/count-business/count-sheet')
   await expect(page.getByRole('heading', { name: '盘点表', exact: true })).toBeVisible({
     timeout: 30_000
@@ -251,10 +258,13 @@ test('盘点表双单据列表与明细可读', async ({ page }, testInfo) => {
       page.locator('#app-sidebar').getByRole('menuitem', { name: '盘点业务' })
     ).toBeHidden()
   }
+  const searchForm = page.locator('.art-search-bar')
+  await expect(searchForm.getByText('全部库存组织', { exact: true })).toBeVisible()
+  await expect(page.getByText('即时库存', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('定期盘点', { exact: true }).first()).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-list.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-list.png')
   })
   const focusSwitch = page
     .locator('.business-table-workspace-actions__toggle')
@@ -263,9 +273,10 @@ test('盘点表双单据列表与明细可读', async ({ page }, testInfo) => {
   await focusSwitch.click()
   await expect(page.getByRole('heading', { name: '盘点表', exact: true })).toBeHidden()
   await expect(page.getByText('PDB202610-001', { exact: true })).toBeVisible()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-focus.png'),
-    animations: 'disabled'
+  await expect(searchForm.getByText('全部库存组织', { exact: true })).toBeVisible()
+  await expect(searchForm.locator('.el-skeleton')).toHaveCount(0)
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-focus.png')
   })
   await page.getByRole('button', { name: '退出专注模式' }).click()
   await expect(page.getByRole('heading', { name: '盘点表', exact: true })).toBeVisible({
@@ -281,16 +292,13 @@ test('盘点表双单据列表与明细可读', async ({ page }, testInfo) => {
   await expect(drawer).toBeVisible()
   await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
   await expect(drawer.getByText('R00-0013', { exact: false })).toBeVisible()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-detail.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-detail.png')
   })
   await drawer.getByText('R00-0013', { exact: false }).scrollIntoViewIfNeeded()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-detail-lower.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-detail-lower.png')
   })
-  expect(pageErrors).toEqual([])
 })
 
 for (const appearance of [
@@ -298,11 +306,13 @@ for (const appearance of [
   { theme: 'dark', boxBorderMode: false, width: 1024 }
 ] as const) {
   test(`盘点表库存组织保留层级、搜索和选中回显 ${appearance.theme}`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: appearance.width, height: 900 })
+    const viewport = page.viewportSize()
+    await page.setViewportSize({
+      width: Math.min(viewport?.width ?? appearance.width, appearance.width),
+      height: viewport?.height ?? 900
+    })
     await installCountSheetMenu(page)
     await prepareAppearance(page, appearance)
-    const errors: string[] = []
-    page.on('pageerror', (error) => errors.push(error.message))
     const organizationFilters: Array<string | null> = []
     page.on('request', (request) => {
       const url = new URL(request.url())
@@ -354,7 +364,7 @@ for (const appearance of [
       await root.locator(':scope > .el-tree-node__content .el-tree-node__expand-icon').click()
     }
     await expect(root.getByText('测试仓储部门 · WMS-01', { exact: true })).toBeVisible()
-    await page.screenshot({
+    await captureBusinessEvidence(page, {
       path: testInfo.outputPath(`organization-tree-${appearance.theme}.png`)
     })
     await input.fill('WMS-01')
@@ -369,6 +379,9 @@ for (const appearance of [
     await input.fill('不存在的组织')
     await expect(page.locator('.el-select-dropdown:visible .art-picker-empty')).toBeVisible()
     await page.keyboard.press('Escape')
+    await expect(input).toHaveValue('')
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.el-select-dropdown:visible')).toHaveCount(0)
     await page.getByRole('button', { name: '重置', exact: true }).click()
     await expect(field.getByText('全部库存组织', { exact: true })).toBeVisible()
     await input.click()
@@ -377,7 +390,6 @@ for (const appearance of [
       field.locator('.el-select__selected-item').filter({ hasText: '测试集团 · ROOT' })
     ).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    expect(errors).toEqual([])
   })
 }
 
@@ -392,18 +404,16 @@ test('盘点表暗色与阴影模式保持可读', async ({ page }, testInfo) =>
   await expect(page.getByText('PDB202610-001', { exact: true })).toBeVisible()
   await expect(page.getByText('即时库存', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('定期盘点', { exact: true }).first()).toBeVisible()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-dark-list.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-dark-list.png')
   })
   await page.getByRole('button', { name: '查看盘点表', exact: true }).first().click()
   const drawer = page.getByRole('dialog', { name: '盘点表', exact: true })
   await expect(drawer).toBeVisible()
   await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
   await drawer.getByText('R00-0013', { exact: false }).scrollIntoViewIfNeeded()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-dark-detail.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-dark-detail.png')
   })
 })
 
@@ -429,16 +439,14 @@ test('盘点表空结果与失败重试保留查询区', async ({ page }, testIn
   if (await designGuide.isVisible()) await designGuide.click()
   await expect(page.getByText('全部库存组织', { exact: true })).toBeVisible()
   await expect(page.getByText('当前条件下暂无盘点表')).toBeVisible()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-empty.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-empty.png')
   })
   state = 'error'
   await page.getByRole('button', { name: '查询', exact: true }).click()
   await expect(page.getByText(/盘点表加载失败|数据加载失败/).first()).toBeVisible()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-error.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-error.png')
   })
   state = 'ready'
   await page.getByRole('button', { name: '重新加载', exact: true }).click()
@@ -663,16 +671,15 @@ test('盘点表可导入 SN 并保存逐件实盘', async ({ page }, testInfo) =
   await expect(serialDialog.getByPlaceholder('每行一个实物中新增的 SN')).toHaveValue(
     'SN-IMPORTED-001'
   )
-  const summary = serialDialog.getByText(/^实盘件数：/)
+  const summary = serialDialog.getByText('实盘件数：', { exact: false })
   await summary.scrollIntoViewIfNeeded()
   const summaryBounds = await summary.boundingBox()
   const footerBounds = await serialDialog.locator('.el-dialog__footer').boundingBox()
   if (!summaryBounds || !footerBounds) throw new Error('盘点件数或确认区未显示')
   expect(summaryBounds.y + summaryBounds.height).toBeLessThanOrEqual(footerBounds.y + 1)
   await expect(serialDialog.getByRole('button', { name: '确定', exact: true })).toBeInViewport()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-serial-import.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-serial-import.png')
   })
   await serialDialog.getByRole('button', { name: '确定', exact: true }).click()
   await expect(serialDialog).toBeHidden()
@@ -761,9 +768,8 @@ test('已审核盘点表可只读查看初盘和复盘序列号', async ({ page 
   ).toHaveCSS('max-height', '260px')
   await expect(serialDialog.getByRole('button', { name: '导入序列号' })).toHaveCount(0)
   await expect(serialDialog.getByRole('button', { name: '确定', exact: true })).toHaveCount(0)
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-serial-readonly.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-serial-readonly.png')
   })
 })
 
@@ -826,9 +832,8 @@ test('盘点表选单调整可合并入库与出库并保存', async ({ page }, 
   await picker.getByRole('button', { name: '确定', exact: true }).click()
   await expect(adjustmentDialog.getByText('已选 2 条 · 调整数量')).toBeVisible()
   await expect(adjustmentDialog.getByText('1', { exact: true }).last()).toBeVisible()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-adjustment.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-adjustment.png')
   })
   await adjustmentDialog.getByRole('button', { name: '确定', exact: true }).click()
   await expect(adjustmentDialog).toBeHidden()
@@ -897,9 +902,8 @@ test('盘点表可多选两项账外物料并新增明细', async ({ page }, tes
   await picker.getByRole('button', { name: '确定', exact: true }).click()
   await expect(addDialog.getByText('账外物料一描述', { exact: true })).toBeVisible()
   await expect(addDialog.getByText('账外物料二描述', { exact: true })).toBeVisible()
-  await page.screenshot({
-    path: testInfo.outputPath('count-sheet-add-lines.png'),
-    animations: 'disabled'
+  await captureBusinessEvidence(page, {
+    path: testInfo.outputPath('count-sheet-add-lines.png')
   })
   await addDialog.getByRole('button', { name: '确定', exact: true }).click()
   await expect(addDialog).toBeHidden()

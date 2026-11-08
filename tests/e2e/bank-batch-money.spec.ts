@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import ExcelJS from 'exceljs'
+import { collectAppRuntimeErrors } from './support/runtime-errors'
+import { captureBusinessEvidence } from './support/capture-business-evidence'
 import { prepareIsolatedSession } from './support/isolated-session'
 import {
   installActionFeedbackHistory,
@@ -8,9 +10,7 @@ import {
 
 const runtimeErrors = new WeakMap<Page, string[]>()
 test.beforeEach(async ({ page }) => {
-  const errors: string[] = []
-  runtimeErrors.set(page, errors)
-  page.on('pageerror', (error) => errors.push(error.stack ?? error.message))
+  runtimeErrors.set(page, collectAppRuntimeErrors(page))
 })
 test.afterEach(async ({ page }) => expect(runtimeErrors.get(page) ?? []).toEqual([]))
 
@@ -55,6 +55,15 @@ test('银行流水真实文件导入后复用公共金额格式', async ({ page 
   await page.goto('/tests/e2e/fixtures/bank-batch-money.html')
   await page.getByRole('button', { name: '打开流水导入', exact: true }).click()
   const dialog = page.getByRole('dialog')
+  await expect(page.locator('html')).toHaveAttribute('data-ui-scope', 'workspace')
+  await expect(dialog).toHaveCSS('font-family', /HarmonyOS/)
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim()
+      )
+    )
+    .not.toBe('')
   await dialog.locator('input[type="file"]').setInputFiles({
     name: 'test-bank.csv',
     mimeType: 'text/csv',
@@ -71,7 +80,7 @@ test('银行流水真实文件导入后复用公共金额格式', async ({ page 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true
   )
-  await page.screenshot({ path: info.outputPath('bank.png'), fullPage: true })
+  await captureBusinessEvidence(page, { path: info.outputPath('bank.png'), fullPage: true })
 })
 
 async function waitForBankAction(
@@ -162,7 +171,10 @@ test('关闭重开后 A 的迟到分析不能覆盖 B，停用后也不回填', 
   let dialog = page.getByRole('dialog', { name: 'AI 银行流水批量导入' })
   await dialog.locator('input[type="file"]').setInputFiles(csv('A'))
   await startedA
-  await page.screenshot({ path: info.outputPath('analysis-loading.png'), fullPage: true })
+  await captureBusinessEvidence(page, {
+    path: info.outputPath('analysis-loading.png'),
+    fullPage: true
+  })
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await expect(dialog).toBeHidden()
   await page.getByRole('button', { name: '打开流水导入' }).click()
@@ -251,12 +263,18 @@ test('撤 Import 权限清除已完成的分析结果', async ({ page }, info) =
   await dialog.locator('input[type="file"]').setInputFiles(csv('A'))
   await expect(dialog.locator('.bank-batch__source')).toContainText('A.csv')
   await expect(dialog.getByRole('button', { name: /确认入账/ })).toBeDisabled()
-  await page.screenshot({ path: info.outputPath('ordinary-read-only.png'), fullPage: true })
+  await captureBusinessEvidence(page, {
+    path: info.outputPath('ordinary-read-only.png'),
+    fullPage: true
+  })
   await page.evaluate(() => window.__bankBatchTest.grantImport(false))
   await expect(dialog.locator('.bank-batch__source')).toHaveCount(0)
   await expect(dialog).toContainText('当前账号暂无银行流水导入权限')
   await expect(dialog.getByRole('button', { name: '选择流水文件' })).toHaveCount(0)
-  await page.screenshot({ path: info.outputPath('import-permission-revoked.png'), fullPage: true })
+  await captureBusinessEvidence(page, {
+    path: info.outputPath('import-permission-revoked.png'),
+    fullPage: true
+  })
 })
 
 test('成功事件同步重开窗口时旧提交不能再关闭新窗口', async ({ page }) => {
@@ -311,7 +329,10 @@ test('当前分析失败保留可读反馈，重新选择文件后可恢复', as
   await expect(dialog.getByRole('button', { name: '重新选择文件' })).toBeVisible()
   await expect(dialog.getByRole('button', { name: '重新选择文件' })).toBeInViewport()
   await expect(dialog).not.toContainText('permission denied')
-  await page.screenshot({ path: info.outputPath('analysis-error-retry.png'), fullPage: true })
+  await captureBusinessEvidence(page, {
+    path: info.outputPath('analysis-error-retry.png'),
+    fullPage: true
+  })
   await dialog.locator('input[type="file"]').setInputFiles(csv('retry'))
   await expect(dialog.getByText('retry', { exact: true })).toBeVisible()
   expect(requests).toBe(2)
@@ -368,7 +389,7 @@ test('新文件解析失败后不能沿用旧结果入账，重试文件仍可�
   await expect(dialog.getByRole('button', { name: /确认入账/ })).toBeDisabled()
   expect(analyses).toBe(1)
   expect(commits).toEqual([])
-  await page.screenshot({
+  await captureBusinessEvidence(page, {
     path: info.outputPath('parse-error-discarded-old-result.png'),
     fullPage: true
   })
@@ -426,8 +447,9 @@ test(
         () => (window as Window & { __bankReadGate?: { entered: boolean } }).__bankReadGate?.entered
       )
       await expect(dialog.getByRole('button', { name: /确认入账/ })).toBeDisabled()
+      await expect(dialog.getByRole('status')).toContainText('正在读取新文件')
       expect(commits).toEqual([])
-      await page.screenshot({
+      await captureBusinessEvidence(page, {
         path: info.outputPath('replacement-read-blocks-old-commit.png'),
         fullPage: true
       })
