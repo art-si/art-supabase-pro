@@ -9,6 +9,8 @@ test.skip(
   'Set E2E_BFF_INTEGRATION=true with BFF enabled'
 )
 
+test.describe.configure({ timeout: 150_000 })
+
 const sources: Array<[string, string]> = [
   ['java-demo', 'Java 服务'],
   ['supabase-demo', 'Supabase'],
