@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
-for (const kind of ['customer', 'carrier', 'contract']) {
+for (const kind of ['customer', 'carrier']) {
   test(`${kind}详情复用公共格式化并保留精度和掩码`, async ({ page }, info) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))

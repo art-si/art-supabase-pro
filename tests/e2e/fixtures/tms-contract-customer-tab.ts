@@ -36,7 +36,7 @@ app.use(
     history: createMemoryHistory(),
     routes: [
       { path: '/', component: { template: '<div />' } },
-      { path: '/tms/basic-data/contract-detail/:id', component: { template: '<div />' } }
+      { path: '/tms/basic-data/contract', component: { template: '<div />' } }
     ]
   })
 )

@@ -326,7 +326,7 @@ const contracts: Record<string, WorkflowBusinessContract> = {
       { key: 'isCompleted', label: '是否完成', valueType: 'boolean' },
       { key: 'handler', label: '经办人', valueType: 'text' }
     ],
-    routePath: (businessId) => `/tms/basic-data/contract-detail/${businessId}`
+    routePath: () => '/tms/basic-data/contract'
   },
   vehicle_archive: {
     businessType: 'vehicle_archive',

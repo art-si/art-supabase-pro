@@ -432,7 +432,7 @@
       unit: '份',
       description: '合同包含该货物的运输约定，请先核对并处理合同引用。',
       actionLabel: '查看运输合同',
-      routeName: 'TmsContractDetail',
+      routeName: 'TmsContract',
       routeParams: (record) => ({ id: record.targetId }),
       canNavigate: () => hasAuth('TmsContract:View'),
       statusDictCode: 'tmsContractStatus',

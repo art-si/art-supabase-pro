@@ -48,7 +48,7 @@ const router = createRouter({
       component: OrderQueryDetail
     },
     {
-      path: '/tms/basic-data/contract-detail/:id',
+      path: '/tms/basic-data/contract',
       component: { render: () => h('div', '合同详情') }
     }
   ]

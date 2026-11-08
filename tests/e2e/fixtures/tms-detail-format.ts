@@ -7,7 +7,6 @@ import { setupGlobDirectives } from '@/directives'
 import Customer from '@tms/views/basic-data/customer-price-detail/index.vue'
 import CarrierMaster from '@tms/views/basic-data/carrier/modules/carrier-detail-dialog.vue'
 import Carrier from '@tms/views/basic-data/carrier-price-detail/index.vue'
-import Contract from '@tms/views/basic-data/contract-detail/index.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -19,7 +18,7 @@ const component =
       ? Customer
       : kind === 'carrier'
         ? Carrier
-        : Contract
+        : Customer
 const router = createRouter({
   history: createMemoryHistory(),
   routes: [

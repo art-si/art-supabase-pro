@@ -312,7 +312,6 @@
   "/tms/basic-data/carrier-price-detail",
   "/tms/basic-data/carrier-price-edit",
   "/tms/basic-data/contract",
-  "/tms/basic-data/contract-detail",
   "/tms/basic-data/customer",
   "/tms/basic-data/customer-address",
   "/tms/basic-data/customer-price",
