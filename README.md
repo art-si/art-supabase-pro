@@ -366,6 +366,8 @@ BFF_PRO_BRIDGE_SECRET=
 
 本地先运行 `pnpm bff:dev-bridge`，再启动指定端口的 Pro。该适配器与正式 Edge Function 复用同一 handler 和 Pro 用户检查。正式部署 `bff-gateway` 时配置 HTTPS `BFF_SERVICE_URL`、专用 `BFF_PRO_BRIDGE_SECRET` 和准确的允许来源；函数自行使用 `Auth.getUser` 验证 JWT，再检查启用的 Pro 用户资料，不接受浏览器提交的用户 ID 或管理员身份。
 
+专项视觉回归使用已开启 BFF 的本地主机和授权测试会话：设置 `E2E_BFF_INTEGRATION=true`、`E2E_BASE_URL=http://localhost:3036` 后运行 `pnpm exec playwright test tests/e2e/bff-integration.spec.ts --project=desktop-1440 --no-deps`。该专项只模拟桥接响应以验收页面，服务端签名、权限与真实上游调用另由 BFF HTTP 集成测试验证；默认 Pro 全量页面回归不启用此可选模块。
+
 ### 3. 启动开发环境
 
 ```bash

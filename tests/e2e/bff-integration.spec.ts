@@ -3,6 +3,12 @@ import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import type { BffPublishedApi } from '../../src/types/platform/bff'
 
+// This optional page is absent from the default Pro menu and requires its own enabled host.
+test.skip(
+  process.env.E2E_BFF_INTEGRATION !== 'true',
+  'Set E2E_BFF_INTEGRATION=true with BFF enabled'
+)
+
 const sources: Array<[string, string]> = [
   ['java-demo', 'Java 服务'],
   ['supabase-demo', 'Supabase'],
