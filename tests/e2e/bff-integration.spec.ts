@@ -40,6 +40,7 @@ const catalog: BffPublishedApi[] = sources.map(([applicationCode, applicationNam
 
 interface MockState {
   requests: string[]
+  pages: Array<{ current: number; size: number }>
   failNext: boolean
   leakNext: boolean
   errors: string[]
@@ -47,7 +48,7 @@ interface MockState {
 
 /** UI-only bridge mock; it does not prove BFF assertion, membership or database authorization. */
 async function mockBridge(page: Page): Promise<MockState> {
-  const state: MockState = { requests: [], failNext: false, leakNext: false, errors: [] }
+  const state: MockState = { requests: [], pages: [], failNext: false, leakNext: false, errors: [] }
   page.on('pageerror', (error) => state.errors.push(error.message))
   await page.route('**/__bff_bridge', async (route) => {
     const payload = route.request().postDataJSON() as Record<string, unknown>
@@ -85,13 +86,22 @@ async function mockBridge(page: Page): Promise<MockState> {
       state.leakNext = false
       records[0] = { ...records[0], privateToken: 'DO_NOT_DISPLAY' }
     }
+    const query = payload.query as Record<string, number>
+    const current = query.current
+    const size = query.size
+    state.pages.push({ current, size })
     await route.fulfill({
       json: {
         code: 200,
         msg: '成功',
         requestId: `20000000-0000-4000-8000-${String(state.requests.length).padStart(12, '0')}`,
         version: source.version,
-        data: { records, total: 2, current: 1, size: 20 }
+        data: {
+          records: records.slice((current - 1) * size, current * size),
+          total: 2,
+          current,
+          size
+        }
       }
     })
   })
@@ -109,6 +119,23 @@ async function selectAndRun(page: Page, source: string, firstId: string, secondI
   await expect(page.getByText(secondId, { exact: true })).toBeVisible()
   await expect(page.getByText('共 2 条')).toBeVisible()
 }
+
+test('declared pagination inputs initialize the result table request', async ({ page }) => {
+  const state = await mockBridge(page)
+  await page.goto('#/examples/bff-integration', { waitUntil: 'domcontentloaded' })
+  await page
+    .getByRole('row')
+    .filter({ hasText: 'Java 服务 订单列表' })
+    .getByRole('button', { name: '选择接口' })
+    .click()
+  await page.getByRole('spinbutton', { name: /当前页/ }).fill('2')
+  await page.getByRole('spinbutton', { name: /每页条数/ }).fill('1')
+  await page.getByRole('button', { name: '查询分页记录' }).click()
+  await expect(page.getByText('J-002', { exact: true })).toBeVisible()
+  await expect(page.getByText('J-001', { exact: true })).toHaveCount(0)
+  expect(state.pages).toEqual([{ current: 2, size: 1 }])
+  expect(state.errors).toEqual([])
+})
 
 test('synthetic bridge catalog renders three published sources and two real-result rows each', async ({
   page

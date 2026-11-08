@@ -132,6 +132,7 @@
             :key="pageRequestKey"
             ref="pageTableRef"
             :api-fn="loadPage"
+            :api-params="pageApiParams"
             :columns-factory="pageColumns"
             :immediate="false"
             :enable-cache="false"
@@ -192,6 +193,15 @@
   const runError = ref('')
   const running = ref(false)
   const writeReviewNeeded = ref(false)
+  const pageApiParams = computed(() => {
+    const pagination = selectedApi.value?.pagination
+    return pagination
+      ? {
+          current: inputValues.value[pagination.currentInputKey],
+          size: inputValues.value[pagination.sizeInputKey]
+        }
+      : { current: 1, size: 20 }
+  })
 
   const workspaceMetrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
@@ -425,6 +435,8 @@
     if (!api || !api.pagination) return { records: [], total: 0, current: 1, size: 20 }
     const current = Math.max(1, Number(params.current) || 1)
     const size = Math.min(100, Math.max(1, Number(params.size) || 20))
+    inputValues.value[api.pagination.currentInputKey] = current
+    inputValues.value[api.pagination.sizeInputKey] = size
     running.value = true
     try {
       const response = await fetchBffPage(api, inputValues.value, { current, size })
