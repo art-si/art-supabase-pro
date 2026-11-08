@@ -44,6 +44,7 @@ const catalog = [
 
 async function mockBridge(page: Page) {
   let fail = false
+  let empty = false
   await page.route('**/__bff_bridge', async (route) => {
     const payload = route.request().postDataJSON() as Record<string, unknown>
     if (payload.operation === 'catalog') {
@@ -64,8 +65,13 @@ async function mockBridge(page: Page) {
         version: paged ? 1 : 2,
         data: paged
           ? {
-              records: [{ id: 'J-001', name: '订单一' }],
-              total: 1,
+              records: empty
+                ? []
+                : [
+                    { id: 'J-001', name: '订单一' },
+                    { id: 'J-002', name: '订单二' }
+                  ],
+              total: empty ? 0 : 2,
               current: 1,
               size: 20
             }
@@ -73,7 +79,7 @@ async function mockBridge(page: Page) {
       }
     })
   })
-  return { failNext: () => (fail = true) }
+  return { failNext: () => (fail = true), setEmpty: (value: boolean) => (empty = value) }
 }
 
 async function expectNoPageOverflow(page: Page) {
@@ -107,6 +113,11 @@ test('BFF 目录、指南和调用抽屉保持工作区布局', async ({ page },
   if (errors.length) throw new Error(errors.join('\n'))
   await expect(page.getByRole('heading', { name: 'BFF 接入中心' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('row').filter({ hasText: '平台健康检查' })).toBeVisible()
+  expect(
+    await page
+      .locator('.bff-integration > .art-table-query .el-table')
+      .evaluate((el) => el.getBoundingClientRect().height)
+  ).toBeGreaterThan(120)
   await expect(page.getByPlaceholder('搜索接口、应用或路径')).toBeVisible()
   await expectNoPageOverflow(page)
   await page.screenshot({ path: info.outputPath('catalog-light-1440.png') })
@@ -154,9 +165,25 @@ test('BFF 目录、指南和调用抽屉保持工作区布局', async ({ page },
     .click()
   await page.getByRole('button', { name: '查询分页记录' }).click()
   await expect(page.getByText('J-001', { exact: true })).toBeVisible()
+  const resultTable = page.locator('.el-drawer .art-table-query')
+  await resultTable.scrollIntoViewIfNeeded()
+  await expect(resultTable.getByText('订单编号', { exact: true })).toBeInViewport()
+  await expect(resultTable.getByText('J-001', { exact: true })).toBeInViewport()
+  await expect(resultTable.getByText('J-002', { exact: true })).toBeInViewport()
+  const resultWidths = await resultTable.evaluate((element) => ({
+    outer: element.getBoundingClientRect().width,
+    table: element.querySelector('.el-table')!.getBoundingClientRect().width
+  }))
+  expect(resultWidths.table, JSON.stringify(resultWidths)).toBeGreaterThanOrEqual(
+    resultWidths.outer - 48
+  )
+  await page.screenshot({ path: info.outputPath('invocation-paged-data-light-1440.png') })
   await page.getByRole('tab', { name: 'JSON 响应' }).click()
   await expect(page.locator('.el-drawer').getByText('"J-001"', { exact: true })).toBeVisible()
   await page.screenshot({ path: info.outputPath('invocation-paged-json-light-1440.png') })
+  await page.getByRole('tab', { name: '数据视图' }).click()
+  await resultTable.scrollIntoViewIfNeeded()
+  await expect(resultTable.getByText('J-002', { exact: true })).toBeInViewport()
   await page.keyboard.press('Escape')
 
   await page.setViewportSize({ width: 390, height: 844 })
@@ -197,4 +224,39 @@ test('BFF 调用失败在抽屉内显示可重试状态', async ({ page }, info)
   await page.screenshot({ path: info.outputPath('invocation-error-1440.png') })
   await page.getByRole('button', { name: '运行接口' }).click()
   await expect(page.getByText('正常', { exact: true })).toBeVisible()
+})
+
+test('分页数据视图在窄屏、暗色与空结果中保持可见', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  const bridge = await mockBridge(page)
+  await page.goto('/tests/e2e/fixtures/bff-integration-workspace.html')
+  await page
+    .getByRole('row')
+    .filter({ hasText: 'Java 订单列表' })
+    .getByRole('button', { name: '选择接口' })
+    .click()
+  await page.getByRole('button', { name: '查询分页记录' }).click()
+  const resultTable = page.locator('.el-drawer .art-table-query')
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 }
+  ]) {
+    await page.setViewportSize(viewport)
+    await resultTable.scrollIntoViewIfNeeded()
+    await expect(resultTable.getByText('J-001', { exact: true })).toBeInViewport()
+    await expect(resultTable.getByText('J-002', { exact: true })).toBeInViewport()
+    await expect(resultTable.locator('.pagination')).toBeInViewport()
+    await expectNoPageOverflow(page)
+    await page.screenshot({ path: info.outputPath(`paged-data-${viewport.width}.png`) })
+  }
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.locator('html').evaluate((element) => element.classList.add('dark'))
+  await resultTable.scrollIntoViewIfNeeded()
+  await expect(resultTable.getByText('J-002', { exact: true })).toBeInViewport()
+  await page.screenshot({ path: info.outputPath('paged-data-dark.png') })
+  bridge.setEmpty(true)
+  await page.getByRole('button', { name: '查询分页记录' }).click()
+  await resultTable.scrollIntoViewIfNeeded()
+  await expect(resultTable.getByText('本页没有记录', { exact: true })).toBeInViewport()
+  await page.screenshot({ path: info.outputPath('paged-data-empty.png') })
 })

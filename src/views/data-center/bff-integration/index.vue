@@ -140,6 +140,7 @@
                   v-if="selectedApi.resultKind === 'page'"
                   :key="pageRequestKey"
                   ref="pageTableRef"
+                  :style="{ height: compactViewport ? '520px' : '360px', flex: 'none' }"
                   :api-fn="loadPage"
                   :api-params="pageApiParams"
                   :columns-factory="pageColumns"
@@ -147,7 +148,6 @@
                   :enable-cache="false"
                   :table-header-props="{ layout: 'refresh,size' }"
                   :table-props="{
-                    maxHeight: 360,
                     emptyText: '本页没有记录',
                     emptyDescription: '可检查分页输入或调整页码后重试。'
                   }"
