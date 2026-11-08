@@ -1,6 +1,6 @@
 import { createApp, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { ElConfigProvider } from 'element-plus'
+import { ElConfigProvider, ElScrollbar } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { store } from '@/store'
 import language from '@/locales'
@@ -21,7 +21,9 @@ const router = createRouter({
 const app = createApp({
   render: () =>
     h(ElConfigProvider, { locale: zhCn }, () =>
-      h('main', { class: 'art-page-view p-4' }, [h(Page)])
+      h(ElScrollbar, { height: '100vh' }, () =>
+        h('main', { class: 'art-page-view p-4' }, [h(Page)])
+      )
     )
 })
 app.use(store)

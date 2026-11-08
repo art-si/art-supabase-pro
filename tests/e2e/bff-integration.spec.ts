@@ -170,16 +170,12 @@ test('synthetic bridge catalog renders three published sources and two real-resu
   await page.screenshot({ path: path.join(evidence, 'catalog-results-light-1440.png') })
   await page.keyboard.press('Escape')
   await page.getByRole('switch', { name: '进入专注模式' }).locator('..').click()
-  await expect(page.locator('.bff-integration > .art-table-query')).toHaveClass(
-    /is-focus-mode/
-  )
+  await expect(page.locator('.bff-integration > .art-table-query')).toHaveClass(/is-focus-mode/)
   await expect(page.getByRole('heading', { name: 'BFF 接入中心' })).toBeHidden()
   await expect(page.getByRole('button', { name: '响应格式说明' })).toBeVisible()
   await page.screenshot({ path: path.join(evidence, 'catalog-focus-1440.png') })
   await page.keyboard.press('Escape')
-  await expect(page.locator('.bff-integration > .art-table-query')).not.toHaveClass(
-    /is-focus-mode/
-  )
+  await expect(page.locator('.bff-integration > .art-table-query')).not.toHaveClass(/is-focus-mode/)
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.getByRole('button', { name: '切换深色模式' }).click()
   await selectAndRun(page, 'CloudBase', 'C-001', 'C-002')
