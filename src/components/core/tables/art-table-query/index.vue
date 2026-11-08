@@ -278,21 +278,22 @@
           <ElButton type="primary" @click="handleRefresh">重新加载</ElButton>
         </ArtEmptyState>
       </ElScrollbar>
-      <ArtTable
-        v-else
-        ref="tableRef"
-        v-bind="artTableBindings"
-        @row-drag-start="handleRowDragStart"
-        @row-drag-update="handleRowDragUpdate"
-        @row-drag-end="handleRowDragEnd"
-      >
-        <template v-for="slotName in tableSlotNames" :key="slotName" #[slotName]="slotProps">
-          <slot :name="slotName" v-bind="slotProps" />
-        </template>
-        <template v-if="$slots.default" #default>
-          <slot />
-        </template>
-      </ArtTable>
+      <div v-else class="art-table-query__table-host">
+        <ArtTable
+          ref="tableRef"
+          v-bind="artTableBindings"
+          @row-drag-start="handleRowDragStart"
+          @row-drag-update="handleRowDragUpdate"
+          @row-drag-end="handleRowDragEnd"
+        >
+          <template v-for="slotName in tableSlotNames" :key="slotName" #[slotName]="slotProps">
+            <slot :name="slotName" v-bind="slotProps" />
+          </template>
+          <template v-if="$slots.default" #default>
+            <slot />
+          </template>
+        </ArtTable>
+      </div>
     </ElCard>
   </div>
 </template>
