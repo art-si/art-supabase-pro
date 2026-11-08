@@ -447,6 +447,10 @@ verify_jwt = true
 [functions.oauth-provider-bridge]
 verify_jwt = false
 
+# The handler verifies the user's JWT with Auth.getUser, including asymmetric signing keys.
+[functions.bff-gateway]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

@@ -89,6 +89,21 @@ export default async ({ mode }: { mode: string }) => {
   const enableFileViewerPlugin = !isE2E && (isProduction || env.VITE_FILE_VIEWER === 'true')
   const enableFileViewerAssets = !isE2E && (isProduction || env.VITE_FILE_VIEWER_ASSETS === 'true')
   const enableCloudBaseSdk = mode === 'cloudbase' || env.VITE_BAAS_PROVIDER === 'cloudbase'
+  const bffDevProxyTarget =
+    !isProduction && env.VITE_BFF_ENABLED === 'true'
+      ? process.env.BFF_DEV_PROXY_TARGET || loadEnv(mode, root, 'BFF_').BFF_DEV_PROXY_TARGET
+      : undefined
+  if (bffDevProxyTarget) {
+    const parsed = new URL(bffDevProxyTarget)
+    if (
+      parsed.protocol !== 'http:' ||
+      !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname) ||
+      parsed.origin !== bffDevProxyTarget ||
+      parsed.username ||
+      parsed.password
+    )
+      throw new Error('BFF_DEV_PROXY_TARGET 必须为本机 HTTP 源站地址')
+  }
   const [devToolsModule, compressionModule, fileViewerModule, analyzerModule] = await Promise.all([
     !isProduction && !isE2E && enableVueDevTools ? import('vite-plugin-vue-devtools') : undefined,
     enableBuildCompression ? import('vite-plugin-compression') : undefined,
@@ -143,6 +158,15 @@ export default async ({ mode }: { mode: string }) => {
       watch: isE2E ? null : createViteWatchPolicy(outDir),
       hmr: isE2E ? false : undefined,
       proxy: {
+        ...(bffDevProxyTarget
+          ? {
+              '/__bff_bridge': {
+                target: bffDevProxyTarget,
+                changeOrigin: true,
+                rewrite: () => '/'
+              }
+            }
+          : {}),
         '/api': {
           target: VITE_API_PROXY_URL,
           changeOrigin: true
