@@ -14,6 +14,7 @@
 
     <ArtTableQuery
       ref="catalogTableRef"
+      :style="compactViewport ? { height: '620px', flex: 'none' } : undefined"
       v-model="catalogFilters"
       focusable
       :api-fn="loadCatalog"
@@ -26,7 +27,6 @@
       :table-header-props="{ layout: 'refresh,size' }"
       :table-props="{
         rowKey: 'interfaceId',
-        height: compactViewport ? 360 : undefined,
         emptyText: '没有符合条件的已发布接口',
         emptyDescription: '请调整筛选条件；如仍为空，请联系 BFF 管理员核对应用授权和发布状态。'
       }"
