@@ -10,9 +10,9 @@ begin
       and indexname='tms_waybill_tenant_all_status_no_uk'
       and indexdef not ilike '% where %'
   ) then raise exception 'Waybill number must be unique across every status'; end if;
-  if position('YWD' in pg_get_functiondef('public.tms_dispatch_orders(uuid[],jsonb)'::regprocedure))=0
-    or position('YWD' in pg_get_functiondef('public.tms_create_dispatch_plan_secure(jsonb)'::regprocedure))=0
-  then raise exception 'Both dispatch paths must generate a distinct task number'; end if;
+  if position('order_no||''-01''' in pg_get_functiondef('public.tms_create_dispatch_plan_base_secure(jsonb)'::regprocedure))=0
+    or position('YWD' in pg_get_functiondef('public.tms_create_dispatch_plan_base_secure(jsonb)'::regprocedure))=0
+  then raise exception 'Single dispatch must use source -01; split and merge retain distinct execution numbers'; end if;
   select jsonb_array_length(snapshot) into v_number_count
   from app_private.backup_20261027_tms_waybill_commission where object_name='waybill_numbers';
   if v_number_count<>37 then raise exception 'Historical number backup is incomplete'; end if;

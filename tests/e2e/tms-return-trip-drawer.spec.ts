@@ -37,7 +37,7 @@ async function captureDrawerVariants(
   await page.evaluate(() => document.documentElement.classList.remove('dark'))
 }
 
-async function openReturnDrawer(page: Page, withSource: boolean) {
+async function openReturnDrawer(page: Page, withSource: boolean, mode: 'load' | 'empty' = 'load') {
   await prepareIsolatedSession(page)
   const kinds: string[] = []
   const candidateTenantIds: string[] = []
@@ -48,7 +48,7 @@ async function openReturnDrawer(page: Page, withSource: boolean) {
         ? [
             {
               id: '77777777-7777-4777-8777-777777777777',
-              waybillNo: 'YD202611-018',
+              waybillNo: 'ORD-RETURN-001-01',
               status: 'accepted',
               orderId: 'order-return-test',
               tenantId: '11111111-1111-4111-8111-111111111111',
@@ -135,16 +135,26 @@ async function openReturnDrawer(page: Page, withSource: boolean) {
         orderId: 'return-order-test',
         orderNo: 'ORD-RETURN-001-R01',
         waybillId: 'return-waybill-test',
-        waybillNo: 'YD-RETURN-001-R01'
+        waybillNo: 'ORD-RETURN-001-R01'
       }
     })
   })
-  await page.goto('/tests/e2e/fixtures/tms-return-trip-drawer.html', {
+  await page.route('**/rest/v1/rpc/tms_create_empty_return_secure', (route) => {
+    writes.push(route.request().postDataJSON() as Record<string, unknown>)
+    return route.fulfill({
+      json: { waybillId: 'empty-return-waybill-test', waybillNo: 'ORD-RETURN-001-R02' }
+    })
+  })
+  await page.goto(`/tests/e2e/fixtures/tms-return-trip-drawer.html?mode=${mode}`, {
     waitUntil: 'domcontentloaded'
   })
   const drawer = page.locator('.art-drawer:visible')
-  await expect(drawer.getByText('新增返程运输单', { exact: true })).toBeVisible()
-  await expect(drawer.getByRole('button', { name: '发货地址操作' })).toBeVisible()
+  if (mode === 'load') {
+    await expect(drawer.getByText('新增返程运输单', { exact: true })).toBeVisible()
+    await expect(drawer.getByRole('button', { name: '发货地址操作' })).toBeVisible()
+  } else {
+    await expect(drawer.getByRole('button', { name: '生成返程空载运单' })).toBeVisible()
+  }
   return { drawer, kinds, candidateTenantIds, writes }
 }
 
@@ -175,7 +185,7 @@ test('选正向调度单时沿用司机车辆并进入配置步骤', async ({ pa
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
   const { drawer, kinds } = await openReturnDrawer(page, true)
-  await expect(drawer.getByText('将沿用调度单')).toContainText('YD202611-018')
+  await expect(drawer.getByText('将沿用调度单')).toContainText('ORD-RETURN-001-01')
   await expect(drawer.getByText('将沿用调度单')).toContainText('正向司机 / 测A12345')
   await expect(drawer.locator('[data-art-form-item-key="dispatchDriverId"]')).toHaveCount(0)
   await fillContacts(drawer)
@@ -199,12 +209,12 @@ test('发货与收货地址图标沿用开单的识别及常用地址入口', as
   await expect(page.getByText('选择收货地址', { exact: true })).toBeVisible()
 })
 
-test('无正向调度单时选择司机并自动带入关联车辆后提交', async ({ page }, info) => {
+test('返程配载始终关联正向调度单并独立保存货物与费用', async ({ page }, info) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
-  const { drawer, kinds, candidateTenantIds, writes } = await openReturnDrawer(page, false)
-  await expect(drawer.locator('[data-art-form-item-key="dispatchDriverId"]')).toBeVisible()
-  await expect(drawer.locator('[data-art-form-item-key="dispatchVehicleId"]')).toBeVisible()
+  const { drawer, kinds, writes } = await openReturnDrawer(page, true)
+  await expect(drawer.locator('[data-art-form-item-key="dispatchDriverId"]')).toHaveCount(0)
+  await expect(drawer.locator('[data-art-form-item-key="dispatchVehicleId"]')).toHaveCount(0)
   await drawer.getByRole('button', { name: '添加途经点（0/3）' }).click()
   await drawer.locator('[data-art-form-item-key="transferStationIds"] .el-select').click()
   await page.getByRole('option', { name: '中途站甲' }).click()
@@ -221,21 +231,7 @@ test('无正向调度单时选择司机并自动带入关联车辆后提交', as
     drawer.getByRole('button', { name: /添加途经点/ })
   )
   await fillContacts(drawer)
-  await drawer.getByRole('button', { name: '下一步' }).click()
-  await expect(drawer.getByRole('button', { name: '1 · 收发信息' })).toHaveAttribute(
-    'aria-current',
-    'step'
-  )
-
-  await drawer.getByPlaceholder('请选择返程司机').click()
-  const selector = page.locator('.art-data-select-dialog').last()
-  await expect(selector.getByText('返程司机甲')).toBeVisible()
-  await selector.getByRole('row', { name: /返程司机甲/ }).click()
-  await selector.getByRole('button', { name: '确定' }).click()
-  await expect(drawer.getByPlaceholder('请选择返程车辆')).toHaveValue('测A12345')
-  expect(kinds).toContain('driver')
-  expect(kinds).toContain('return_vehicle')
-  expect(candidateTenantIds).toEqual(kinds.map(() => '11111111-1111-4111-8111-111111111111'))
+  expect(kinds).toEqual([])
 
   await drawer.getByRole('button', { name: '下一步' }).click()
   await expect(drawer.getByRole('button', { name: '2 · 配置信息' })).toHaveAttribute(
@@ -267,10 +263,8 @@ test('无正向调度单时选择司机并自动带入关联车辆后提交', as
   )
   await drawer.getByRole('button', { name: '创建返程运输单' }).click()
   await expect.poll(() => writes.length).toBe(1)
-  expect(writes[0]?.p_source_waybill_id).toBeNull()
+  expect(writes[0]?.p_source_waybill_id).toBe('77777777-7777-4777-8777-777777777777')
   expect(writes[0]?.p_payload).toMatchObject({
-    dispatch_driver_id: driverId,
-    dispatch_vehicle_id: vehicleId,
     transfer_station_ids: ['station-two', 'station-one'],
     transfer_station_id: 'station-two',
     order_config: {
@@ -280,4 +274,44 @@ test('无正向调度单时选择司机并自动带入关联车辆后提交', as
     }
   })
   expect(pageErrors).toEqual([])
+})
+
+test('无正向调度单时不能创建返程', async ({ page }) => {
+  const { drawer, writes, kinds } = await openReturnDrawer(page, false)
+  await drawer.getByRole('button', { name: '下一步' }).click()
+  await expect(drawer.getByRole('button', { name: '1 · 收发信息' })).toHaveAttribute(
+    'aria-current',
+    'step'
+  )
+  expect(writes).toEqual([])
+  expect(kinds).toEqual([])
+})
+
+test('空载返程直接生成调度单并关联同一张正向单', async ({ page }, info) => {
+  const { drawer, writes } = await openReturnDrawer(page, true, 'empty')
+  await expect(drawer.locator('[data-art-form-item-key="cargoName"]')).toHaveCount(0)
+  await expect(drawer.getByText('ORD-RETURN-001-01')).toBeVisible()
+  await expect(drawer.locator('[data-art-form-item-key="originStation"] input')).toHaveValue(
+    '杭州门店'
+  )
+  await drawer.locator('[data-art-form-item-key="destinationStation"] input').fill('   ')
+  await drawer.getByRole('button', { name: '生成返程空载运单' }).click()
+  await expect(drawer.getByText('请填写返程目的地', { exact: true })).toBeVisible()
+  expect(writes).toEqual([])
+  await drawer.locator('[data-art-form-item-key="destinationStation"] input').fill('苏州中转站')
+  await captureDrawerVariants(
+    page,
+    info,
+    'empty-return',
+    drawer.getByRole('button', { name: '生成返程空载运单' })
+  )
+  const emptyRequest = page.waitForRequest('**/rest/v1/rpc/tms_create_empty_return_secure')
+  await drawer.getByRole('button', { name: '生成返程空载运单' }).click()
+  await emptyRequest
+  await expect.poll(() => writes.length).toBe(1)
+  expect(writes[0]).toMatchObject({
+    p_source_waybill_id: '77777777-7777-4777-8777-777777777777',
+    p_payload: { origin_station: '杭州门店', destination_station: '苏州中转站' }
+  })
+  await expect(drawer).toBeHidden()
 })

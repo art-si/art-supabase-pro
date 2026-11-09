@@ -1,6 +1,5 @@
--- A return for a source order without a selected dispatch leg requires explicit
--- available driver and vehicle; the secure candidate APIs expose both IDs.
--- Synthetic driver changes and created documents roll back together.
+-- A return order must identify an existing forward execution. Selecting a
+-- driver and vehicle alone must not create an unlinked return document.
 BEGIN;
 SELECT set_config('request.jwt.claims','{"sub":"0a872664-874c-447d-a256-d0dbdca6ed45","role":"authenticated"}',true);
 SELECT set_config('request.headers','{"x-art-tenant-scope":"7529f951-938e-4e2c-ac0d-316c136ae1f9"}',true);
@@ -18,8 +17,8 @@ DECLARE
   v_drivers jsonb;
   v_vehicles jsonb;
   v_payload jsonb;
-  v_result jsonb;
-  v_waybill public.tms_waybill%rowtype;
+  v_before_orders integer;
+  v_before_waybills integer;
   v_denied boolean := false;
 BEGIN
   SELECT * INTO STRICT v_source FROM public.tms_order
@@ -66,21 +65,18 @@ BEGIN
     ),
     'dispatch_driver_id',v_driver,'dispatch_vehicle_id',v_vehicle
   );
-  v_result := public.tms_create_return_order_secure(v_source.id,null,v_payload);
-  SELECT * INTO STRICT v_waybill FROM public.tms_waybill
-  WHERE id=(v_result->>'waybillId')::uuid;
-  IF v_waybill.driver_id<>v_driver OR v_waybill.vehicle_id<>v_vehicle
-    OR v_waybill.status<>'pending' OR v_waybill.dispatch_mode<>'self_operated' THEN
-    RAISE EXCEPTION '无来源返程未正确继承显式司机车辆：%',v_waybill.id;
-  END IF;
-  IF (SELECT return_source_waybill_id FROM public.tms_order
-    WHERE id=(v_result->>'orderId')::uuid) IS NOT NULL THEN
-    RAISE EXCEPTION '无来源返程错误地绑定正向执行单';
-  END IF;
+  SELECT count(*) INTO v_before_orders FROM public.tms_order
+    WHERE return_source_order_id=v_source.id;
+  SELECT count(*) INTO v_before_waybills FROM public.tms_waybill
+    WHERE order_id=v_source.id and forward_waybill_id is not null;
   BEGIN
     PERFORM public.tms_create_return_order_secure(v_source.id,null,v_payload);
   EXCEPTION WHEN check_violation THEN v_denied:=true;
   END;
-  IF NOT v_denied THEN RAISE EXCEPTION '在途司机被重复配给第二张无来源返程单'; END IF;
+  IF NOT v_denied THEN RAISE EXCEPTION '无正向调度单的返程开单被错误允许'; END IF;
+  IF (SELECT count(*) FROM public.tms_order WHERE return_source_order_id=v_source.id)<>v_before_orders
+    OR (SELECT count(*) FROM public.tms_waybill WHERE order_id=v_source.id and forward_waybill_id is not null)<>v_before_waybills THEN
+    RAISE EXCEPTION '拒绝无正向来源后发生业务数据写入';
+  END IF;
 END $test$;
 ROLLBACK;

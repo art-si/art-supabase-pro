@@ -77,7 +77,13 @@ const app = createApp({
   render: () =>
     h(
       'main',
-      { class: 'art-page-view min-h-screen p-4', style: { background: 'var(--el-bg-color-page)' } },
+      {
+        class: 'art-page-view min-h-screen p-4',
+        style: {
+          background: 'var(--el-bg-color-page)',
+          '--art-full-height': 'calc(100dvh - 32px)'
+        }
+      },
       [h(RouterView)]
     )
 })

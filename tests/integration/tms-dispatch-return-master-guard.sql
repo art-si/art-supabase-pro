@@ -45,6 +45,8 @@ declare
   v_return_customer uuid;
   v_split_main uuid;
   v_candidates jsonb;
+  v_single_waybill_id uuid;
+  v_single_allocation_id uuid;
 begin
   perform set_config(
     'request.jwt.claims',
@@ -53,7 +55,8 @@ begin
   );
   perform set_config('request.headers', '{}', true);
 
-  foreach v_order_no in array array['YD202610-011', 'YD202610-012'] loop
+  -- 011 is now cancelled in the persistent QA fixture; 012 remains pending.
+  foreach v_order_no in array array['YD202610-012'] loop
     select id into strict v_order_id
     from public.tms_order where order_no = v_order_no
       and tenant_id = '7529f951-938e-4e2c-ac0d-316c136ae1f9';
@@ -132,7 +135,7 @@ begin
   );
 
   -- A first-time single dispatch still creates its one execution task.
-  v_result := public.tms_create_dispatch_plan_secure(jsonb_build_object(
+  v_plan := jsonb_build_object(
     'kind', 'single',
     'executions', jsonb_build_array(jsonb_build_object(
       'dispatch_mode', 'legacy_vehicle',
@@ -148,13 +151,48 @@ begin
         )
       ))
     ))
-  ));
+  );
+  begin
+    v_result := public.tms_create_dispatch_plan_secure(v_plan);
+  exception when others then
+    raise exception 'First single dispatch probe failed: %',sqlerrm;
+  end;
   if jsonb_array_length(v_result->'waybill_ids') <> 1
     or (select count(*) from public.tms_waybill_order_allocation
         where order_id = v_first) <> 1
     or (select dispatch_status from public.tms_order where id = v_first) <> 'loaded' then
     raise exception 'First single dispatch no longer works';
   end if;
+
+  v_single_waybill_id := (v_result->'waybill_ids'->>0)::uuid;
+  select id into strict v_single_allocation_id from public.tms_waybill_order_allocation
+  where waybill_id=v_single_waybill_id and order_id=v_first;
+  if (select waybill_no from public.tms_waybill where id=v_single_waybill_id)
+      is distinct from (select order_no||'-01' from public.tms_order where id=v_first) then
+    raise exception 'Single forward dispatch did not use the fixed -01 number';
+  end if;
+  perform public.tms_revoke_order_dispatch_secure(array[v_first]);
+  if (select status from public.tms_waybill where id=v_single_waybill_id) is distinct from 'cancelled'
+    or (select dispatch_status from public.tms_order where id=v_first) is distinct from 'pending' then
+    raise exception 'Revoke did not release the forward allocation for redispatch: waybill %, order %',
+      (select status from public.tms_waybill where id=v_single_waybill_id),
+      (select dispatch_status from public.tms_order where id=v_first);
+  end if;
+  begin
+    v_result := public.tms_create_dispatch_plan_secure(v_plan);
+  exception when others then
+    raise exception 'Redispatch probe failed: %',sqlerrm;
+  end;
+  if (v_result->'waybill_ids'->>0)::uuid is distinct from v_single_waybill_id
+    or (select id from public.tms_waybill_order_allocation
+      where waybill_id=v_single_waybill_id and order_id=v_first) is distinct from v_single_allocation_id
+    or (select count(*) from public.tms_waybill where order_id=v_first)<>1
+    or (select dispatch_status from public.tms_order where id=v_first)<>'loaded'
+    or not pg_temp.qa_forward_income_matches(v_single_waybill_id) then
+    raise exception 'Redispatch must preserve -01, execution/allocation identity, and one copy of cargo/income';
+  end if;
+  -- Release this independent trip before the split probe reuses its QA driver.
+  perform public.tms_revoke_order_dispatch_secure(array[v_first]);
 
   -- The compatible orders can still merge. Roll this probe back before the
   -- following split probe reuses the second source order.
@@ -276,7 +314,7 @@ begin
   );
   v_candidates := public.tms_list_return_trip_candidates_secure(v_split);
   if (select candidate->>'canAddReturn' from jsonb_array_elements(v_candidates) candidate
-      where candidate->>'id' = v_split_main::text) <> 'false'
+      where candidate->>'id' = v_split_main::text) <> 'true'
     or (select candidate->>'canAddReturn' from jsonb_array_elements(v_candidates) candidate
       where candidate->>'id' <> v_split_main::text limit 1) <> 'true' then
     raise exception 'Return candidate eligibility did not follow each split task';
@@ -307,6 +345,7 @@ begin
   if exists (
     select 1 from public.tms_waybill w
     where w.order_id in (v_first, v_split) and w.status <> 'cancelled'
+      and w.forward_waybill_id is null
       and not pg_temp.qa_forward_income_matches(w.id)
   ) then
     raise exception 'Single or split forward leg income differs from its allocation';

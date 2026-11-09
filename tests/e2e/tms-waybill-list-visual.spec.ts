@@ -63,6 +63,7 @@ const loaded = [
       { id: pending[1].id, orderNo: pending[1].orderNo }
     ],
     executionKind: 'merge',
+    dispatchType: 'forward_load',
     dispatchStatus: 'dispatched',
     waybillStatus: 'accepted',
     dispatchDriverName: '验收司机甲',
@@ -70,13 +71,16 @@ const loaded = [
     carrierName: '验收承运商',
     companyName: '验收物流公司',
     dispatchPlateNo: '测A12345',
-    hasReturnTrip: false
+    hasReturnTrip: true
   },
   {
     ...common,
     id: '11111111-1111-4111-8111-111111111302',
     driverWaybillId: '11111111-1111-4111-8111-111111111302',
-    waybillNo: 'YD-LOADED-002',
+    waybillNo: 'YD202611-004-R01',
+    forwardWaybillId: '11111111-1111-4111-8111-111111111399',
+    forwardWaybillNo: 'YD202611-004-01',
+    dispatchType: 'return_load',
     orderNo: 'DD-RETURN-002',
     sourceOrderRefs: [{ id: pending[1].id, orderNo: 'DD-RETURN-002' }],
     executionKind: 'single',
@@ -88,6 +92,28 @@ const loaded = [
     companyName: '验收物流公司',
     dispatchPlateNo: '测A67890',
     hasReturnTrip: true
+  },
+  {
+    ...common,
+    ...Object.fromEntries(Object.keys(fees).map((key) => [key, 0])),
+    id: '11111111-1111-4111-8111-111111111303',
+    driverWaybillId: '11111111-1111-4111-8111-111111111303',
+    waybillNo: 'YD202611-004-R02',
+    forwardWaybillId: '11111111-1111-4111-8111-111111111399',
+    forwardWaybillNo: 'YD202611-004-01',
+    dispatchType: 'return_empty',
+    orderNo: '',
+    sourceOrderRefs: [],
+    executionKind: 'return_trip',
+    dispatchStatus: 'dispatched',
+    waybillStatus: 'accepted',
+    dispatchDriverName: '验收司机乙',
+    dispatchPlateNo: '测A67890',
+    cargoItems: [],
+    cargoQuantityTotal: 0,
+    cargoVolumeTotal: 0,
+    cargoWeightTotal: 0,
+    hasReturnTrip: false
   }
 ]
 
@@ -161,7 +187,7 @@ for (const mode of ['pending', 'loaded'] as const) {
     await expect(
       page.getByRole('heading', { name: mode === 'pending' ? '待配载派车' : '运输运单' })
     ).toBeVisible()
-    await expect(page.getByRole('row')).toHaveCount(3)
+    await expect(page.getByRole('row')).toHaveCount(mode === 'loaded' ? 4 : 3)
     for (const label of [
       '基础运费',
       '配送费',
@@ -177,12 +203,47 @@ for (const mode of ['pending', 'loaded'] as const) {
       await expect(page.getByRole('columnheader', { name: label })).toBeAttached()
     const tableScroll = page.locator('.el-table__body-wrapper .el-scrollbar__wrap').first()
     await expect
+      .poll(() => tableScroll.evaluate((element) => element.getBoundingClientRect().height))
+      .toBeGreaterThan(100)
+    await expect
       .poll(() => tableScroll.evaluate((element) => element.scrollWidth > element.clientWidth))
       .toBe(true)
-    await expect(page.getByText('返程', { exact: true })).toBeVisible()
+    if (mode === 'pending') {
+      const returnBadge = page
+        .getByRole('row')
+        .filter({ hasText: 'DD-PENDING-001' })
+        .getByText('含返程', { exact: true })
+      await expect(returnBadge).toBeVisible()
+      await expect
+        .poll(() =>
+          returnBadge.evaluate((element) => {
+            const cell = element.closest('td')
+            if (!cell) return false
+            const badge = element.getBoundingClientRect()
+            const bounds = cell.getBoundingClientRect()
+            return badge.left >= bounds.left && badge.right <= bounds.right
+          })
+        )
+        .toBe(true)
+    }
     if (mode === 'loaded') {
       await expect(page.getByRole('link', { name: 'DD-PENDING-001' })).toBeVisible()
       await expect(page.getByRole('link', { name: 'DD-PENDING-002' })).toBeVisible()
+      const forward = page.getByRole('row').filter({ hasText: 'YD-LOADED-001' })
+      await expect(forward).toContainText('合单')
+      await expect(forward).not.toContainText('返程配载')
+      const loadedReturn = page.getByRole('row').filter({ hasText: 'YD202611-004-R01' })
+      const emptyReturn = page.getByRole('row').filter({ hasText: 'YD202611-004-R02' })
+      await expect(loadedReturn).toContainText('返程配载')
+      await expect(emptyReturn).toContainText('返程空载')
+      for (const row of [loadedReturn, emptyReturn]) {
+        await expect(
+          row.getByRole('link', { name: 'YD202611-004-01', exact: true })
+        ).toHaveAttribute(
+          'href',
+          /waybill-management\/detail\/11111111-1111-4111-8111-111111111399/
+        )
+      }
     }
     await expect(page.getByText('已使用前端默认列')).toBeHidden({ timeout: 15_000 })
     for (const theme of ['light', 'dark']) {
@@ -218,7 +279,10 @@ for (const mode of ['pending', 'loaded'] as const) {
     await page.getByRole('switch', { name: '进入专注模式' }).locator('..').click()
     await expect(hero).toBeHidden()
     await expect(page.getByRole('table').last()).toBeVisible()
-    await expect(page.getByText('Total 2')).toBeVisible()
+    await expect
+      .poll(() => tableScroll.evaluate((element) => element.getBoundingClientRect().height))
+      .toBeGreaterThan(100)
+    await expect(page.getByText(`Total ${mode === 'loaded' ? 3 : 2}`)).toBeVisible()
     await page.screenshot({
       path: info.outputPath(`${mode}-focus-1440-dark.png`),
       animations: 'disabled'
@@ -228,7 +292,16 @@ for (const mode of ['pending', 'loaded'] as const) {
     await page.getByRole('switch', { name: '进入专注模式' }).locator('..').click()
     await page.keyboard.press('Escape')
     await expect(hero).toBeVisible()
-    await page.getByRole('link', { name: 'DD-PENDING-001' }).first().click()
+    await tableScroll.evaluate((element) => {
+      element.scrollLeft = 0
+    })
+    const sourceLink = page
+      .getByRole('row')
+      .filter({ hasText: mode === 'loaded' ? 'YD-LOADED-001' : 'DD-PENDING-001' })
+      .getByRole('link', { name: 'DD-PENDING-001', exact: true })
+    await sourceLink.scrollIntoViewIfNeeded()
+    await expect(sourceLink).toBeInViewport()
+    await sourceLink.click()
     const orderDrawer = page.locator('.art-drawer:visible')
     await expect(orderDrawer.getByText('运单详情 · DD-PENDING-001')).toBeVisible()
     for (const tab of ['运单收发信息', '配置信息', '货物信息', '应收信息'])

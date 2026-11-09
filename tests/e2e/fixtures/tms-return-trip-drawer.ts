@@ -9,35 +9,40 @@ import ReturnTripDrawer from '@tms/views/order-list/modules/return-trip/return-t
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
-const drawerRef = ref<{ handleOpen: (row: Api.Tms.Order.OrderRecord) => Promise<void> }>()
+const drawerRef = ref<{
+  handleOpen: (row: Api.Tms.Order.OrderRecord, mode?: 'load' | 'empty') => Promise<void>
+}>()
 
 const app = createApp({
   setup() {
     onMounted(() =>
-      drawerRef.value?.handleOpen({
-        id: 'order-return-test',
-        orderNo: 'ORD-RETURN-001',
-        originStation: '上海仓',
-        destinationStation: '杭州门店',
-        orderStatus: 'transporting',
-        orderConfig: {
-          loadType: 'ltl',
-          vehicleType: '厢式货车',
-          billingMode: 'weight',
-          cargoCategory: 'general',
-          packaging: 'bulk',
-          attachmentUrls: ['https://example.invalid/old-order-proof.pdf'],
-          payable: {
-            driverFreight: 999,
-            driverSettlementMethod: 'monthly',
-            carrierSettlementMethod: 'monthly'
-          },
-          loading: {
-            loadPhotoUrls: ['https://example.invalid/old-load.jpg'],
-            signerName: '原单签收人'
+      drawerRef.value?.handleOpen(
+        {
+          id: 'order-return-test',
+          orderNo: 'ORD-RETURN-001',
+          originStation: '上海仓',
+          destinationStation: '杭州门店',
+          orderStatus: 'transporting',
+          orderConfig: {
+            loadType: 'ltl',
+            vehicleType: '厢式货车',
+            billingMode: 'weight',
+            cargoCategory: 'general',
+            packaging: 'bulk',
+            attachmentUrls: ['https://example.invalid/old-order-proof.pdf'],
+            payable: {
+              driverFreight: 999,
+              driverSettlementMethod: 'monthly',
+              carrierSettlementMethod: 'monthly'
+            },
+            loading: {
+              loadPhotoUrls: ['https://example.invalid/old-load.jpg'],
+              signerName: '原单签收人'
+            }
           }
-        }
-      } as Api.Tms.Order.OrderRecord)
+        } as Api.Tms.Order.OrderRecord,
+        new URLSearchParams(location.search).get('mode') === 'empty' ? 'empty' : 'load'
+      )
     )
     return () => h('main', [h(ReturnTripDrawer, { ref: drawerRef })])
   }
