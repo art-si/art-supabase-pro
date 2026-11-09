@@ -22,12 +22,12 @@
   {
     "path": "modules/art-supabase-tms",
     "url": "https://gitee.com/art-si/art-supabase-tms.git",
-    "ref": "8bc730220b7849cca8cbe262b6e32f86ad420682"
+    "ref": "2f1f146fe27359cd749950e94fe6a5bf1384004e"
   },
   {
     "path": "modules/art-supabase-doc",
     "url": "https://gitee.com/art-si/art-supabase-doc.git",
-    "ref": "e08bb14114d03a7f82cf27a63b1019faf768c0c8"
+    "ref": "86bb309f2ee56bd862aee1e5d48694de4b591e62"
   },
   {
     "path": "modules/art-supabase-mdm",
