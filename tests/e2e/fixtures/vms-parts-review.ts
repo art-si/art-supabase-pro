@@ -37,7 +37,13 @@ useUserStore(store).setUserInfo({
 useMenuStore(store).setButtonList(
   (issuePermission
     ? issuePermission.split(',').map((name) => `VmsPartIssue:${name}`)
-    : ['VmsPartIssue:View', 'VmsPartIssue:Add', 'VmsPartInventory:View', 'VmsPartInventory:Receipt']
+    : [
+        'VmsPartIssue:View',
+        'VmsPartIssue:Add',
+        'VmsPartInventory:View',
+        'VmsPartInventory:Receipt',
+        'VehiclePartUsage:View'
+      ]
   ).map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
 )
 const scope = useTenantScopeStore(store)
@@ -58,7 +64,13 @@ const app = createApp({
     h(ElConfigProvider, { locale: zhCn }, () =>
       h(
         'main',
-        { class: 'art-page-view h-screen p-4', style: { background: 'var(--el-bg-color-page)' } },
+        {
+          class: 'art-page-view h-screen p-4',
+          style: {
+            background: 'var(--el-bg-color-page)',
+            '--art-full-height': 'calc(100dvh - 32px)'
+          }
+        },
         issueContext
           ? [
               h(

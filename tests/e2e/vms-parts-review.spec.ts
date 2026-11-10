@@ -12,6 +12,29 @@ test('配件领用与库存流水的字段和页签在脱敏数据下可用', as
     unexpected.push(route.request().url())
     return route.fulfill({ status: 400, json: { message: 'unexpected fixture request' } })
   })
+  let partListRelationship: string | undefined
+  await page.route('**/rest/v1/mdm_part**', (route) => {
+    partListRelationship = new URL(route.request().url()).searchParams.get('select') ?? ''
+    return route.fulfill({
+      headers: { 'content-range': '0-0/1' },
+      json: [
+        {
+          id: 'part-receipt-1',
+          part_name: '加厚防雨篷布（验收用长名称）',
+          part_code: 'LP2026001',
+          category_id: 'category-1',
+          material_id: null,
+          unit_id: null,
+          supplier_id: null,
+          model: '6 米 × 8 米',
+          brand: '测试品牌',
+          status: '1',
+          tenant_id: '11111111-1111-4111-8111-111111111111'
+        }
+      ]
+    })
+  })
+  await page.route('**/rest/v1/mdm_part_category**', (route) => route.fulfill({ json: [] }))
   await installDictionaryOptions(page, {
     vehicleOwnership: [{ value: 'carrier', label: '承运商' }]
   })
@@ -113,6 +136,35 @@ test('配件领用与库存流水的字段和页签在脱敏数据下可用', as
       }
     })
   )
+  await page.route('**/rest/v1/rpc/vms_list_vehicle_part_usages_secure', (route) =>
+    route.fulfill({
+      json: {
+        records: [
+          {
+            id: 'usage-1',
+            companyName: '测试运输公司',
+            plateNo: '测A·10001',
+            partType: 'original',
+            partName: '发动机总成',
+            partCode: 'VP2026001',
+            categoryName: '动力系统',
+            brand: '测试品牌',
+            model: 'D20',
+            isConsumable: false,
+            rfidEnabled: false,
+            enableMode: 'vehicle',
+            warrantyMode: 'vehicle',
+            serviceMileageEnabled: false,
+            serviceYearsEnabled: false,
+            status: 'normal',
+            createTime: '2026-11-03T10:00:00+08:00',
+            createBy: '测试用户'
+          }
+        ],
+        total: 1
+      }
+    })
+  )
   await page.goto('/tests/e2e/fixtures/vms-parts-review.html')
   await page.evaluate(() => document.documentElement.setAttribute('data-box-mode', 'border-mode'))
   await expect(page.getByRole('columnheader', { name: '领用单号' })).toBeVisible({
@@ -132,6 +184,16 @@ test('配件领用与库存流水的字段和页签在脱敏数据下可用', as
   await expect(stock.getByText('轮胎', { exact: true }).first()).toBeVisible()
   await expect(page.locator('.business-table-workspace-actions')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '登记入库', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '登记入库', exact: true }).click()
+  await page.getByPlaceholder('请选择配件名称').click()
+  const partPicker = page.getByRole('dialog').filter({ hasText: '选择配件' })
+  await expect(partPicker.getByText('加厚防雨篷布（验收用长名称）', { exact: true })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('parts-receipt-part-picker.png') })
+  await partPicker.getByText('加厚防雨篷布（验收用长名称）', { exact: true }).click()
+  await partPicker.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(page.getByPlaceholder('请选择配件名称')).toHaveValue('加厚防雨篷布（验收用长名称）')
+  expect(partListRelationship).toContain('vehicle_parts_category_tenant_fkey')
+  await page.getByRole('button', { name: '取消', exact: true }).click()
   const typography = await stock
     .getByRole('columnheader', { name: '配件 / 编码' })
     .evaluate((header) => {
@@ -200,6 +262,10 @@ test('配件领用与库存流水的字段和页签在脱敏数据下可用', as
     fullPage: true,
     timeout: 60_000
   })
+  await page.getByRole('tab', { name: '装车档案', exact: true }).click()
+  await expect(page.getByRole('columnheader', { name: '零部件名称' })).toBeVisible()
+  await expect(page.getByText('发动机总成', { exact: true })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('parts-installed.png'), fullPage: true })
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
   expect(unexpected).toEqual([])
 })
