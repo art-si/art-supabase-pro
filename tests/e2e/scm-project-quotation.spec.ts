@@ -41,7 +41,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   )
 })
 
-test('项目八个页签逐单展示分类并从业务明细读取采购与库存', async ({ page }, testInfo) => {
+test('项目十个页签展示关联业务记录，详情抽屉内表格保持可见', async ({ page }, testInfo) => {
   const requested: string[] = []
   await page.route('**/rest/v1/rpc/scm_project_quotation_tab', (route) => {
     const tab: string = route.request().postDataJSON().p_tab
@@ -93,10 +93,14 @@ test('项目八个页签逐单展示分类并从业务明细读取采购与库�
   await expect(workspace.getByText('审批自动归集', { exact: true })).toBeVisible()
   await workspace.getByRole('switch', { name: '进入专注模式', exact: true }).locator('..').click()
   await workspace.getByRole('button', { name: '退出专注模式', exact: true }).click()
-  await workspace.getByText('设备装配项目', { exact: true }).click()
+  const projectLink = workspace
+    .locator('.art-table__cell-link')
+    .filter({ hasText: '设备装配项目' })
+  await projectLink.focus()
+  await projectLink.press('Enter')
   const drawer = page.getByRole('dialog', { name: '项目报价详情' })
   await expect(drawer.getByText('测试负责人', { exact: true })).toBeVisible()
-  await expect(drawer.getByRole('tab')).toHaveCount(8)
+  await expect(drawer.getByRole('tab')).toHaveCount(10)
   await drawer.getByRole('tab', { name: '报价项分类', exact: true }).click()
   await expect(drawer.locator('tbody tr')).toHaveCount(2)
   await expect(drawer.getByText('Q-001', { exact: true })).toBeVisible()
@@ -110,6 +114,8 @@ test('项目八个页签逐单展示分类并从业务明细读取采购与库�
     ['销售合同', 'contracts'],
     ['采购申请', 'purchase_requests'],
     ['采购订单', 'purchase_orders'],
+    ['销售订单', 'sales_orders'],
+    ['生产工单', 'work_orders'],
     ['实时库存', 'stock'],
     ['库存流水', 'movements']
   ]) {
