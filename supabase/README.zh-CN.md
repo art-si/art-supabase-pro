@@ -107,6 +107,12 @@ Set-Location 'D:\spa\art-supabase-pro'
 
 2026-10-30 对原目录 `20261029-155141` 的实际修复已验证：先确认没有运行中的运维任务，再从已校验的暂存阶段归档旧目录并安装 81 个源码文件，逐文件哈希一致；六份 SQL 的阶段哈希、大小和结束标记均通过。此时尚未生成 `manifest.json`，仍需从同一目录继续后续步骤；不能将这次安装修复视为整份备份已经完成。自动回归覆盖逐函数下载失败后的复用、瞬时重试、版本变化和篡改检查，恢复配置及分享 ZIP 测试使用临时模拟数据，没有执行真实云恢复。
 
+## TMS 往返调度空载返程修复（2026-11-10）
+
+生产 TMS 现在以正向调度单作为不可变父单：单段正向调度单使用 `原运单号-01`；有货返程和空载返程都创建独立子调度单，通过 `forward_waybill_id`、`dispatch_type`（`return_load` / `return_empty`）和递增的 `return_sequence` 关联，单号按 `-R01`、`-R02` 继续生成。空载返程运费收入为 0，但仍纳入往返成本和利润汇总。
+
+审核后的 SQL 已在备份 `app_private.tms_roundtrip_pre_fix_20261110` 后，通过项目限定的 Supabase MCP 直接应用到 `ckbftoopuyophiebamwy`。本项目按约定不在仓库保存本地迁移 SQL；回归覆盖位于 `tests/integration/tms-roundtrip-core.sql`、`tms-roundtrip-finance.sql`、`tms-roundtrip-tenant-boundary.sql` 及返程调度 Playwright 用例。历史单号保持不变；若历史上已有 `R01`，新单自动使用下一个可用序号。
+
 ## 校验结果怎么看
 
 “校验备份完整性”会显示文件核对进度，完成后提供检查项、数据库/函数/Storage/元数据分类数量和大小、问题文件的相对路径，以及可下载的 JSON 报告。报告保存在备份目录外，不会改变备份清单；执行端保存报告到任务历史，刷新后仍可查看。旧版历史任务没有逐项报告，需要沿用原目录重新校验。

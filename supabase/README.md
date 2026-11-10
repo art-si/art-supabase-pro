@@ -64,6 +64,21 @@ broader root unit run retained three unrelated failures in public module assets 
 expectations; the reuse audit retained the existing TMS driver nullable-text finding. These are
 not evidence of a fully passing repository release gate. Frontend publication is outside this change.
 
+## TMS roundtrip dispatch fix (2026-11-10)
+
+The production TMS contract now keeps the forward dispatch as the immutable parent. A single
+forward dispatch uses `order_no-01`; each loaded or empty return is an independent child linked by
+`forward_waybill_id`, `dispatch_type` (`return_load` or `return_empty`) and an increasing
+`return_sequence`, producing `-R01`, `-R02`, and later suffixes. Empty returns carry zero freight
+income and remain included in roundtrip cost and profit reporting.
+
+The reviewed SQL was applied directly to project `ckbftoopuyophiebamwy` through the scoped
+Supabase MCP after the recoverable snapshot `app_private.tms_roundtrip_pre_fix_20261110`. The
+repository intentionally keeps no local migration SQL for this project. Regression coverage is in
+`tests/integration/tms-roundtrip-core.sql`, `tms-roundtrip-finance.sql`,
+`tms-roundtrip-tenant-boundary.sql`, and the targeted return-trip Playwright suites. Historical
+waybill numbers are preserved; if `R01` already exists, allocation selects the next free sequence.
+
 ## System identity and runtime parameters (2026-10-09)
 
 Platform authorization requires the server-managed `sys_user.system_protected` identity,
