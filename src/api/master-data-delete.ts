@@ -48,7 +48,7 @@ export async function fetchRecordDeleteDependencies(
         const query = supabase.rpc(
           dependencyReader,
           reader === 'hr_get_employee_delete_dependencies_secure'
-            ? { p_ids: context.ids }
+            ? { p_ids: context.ids, p_constraint: context.constraint ?? null }
             : {
                 ...(reader && reader !== 'get_mdm_payable_master_delete_dependencies_secure'
                   ? {}
