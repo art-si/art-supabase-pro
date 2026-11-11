@@ -12,6 +12,7 @@ const rows = [
     tenantId,
     orderNo: 'QA-ORDER-PENDING',
     orderStatus: 'pending_load',
+    driverOwnership: 'carrier',
     shippingContactName: '测试发货人',
     receivingContactName: '测试收货人',
     originStation: '上海站',
@@ -24,6 +25,7 @@ const rows = [
     tenantId,
     orderNo: 'QA-ORDER-CANCELLED',
     orderStatus: 'cancelled',
+    driverOwnership: 'self',
     shippingContactName: '测试发货人',
     receivingContactName: '测试收货人',
     originStation: '苏州站',
@@ -97,7 +99,11 @@ for (const variant of [
         { value: 'completed', label: '已完成' },
         { value: 'cancelled', label: '已取消' }
       ],
-      tmsOrderPaymentMethod: [{ value: 'monthly', label: '月结' }]
+      tmsOrderPaymentMethod: [{ value: 'monthly', label: '月结' }],
+      tmsDriverOwnership: [
+        { value: 'carrier', label: '承运商司机' },
+        { value: 'self', label: '自营司机' }
+      ]
     })
 
     await page.goto('/tests/e2e/fixtures/tms-order-list-tabs.html', {
@@ -110,6 +116,15 @@ for (const variant of [
     await expect(orderList).toBeVisible({ timeout: 90_000 })
     await expect(orderList.getByText('QA-ORDER-PENDING')).toBeVisible()
     await expect(orderList.getByText('QA-ORDER-CANCELLED')).toBeVisible()
+    await expect(orderList.getByRole('cell', { name: '承运商司机', exact: true })).toBeVisible()
+    await expect(orderList.getByRole('cell', { name: '自营司机', exact: true })).toBeVisible()
+    await orderList.locator('.el-table__body-wrapper .el-scrollbar__wrap').evaluate((wrap) => {
+      wrap.scrollLeft = 900
+    })
+    await page.screenshot({ path: info.outputPath('driver-ownership-labels.png'), fullPage: true })
+    await orderList.locator('.el-table__body-wrapper .el-scrollbar__wrap').evaluate((wrap) => {
+      wrap.scrollLeft = 0
+    })
     await expect(tabs).toHaveClass(/el-scrollbar/)
     await expect(tabsWrap).toHaveCount(1)
     await expect(tabs.locator('.el-segmented__item')).toHaveCount(10)

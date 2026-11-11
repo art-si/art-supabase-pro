@@ -384,12 +384,13 @@
 
   const savePermission = async (): Promise<boolean> => {
     const roleId = roleData.value?.id
-    if (!roleId || !canEditPermissions.value || !treeRef.value) return false
+    if (!roleId || permissionSaving.value || !canEditPermissions.value || !treeRef.value)
+      return false
     const sequence = loadSequence
     permissionSaving.value = true
 
     try {
-      const menuIds = getSelectedMenuIds()
+      const menuIds = uniq(getSelectedMenuIds())
       const { error } = await saveRoleMenuList({
         p_role_id: roleId,
         p_menu_ids: menuIds,

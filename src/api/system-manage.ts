@@ -5,7 +5,7 @@ import { useSupabase } from '@/hooks/core/useSupabase'
 import { WRITE_PERMISSION_DENIED_MESSAGE } from '@/hooks/core/useSupabase'
 import { buildSpecsFromMap, applyFilters, fetchAllRangePages, type Op } from '@/utils/supabase'
 import { toNextDayStartUTC, toStartOfDayUTC } from '@/utils/time/format'
-import { omit } from 'lodash-es'
+import { omit, uniq } from 'lodash-es'
 import TreeUtils from '@/utils/tree'
 import { resolveTenantScopeId } from '@/utils/tenant-scope-context'
 import { mapWithConcurrency } from '@/utils/async'
@@ -836,10 +836,14 @@ export async function saveRoleMenuList(params: {
 }) {
   // BFF hosts can compare the opening snapshot; native pro's RPC retains its original signature.
   const { p_role_id, p_menu_ids } = params
-  return await responseHandle(() => supabase.rpc('set_role_menus', { p_role_id, p_menu_ids }), {
-    showMessage: true,
-    breakReturn: true
-  })
+  const normalizedMenuIds = uniq(p_menu_ids)
+  return await responseHandle(
+    () => supabase.rpc('set_role_menus', { p_role_id, p_menu_ids: normalizedMenuIds }),
+    {
+      showMessage: true,
+      breakReturn: true
+    }
+  )
 }
 
 export interface MenuListParams {

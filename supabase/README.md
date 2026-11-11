@@ -79,6 +79,29 @@ repository intentionally keeps no local migration SQL for this project. Regressi
 `tms-roundtrip-tenant-boundary.sql`, and the targeted return-trip Playwright suites. Historical
 waybill numbers are preserved; if `R01` already exists, allocation selects the next free sequence.
 
+Historical return discovery was corrected on 2026-11-11 in
+`tms_list_return_trip_candidates_secure`: older return orders use
+`return_source_order_id` / `return_source_waybill_id` even when their dispatch has no
+`forward_waybill_id`. Both forward and return order entry points now resolve the exact forward
+trip and recognize that historical link. Completed dispatches remain readable and cannot accept
+new returns. No order, dispatch status, numbering, or financial record was changed.
+The function definition, owner and grants were backed up and verified under the ignored
+`.artifacts/return-candidates-backup` directory before rollback validation and direct execution.
+`tests/integration/tms-return-candidate-history.sql` verifies the reported completed pair,
+summary inclusion, platform-all/selected and ordinary-own/forged-header scope boundaries.
+
+On 2026-11-11 the dispatch workbench reader was also corrected to return `dispatch_type`,
+`forward_waybill_id`, `forward_waybill_no` and `return_sequence`, so return-load and empty-return
+rows retain their business meaning in the list. New single/batch/split/merge dispatches use the
+primary source order number with `-01`, `-02`, etc., skipping occupied numbers under the existing
+source-order lock. Merge retains its first source order as the primary order. The legacy batch
+entry point also gives each source order its own `-01`. Insert results now include the final
+trigger-assigned number for return orders. Existing numbers remain unchanged.
+Verified function backups are under `.artifacts/dispatch-numbering-backup`; changes were validated
+with rollback before direct execution. `tests/integration/tms-dispatch-numbering.sql` covers all
+four creation modes and the reported empty return, alongside the existing roundtrip core and
+tenant-boundary regressions. No additional grants or business-data updates were required.
+
 ## System identity and runtime parameters (2026-10-09)
 
 Platform authorization requires the server-managed `sys_user.system_protected` identity,
@@ -614,3 +637,20 @@ Supabase cannot export Edge Function secret **values** or dashboard-only Auth/OA
 - 部署前 `BEGIN/ROLLBACK` DDL 校验通过；部署后断言确认函数包含缺配置错误、无自动审批分支，当前已发布流程数为0。安全顾问未发现此次新增的风险；返回的是项目既有安全告警集合，健康顾问无告警。
 - 新增事务回滚集成回归 `tests/integration/tms-abnormal-freight-workflow-required.sql`，已在目标数据库执行通过，确认无已发布流程时提交被拒绝且草稿回滚；业务用户需先为所属租户配置并发布异常费用审批流程后才能提交。
 - 财务规则评估：订单汇总字段现已幂等更新；客户暂估应收、承运商对账和成本/毛利需要分别衔接现有财务单据生命周期。线上示例订单存在已生成的应收暂估草稿，不能覆盖该单据而不确认调整方式。财务新增关联调整单或只更新对账/毛利口径仍待产品确认；未修改任何既有财务单据或报表金额。
+## FMS project receivable/payable report (2026-11-11)
+
+The FinanceProjectArApReport menu is under FinanceSettlement as
+/fms/settlement/project-ar-ap. It reports one row per tenant-scoped project and keeps the
+quotation, contract, receivable and payable groups together. The direct
+fms_project_ar_ap_report_secure reader applies FinanceProjectArApReport:View, the canonical
+tenant read predicate, and reads approved business documents only. Invoice and receipt
+application amounts are linked through the financial line's project; posted payable payment
+executions are linked through payable lines. The report deliberately uses the latest eligible
+project quotation and sales contract so repeated historical revisions cannot multiply a
+project's balances. FinanceProjectArApReport:Export is the only additional action. Two-record
+browser coverage is in tests/e2e/fms-project-ar-ap-report.spec.ts, including narrow-width
+rendering.
+
+## Role menu save timeout fix (2026-11-11)
+
+`public.set_role_menus(uuid, uuid[])` now applies permission changes as a set difference: it deletes only menu IDs removed from the request and inserts only newly selected IDs. The previous implementation deleted every row for the role before reinserting up to roughly 3,000 IDs, which amplified row locks when duplicate saves overlapped and surfaced as Postgres `57014` statement timeouts. The `(role_id, menu_id)` unique index was already present; the request body size was not the limiting factor. The native role permission dialog and API also de-duplicate IDs and reject a second save while one is in flight. The RPC keeps its original invoker execution model and authorization checks. The pre-change function definition is retained in the ignored `.artifacts/role-menu-save-backup/set_role_menus.before.sql` file.

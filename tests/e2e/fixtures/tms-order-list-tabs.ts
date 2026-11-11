@@ -27,6 +27,10 @@ const statuses: Array<[string, string]> = [
   ['cancelled', '已取消']
 ]
 userStore.setDictMap({
+  tmsDriverOwnership: [
+    ['carrier', '承运商司机'],
+    ['self', '自营司机']
+  ].map(([value, label], sort) => ({ name: label, code: value, label, value, status: '1', sort })),
   tmsOrderStatus: statuses.map(([value, label], sort) => ({
     name: label,
     code: value,
@@ -53,7 +57,13 @@ const app = createApp({
   render: () =>
     h(
       'main',
-      { class: 'art-page-view min-h-screen p-4', style: { background: 'var(--el-bg-color-page)' } },
+      {
+        class: 'art-page-view min-h-screen p-4',
+        style: {
+          background: 'var(--el-bg-color-page)',
+          '--art-full-height': 'calc(100dvh - 32px)'
+        }
+      },
       [h(RouterView)]
     )
 })

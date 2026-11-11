@@ -2777,6 +2777,10 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
     buttons: [button('View', '查看'), button('Export', '导出'), button('Print', '打印')]
   },
   {
+    menuName: 'FinanceProjectArApReport',
+    buttons: [button('View', '查看'), button('Export', '导出')]
+  },
+  {
     menuName: 'FinanceEstimatedPayable',
     buttons: [
       button('Accrual', '自动暂估参数'),
