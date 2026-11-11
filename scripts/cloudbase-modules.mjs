@@ -20,7 +20,7 @@ function git(args, cwd = root, stream = false) {
 }
 
 function fromIndex() {
-  return git(['config', '--file', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'])
+  return git(['config', '--blob', ':.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'])
     .split('\n')
     .map((line) => {
       const separator = line.indexOf(' ')
@@ -28,7 +28,7 @@ function fromIndex() {
       const path = line.slice(separator + 1).trim()
       return {
         path,
-        url: git(['config', '--file', '.gitmodules', '--get', key]),
+        url: git(['config', '--blob', ':.gitmodules', '--get', key]),
         ref: git(['rev-parse', `:${path}`])
       }
     })
@@ -60,10 +60,13 @@ if (action === 'write') {
   writeFileSync(manifestPath, `${JSON.stringify(modules, null, 2)}\n`)
   console.log(`Recorded ${modules.length} module revisions from the Git index`)
 } else if (action === 'check') {
-  const modules = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  const source = process.argv.includes('--staged')
+    ? git(['show', ':scripts/cloudbase-modules.json'])
+    : readFileSync(manifestPath, 'utf8')
+  const modules = JSON.parse(source)
   validate(modules)
   if (JSON.stringify(modules) !== JSON.stringify(fromIndex())) {
-    throw new Error('CloudBase module manifest does not match the Git index')
+    throw new Error('CloudBase module manifest does not match the Git index. Run node scripts/cloudbase-modules.mjs write, then stage scripts/cloudbase-modules.json.')
   }
   console.log(`Verified ${modules.length} pinned module revisions`)
 } else if (action === 'install') {
