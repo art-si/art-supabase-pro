@@ -1,6 +1,7 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { fetchAllRangePages } from '@/utils/supabase/pagination'
 import type { DeleteReferenceContext } from '@/utils/supabase/delete-reference'
+import { useUserStore } from '@/store/modules/user'
 
 export interface RecordDeleteDependency extends Omit<
   MasterDataDeleteDependencyDetail,
@@ -27,23 +28,35 @@ const scopedDeleteReaders: Partial<Record<string, string>> = {
   tms_expense_reimbursement: 'get_fms_reimbursement_delete_dependencies_secure',
   fms_payee_information: 'get_fms_payee_delete_dependencies_secure',
   fms_travel_repayment: 'get_fms_repayment_delete_dependencies_secure',
-  mdm_position: 'hr_get_position_delete_dependencies_secure'
+  mdm_position: 'hr_get_position_delete_dependencies_secure',
+  mdm_employee: 'hr_get_employee_delete_dependencies_secure'
 }
 
 export async function fetchRecordDeleteDependencies(
   context: DeleteReferenceContext
 ): Promise<RecordDeleteDependency[]> {
+  const userStore = useUserStore()
   const { data, error } = await fetchAllRangePages<RecordDeleteDependency>(({ from, to }) =>
     responseHandle<RecordDeleteDependency[]>(
       () => {
         const reader = scopedDeleteReaders[context.table]
-        const query = supabase.rpc(reader ?? 'get_record_delete_dependency_details', {
-          ...(reader && reader !== 'get_mdm_payable_master_delete_dependencies_secure'
-            ? {}
-            : { p_table: context.table }),
-          p_ids: context.ids,
-          p_constraint: context.constraint ?? null
-        })
+        const dependencyReader =
+          reader ??
+          (userStore.isPlatformSuper
+            ? 'get_platform_record_delete_dependency_details'
+            : 'get_record_delete_dependency_details')
+        const query = supabase.rpc(
+          dependencyReader,
+          reader === 'hr_get_employee_delete_dependencies_secure'
+            ? { p_ids: context.ids }
+            : {
+                ...(reader && reader !== 'get_mdm_payable_master_delete_dependencies_secure'
+                  ? {}
+                  : { p_table: context.table }),
+                p_ids: context.ids,
+                p_constraint: context.constraint ?? null
+              }
+        )
         return query.range(from, to)
       },
       { breakReturn: true, showErrorMessage: false, errorMessage: '关联记录检查失败，请重试' }

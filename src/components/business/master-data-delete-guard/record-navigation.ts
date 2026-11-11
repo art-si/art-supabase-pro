@@ -319,7 +319,9 @@ export function createRecordReferenceNavigation(
       ...permitted('Hr:Employee:View'),
       routeParams: (record) => ({ id: record.targetId })
     },
-    mdm_employee_assignment: permitted('Hr:Employee:View'),
+    mdm_employee_assignment: {
+      canNavigate: () => false
+    },
     fms_fixed_asset: permitted('FinanceFixedAsset:View'),
     mdm_job_profile: permitted('Hr:JobProfile:View'),
     hr_external_engagement: permitted('Hr:ContingentWorkforce:View'),

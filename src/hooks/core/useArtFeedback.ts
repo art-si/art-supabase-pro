@@ -4,7 +4,11 @@ import {
   type ElMessageBoxOptions,
   type MessageBoxData
 } from 'element-plus'
-import { getFriendlySupabaseErrorMessage, wasErrorUserNotified } from '@/utils/supabase'
+import {
+  getFriendlySupabaseErrorMessage,
+  isSupabaseRequestAbortFailure,
+  wasErrorUserNotified
+} from '@/utils/supabase'
 
 /** 已由响应层提示的错误不重复弹出；其余异常统一转换为业务可读文案。 */
 export function notifyFriendlyError(
@@ -12,7 +16,7 @@ export function notifyFriendlyError(
   fallback: string,
   level: 'error' | 'warning' = 'error'
 ): void {
-  if (wasErrorUserNotified(error)) return
+  if (wasErrorUserNotified(error) || isSupabaseRequestAbortFailure(error)) return
   const message = getFriendlySupabaseErrorMessage(error, fallback)
   if (level === 'warning') ElMessage.warning(message)
   else ElMessage.error(message)

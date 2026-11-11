@@ -63,6 +63,7 @@
     fetchTenantList
   } from '@/api/system-manage/tenant'
   import TenantDialog from './modules/tenant-dialog.vue'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useUserStore } from '@/store/modules/user'
   import { useAuth } from '@/hooks/core/useAuth'
 
@@ -84,6 +85,7 @@
     serviceEndDate?: string | null
   }
   const router = useRouter()
+  const tenantScopeStore = useTenantScopeStore()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const { hasAuth } = useAuth()
@@ -197,11 +199,14 @@
       current: params.current,
       size: params.size
     })
-    return fetchTenantList({
-      ...params,
-      from,
-      to
-    })
+    return fetchTenantList(
+      {
+        ...params,
+        from,
+        to
+      },
+      { scopeTenantId: tenantScopeStore.effectiveTenantId }
+    )
   }
 
   const columnsFactory = (): ColumnOption<Tenant>[] => [

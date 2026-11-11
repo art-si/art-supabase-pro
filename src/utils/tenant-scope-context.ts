@@ -9,6 +9,14 @@ export const TENANT_SCOPE_STORAGE_KEY = 'art-platform-tenant-scope-id'
 export const TENANT_SCOPE_MODE_STORAGE_KEY = 'art-platform-tenant-scope-active'
 let tenantScopeRevision = 0
 
+/** A request whose tenant context changed is stale work, not a user-facing failure. */
+export class TenantScopeChangedError extends Error {
+  constructor() {
+    super('租户范围已变化')
+    this.name = 'AbortError'
+  }
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 /** The database gateway's scope header is shared by request options and transport adapters. */
@@ -249,7 +257,7 @@ export const createTenantScopeReadGuard = (): (() => void) => {
       platformActive !== readPlatformTenantScopeActive() ||
       (platformActive && tenantId !== readTenantScopeId())
     ) {
-      throw new Error('租户范围已变化，请刷新后重试')
+      throw new TenantScopeChangedError()
     }
   }
 }

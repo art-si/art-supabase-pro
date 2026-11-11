@@ -90,9 +90,7 @@ const recordReferences: Record<string, RecordReferenceMeta> = {
     statusDictCode: 'hrEmploymentStatus'
   },
   mdm_employee_assignment: {
-    label: '员工任职记录',
-    routeName: 'HrEmployeeRoster',
-    statusDictCode: 'hrEmploymentStatus'
+    label: '员工任职记录'
   },
   hr_external_engagement: { label: '外部用工记录', routeName: 'HrContingentWorkforce' },
   hr_external_worker: { label: '外部人员', routeName: 'HrContingentWorkforce' },

@@ -9,7 +9,7 @@ const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
 
 export async function fetchTenantList(
   params: TenantSearchParams,
-  options: ApiFeedbackOptions = {}
+  options: ApiFeedbackOptions & { scopeTenantId?: string | null } = {}
 ) {
   const { tenantCode, tenantName, status, from = 0, to = 9 } = params
   const specs = [
@@ -23,6 +23,8 @@ export async function fetchTenantList(
     .select('*', { count: 'exact' })
     .order('create_time', { ascending: false })
     .range(from, to)
+
+  if (options.scopeTenantId) query = query.eq('id', options.scopeTenantId)
 
   query = applyFilters(query, specs, { skipEmpty: true, camelToSnake: false })
   return await responseHandle<TenantListItem[]>(() => query, {
