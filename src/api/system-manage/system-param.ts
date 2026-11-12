@@ -37,7 +37,7 @@ export async function fetchSystemParamList(params: SystemParamSearchParams) {
   }
 
   query = applyFilters(query, specs, { skipEmpty: true, camelToSnake: false })
-  return await responseHandle(() => query, {
+  return await responseHandle<SystemParamItem[]>(() => query, {
     showErrorMessage: true
   })
 }

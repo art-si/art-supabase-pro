@@ -2,6 +2,7 @@ import type { WebsiteConfigValues } from '../types/platform/website-config'
 import { AUTH_CHANNEL_PRESETS } from '../utils/supabase/auth-channels'
 
 export const WEBSITE_CONFIG_DEFAULTS: WebsiteConfigValues = {
+  noteStorageCloudEnabled: false,
   siteName: '亿企工场',
   siteShortName: '亿企工场',
   siteDescription: '商业化中后台管理系统',

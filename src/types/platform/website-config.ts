@@ -19,6 +19,8 @@ export interface AuthChannel {
 
 /** Public website values, independent of browser globals and transport metadata. */
 export interface WebsiteConfigValues {
+  /** Allows mobile clients to offer the per-device Supabase storage choice. */
+  noteStorageCloudEnabled?: boolean
   siteName: string
   siteShortName?: string | null
   siteDescription?: string | null

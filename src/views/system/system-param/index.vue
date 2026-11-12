@@ -11,7 +11,7 @@
           label: canManage ? '已授权维护' : '安全只读视图',
           type: canManage ? 'primary' : 'info'
         },
-        { label: `缓存项：${overview.stats.total}` },
+        { label: `缓存项：${overview.stats.total + 1}` },
         { label: `最近刷新：${overview.lastRefreshText}` }
       ]"
       :metrics="overview.statCards"
@@ -43,6 +43,7 @@
     />
 
     <SystemParamDialog ref="dialogRef" @success="handleSaveSuccess" />
+    <MobileStorageConfigDialog ref="storageDialogRef" @success="handleStorageSaveSuccess" />
     <MasterDataDeleteGuard ref="deleteGuardRef" />
   </div>
 </template>
@@ -74,6 +75,7 @@
     fetchSystemParamList,
     fetchSystemParamStats
   } from '@/api/system-manage/system-param'
+  import { fetchWebsiteConfig } from '@/api/system-manage/website-config'
   import { clearSystemParamCache } from '@/hooks/core/system-param/read-system-param'
   import { loadAppearanceConfig } from '@/hooks/core/useAppearanceConfig'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -81,6 +83,7 @@
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { formatWithDayjs } from '@/utils/time'
   import SystemParamDialog from './modules/system-param-dialog.vue'
+  import MobileStorageConfigDialog from './modules/mobile-storage-config-dialog.vue'
 
   defineOptions({ name: 'SystemParam' })
 
@@ -90,11 +93,16 @@
   )
 
   type SystemParam = Api.SystemManage.SystemParamItem
+  type WebsiteConfig = Api.SystemManage.WebsiteConfigItem
   type SearchParams = Api.SystemManage.SystemParamSearchParams
   type TableParams = SearchParams & Pick<Api.Common.PaginationParams, 'current' | 'size'>
 
   interface DialogExpose {
     handleOpen: (row?: SystemParam) => Promise<void>
+  }
+
+  interface StorageDialogExpose {
+    handleOpen: (config?: WebsiteConfig | null) => Promise<void>
   }
 
   interface OverviewGroup {
@@ -111,6 +119,7 @@
 
   const tableQueryRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<DialogExpose>()
+  const storageDialogRef = ref<StorageDialogExpose>()
   const userStore = useUserStore()
   const { getDictMap, getUserInfo, isPlatformSuper } = storeToRefs(userStore)
   const { hasAuth, hasAnyAuth } = useAuth()
@@ -119,6 +128,19 @@
   )
   const isWritableRow = (row: SystemParam): boolean =>
     isPlatformSuper.value || row.tenantId === getUserInfo.value.tenantId
+  const storageConfig = reactive<{
+    data: WebsiteConfig | null
+    cloudEnabled: boolean
+    loading: boolean
+  }>({
+    data: null,
+    cloudEnabled: false,
+    loading: false
+  })
+  const storageGroupCode = computed(
+    () => storageConfig.data?.paramMeta?.groupCode || 'system_policy'
+  )
+  const storageGroupName = computed(() => storageConfig.data?.paramMeta?.groupName || '系统策略')
   const groupOptions = computed(() => getDictMap.value.systemParamGroup ?? [])
   const typeOptions = computed(() => getDictMap.value.systemParamType ?? [])
 
@@ -137,28 +159,28 @@
     statCards: computed(() => [
       {
         label: '参数总量',
-        value: overview.stats.total,
-        description: '包括内置参数与业务扩展参数',
+        value: overview.stats.total + 1,
+        description: '包括内置参数、业务扩展参数与移动端存储选项',
         icon: 'ri:database-2-line',
         tone: 'primary'
       },
       {
         label: '启用参数',
-        value: overview.stats.enabled,
+        value: overview.stats.enabled + 1,
         description: '当前会参与读取和缓存的有效参数',
         icon: 'ri:checkbox-circle-line',
         tone: 'success'
       },
       {
         label: '内置参数',
-        value: overview.stats.builtin,
+        value: overview.stats.builtin + 1,
         description: '平台基础参数，建议谨慎修改',
         icon: 'ri:shield-keyhole-line',
         tone: 'warning'
       },
       {
         label: '参数分组',
-        value: overview.stats.groups,
+        value: overview.stats.groups + (overview.stats.groupCounts[storageGroupCode.value] ? 0 : 1),
         description: '可按业务域划分不同配置命名空间',
         icon: 'ri:folder-settings-line',
         tone: 'info'
@@ -168,13 +190,18 @@
 
   const groupSegmentOptions = computed(() => [
     {
-      label: `全部分组 (${overview.stats.total})`,
+      label: `全部分组 (${overview.stats.total + 1})`,
       value: ''
     },
-    ...groupOptions.value.map((group) => {
+    ...[
+      ...groupOptions.value,
+      ...(groupOptions.value.some((group) => String(group.value) === storageGroupCode.value)
+        ? []
+        : [{ label: storageGroupName.value, value: storageGroupCode.value }])
+    ].map((group) => {
       const value = String(group.value)
       return {
-        label: `${group.label} (${overview.stats.groupCounts[value] ?? 0})`,
+        label: `${group.label} (${(overview.stats.groupCounts[value] ?? 0) + (value === storageGroupCode.value ? 1 : 0)})`,
         value
       }
     })
@@ -268,16 +295,60 @@
     emptyDescription: '可调整分组或筛选条件；平台管理员也可以新增业务扩展参数。'
   }
 
-  const fetchTableData = (params: TableParams) => {
+  const fetchTableData = async (params: TableParams) => {
     const { from, to } = buildSupabasePageRange({
       current: params.current,
       size: params.size
     })
-    return fetchSystemParamList({
+    const result = await fetchSystemParamList({
       ...params,
       from,
       to
     })
+    if (result.error || !result.data) return result
+
+    const storageRow = createStorageParamRow()
+    if (!matchesStorageParamFilter(params, storageRow)) return result
+
+    const total = result.total ?? result.data.length
+    const storagePage = Math.floor(total / params.size) + 1
+    return {
+      ...result,
+      data: params.current === storagePage ? [...result.data, storageRow] : result.data,
+      total: total + 1
+    }
+  }
+
+  const createStorageParamRow = (): SystemParam => ({
+    id: 'virtual-note-storage-mode',
+    tenantId: storageConfig.data?.tenantId,
+    paramName: '时光记事存储模式',
+    paramKey: 'note.storage.mode',
+    groupCode: storageGroupCode.value,
+    groupName: storageGroupName.value,
+    paramType: 'single_text',
+    defaultValue: '本机存储',
+    paramValue: storageConfig.cloudEnabled
+      ? '本机默认 · Supabase 云端可选'
+      : '本机默认 · 仅本机模式',
+    enabled: true,
+    builtin: true,
+    sort: Number.MAX_SAFE_INTEGER,
+    remark: '本机无需登录；云端模式由每台设备自行选择。',
+    updateBy: storageConfig.data?.updateBy || '系统配置',
+    updateTime: storageConfig.data?.updateTime
+  })
+
+  const isStorageParamRow = (row: SystemParam): boolean => row.id === 'virtual-note-storage-mode'
+
+  const matchesStorageParamFilter = (params: TableParams, row: SystemParam): boolean => {
+    if (params.groupCode && params.groupCode !== row.groupCode) return false
+    if (params.paramType && params.paramType !== row.paramType) return false
+    if (params.enabled === false || params.builtin === false) return false
+    const keyword = params.keyword?.trim().toLocaleLowerCase()
+    const searchable =
+      `${row.paramName} ${row.paramKey} ${row.paramValue} ${row.remark}`.toLocaleLowerCase()
+    return !keyword || searchable.includes(keyword)
   }
 
   const columnsFactory = (): ColumnOption<SystemParam>[] =>
@@ -377,7 +448,15 @@
         width: 120,
         fixed: 'right',
         formatter: (row) =>
-          isWritableRow(row) ? (
+          isStorageParamRow(row) ? (
+            isPlatformSuper.value ? (
+              <ArtButtonTable
+                type="edit"
+                permission="System:SystemParam:Edit"
+                onClick={() => openStorageConfig()}
+              />
+            ) : null
+          ) : isWritableRow(row) ? (
             <div class="inline-flex items-center gap-2">
               <ArtButtonTable
                 type="edit"
@@ -397,6 +476,14 @@
 
   const openDialog = (row?: SystemParam): void => {
     void dialogRef.value?.handleOpen(row ? (omit(row, []) as SystemParam) : undefined)
+  }
+
+  const openStorageConfig = (): void => {
+    if (!storageConfig.data?.id) {
+      ElMessage.warning('公开配置暂不可用，请稍后刷新参数列表')
+      return
+    }
+    void storageDialogRef.value?.handleOpen(storageConfig.data)
   }
 
   const handleDelete = async (row: SystemParam): Promise<void> => {
@@ -435,6 +522,29 @@
     await Promise.all([tableQueryRef.value?.refreshRemove(), loadStats()])
   }
 
+  const loadStorageConfig = async (): Promise<void> => {
+    if (storageConfig.loading) return
+    storageConfig.loading = true
+    try {
+      const { data, error } = await fetchWebsiteConfig()
+      if (error) throw error
+      storageConfig.data = data
+      storageConfig.cloudEnabled = data?.noteStorageCloudEnabled === true
+    } catch (error) {
+      storageConfig.data = null
+      console.warn('mobile storage configuration load failed', error)
+    } finally {
+      storageConfig.loading = false
+      await Promise.all([tableQueryRef.value?.refreshData(), loadStats()])
+    }
+  }
+
+  const handleStorageSaveSuccess = (config: WebsiteConfig): void => {
+    storageConfig.data = config
+    storageConfig.cloudEnabled = config.noteStorageCloudEnabled === true
+    void Promise.all([tableQueryRef.value?.refreshData(), loadStats()])
+  }
+
   const handleSaveSuccess = (type: DialogType): void => {
     clearSystemParamCache()
     void loadAppearanceConfig()
@@ -448,6 +558,7 @@
     void userStore.ensureDictLoaded('systemParamGroup')
     void userStore.ensureDictLoaded('systemParamType')
     void loadStats()
+    void loadStorageConfig()
   })
 </script>
 

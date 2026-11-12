@@ -643,6 +643,7 @@ export const businessButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] =
       button('ViewAgreement', '查看协议'),
       button('RemindSignature', '提醒签署'),
       button('RemindRevision', '提醒修改'),
+      button('ResourcePreflight', '检查资源预检'),
       button('Merge', '合单配载'),
       button('Split', '拆单配载'),
       button('Cancel', '取消订单'),
@@ -3675,6 +3676,15 @@ export const systemButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] = [
       button('Add', '新增参数', 'System:SystemParam:Add'),
       button('Edit', '编辑参数', 'System:SystemParam:Edit'),
       button('Delete', '删除参数', 'System:SystemParam:Delete')
+    ]
+  },
+  {
+    menuName: 'Notes',
+    buttons: [
+      button('View', '查看时光笔记'),
+      button('Add', '新增时光笔记'),
+      button('Edit', '编辑时光笔记'),
+      button('Delete', '删除时光笔记')
     ]
   },
   {
