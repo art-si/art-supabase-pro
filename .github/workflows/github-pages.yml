@@ -28,7 +28,18 @@ jobs:
           persist-credentials: false
       - name: Check out pinned business modules
         run: |
-          git -c http.version=HTTP/1.1 submodule update --init --recursive --depth 1 --jobs 2
+          for attempt in 1 2 3 4 5; do
+            if git -c http.version=HTTP/1.1 submodule update --init --recursive --depth 1 --jobs 2; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo '::error::Unable to fetch pinned business modules after 5 attempts.'
+              exit 1
+            fi
+            delay=$((attempt * 15))
+            echo "Submodule fetch failed; retrying in ${delay}s (attempt $((attempt + 1))/5)."
+            sleep "$delay"
+          done
           node scripts/cloudbase-modules.mjs check
       - name: Set up pnpm from package.json
         uses: pnpm/action-setup@v4
