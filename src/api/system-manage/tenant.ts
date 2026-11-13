@@ -32,7 +32,7 @@ export async function fetchTenantList(
   })
 }
 
-export async function fetchEnabledTenantList() {
+export async function fetchEnabledTenantList(options: ApiFeedbackOptions = {}) {
   const query = supabase
     .from('sys_tenant')
     .select('id, tenant_code, tenant_name, status, builtin_type')
@@ -40,7 +40,7 @@ export async function fetchEnabledTenantList() {
     .order('tenant_code', { ascending: true })
 
   return await responseHandle<TenantListItem[]>(() => query, {
-    showErrorMessage: true
+    showErrorMessage: options.showErrorMessage ?? true
   })
 }
 

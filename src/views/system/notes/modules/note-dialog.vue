@@ -7,17 +7,19 @@
       :rules="form.rules"
       :span="12"
       :gutter="20"
-      label-width="92px"
+      label-position="top"
+      label-width="auto"
     />
-    <p class="note-dialog__hint">新增笔记会归属当前登录账号；编辑时会保留移动端已上传的图片。</p>
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
   import type { FormRules } from 'element-plus'
+  import { h, nextTick } from 'vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import ArtTiptapEditor from '@/components/core/forms/art-tiptap-editor/index.vue'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { addNote, editNote } from '@/api/notes'
 
@@ -62,15 +64,20 @@
       {
         key: 'content',
         label: '笔记内容',
-        type: 'input',
         span: 24,
-        props: {
-          type: 'textarea',
-          rows: 12,
-          maxlength: 20000,
-          showWordLimit: true,
-          placeholder: '支持移动端编辑器输出的 HTML，也可直接输入纯文本'
-        }
+        description: '新增笔记会归属当前登录账号；编辑时会保留移动端已上传的图片。',
+        render: () =>
+          h(ArtTiptapEditor, {
+            modelValue: form.value.data.content,
+            height: '280px',
+            maxLength: 20000,
+            placeholder: '记录此刻的想法…',
+            excludeKeys: ['image', 'video', 'audio', 'file'],
+            'onUpdate:modelValue': (value: string) => {
+              form.value.data.content = value
+              void nextTick(() => formRef.value?.validateField('content', () => undefined))
+            }
+          })
       }
     ],
     rules: {
@@ -130,12 +137,3 @@
 
   defineExpose<NoteDialogExpose>({ handleOpen })
 </script>
-
-<style scoped lang="scss">
-  .note-dialog__hint {
-    margin: -4px 0 0 92px;
-    font-size: 12px;
-    line-height: 1.6;
-    color: var(--el-text-color-secondary);
-  }
-</style>

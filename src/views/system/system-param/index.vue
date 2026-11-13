@@ -75,11 +75,12 @@
     fetchSystemParamList,
     fetchSystemParamStats
   } from '@/api/system-manage/system-param'
-  import { fetchWebsiteConfig } from '@/api/system-manage/website-config'
+  import { fetchNoteCloudSettings, type NoteCloudSettings } from '@/api/system-manage/note-cloud'
   import { clearSystemParamCache } from '@/hooks/core/system-param/read-system-param'
   import { loadAppearanceConfig } from '@/hooks/core/useAppearanceConfig'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useUserStore } from '@/store/modules/user'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { formatWithDayjs } from '@/utils/time'
   import SystemParamDialog from './modules/system-param-dialog.vue'
@@ -93,7 +94,6 @@
   )
 
   type SystemParam = Api.SystemManage.SystemParamItem
-  type WebsiteConfig = Api.SystemManage.WebsiteConfigItem
   type SearchParams = Api.SystemManage.SystemParamSearchParams
   type TableParams = SearchParams & Pick<Api.Common.PaginationParams, 'current' | 'size'>
 
@@ -102,7 +102,7 @@
   }
 
   interface StorageDialogExpose {
-    handleOpen: (config?: WebsiteConfig | null) => Promise<void>
+    handleOpen: () => Promise<void>
   }
 
   interface OverviewGroup {
@@ -123,24 +123,15 @@
   const userStore = useUserStore()
   const { getDictMap, getUserInfo, isPlatformSuper } = storeToRefs(userStore)
   const { hasAuth, hasAnyAuth } = useAuth()
+  const { isAllTenants } = storeToRefs(useTenantScopeStore())
   const canManage = computed(() =>
     hasAnyAuth(['System:SystemParam:Add', 'System:SystemParam:Edit', 'System:SystemParam:Delete'])
   )
   const isWritableRow = (row: SystemParam): boolean =>
     isPlatformSuper.value || row.tenantId === getUserInfo.value.tenantId
-  const storageConfig = reactive<{
-    data: WebsiteConfig | null
-    cloudEnabled: boolean
-    loading: boolean
-  }>({
-    data: null,
-    cloudEnabled: false,
-    loading: false
-  })
-  const storageGroupCode = computed(
-    () => storageConfig.data?.paramMeta?.groupCode || 'system_policy'
-  )
-  const storageGroupName = computed(() => storageConfig.data?.paramMeta?.groupName || '系统策略')
+  const storageConfig = shallowRef<NoteCloudSettings>()
+  const storageGroupCode = 'system_policy'
+  const storageGroupName = '系统策略'
   const groupOptions = computed(() => getDictMap.value.systemParamGroup ?? [])
   const typeOptions = computed(() => getDictMap.value.systemParamType ?? [])
 
@@ -180,7 +171,7 @@
       },
       {
         label: '参数分组',
-        value: overview.stats.groups + (overview.stats.groupCounts[storageGroupCode.value] ? 0 : 1),
+        value: overview.stats.groups + (overview.stats.groupCounts[storageGroupCode] ? 0 : 1),
         description: '可按业务域划分不同配置命名空间',
         icon: 'ri:folder-settings-line',
         tone: 'info'
@@ -195,13 +186,13 @@
     },
     ...[
       ...groupOptions.value,
-      ...(groupOptions.value.some((group) => String(group.value) === storageGroupCode.value)
+      ...(groupOptions.value.some((group) => String(group.value) === storageGroupCode)
         ? []
-        : [{ label: storageGroupName.value, value: storageGroupCode.value }])
+        : [{ label: storageGroupName, value: storageGroupCode }])
     ].map((group) => {
       const value = String(group.value)
       return {
-        label: `${group.label} (${(overview.stats.groupCounts[value] ?? 0) + (value === storageGroupCode.value ? 1 : 0)})`,
+        label: `${group.label} (${(overview.stats.groupCounts[value] ?? 0) + (value === storageGroupCode ? 1 : 0)})`,
         value
       }
     })
@@ -321,22 +312,26 @@
 
   const createStorageParamRow = (): SystemParam => ({
     id: 'virtual-note-storage-mode',
-    tenantId: storageConfig.data?.tenantId,
     paramName: '时光记事存储模式',
     paramKey: 'note.storage.mode',
-    groupCode: storageGroupCode.value,
-    groupName: storageGroupName.value,
+    groupCode: storageGroupCode,
+    groupName: storageGroupName,
     paramType: 'single_text',
     defaultValue: '本机存储',
-    paramValue: storageConfig.cloudEnabled
-      ? '本机默认 · Supabase 云端可选'
-      : '本机默认 · 仅本机模式',
+    paramValue: storageConfig.value
+      ? {
+          closed: '仅本机存储',
+          all: '云端 · 全部用户',
+          tenants: `云端 · ${storageConfig.value.targetIds.length} 个指定租户`,
+          users: `云端 · ${storageConfig.value.targetIds.length} 位指定人员`
+        }[storageConfig.value.scope]
+      : '暂未读取授权范围',
     enabled: true,
     builtin: true,
     sort: Number.MAX_SAFE_INTEGER,
-    remark: '本机无需登录；云端模式由每台设备自行选择。',
-    updateBy: storageConfig.data?.updateBy || '系统配置',
-    updateTime: storageConfig.data?.updateTime
+    remark: '本机始终可用，云端需登录并获得授权。',
+    updateBy: '系统配置',
+    updateTime: storageConfig.value?.updatedAt ?? undefined
   })
 
   const isStorageParamRow = (row: SystemParam): boolean => row.id === 'virtual-note-storage-mode'
@@ -452,6 +447,7 @@
             isPlatformSuper.value ? (
               <ArtButtonTable
                 type="edit"
+                label="编辑时光记事存储模式"
                 permission="System:SystemParam:Edit"
                 onClick={() => openStorageConfig()}
               />
@@ -479,11 +475,11 @@
   }
 
   const openStorageConfig = (): void => {
-    if (!storageConfig.data?.id) {
-      ElMessage.warning('公开配置暂不可用，请稍后刷新参数列表')
+    if (!isAllTenants.value) {
+      ElMessage.warning('云端授权是全局设置，请切换到“全部租户”后编辑')
       return
     }
-    void storageDialogRef.value?.handleOpen(storageConfig.data)
+    void storageDialogRef.value?.handleOpen()
   }
 
   const handleDelete = async (row: SystemParam): Promise<void> => {
@@ -523,25 +519,18 @@
   }
 
   const loadStorageConfig = async (): Promise<void> => {
-    if (storageConfig.loading) return
-    storageConfig.loading = true
+    if (!isPlatformSuper.value || !hasAuth('System:SystemParam:Edit')) return
     try {
-      const { data, error } = await fetchWebsiteConfig()
-      if (error) throw error
-      storageConfig.data = data
-      storageConfig.cloudEnabled = data?.noteStorageCloudEnabled === true
+      storageConfig.value = await fetchNoteCloudSettings()
     } catch (error) {
-      storageConfig.data = null
       console.warn('mobile storage configuration load failed', error)
     } finally {
-      storageConfig.loading = false
       await Promise.all([tableQueryRef.value?.refreshData(), loadStats()])
     }
   }
 
-  const handleStorageSaveSuccess = (config: WebsiteConfig): void => {
-    storageConfig.data = config
-    storageConfig.cloudEnabled = config.noteStorageCloudEnabled === true
+  const handleStorageSaveSuccess = (config: NoteCloudSettings): void => {
+    storageConfig.value = config
     void Promise.all([tableQueryRef.value?.refreshData(), loadStats()])
   }
 

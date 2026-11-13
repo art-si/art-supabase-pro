@@ -651,6 +651,14 @@ project's balances. FinanceProjectArApReport:Export is the only additional actio
 browser coverage is in tests/e2e/fms-project-ar-ap-report.spec.ts, including narrow-width
 rendering.
 
+## 时光记事云端授权（2026-11-13）
+
+平台超级管理员在“全部租户”范围内，通过“参数设置 → 时光记事存储模式”维护云端授权，需要 `System:SystemParam:Edit`。授权名单保存在 `app_private.note_cloud_settings`，不会出现在公开网站配置中。移动端通过 `get_note_cloud_access()` 获取当前身份的结果，不能指定其他人的身份或租户。
+
+笔记及私有图片桶在原有所有权策略上增加限制：全部用户、指定租户、指定人员或仅本机。指定范围以已启用的账号及其真实租户为准，同租户不会共享笔记。后台跨用户管理继续使用原有的 `System:Notes:*` 权限；平台管理员选定具体租户时，读取范围限定为该租户的账号。撤权不清除历史。已签发的图片链接在原有效期内仍可访问，新版移动端签发的链接有效期为 10 分钟。
+
+首次配置前继承现有公开总开关；保存授权后同步该开关供旧版移动端显示入口，实际读写以数据库策略为准。上线时保留了全部用户模式和 39 条已有笔记。远端回滚验证见 `tests/integration/note-cloud-permissions.sql`；上线前的恢复快照位于忽略目录 `.artifacts/db-backups/note-cloud-before.json`。
+
 ## Role menu save timeout fix (2026-11-11)
 
 `public.set_role_menus(uuid, uuid[])` now applies permission changes as a set difference: it deletes only menu IDs removed from the request and inserts only newly selected IDs. The previous implementation deleted every row for the role before reinserting up to roughly 3,000 IDs, which amplified row locks when duplicate saves overlapped and surfaced as Postgres `57014` statement timeouts. The `(role_id, menu_id)` unique index was already present; the request body size was not the limiting factor. The native role permission dialog and API also de-duplicate IDs and reject a second save while one is in flight. The RPC keeps its original invoker execution model and authorization checks. The pre-change function definition is retained in the ignored `.artifacts/role-menu-save-backup/set_role_menus.before.sql` file.

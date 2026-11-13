@@ -5,7 +5,7 @@
       eyebrow="PERSONAL JOURNAL OPERATIONS"
       title="时光笔记"
       description="管理已同步到 Supabase 的时间轴笔记，按正文和日期检索，并维护正文与标签。"
-      icon="ri:book-mark-line"
+      icon="ri:book-marked-line"
       :tags="workspaceTags"
       :metrics="workspaceMetrics"
       refreshable
@@ -20,6 +20,7 @@
 
     <ArtTableQuery
       ref="tableQueryRef"
+      :aria-busy="deleteBusy"
       focusable
       v-model="table.searchQuery"
       :search-items="table.searchItems"
@@ -31,24 +32,39 @@
       :table-props="tableProps"
     />
 
+    <ArtOverlayLoading
+      v-if="deleteBusy"
+      loading
+      overlay
+      text="正在检查并删除笔记…"
+      description="请稍候，完成后会自动更新列表与统计"
+    />
     <NoteDialog ref="dialogRef" @success="handleSaveSuccess" />
     <NoteDetailDrawer ref="detailDrawerRef" />
     <MasterDataDeleteGuard ref="deleteGuardRef" />
+    <ElImageViewer
+      v-if="imagePreviewUrls.length"
+      :url-list="imagePreviewUrls"
+      teleported
+      hide-on-click-modal
+      @close="imagePreviewUrls = []"
+    />
   </div>
 </template>
 
 <script setup lang="tsx">
   import type { ComputedRef, UnwrapNestedRefs } from 'vue'
+  import { ElImage, ElImageViewer, ElMessage, ElTag } from 'element-plus'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
     ArtTableQueryExpose,
-    ArtTableQueryHeaderActionContext,
     ArtTableQueryHeaderAction,
     ArtTableQueryTableProps
   } from '@/components/core/tables/art-table-query/index.vue'
   import type { ColumnOption, DialogType } from '@/types'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric,
     type BusinessWorkspaceTag
@@ -59,7 +75,7 @@
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { formatWithDayjs } from '@/utils/time'
-  import { fetchNoteList, fetchNoteStats, deleteNote } from '@/api/notes'
+  import { fetchNoteList, fetchNoteStats, deleteNote, deleteNotes } from '@/api/notes'
   import NoteDialog from './modules/note-dialog.vue'
   import NoteDetailDrawer from './modules/note-detail-drawer.vue'
 
@@ -82,11 +98,15 @@
     handleOpen: (row: NoteItem) => Promise<void>
   }
 
-  const { deleteGuardRef, deleteRecord, deleteRecords } = useRecordDeleteGuard('notes', '时光笔记')
+  const { deleteGuardRef, deleteRecord, deleteRecords, deleteBusy } = useRecordDeleteGuard(
+    'notes',
+    '时光笔记'
+  )
   const tableQueryRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<DialogExpose>()
   const detailDrawerRef = ref<DetailDrawerExpose>()
   const loading = ref(false)
+  const imagePreviewUrls = ref<string[]>([])
   const stats = ref<Api.Notes.NoteStats>({
     total: 0,
     users: 0,
@@ -119,6 +139,7 @@
       {
         type: 'add',
         label: '新增笔记',
+        disabled: deleteBusy.value,
         permission: 'System:Notes:Add',
         onClick: () => void dialogRef.value?.handleOpen()
       },
@@ -126,9 +147,10 @@
         type: 'delete',
         label: '批量删除',
         permission: 'System:Notes:Delete',
-        content: ({ selectedCount }: ArtTableQueryHeaderActionContext) =>
-          `确认删除选中的 ${selectedCount} 条时光笔记？此操作不可恢复。`,
-        onClick: ({ selectedRows }) => void removeSelected(selectedRows as NoteItem[])
+        confirm: false,
+        disabled: deleteBusy.value,
+        buttonProps: { loading: deleteBusy.value },
+        onClick: ({ selectedRows }) => removeSelected(selectedRows as NoteItem[])
       }
     ])
   })
@@ -190,34 +212,80 @@
       label: '笔记内容',
       minWidth: 360,
       formatter: (row) => (
-        <div class="notes-page__content-cell">
-          <div class="notes-page__content-title">
-            <span class="notes-page__content-icon">
-              <ArtSvgIcon icon="ri:quill-pen-line" />
-            </span>
-            <strong title={row.contentText}>{row.contentText || '富文本笔记'}</strong>
+        <div class="grid min-w-0 gap-1.5 py-1">
+          <div class="flex min-w-0 items-center gap-2">
+            <ArtSvgIcon icon="ri:quill-pen-line" class="shrink-0 text-base text-theme" />
+            <strong class="min-w-0 truncate font-semibold" title={row.contentText}>
+              {row.contentText || '富文本笔记'}
+            </strong>
           </div>
-          <div class="notes-page__content-meta">
-            <span>
-              {row.tags.length ? row.tags.map((tag) => `#${tag}`).join(' ') : '未设置标签'}
-            </span>
-            {row.images.length ? (
-              <span>
-                <ArtSvgIcon icon="ri:image-2-line" /> {row.images.length} 张图片
-              </span>
-            ) : null}
+          <div class="flex min-w-0 flex-wrap gap-1.5">
+            {row.tags.length ? (
+              row.tags.map((tag) => (
+                <ElTag key={tag} class="max-w-full" type="info" size="small" effect="light">
+                  <span class="block truncate" title={tag}>
+                    {tag}
+                  </span>
+                </ElTag>
+              ))
+            ) : (
+              <span class="text-xs text-[var(--el-text-color-secondary)]">未设置标签</span>
+            )}
           </div>
         </div>
       )
+    },
+    {
+      prop: 'images',
+      label: '图片',
+      width: 120,
+      formatter: (row) =>
+        row.imageUrls.length ? (
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="h-12 w-12 shrink-0 overflow-hidden rounded-[var(--art-control-radius)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--theme-color)]"
+              aria-label={`预览笔记的 ${row.imageUrls.length} 张图片`}
+              title="预览笔记图片"
+              onClick={(event) => {
+                event.stopPropagation()
+                imagePreviewUrls.value = row.imageUrls
+              }}
+            >
+              <ElImage
+                class="h-full w-full"
+                src={row.imageUrls[0]}
+                fit="cover"
+                loading="lazy"
+                {...{ alt: '笔记图片缩略图', width: 48, height: 48 }}
+                v-slots={{
+                  placeholder: () => <span class="text-xs">加载中</span>,
+                  error: () => <span class="text-xs">加载失败</span>
+                }}
+              />
+            </button>
+            <span class="text-xs text-[var(--el-text-color-secondary)]">
+              {row.images.length} 张
+            </span>
+          </div>
+        ) : (
+          <span class="text-xs text-[var(--el-text-color-secondary)]">
+            {row.images.length ? '图片暂不可用' : '无图片'}
+          </span>
+        )
     },
     {
       prop: 'author',
       label: '归属用户',
       minWidth: 160,
       formatter: (row) => (
-        <div class="notes-page__author-cell">
-          <strong>{authorLabel(row)}</strong>
-          <span>{row.author?.tenantName || '未关联后台用户'}</span>
+        <div class="grid min-w-0 gap-1">
+          <strong class="block truncate font-semibold" title={authorLabel(row)}>
+            {authorLabel(row)}
+          </strong>
+          <span class="block truncate text-xs text-[var(--el-text-color-secondary)]">
+            {row.author?.tenantName || '未关联后台用户'}
+          </span>
         </div>
       )
     },
@@ -226,7 +294,9 @@
       label: '记录时间',
       width: 170,
       formatter: (row) => (
-        <span class="notes-page__time-cell">{formatWithDayjs(row.createdAt) || '--'}</span>
+        <span class="text-[var(--el-text-color-secondary)] tabular-nums">
+          {formatWithDayjs(row.createdAt) || '--'}
+        </span>
       )
     },
     {
@@ -246,12 +316,14 @@
             type="edit"
             label="编辑笔记"
             permission="System:Notes:Edit"
+            disabled={deleteBusy.value}
             onClick={() => void dialogRef.value?.handleOpen(row)}
           />
           <ArtButtonTable
             type="delete"
             label="删除笔记"
             permission="System:Notes:Delete"
+            disabled={deleteBusy.value}
             onClick={() => void removeNote(row)}
           />
         </BusinessTableRowActions>
@@ -272,13 +344,15 @@
       },
       permission: 'System:Notes:Delete',
       remove: () => deleteNote(row.id),
+      successMessage: '笔记已删除',
       onDeleted: async () => {
-        await tableQueryRef.value?.refreshRemove()
+        await Promise.all([tableQueryRef.value?.refreshRemove(), loadStats()])
       }
     })
   }
 
   async function removeSelected(rows: NoteItem[]): Promise<void> {
+    let deletedCount = 0
     const resources = rows.map((row) => ({
       id: row.id,
       label: `${authorLabel(row)} · ${row.contentText.slice(0, 24) || '富文本笔记'}`
@@ -287,10 +361,11 @@
       resources,
       permission: 'System:Notes:Delete',
       remove: async () => {
-        for (const row of rows) await deleteNote(row.id)
+        deletedCount = await deleteNotes(rows.map((row) => row.id))
       },
       onDeleted: async () => {
-        await tableQueryRef.value?.refreshRemove()
+        ElMessage.success(`已删除 ${deletedCount} 条笔记`)
+        await Promise.all([tableQueryRef.value?.refreshRemove(), loadStats()])
       },
       confirmMessage: `确认删除选中的 ${rows.length} 条时光笔记？此操作不可恢复。`
     })
@@ -322,6 +397,7 @@
 
 <style scoped lang="scss">
   .notes-page {
+    position: relative;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -330,67 +406,5 @@
   .notes-page :deep(.art-table-query) {
     flex: 1;
     min-height: 0;
-  }
-
-  .notes-page__content-cell,
-  .notes-page__author-cell {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-  }
-
-  .notes-page__content-title {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    min-width: 0;
-  }
-
-  .notes-page__content-title strong,
-  .notes-page__author-cell strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-weight: 600;
-    color: var(--el-text-color-primary);
-    white-space: nowrap;
-  }
-
-  .notes-page__content-icon {
-    display: grid;
-    flex: 0 0 32px;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    color: var(--el-color-primary);
-    background: var(--el-color-primary-light-9);
-    border: 1px solid var(--el-color-primary-light-7);
-    border-radius: var(--art-control-radius);
-  }
-
-  .notes-page__content-meta,
-  .notes-page__author-cell span {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 12px;
-    color: var(--el-text-color-secondary);
-    white-space: nowrap;
-  }
-
-  .notes-page__content-meta svg {
-    vertical-align: -2px;
-  }
-
-  .notes-page__time-cell {
-    font-variant-numeric: tabular-nums;
-    color: var(--el-text-color-secondary);
-  }
-
-  @media (width <= 900px) {
-    .notes-page__content-meta {
-      display: none;
-    }
   }
 </style>

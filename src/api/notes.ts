@@ -190,12 +190,22 @@ export async function editNote(payload: Api.Notes.NotePayload): Promise<void> {
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  await responseHandle(() => supabase.from('notes').delete({ count: 'exact' }).eq('id', id), {
-    breakReturn: true,
-    requireAffected: true,
-    showErrorMessage: true,
-    errorMessage: '笔记删除失败，请检查权限后重试',
-    noAffectedMessage: '笔记不存在或当前账号没有删除权限，请刷新后重试',
-    showReferenceFeedback: false
-  })
+  await deleteNotes([id])
+}
+
+export async function deleteNotes(ids: string[]): Promise<number> {
+  const noteIds = uniq(ids.filter(Boolean))
+  if (!noteIds.length) throw new Error('请选择需要删除的笔记')
+  const result = await responseHandle(
+    () => supabase.from('notes').delete({ count: 'exact' }).in('id', noteIds),
+    {
+      breakReturn: true,
+      requireAffected: true,
+      showErrorMessage: true,
+      errorMessage: '笔记删除失败，请检查权限后重试',
+      noAffectedMessage: '笔记不存在或当前账号没有删除权限，请刷新后重试',
+      showReferenceFeedback: false
+    }
+  )
+  return result.total ?? 0
 }
