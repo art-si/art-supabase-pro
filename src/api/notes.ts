@@ -87,8 +87,8 @@ function mapRows(
 export async function fetchNoteList(params: Api.Notes.NoteListParams) {
   const { keyword = '', dateRange, from = 0, to = 19 } = params
   let query = supabase
-    .from('notes')
-    .select(NOTE_SELECT, { count: 'exact' })
+    .rpc('list_platform_notes', {}, { count: 'exact' })
+    .select(NOTE_SELECT)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(from, to)
@@ -120,7 +120,7 @@ export async function fetchNoteStats(): Promise<{
   error: unknown | null
 }> {
   const result = await responseHandle<Pick<NoteRow, 'id' | 'userId' | 'images' | 'createdAt'>[]>(
-    () => supabase.from('notes').select('id,user_id,images,created_at'),
+    () => supabase.rpc('list_platform_notes').select('id,user_id,images,created_at'),
     {
       showErrorMessage: false,
       errorMessage: '笔记概览加载失败，请刷新后重试'
@@ -209,3 +209,4 @@ export async function deleteNotes(ids: string[]): Promise<number> {
   )
   return result.total ?? 0
 }
+
