@@ -1,5 +1,7 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { isObjectRecord } from '@/utils/record'
 import { fetchAllRangePages } from '@/utils/supabase/pagination'
+import { isValidDateTimeValue } from '@/utils/time'
 
 export type NoteCloudScope = 'closed' | 'all' | 'tenants' | 'users'
 
@@ -22,19 +24,31 @@ interface NoteCloudUser {
 
 const { supabase, responseHandle } = useSupabase()
 
-export async function fetchNoteCloudSettings(): Promise<NoteCloudSettings> {
-  const { data } = await responseHandle<NoteCloudSettings>(
-    () => supabase.rpc('get_note_cloud_settings'),
-    { breakReturn: true, showErrorMessage: false }
+function isNoteCloudSettings(value: unknown): value is NoteCloudSettings {
+  if (!isObjectRecord(value)) return false
+  const { scope, targetIds, updatedAt } = value
+  return (
+    (scope === 'closed' || scope === 'all' || scope === 'tenants' || scope === 'users') &&
+    Array.isArray(targetIds) &&
+    targetIds.every((id: unknown) => typeof id === 'string') &&
+    (updatedAt === null ||
+      (typeof updatedAt === 'string' && isValidDateTimeValue(updatedAt, false)))
   )
-  if (!data) throw new Error('无法读取云端授权，请刷新后重试')
+}
+
+export async function fetchNoteCloudSettings(): Promise<NoteCloudSettings> {
+  const { data } = await responseHandle(() => supabase.rpc('get_note_cloud_settings'), {
+    breakReturn: true,
+    showErrorMessage: false
+  })
+  if (!isNoteCloudSettings(data)) throw new Error('无法读取云端授权，请刷新后重试')
   return data
 }
 
 export async function saveNoteCloudSettings(
   settings: NoteCloudSettings
 ): Promise<NoteCloudSettings> {
-  const { data } = await responseHandle<NoteCloudSettings>(
+  const { data } = await responseHandle(
     () =>
       supabase.rpc('save_note_cloud_settings', {
         p_scope: settings.scope,
@@ -43,7 +57,7 @@ export async function saveNoteCloudSettings(
       }),
     { breakReturn: true, showErrorMessage: false }
   )
-  if (!data) throw new Error('无法确认云端授权已保存，请刷新后核对')
+  if (!isNoteCloudSettings(data)) throw new Error('无法确认云端授权已保存，请刷新后核对')
   return data
 }
 

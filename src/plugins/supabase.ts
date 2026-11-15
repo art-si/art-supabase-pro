@@ -1,7 +1,7 @@
-import cloudbase from '@cloudbase/js-sdk'
 import type { ICloudbaseRequest } from '@cloudbase/js-sdk/types/request'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isSupabaseApi } from '@/config/api-provider'
+import cloudbase from '@/plugins/cloudbase-sdk'
 import { decodeFunctionResponse } from '@/utils/http/response'
 import {
   normalizePlatformTenantReadUrl,

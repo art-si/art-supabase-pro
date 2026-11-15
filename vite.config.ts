@@ -184,7 +184,7 @@ export default async ({ mode }: { mode: string }) => {
           ? []
           : [
               {
-                find: /^@cloudbase\/js-sdk$/,
+                find: /^@\/plugins\/cloudbase-sdk$/,
                 replacement: resolvePath('src/plugins/cloudbase-sdk-disabled.ts')
               }
             ]),

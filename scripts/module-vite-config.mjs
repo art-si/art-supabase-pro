@@ -132,6 +132,10 @@ export async function createModuleViteConfig({
     preview: { host: true, port },
     resolve: {
       alias: {
+        '@/plugins/cloudbase-sdk': path.join(
+          platformSourceRoot,
+          'plugins/cloudbase-sdk-disabled.ts'
+        ),
         '@/router/core/platform-route-modules': path.join(
           platformSourceRoot,
           'router/core/standalone-route-modules.ts'
@@ -234,7 +238,6 @@ export async function createModuleViteConfig({
       ],
       include: [
         ...hostedModuleSharedDependencies,
-        '@cloudbase/js-sdk',
         'axios',
         'crypto-js',
         'crypto-js/aes',
