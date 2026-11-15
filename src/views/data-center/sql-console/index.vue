@@ -1,5 +1,5 @@
 <template>
-  <div class="sql-console-page art-full-height business-workspace-page">
+  <div class="sql-console-page business-workspace-page">
     <section
       ref="workspaceElement"
       class="sql-console-container business-workspace-content art-card-xs"
@@ -1528,7 +1528,7 @@
     tenant: () => tenantScopeValue(),
     dialect: () => dialect.value,
     querySchema: () => querySchema.value,
-    publish: registerSqlMetadata
+    publish: (metadata) => registerSqlMetadata(metadata, connection.value?.database)
   })
   const tenantScopeValue = () =>
     userStore.isPlatformSuper
@@ -2051,7 +2051,10 @@
 
 <style scoped lang="scss">
   .sql-console-page {
-    height: var(--art-full-height);
+    box-sizing: border-box;
+    // The vertical splitter needs a definite height even when the resource tree moves into a drawer.
+    height: var(--art-full-height, 100vh);
+    min-height: 0;
   }
 
   .sql-console-container {

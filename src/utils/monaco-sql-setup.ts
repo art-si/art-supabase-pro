@@ -64,6 +64,7 @@ let dbMetadata: Api.DataCenter.SqlConsole.DatabaseMetadata = {
   columns: [],
   foreignKeys: []
 }
+let dbDefaultSchema = 'public'
 
 type SqlMetadataLoader = (sql: string, functions: boolean) => Promise<void>
 let metadataLoader: SqlMetadataLoader | undefined
@@ -103,9 +104,11 @@ async function hydrateMetadata(
 }
 
 export function registerSqlMetadata(
-  metadata: Api.DataCenter.SqlConsole.DatabaseMetadata | Api.DataCenter.SqlConsole.TableMetadata[]
+  metadata: Api.DataCenter.SqlConsole.DatabaseMetadata | Api.DataCenter.SqlConsole.TableMetadata[],
+  defaultSchema = 'public'
 ) {
   if (!metadata) return
+  dbDefaultSchema = defaultSchema
 
   if (Array.isArray(metadata)) {
     dbMetadata.tables = metadata
@@ -136,29 +139,24 @@ monaco.languages.registerCompletionItemProvider('mysql', {
   async provideCompletionItems(model, position, _context, token) {
     const sql = model.getValue()
     const offset = model.getOffsetAt(position)
-    if (getSqlCompletionContext(sql, offset, 'mysql').kind === 'none') return { suggestions: [] }
-    if (
-      !(await hydrateMetadata(
-        model,
-        getSqlCompletionContext(sql, offset, 'mysql').statement,
-        false,
-        token
-      ))
-    )
+    const { kind, statement } = getSqlCompletionContext(sql, offset, 'mysql')
+    if (kind === 'none' || !(await hydrateMetadata(model, statement, false, token)))
       return { suggestions: [] }
     const range = createRange(model, position)
     const prefix = sql.slice(0, offset - model.getWordUntilPosition(position).word.length)
     const qualifier = prefix.match(/(?:`([^`]+)`|([\w$]+))\.$/)
     const name = qualifier?.[1] || qualifier?.[2]
-    const aliases = extractSqlAliases(sql.replace(/`/g, '"'))
-    const table = name ? resolveTableRef(name, dbMetadata, aliases) : undefined
+    const normalizedStatement = statement.replace(/`/g, '"')
+    const table = name
+      ? resolveTableRef(name, dbMetadata, extractSqlAliases(normalizedStatement, dbDefaultSchema))
+      : undefined
     const suggestions: monaco.languages.CompletionItem[] = []
     const identifier = (value: string) =>
       /^[a-z_][\w$]*$/i.test(value) ? value : quoteSqlIdentifier(value, 'mysql')
     if (!name || table) {
       const columns = table
         ? table.columns.map((column) => ({ table, column }))
-        : getColumnsForSqlContext(sql.replace(/`/g, '"'), dbMetadata)
+        : getColumnsForSqlContext(normalizedStatement, dbMetadata, dbDefaultSchema)
       for (const { table: source, column } of columns)
         suggestions.push({
           label: column.name,

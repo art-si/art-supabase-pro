@@ -504,14 +504,13 @@ export function buildTableIndexes(metadata: SqlMetadataRef) {
   return { tableByKey, tableByName }
 }
 
-export function extractSqlAliases(sql: string): SqlAliasRef[] {
+export function extractSqlAliases(sql: string, defaultSchema = 'public'): SqlAliasRef[] {
   const aliases = new Map<string, SqlAliasRef>()
   const aliasPattern =
     /\b(from|join|update|into)\s+((?:"?([a-zA-Z0-9_]+)"?)\.)?"?([a-zA-Z0-9_]+)"?(?:\s+(?:as\s+)?([a-zA-Z0-9_]+))?/gi
 
-  let match: RegExpExecArray | null
-  while ((match = aliasPattern.exec(sql)) !== null) {
-    const schema = match[3] || 'public'
+  for (const match of sql.matchAll(aliasPattern)) {
+    const schema = match[3] ?? defaultSchema
     const tableName = match[4]
     const candidate = match[5]
     const alias =
@@ -552,27 +551,24 @@ export function resolveTableRef(
   return matches[0]
 }
 
-export function getColumnsForSqlContext(sql: string, metadata: SqlMetadataRef) {
-  const aliases = extractSqlAliases(sql)
-  const tables = aliases
-    .map((alias) => {
-      const table = resolveTableRef(alias.alias, metadata, aliases)
-      return table
-        ? {
-            alias: alias.alias,
-            table
-          }
-        : null
-    })
-    .filter(Boolean) as Array<{ alias: string; table: SqlTableRef }>
-
-  return tables.flatMap(({ alias, table }) =>
-    table.columns.map((column) => ({
-      alias,
-      table,
-      column
-    }))
-  )
+export function getColumnsForSqlContext(
+  sql: string,
+  metadata: SqlMetadataRef,
+  defaultSchema?: string
+) {
+  const aliases = extractSqlAliases(sql, defaultSchema)
+  if (!aliases.length) return []
+  const { tableByKey } = buildTableIndexes(metadata)
+  return aliases.flatMap(({ alias, tableSchema, tableName }) => {
+    const table = tableByKey.get(getTableKey(tableSchema, tableName))
+    return (
+      table?.columns.map((column) => ({
+        alias,
+        table,
+        column
+      })) ?? []
+    )
+  })
 }
 
 function buildRelationDocumentation(relation: SqlForeignKeyRef) {
