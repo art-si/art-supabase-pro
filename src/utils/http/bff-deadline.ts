@@ -20,14 +20,22 @@ export async function withBffDeadline<T>(
     rejectDeadline = reject
   })
   const cancel = (reason: 'timeout' | 'aborted') => {
-    controller.abort()
+    if (controller.signal.aborted) return
+    // The transport may settle synchronously in an abort listener.
     rejectDeadline(new BffDeadlineError(reason))
+    controller.abort()
   }
   const onExternalAbort = () => cancel('aborted')
   externalSignal?.addEventListener('abort', onExternalAbort, { once: true })
   const timer = setTimeout(() => cancel('timeout'), timeoutMs)
   try {
-    return await Promise.race([operation(controller.signal), deadline])
+    let request: Promise<T>
+    try {
+      request = operation(controller.signal)
+    } catch (error) {
+      request = Promise.reject(error)
+    }
+    return await Promise.race([deadline, request])
   } finally {
     clearTimeout(timer)
     externalSignal?.removeEventListener('abort', onExternalAbort)
