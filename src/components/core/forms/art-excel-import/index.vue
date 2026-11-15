@@ -35,6 +35,8 @@
       icon?: string | Component
       buttonProps?: Record<string, unknown>
       parseExcel?: boolean
+      /** Keep CSV cell text for workflows that validate the original values. */
+      keepCsvText?: boolean
       contextKey?: object | string | number
     }>(),
     {
@@ -108,7 +110,7 @@
         emit('file-change', rawFile, uploadFile)
         return
       }
-      const results = await importExcelFile(rawFile)
+      const results = await importExcelFile(rawFile, { keepCsvText: props.keepCsvText })
       if (!isCurrent()) return
       emit('import-success', results, rawFile, uploadFile)
     } catch (error) {
