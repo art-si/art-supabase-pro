@@ -78,6 +78,7 @@ export const useUserStore = defineStore(
     const dictMap = ref<DictMap>({})
     let dictListFetchedAt = 0
     let dictListRequest: Promise<void> | null = null
+    let dictListRevision = 0
     let dictCacheVersion = 0
     const dictCodeFetchedAt = new Map<string, number>()
     const dictCodeRequests = new Map<string, Promise<void>>()
@@ -387,9 +388,12 @@ export const useUserStore = defineStore(
           })
         })
 
-        setDictMap(groupData)
+        dictListRevision += 1
         dictListFetchedAt = Date.now()
-        Object.keys(groupData).forEach((code) => dictCodeFetchedAt.set(code, dictListFetchedAt))
+        // 全量结果替换缓存，旧的按类型请求不得写回已删除或停用的字典项。
+        dictCodeFetchedAt.clear()
+        dictCodeRequests.clear()
+        setDictMap(groupData)
       })()
       dictListRequest = request
 
@@ -406,6 +410,7 @@ export const useUserStore = defineStore(
       if (activeRequest) return activeRequest
 
       const loadVersion = dictCacheVersion
+      const listRevision = dictListRevision
       const request = (async () => {
         const { fetchDictionaryListByTypeCode } = await import('@/api/data-center')
         const { fetchMaterialUnitCompatibilityOptions } = await import('@/api/unit-of-measure')
@@ -414,13 +419,18 @@ export const useUserStore = defineStore(
           ? await fetchMaterialUnitCompatibilityOptions(dictCode)
           : await fetchDictionaryListByTypeCode(dictCode)
         if (loadVersion !== dictCacheVersion) return
+        if (listRevision !== dictListRevision) {
+          // 优先使用当前全量结果；缺少该类型时，由当前请求重新验证。
+          await ensureDictLoaded(dictCode)
+          return
+        }
         if (error) throw error
 
+        dictCodeFetchedAt.set(dictCode, Date.now())
         dictMap.value = {
           ...dictMap.value,
           [dictCode]: (data ?? []).slice().sort((a, b) => Number(a.sort) - Number(b.sort))
         }
-        dictCodeFetchedAt.set(dictCode, Date.now())
       })()
       dictCodeRequests.set(dictCode, request)
 
@@ -431,25 +441,20 @@ export const useUserStore = defineStore(
       }
     }
 
+    // 缺少该类型时按需补取，已成功加载的空结果仍可复用。
+    const isCodeFresh = (code: string): boolean =>
+      Object.hasOwn(dictMap.value, code) &&
+      isDictionaryCacheFresh(dictCodeFetchedAt.get(code), dictListFetchedAt)
+
     const ensureDictLoaded = async (dictCode: keyof DictMap | string): Promise<void> => {
       if (!isLogin.value) return
       const loadVersion = dictCacheVersion
       const code = String(dictCode)
-      // 全量缓存可能早于新增字典；缺失的类型需要单独补取。
-      const listFetchedAt = Object.prototype.hasOwnProperty.call(dictMap.value, code)
-        ? dictListFetchedAt
-        : 0
-      // 空字典也是已加载结果；不能按数组长度判断，否则每次渲染都会重新请求。
-      if (isDictionaryCacheFresh(dictCodeFetchedAt.get(code), listFetchedAt)) return
+      if (isCodeFresh(code)) return
       if (dictListRequest) {
         // 全量请求在途时复用其结果；若其失败，当前字典仍可按类型单独补取。
         await dictListRequest.catch(() => undefined)
-        if (!isLogin.value || loadVersion !== dictCacheVersion) return
-        if (
-          Object.prototype.hasOwnProperty.call(dictMap.value, code) &&
-          isDictionaryCacheFresh(dictCodeFetchedAt.get(code), dictListFetchedAt)
-        )
-          return
+        if (!isLogin.value || loadVersion !== dictCacheVersion || isCodeFresh(code)) return
       }
       await fetchDictByCode(code)
     }
