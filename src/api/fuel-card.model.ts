@@ -1,4 +1,4 @@
-import { isPlainObjectRecord } from '@/utils/type-guards'
+import { decodeSupabaseRpcPage } from '@/utils/supabase/pagination'
 import type {
   FuelCard,
   FuelCardEntry,
@@ -8,27 +8,10 @@ import type {
   FuelCardStatus
 } from './fuel-card'
 
-function parsePage<T>(
-  value: unknown,
-  parseRow: (row: Record<string, unknown>) => T
-): {
-  data: T[]
-  total: number
-} {
-  if (!isPlainObjectRecord(value) || !Array.isArray(value.records)) {
-    throw new Error('油卡查询结果格式异常，请刷新后重试')
-  }
-  const total = value.total
-  if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0) {
-    throw new Error('油卡查询总数格式异常，请刷新后重试')
-  }
-  return {
-    data: value.records.map((row) => {
-      if (!isPlainObjectRecord(row)) throw new Error('油卡记录格式异常，请刷新后重试')
-      return parseRow(row)
-    }),
-    total
-  }
+const pageErrors = {
+  page: '油卡查询结果格式异常，请刷新后重试',
+  total: '油卡查询总数格式异常，请刷新后重试',
+  row: '油卡记录格式异常，请刷新后重试'
 }
 
 function text(row: Record<string, unknown>, key: string): string {
@@ -185,10 +168,10 @@ function parseEntry(row: Record<string, unknown>): FuelCardEntry {
 
 /** Parse the deep camel-case JSON returned by responseHandle. */
 export function parseFuelCardPage(value: unknown) {
-  return parsePage(value, parseCard)
+  return decodeSupabaseRpcPage(value, pageErrors, parseCard)
 }
 
 /** Parse the deep camel-case JSON returned by responseHandle. */
 export function parseFuelCardLedgerPage(value: unknown) {
-  return parsePage(value, parseEntry)
+  return decodeSupabaseRpcPage(value, pageErrors, parseEntry)
 }

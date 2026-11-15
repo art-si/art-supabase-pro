@@ -1,4 +1,5 @@
 import { isPlainObjectRecord } from '@/utils/type-guards'
+import { decodeSupabaseRpcPage } from '@/utils/supabase/pagination'
 
 export interface MainlineCostRecord {
   id: string
@@ -60,27 +61,14 @@ function nullableNumber(row: Record<string, unknown>, key: string): number | nul
   return value
 }
 
-function parsePage<T>(
-  value: unknown,
-  parseRow: (row: Record<string, unknown>) => T
-): MainlinePage<T> {
-  if (!isPlainObjectRecord(value) || !Array.isArray(value.records)) {
-    throw new Error('主线运营查询结果异常，请刷新后重试')
-  }
-  if (typeof value.total !== 'number' || !Number.isSafeInteger(value.total) || value.total < 0) {
-    throw new Error('主线运营查询总数异常，请刷新后重试')
-  }
-  return {
-    data: value.records.map((item: unknown) => {
-      if (!isPlainObjectRecord(item)) throw new Error('主线运营记录格式异常，请刷新后重试')
-      return parseRow(item)
-    }),
-    total: value.total
-  }
+const pageErrors = {
+  page: '主线运营查询结果异常，请刷新后重试',
+  total: '主线运营查询总数异常，请刷新后重试',
+  row: '主线运营记录格式异常，请刷新后重试'
 }
 
 export function parseMainlineCosts(value: unknown): MainlinePage<MainlineCostRecord> {
-  return parsePage(value, (row) => {
+  return decodeSupabaseRpcPage(value, pageErrors, (row) => {
     const amount = row.amount
     if (amount != null && typeof amount !== 'string' && typeof amount !== 'number') {
       throw new Error('主线费用金额格式异常，请刷新后重试')
@@ -105,7 +93,7 @@ export function parseMainlineCosts(value: unknown): MainlinePage<MainlineCostRec
 }
 
 export function parseVehicleFuelExecutions(value: unknown): MainlinePage<VehicleFuelExecution> {
-  return parsePage(value, (row) => ({
+  return decodeSupabaseRpcPage(value, pageErrors, (row) => ({
     waybillId: requiredText(row, 'waybillId'),
     waybillNo: requiredText(row, 'waybillNo'),
     status: requiredText(row, 'status'),
