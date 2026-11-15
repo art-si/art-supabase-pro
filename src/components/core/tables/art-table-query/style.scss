@@ -124,6 +124,11 @@
   min-height: 0;
 }
 
+// A table with a configured height must contribute that height to document flow.
+:deep(.art-table-query__table-host--configured-height > .art-table > .el-table) {
+  flex-basis: auto;
+}
+
 :deep(.art-table-query__table-host > .art-table > .pagination) {
   flex: 0 0 auto;
   padding-bottom: 4px;
