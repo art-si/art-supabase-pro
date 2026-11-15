@@ -43,6 +43,7 @@
   import { getFilePreviewTarget, type FilePreviewTarget } from '@/hooks/core/useFilePreview'
   import { useWebsiteConfig } from '@/hooks/core/useWebsiteConfig'
   import { useSettingStore } from '@/store/modules/setting'
+  import { fileViewerOptions } from './options'
 
   defineOptions({ name: 'ArtFileViewerPage' })
 
@@ -82,13 +83,6 @@
     canRetry: false
   })
 
-  const commonViewerOptions: FileViewerOptions = {
-    rendererMode: 'replace',
-    toolbar: {
-      position: 'bottom-right',
-      zoom: true
-    }
-  }
   // The image package narrows its handler to HTMLDivElement; the Vue wrapper declares HTMLElement.
   const imageRenderers = [imageRenderer] as unknown as FileViewerOptions['renderers']
   const blobFile = shallowRef<File>()
@@ -152,12 +146,12 @@
         imageExtensions.has(getFileExtension(localFile?.name || source.name))
       let options: FileViewerOptions
       if (isImage) {
-        options = { ...commonViewerOptions, renderers: imageRenderers }
+        options = { ...fileViewerOptions, renderers: imageRenderers }
       } else {
         const { default: allRenderers } = await import('@file-viewer/preset-all')
         if (version !== previewVersion) return
         options = {
-          ...commonViewerOptions,
+          ...fileViewerOptions,
           preset: allRenderers as unknown as FileViewerOptions['preset']
         }
       }

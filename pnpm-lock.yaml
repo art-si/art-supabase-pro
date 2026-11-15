@@ -163,6 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  shpjs@6.2.0>proj4: 2.22.0
   '@ljheee/xmind-parser>@xmldom/xmldom': 0.9.12
   '@fast-csv/parse@4.3.1': 4.3.6
   brace-expansion@1.1.16: 1.1.18
@@ -4938,14 +4939,6 @@ packages:
 
   process-nextick-args@2.0.1:
     resolution: {integrity: sha512-3ouUOpQhtgrbOa17J7+uxOTpITYWaGP7/AhoR3+A+/1e9skrzelGi/dXzEYyvbxubEF6Wn2ypscTKiKJFFn1ag==}
-
-  proj4@2.20.9:
-    resolution: {integrity: sha512-GLBGqXaTcdWnppre3o1sMmy4DcMGSGq/ng+9k2MTNddarRK6SveINqlqYzi3xEXuy06ljY1TTrC6H9C4f360IQ==}
-    peerDependencies:
-      geotiff: '*'
-    peerDependenciesMeta:
-      geotiff:
-        optional: true
 
   proj4@2.22.0:
     resolution: {integrity: sha512-MVvH09QrYm3A235rcX39WDiCKanrBiblu28l0KYIn/B2DofmYhvP/LLS43kE66jNDfx/P1l/nah3JmsAq8UgbQ==}
@@ -10690,11 +10683,6 @@ snapshots:
 
   process-nextick-args@2.0.1: {}
 
-  proj4@2.20.9:
-    dependencies:
-      mgrs: 1.0.0
-      wkt-parser: 1.5.5
-
   proj4@2.22.0:
     dependencies:
       mgrs: 1.0.0
@@ -11060,7 +11048,7 @@ snapshots:
     dependencies:
       but-unzip: 0.1.10
       parsedbf: 2.0.0
-      proj4: 2.20.9
+      proj4: 2.22.0
     transitivePeerDependencies:
       - geotiff
 

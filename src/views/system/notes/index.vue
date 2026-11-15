@@ -4,7 +4,7 @@
       density="compact"
       eyebrow="PERSONAL JOURNAL OPERATIONS"
       title="时光笔记"
-      description="管理已同步到 Supabase 的时间轴笔记，按正文和日期检索，并维护正文与标签。"
+      description="按内容、日期和归属用户检索云端笔记，维护正文、标签和图片。"
       icon="ri:book-marked-line"
       :tags="workspaceTags"
       :metrics="workspaceMetrics"
@@ -20,7 +20,6 @@
 
     <ArtTableQuery
       ref="tableQueryRef"
-      :aria-busy="deleteBusy"
       focusable
       v-model="table.searchQuery"
       :search-items="table.searchItems"
@@ -32,13 +31,6 @@
       :table-props="tableProps"
     />
 
-    <ArtOverlayLoading
-      v-if="deleteBusy"
-      loading
-      overlay
-      text="正在检查并删除笔记…"
-      description="请稍候，完成后会自动更新列表与统计"
-    />
     <NoteDialog ref="dialogRef" @success="handleSaveSuccess" />
     <NoteDetailDrawer ref="detailDrawerRef" />
     <MasterDataDeleteGuard ref="deleteGuardRef" />
@@ -64,7 +56,6 @@
   import type { ColumnOption, DialogType } from '@/types'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
-  import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric,
     type BusinessWorkspaceTag
@@ -73,9 +64,19 @@
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { useUserStore } from '@/store/modules/user'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { formatWithDayjs } from '@/utils/time'
-  import { fetchNoteList, fetchNoteStats, deleteNote, deleteNotes } from '@/api/notes'
+  import {
+    fetchNoteAuthorOptions,
+    fetchNoteList,
+    fetchNoteStats,
+    getNoteAuthorLabel,
+    deleteNote,
+    deleteNotes
+  } from '@/api/notes'
   import NoteDialog from './modules/note-dialog.vue'
   import NoteDetailDrawer from './modules/note-detail-drawer.vue'
 
@@ -105,17 +106,20 @@
   const tableQueryRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<DialogExpose>()
   const detailDrawerRef = ref<DetailDrawerExpose>()
+  const tenantScope = useTenantScopeStore()
+  const userStore = useUserStore()
+  const canAddInScope = computed(
+    () =>
+      !tenantScope.effectiveTenantId ||
+      tenantScope.effectiveTenantId === userStore.getUserInfo.tenantId
+  )
   const loading = ref(false)
   const imagePreviewUrls = ref<string[]>([])
-  const stats = ref<Api.Notes.NoteStats>({
-    total: 0,
-    users: 0,
-    recent: 0,
-    withImages: 0
-  })
+  const stats = ref<Api.Notes.NoteStats>()
+  const authorOptionsRevision = ref(0)
 
   const table: UnwrapNestedRefs<TableGroup> = reactive<TableGroup>({
-    searchQuery: { keyword: '', dateRange: null },
+    searchQuery: { keyword: '', dateRange: null, userId: undefined },
     searchItems: computed(() => [
       {
         key: 'keyword',
@@ -133,13 +137,21 @@
           startPlaceholder: '开始日期',
           endPlaceholder: '结束日期'
         }
+      },
+      {
+        key: 'userId',
+        label: '归属用户',
+        type: 'userSelect',
+        api: loadAuthorOptions,
+        params: { tenantRevision: tenantScope.revision, revision: authorOptionsRevision.value },
+        props: { placeholder: '全部用户', noDataText: '暂无笔记用户' }
       }
     ]),
     headerActions: computed(() => [
       {
         type: 'add',
         label: '新增笔记',
-        disabled: deleteBusy.value,
+        disabled: deleteBusy.value || !canAddInScope.value,
         permission: 'System:Notes:Add',
         onClick: () => void dialogRef.value?.handleOpen()
       },
@@ -149,7 +161,6 @@
         permission: 'System:Notes:Delete',
         confirm: false,
         disabled: deleteBusy.value,
-        buttonProps: { loading: deleteBusy.value },
         onClick: ({ selectedRows }) => removeSelected(selectedRows as NoteItem[])
       }
     ])
@@ -164,29 +175,29 @@
   const workspaceMetrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
       label: '笔记总量',
-      value: stats.value.total,
-      description: '已同步到远端 notes 表',
+      value: stats.value?.total ?? '—',
+      description: '当前租户范围内的云端笔记',
       icon: 'ri:book-2-line',
       tone: 'primary'
     },
     {
       label: '活跃用户',
-      value: stats.value.users,
-      description: '近期开通过时间轴的账号',
+      value: stats.value?.users ?? '—',
+      description: '有云端笔记的账号',
       icon: 'ri:user-heart-line',
       tone: 'info'
     },
     {
       label: '近 7 天新增',
-      value: stats.value.recent,
+      value: stats.value?.recent ?? '—',
       description: '按创建时间统计',
       icon: 'ri:calendar-check-line',
       tone: 'success'
     },
     {
       label: '含图片记录',
-      value: stats.value.withImages,
-      description: '图片仍由移动端私有桶托管',
+      value: stats.value?.withImages ?? '—',
+      description: '可在后台和移动端查看',
       icon: 'ri:image-2-line',
       tone: 'warning'
     }
@@ -201,8 +212,7 @@
     paginationOptions: { pageSizes: [10, 20, 50], hideOnSinglePage: false }
   }
 
-  const authorLabel = (row: NoteItem): string =>
-    row.author?.nickName || row.author?.userName || `移动端用户 · ${row.userId.slice(0, 8)}`
+  const authorLabel = (row: NoteItem): string => getNoteAuthorLabel(row.userId, row.author)
 
   const columnsFactory = (): ColumnOption<NoteItem>[] => [
     { type: 'selection', width: 50, fixed: 'left', reserveSelection: true },
@@ -346,6 +356,7 @@
       remove: () => deleteNote(row.id),
       successMessage: '笔记已删除',
       onDeleted: async () => {
+        authorOptionsRevision.value++
         await Promise.all([tableQueryRef.value?.refreshRemove(), loadStats()])
       }
     })
@@ -365,6 +376,7 @@
       },
       onDeleted: async () => {
         ElMessage.success(`已删除 ${deletedCount} 条笔记`)
+        authorOptionsRevision.value++
         await Promise.all([tableQueryRef.value?.refreshRemove(), loadStats()])
       },
       confirmMessage: `确认删除选中的 ${rows.length} 条时光笔记？此操作不可恢复。`
@@ -372,17 +384,35 @@
   }
 
   function handleSaveSuccess(type: DialogType): void {
+    if (type === 'add') authorOptionsRevision.value++
     void Promise.all([
       type === 'add' ? tableQueryRef.value?.refreshCreate() : tableQueryRef.value?.refreshUpdate(),
       loadStats()
     ])
   }
+
+  async function loadAuthorOptions() {
+    const options = await fetchNoteAuthorOptions()
+    const selectedUserId = table.searchQuery.userId
+    if (selectedUserId && !options.some((option) => option.value === selectedUserId)) {
+      table.searchQuery.userId = undefined
+      void tableQueryRef.value?.getData()
+    }
+    return options
+  }
+
   async function loadStats(): Promise<void> {
-    const result = await fetchNoteStats()
-    stats.value = result.data
+    try {
+      const result = await fetchNoteStats()
+      if (result.error) throw result.error
+      stats.value = result.data
+    } catch (error) {
+      notifyFriendlyError(error, '笔记概览加载失败，请刷新后重试')
+    }
   }
   async function refreshPage(): Promise<void> {
     loading.value = true
+    authorOptionsRevision.value++
     try {
       await Promise.all([tableQueryRef.value?.refreshData(), loadStats()])
     } finally {
@@ -393,6 +423,17 @@
   onMounted(() => {
     void loadStats()
   })
+
+  watch(
+    () => tenantScope.revision,
+    () => {
+      table.searchQuery.userId = undefined
+      stats.value = undefined
+      imagePreviewUrls.value = []
+      tableQueryRef.value?.clearSelection()
+      void Promise.all([tableQueryRef.value?.getData(), loadStats()])
+    }
+  )
 </script>
 
 <style scoped lang="scss">

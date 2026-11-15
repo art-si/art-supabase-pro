@@ -235,7 +235,16 @@ scope.tenantOptions = [
 ]
 scope.scopeOwnerUserId = 'form-standard-test'
 scope.setTenantScope(tenantId)
-user.setDictMap(formStandardTransportDictionaries)
+if (params.has('coldCargoUnit')) {
+  user.setLoginStatus(true)
+  user.setDictMap(
+    Object.fromEntries(
+      Object.entries(formStandardTransportDictionaries).filter(([code]) => code !== 'tmsCargoUnit')
+    )
+  )
+} else {
+  user.setDictMap(formStandardTransportDictionaries)
+}
 const settings = useSettingStore(store)
 const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
 settings.setGlobalTheme(theme, theme)

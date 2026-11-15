@@ -129,12 +129,10 @@ async function withTransport(
   }
   const dependencies = {
     readTenantScopeId: tenant.readTenantScopeId,
+    resolveDataApiTenantScope: tenant.resolveDataApiTenantScope,
     shouldAttachStorageTenantScopeHeader: tenant.shouldAttachStorageTenantScopeHeader,
     supabaseUrl: 'https://fixture.invalid',
     shouldAttachTenantScopeHeader: tenant.shouldAttachTenantScopeHeader,
-    readPlatformTenantScopeActive: tenant.readPlatformTenantScopeActive,
-    readMutationTenantScopeId: tenant.readMutationTenantScopeId,
-    normalizePlatformTenantReadUrl: tenant.normalizePlatformTenantReadUrl,
     tenantScopeHeader: header,
     fetch: observedFetch,
     cloudBaseFetch: (options: SdkRequest) =>
@@ -309,13 +307,14 @@ for (const transport of ['supabase', 'cloudbase-postgrest', 'cloudbase-sdk'] as 
   })
 
   test(`${transport}: explicit multi-tenant unit filters exclude unrelated tenants`, async () => {
-    await withTransport(transport, 'all', async ({ client, requests }) => {
+    await withTransport(transport, 'all', async ({ client, requests, header }) => {
       const result = await withRequestOptions(
         client.from('mdm_project').select('id,tenant_id').in('tenant_id', [tenantA, tenantB]),
         { signal: undefined, readTenantId: null }
       )
       assert.deepEqual(result.data, records.slice(0, 2))
       assert.equal(requests[0].url.searchParams.get('tenant_id'), `in.(${tenantA},${tenantB})`)
+      assert.equal(requests[0].headers.get(header), '')
       assert.equal(tenant.readTenantScopeId(), null)
     })
   })
@@ -360,6 +359,19 @@ for (const transport of ['supabase', 'cloudbase-postgrest', 'cloudbase-sdk'] as 
     })
   })
 
+  test(`${transport}: RPC filters stay intact and function calls bypass Data API scope`, async () => {
+    await withTransport(transport, 'selected', async ({ send, requests, header }) => {
+      const rpcUrl = `https://fixture.invalid/rest/v1/rpc/get_fixture?tenant_id=eq.${tenantB}`
+      const functionUrl = `https://fixture.invalid/functions/v1/get_fixture?tenant_id=eq.${tenantB}`
+      await send(rpcUrl)
+      await send(functionUrl)
+      assert.equal(requests[0].url.searchParams.get('tenant_id'), `eq.${tenantB}`)
+      assert.equal(requests[0].headers.get(header), tenantA)
+      assert.equal(requests[1].url.href, functionUrl)
+      assert.equal(requests[1].headers.has(header), false)
+    })
+  })
+
   if (transport !== 'cloudbase-sdk') {
     test(`${transport}: Request headers merge without mutating the caller`, async () => {
       await withTransport(transport, 'selected', async ({ send, requests, header }) => {
@@ -373,6 +385,21 @@ for (const transport of ['supabase', 'cloudbase-postgrest', 'cloudbase-sdk'] as 
         assert.equal(requests[0].headers.get('x-original'), 'retained')
         assert.equal(requests[0].headers.get('x-additional'), 'retained')
         assert.equal(requests[0].url.searchParams.get('tenant_id'), `eq.${tenantB}`)
+      })
+    })
+
+    test(`${transport}: a Request mutation keeps its scope while reading the cloned body`, async () => {
+      await withTransport(transport, 'all', async ({ send, requests, header }) => {
+        const body = JSON.stringify({ id: 'new-project', tenant_id: tenantB })
+        const request = new Request('https://fixture.invalid/rest/v1/mdm_project', {
+          method: 'POST',
+          body
+        })
+        const pending = send(request)
+        tenant.writeTenantScopeId(tenantA)
+        await pending
+        assert.equal(requests[0].headers.get(header), tenantB)
+        assert.equal(await request.text(), body)
       })
     })
   }
@@ -420,6 +447,20 @@ for (const transport of ['supabase', 'cloudbase-postgrest', 'cloudbase-sdk'] as 
     })
   })
 }
+
+test('supabase: selected scope applies only to same-origin Storage object requests', async () => {
+  await withTransport('supabase', 'selected', async ({ send, requests, header }) => {
+    const sameOrigin = 'https://fixture.invalid/storage/v1/object/sign/private/fixture.txt'
+    const otherOrigin = new URL(sameOrigin)
+    otherOrigin.hostname = 'other-fixture.invalid'
+    await send(sameOrigin)
+    await send(otherOrigin)
+    await send('https://fixture.invalid/storage/v1/bucket')
+    assert.equal(requests[0].headers.get(header), tenantA)
+    assert.equal(requests[1].headers.has(header), false)
+    assert.equal(requests[2].headers.has(header), false)
+  })
+})
 
 test('invalid explicit reference targets fail before a network request', async () => {
   await withTransport('supabase', 'all', async ({ client, requests }) => {

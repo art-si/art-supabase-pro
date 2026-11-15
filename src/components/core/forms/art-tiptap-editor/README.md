@@ -15,7 +15,9 @@
 
 ## 公共接口
 
-- Props：`height`、`placeholder`、`disabled`、`showCharacterCount`、`maxLength`、`imageUpload`、`excludeKeys`，类型见 `types.ts`。
+- Props：`height`、`fillHeight`、`placeholder`、`disabled`、`showCharacterCount`、`maxLength`、`resourceTenantId`、`excludeKeys`、`imageUpload`，类型见 `types.ts`。
+- `fillHeight` 让编辑器填满有明确高度的 flex 列容器，正文在编辑器内滚动。容器需要允许收缩（`min-height: 0`）。
 - Expose：`getEditor()`、`setHtml(html)`、`getHtml()`、`clear()`、`focus()`。
 - 空编辑器向外输出空字符串，便于表单必填校验；非空内容输出标准 HTML，并保留表格的 `rowspan` / `colspan`。
-- 图片 URL 仅接受 `http` / `https`。需要上传时传入 `imageUpload.upload(file)` 适配器，组件负责格式、大小、忙碌态和失败反馈，业务层负责鉴权与持久化。
+- 图片 URL 仅接受 `http` / `https`。媒体工具默认使用资源库上传，`excludeKeys` 排除的媒体类型也不会经粘贴或拖拽上传。
+- `imageUpload` 可将图片工具的选择、粘贴、拖拽接入业务存储。该模式可返回同源 Blob 预览，`storagePath` 会作为 `data-storage-path` 保留在编辑器中，业务表单负责保存正式路径。

@@ -102,6 +102,13 @@ export interface CleanupMasterDataDeleteDependencyPayload {
 
 const { supabase, responseHandle } = useSupabase()
 
+const masterDataDependencyReaders: Partial<Record<MasterDataDeleteResourceType, string>> = {
+  attachment: 'get_attachment_delete_dependency_details',
+  carrier: 'tms_get_carrier_delete_dependencies_secure',
+  customer_address: 'tms_get_customer_address_delete_dependencies_secure',
+  cargo: 'tms_get_cargo_delete_dependencies_secure'
+}
+
 export async function deleteSupplierMasterRecords(ids: string[]) {
   return await responseHandle<number>(
     () => supabase.rpc('smis_delete_suppliers_secure', { p_ids: ids }),
@@ -209,36 +216,32 @@ export async function fetchMasterDataDeleteDependencies(
   resourceIds: string[]
 ): Promise<MasterDataDeleteDependencyDetail[]> {
   if (!resourceIds.length) return []
-  const { data } = await responseHandle<MasterDataDeleteDependencyDetail[]>(
-    () => {
-      if (resourceType === 'attachment') {
-        return supabase.rpc('get_attachment_delete_dependency_details', {
-          p_resource_ids: resourceIds
-        })
-      }
-      if (resourceType === 'carrier') {
-        return supabase.rpc('tms_get_carrier_delete_dependencies_secure', {
-          p_resource_ids: resourceIds
-        })
-      }
-      if (resourceType === 'customer_address') {
-        return supabase.rpc('tms_get_customer_address_delete_dependencies_secure', {
-          p_resource_ids: resourceIds
-        })
-      }
-      if (resourceType === 'cargo') {
-        return supabase.rpc('tms_get_cargo_delete_dependencies_secure', {
-          p_resource_ids: resourceIds
-        })
-      }
-      return supabase.rpc('get_governed_delete_dependency_details', {
-        p_resource_type: resourceType,
-        p_resource_ids: resourceIds
-      })
-    },
-    { breakReturn: true, showErrorMessage: false }
+  const reader = masterDataDependencyReaders[resourceType]
+  const params = { p_resource_ids: resourceIds }
+  const { data, error } = await fetchAllRangePages<MasterDataDeleteDependencyDetail>(
+    ({ from, to }) =>
+      responseHandle<MasterDataDeleteDependencyDetail[]>(
+        () => {
+          const query = reader
+            ? supabase.rpc(reader, params)
+            : supabase.rpc('get_governed_delete_dependency_details', {
+                ...params,
+                p_resource_type: resourceType
+              })
+          return query
+            .order('resource_id')
+            .order('dependency_code')
+            .order('cleanup_allowed')
+            .order('created_at', { ascending: false })
+            .order('record_id')
+            .order('target_id')
+            .range(from, to)
+        },
+        { breakReturn: true, showErrorMessage: false, errorMessage: '关联记录检查失败，请重试' }
+      )
   )
-  return (data ?? []).map((item) => ({
+  if (error || !data) throw new Error('关联记录检查失败，请重试', { cause: error })
+  return data.map((item) => ({
     ...item,
     targetId: item.targetId ?? '',
     createdAt: item.createdAt ?? '',

@@ -1,9 +1,16 @@
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { minify } from 'terser'
 import type { Plugin, ResolvedConfig } from 'vite'
 
 const ASSET_MANIFEST = 'flyfish-viewer-assets.json'
+const STATIC_PDF_WORKER = 'vendor/pdf/pdf.worker.mjs'
+const STATIC_SPREADSHEET_WORKER = 'vendor/xlsx/sheet.worker.js'
+const STATIC_MODULES_TO_MINIFY = new Set([
+  STATIC_PDF_WORKER,
+  'vendor/pdf/wasm/openjpeg_nowasm_fallback.js'
+])
 const RETRYABLE_FS_ERROR_CODES = new Set(['EACCES', 'EBUSY', 'EPERM', 'UNKNOWN'])
 const MAX_FS_ATTEMPTS = 6
 
@@ -117,7 +124,7 @@ async function writeFileIfChanged(target: string, content: Buffer): Promise<bool
   await mkdir(path.dirname(target), { recursive: true })
   await retryTransientFsOperation(
     () => writeFile(target, content),
-    `写入 File Viewer 构建清单失败：${target}`
+    `写入 File Viewer 构建文件失败：${target}`
   )
   return true
 }
@@ -219,6 +226,29 @@ export async function syncFileViewerAssets(
   for (const relativeFile of relativeFiles) {
     const source = path.join(sourceRoot, relativeFile)
     const target = path.join(targetRoot, relativeFile)
+    const normalizedPath = normalizeRelativePath(relativeFile)
+
+    const isModule = STATIC_MODULES_TO_MINIFY.has(normalizedPath)
+    if (isModule || normalizedPath === STATIC_SPREADSHEET_WORKER) {
+      // These scripts are copied after bundling. Spreadsheet also supports a classic Worker.
+      const { code } = await minify(await readFile(source, 'utf8'), {
+        ecma: 2020,
+        module: isModule,
+        format: {
+          // File Viewer reads the version marker in the first 4 KiB before starting a worker.
+          comments:
+            /(?:^!|@license|@copyright|@preserve|@licstart|@licend|pdfjsVersion|pdfjsBuild|File Viewer modification|THIS FILE IS GENERATED)/i,
+          preamble:
+            normalizedPath === STATIC_PDF_WORKER
+              ? '/* PDF.js worker minified for local distribution. */'
+              : undefined
+        }
+      })
+      if (!code) throw new Error(`文件预览脚本压缩结果为空：${normalizedPath}`)
+      if (await writeFileIfChanged(target, Buffer.from(code))) copied += 1
+      else unchanged += 1
+      continue
+    }
 
     if (await filesAreEqual(source, target)) {
       unchanged += 1

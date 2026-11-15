@@ -31,6 +31,8 @@ export interface ArtTiptapEditorProps {
   resourceTenantId?: string
   /** 编辑区域高度，支持任意合法 CSS 长度。 */
   height?: string
+  /** Fill a height-constrained flex container and keep scrolling inside the editor. */
+  fillHeight?: boolean
   /** 空内容时显示的占位文案。 */
   placeholder?: string
   /** 是否禁用编辑与工具栏操作。 */
@@ -41,6 +43,15 @@ export interface ArtTiptapEditorProps {
   maxLength?: number
   /** 隐藏指定功能；未列出的功能默认显示。 */
   excludeKeys?: ArtTiptapEditorFeature[]
+  /** Use a business image store for the toolbar, paste, and drop. */
+  imageUpload?: ArtTiptapImageUpload
+}
+
+export interface ArtTiptapImageUpload {
+  upload: (file: File) => Promise<Api.DataCenter.Resources.ResourceListItem[]>
+  accept: string
+  maxSize: number
+  disabled?: boolean
 }
 
 export type ArtTiptapMediaKind = 'image' | 'video' | 'audio' | 'file'

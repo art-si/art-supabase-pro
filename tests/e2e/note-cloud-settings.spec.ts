@@ -1,13 +1,11 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { mockApplicationMenus } from './support/menu-rpc'
 import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
-test('cloud storage scopes only save the targets for the selected scope', async ({
-  page
-}, info) => {
+async function prepareNoteCloudSettingsPage(page: Page) {
   const tenant = await prepareIsolatedSession(page)
   const person = {
     id: 'cloud-test-user',
@@ -68,6 +66,14 @@ test('cloud storage scopes only save the targets for the selected scope', async 
     ]
   })
 
+  return person
+}
+
+test('cloud storage scopes only save the targets for the selected scope', async ({
+  page
+}, info) => {
+  const person = await prepareNoteCloudSettingsPage(page)
+
   await page.route('**/rest/v1/rpc/get_note_cloud_settings', (route) =>
     route.fulfill({ json: { scope: 'all', target_ids: [], updated_at: null } })
   )
@@ -111,4 +117,80 @@ test('cloud storage scopes only save the targets for the selected scope', async 
     { p_scope: 'users', p_target_ids: [person.id], p_expected_updated_at: null }
   ])
   await expect(page.getByText('云端 · 1 位指定人员')).toBeVisible()
+})
+
+test('malformed cloud authorization leaves other system parameters available', async ({ page }) => {
+  await prepareNoteCloudSettingsPage(page)
+  await page.route('**/rest/v1/sys_param?*', (route) =>
+    new URL(route.request().url()).searchParams.has('param_key')
+      ? route.fulfill({ json: [] })
+      : route.fulfill({
+          headers: { 'content-range': '0-0/1' },
+          json: [
+            {
+              id: 'ordinary-param',
+              param_name: '测试常规参数',
+              param_key: 'fixture.regular',
+              param_type: 'single_text',
+              param_value: '测试参数值',
+              group_code: 'system_policy',
+              enabled: true,
+              builtin: false,
+              sort: 0
+            }
+          ]
+        })
+  )
+  await page.route('**/rest/v1/rpc/get_note_cloud_settings', (route) =>
+    route.fulfill({ json: { scope: 'tenants', updated_at: null } })
+  )
+
+  await page.goto('#/system/system-param')
+  const storage = page.getByRole('row', { name: /时光记事存储模式/ })
+  await expect(storage.getByText('暂未读取授权范围')).toBeVisible()
+  await storage.getByRole('button', { name: '编辑时光记事存储模式' }).click()
+  await expect(page.getByText('无法读取云端授权，请刷新后重试', { exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '时光记事存储模式' })).toBeHidden()
+
+  await page
+    .getByRole('row', { name: /测试常规参数/ })
+    .getByRole('button', { name: '编辑' })
+    .click()
+  const other = page.getByRole('dialog', { name: '编辑参数', exact: true })
+  await expect(other.getByRole('textbox', { name: '参数名称' })).toHaveValue('测试常规参数')
+})
+
+test('malformed cloud save result does not confirm success or replace the displayed scope', async ({
+  page
+}) => {
+  await prepareNoteCloudSettingsPage(page)
+  const updatedAt = '2026-11-14T17:02:03.456789+00:00'
+  await page.route('**/rest/v1/rpc/get_note_cloud_settings', (route) =>
+    route.fulfill({ json: { scope: 'all', target_ids: [], updated_at: updatedAt } })
+  )
+  await page.route('**/rest/v1/rpc/save_note_cloud_settings', (route) =>
+    route.fulfill({ json: { scope: 'closed', target_ids: [], updated_at: '无效时间' } })
+  )
+
+  await page.goto('#/system/system-param')
+  const storage = page.getByRole('row', { name: /时光记事存储模式/ })
+  await expect(storage.getByText('云端 · 全部用户')).toBeVisible()
+  await storage.getByRole('button', { name: '编辑时光记事存储模式' }).click()
+  const dialog = page.getByRole('dialog', { name: '时光记事存储模式' })
+  await expect(dialog.getByText('授权范围', { exact: true })).toBeVisible()
+  await dialog.getByText('仅本机', { exact: true }).click()
+  const request = page.waitForRequest('**/rest/v1/rpc/save_note_cloud_settings')
+  await dialog.getByRole('button', { name: '保存授权' }).click()
+  expect((await request).postDataJSON()).toEqual({
+    p_scope: 'closed',
+    p_target_ids: [],
+    p_expected_updated_at: updatedAt
+  })
+
+  await expect(
+    page.getByText('无法确认云端授权已保存，请刷新后核对', { exact: true })
+  ).toBeVisible()
+  await expect(page.getByText('云端存储授权已保存', { exact: true })).toHaveCount(0)
+  await expect(dialog).toBeVisible()
+  await expect(storage.getByText('云端 · 全部用户')).toBeVisible()
 })

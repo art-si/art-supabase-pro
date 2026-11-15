@@ -124,16 +124,10 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: `pnpm serve --host 127.0.0.1 --port ${serverPort} --strictPort`,
-        ...(useDevServer
-          ? {
-              command: `pnpm exec vite --mode e2e --host 127.0.0.1 --port ${serverPort} --strictPort`
-            }
-          : {}),
+        command: useDevServer
+          ? `pnpm exec vite --mode e2e --host 127.0.0.1 --port ${serverPort} --strictPort`
+          : `pnpm serve --host 127.0.0.1 --port ${serverPort} --strictPort`,
         url: baseURL,
-        ...(!useDevServer
-          ? { env: { VITE_OUT_DIR: process.env.VITE_OUT_DIR || '.artifacts/e2e-build' } }
-          : {}),
         reuseExistingServer: !process.env.CI && !process.env.E2E_SERVER_PORT,
         timeout: useDevServer ? 300_000 : 120_000
       }

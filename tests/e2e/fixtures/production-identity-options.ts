@@ -2,6 +2,7 @@ import { createApp, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import language from '@/locales'
 import { store } from '@/store'
+import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useUserStore } from '@/store/modules/user'
 import { setupGlobDirectives } from '@/directives'
 import PersonDialog from '@mdm/views/production/modules/person-dialog.vue'
@@ -16,8 +17,30 @@ import '@styles/index.scss'
 
 const mode = new URLSearchParams(location.search).get('mode')
 const department = mode === 'department'
+const scopeTest = mode === 'work-center-scope'
+const WorkCenterPage = scopeTest
+  ? (await import('@mdm/views/production/work-center/index.vue')).default
+  : undefined
+const selectedTenantId = '00000000-0000-4000-8000-000000000002'
 const app = createApp({
   setup() {
+    if (WorkCenterPage) {
+      const scope = useTenantScopeStore()
+      return () =>
+        h('main', { class: 'p-4' }, [
+          h(
+            'button',
+            { type: 'button', onClick: () => scope.setTenantScope(selectedTenantId) },
+            '切换到目标租户'
+          ),
+          h(
+            'button',
+            { type: 'button', onClick: () => scope.setTenantScope(null) },
+            '切换到全部租户'
+          ),
+          h(WorkCenterPage)
+        ])
+    }
     if (mode === 'qr') {
       const editor = ref<InstanceType<typeof QrDialog>>()
       return () =>
@@ -115,8 +138,8 @@ app.use(router)
 setupGlobDirectives(app)
 useUserStore(store).setUserInfo({
   userId: 'identity-test',
-  tenantId: 'test-tenant',
-  platformSuper: false
+  tenantId: scopeTest ? '00000000-0000-4000-8000-000000000001' : 'test-tenant',
+  platformSuper: scopeTest
 })
 await router.isReady()
 app.mount('#app')

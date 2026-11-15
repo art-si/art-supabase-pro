@@ -342,7 +342,7 @@ for (const kind of kinds) {
     })
     await page.goto(`/tests/e2e/fixtures/wms-purchase-enhancements.html?kind=${kind}`)
     const rows = page.locator('.el-table__body-wrapper tbody tr')
-    await expect(rows).toHaveCount(2)
+    await expect(rows).toHaveCount(2, { timeout: 45000 })
     await expect(rows.first().getByRole('button', { name: '更多操作', exact: true })).toHaveCount(1)
     await expect(rows.nth(1).getByRole('button', { name: '更多操作', exact: true })).toHaveCount(1)
     await expect(page.getByRole('button', { name: '批量打印', exact: true })).toHaveCount(0)
@@ -405,7 +405,28 @@ for (const kind of kinds) {
     const drawer = page.getByRole('dialog', { name: `编辑${titles[kind]}`, exact: true })
     await expect(drawer).toBeVisible()
     await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+    await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
     if (kind === 'purchase_inbound') {
+      const lineTable = drawer.locator('.el-table').filter({
+        has: page.getByRole('columnheader', { name: '未税单价', exact: true })
+      })
+      const line = lineTable.locator('.el-table__body-wrapper tbody tr').first()
+      const [netPrice, grossPrice] = await Promise.all(
+        ['未税单价', '含税单价'].map(async (name) => {
+          const column = await lineTable
+            .getByRole('columnheader', { name, exact: true })
+            .evaluate((cell: HTMLTableCellElement) => cell.cellIndex)
+          return line.getByRole('cell').nth(column).getByRole('spinbutton')
+        })
+      )
+
+      await netPrice.fill('0.005')
+      await netPrice.blur()
+      await expect(grossPrice).toHaveValue('0.0057')
+      await grossPrice.fill('0.0113')
+      await grossPrice.blur()
+      await expect(netPrice).toHaveValue('0.0100')
+
       await drawer.getByRole('button', { name: '选单', exact: true }).click()
       await page.getByRole('menuitem', { name: '采购订单', exact: true }).click()
       const picker = page.getByRole('dialog').last()

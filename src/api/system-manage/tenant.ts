@@ -54,10 +54,13 @@ export async function addTenant(params: TenantListItem) {
 export async function editTenant(params: TenantListItem) {
   const { id, ...data } = params
   return await responseHandle(
-    () => supabase.from('sys_tenant').update(keysToSnakeDeep(data)).eq('id', id),
+    () =>
+      supabase.from('sys_tenant').update(keysToSnakeDeep(data), { count: 'exact' }).eq('id', id),
     {
       showMessage: true,
-      breakReturn: true
+      breakReturn: true,
+      requireAffected: true,
+      noAffectedMessage: '租户可能已被删除或当前账号没有编辑权限，请刷新列表后重试'
     }
   )
 }

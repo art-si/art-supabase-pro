@@ -25,6 +25,12 @@ import {
   REDUNDANT_FILE_VIEWER_ASSETS
 } from './scripts/file-viewer-asset-sync.ts'
 import {
+  createFileViewerParserWorkersPlugin,
+  matchFileViewerIworkParser
+} from './scripts/file-viewer-parser-workers.ts'
+import { createFileViewerSourcePreviewPlugin } from './scripts/file-viewer-source-preview.ts'
+import { createFileViewerRtfCompactPlugin } from './scripts/file-viewer-rtf-compact.ts'
+import {
   hostedApplicationSourceDirectories,
   hostedModuleSharedDependencies
 } from './scripts/hosted-module-dependencies.mjs'
@@ -184,7 +190,7 @@ export default async ({ mode }: { mode: string }) => {
           ? []
           : [
               {
-                find: /^@cloudbase\/js-sdk$/,
+                find: /^@\/plugins\/cloudbase-sdk$/,
                 replacement: resolvePath('src/plugins/cloudbase-sdk-disabled.ts')
               }
             ]),
@@ -227,7 +233,10 @@ export default async ({ mode }: { mode: string }) => {
       rolldownOptions: {
         ...buildLogPolicy.rolldownOptions,
         output: {
-          chunkFileNames: platformChunkFileName,
+          chunkFileNames: (chunk) =>
+            chunk.moduleIds.some(matchFileViewerIworkParser)
+              ? 'assets/iwork.parser-[hash].js'
+              : platformChunkFileName(chunk),
           codeSplitting: {
             groups: [
               {
@@ -253,15 +262,13 @@ export default async ({ mode }: { mode: string }) => {
                 // These utilities are shared by Element Plus, tables and feature renderers.
                 // Giving them their own chunk prevents a feature chunk becoming their owner.
                 name: 'common-utils',
-                test: (id) =>
-                  matchPackages(id, [
-                    'lodash',
-                    'lodash-es',
-                    'lodash-unified',
-                    'dayjs',
-                    'sortablejs',
-                    'vue-draggable-plus'
-                  ]),
+                test: (id) => matchPackages(id, ['lodash', 'lodash-es', 'lodash-unified', 'dayjs']),
+                priority: 90
+              },
+              {
+                // The public entry needs date helpers; drag support is used by the tables.
+                name: 'table-drag',
+                test: (id) => matchPackages(id, ['sortablejs/', 'vue-draggable-plus/']),
                 priority: 90
               },
               {
@@ -303,9 +310,10 @@ export default async ({ mode }: { mode: string }) => {
               },
               {
                 name: 'data-tools',
-                // Keep lock-screen crypto separate so mounting the shell does not fetch SQL tooling.
+                // Load SQL formatting and each parser dialect only for the actions that use them.
                 test: (id) => matchPackages(id, ['xlsx', 'sql-formatter', 'node-sql-parser']),
-                priority: 20
+                priority: 20,
+                entriesAware: true
               }
             ]
           }
@@ -355,7 +363,28 @@ export default async ({ mode }: { mode: string }) => {
       vue({ ...templateCompilerOptions }),
       vueJsx(),
       tailwindcss(),
+      createFileViewerParserWorkersPlugin(packageRequire),
+      createFileViewerSourcePreviewPlugin(packageRequire),
+      {
+        name: 'share-document-compression',
+        apply: 'build',
+        enforce: 'pre',
+        resolveId(id, importer) {
+          const sharedConsumers =
+            /\/node_modules\/(?:utif\/UTIF\.js$|pdf-lib\/|@pdf-lib\/(?:standard-fonts|upng)\/)/
+          if (id !== 'pako' || !importer || !sharedConsumers.test(normalizeModuleId(importer))) {
+            return
+          }
+          // TIFF and PDF libraries use byte-array compression, available in the UMD renderer's pako.
+          const viewerRequire = createRequire(packageRequire.resolve('@file-viewer/preset-all'))
+          const ebookRequire = createRequire(
+            viewerRequire.resolve('@file-viewer/renderer-epub/package.json')
+          )
+          return normalizeModuleId(ebookRequire.resolve('pako/dist/pako.esm.mjs'))
+        }
+      },
       ...(fileViewerPlugin ? [fileViewerPlugin] : []),
+      ...(enableFileViewerPlugin ? [createFileViewerRtfCompactPlugin(configDirectory)] : []),
       createFileViewerAssetSyncPlugin({
         enabled: enableFileViewerPlugin && enableFileViewerAssets,
         sourceRoot: fileViewerAssetStageDir,

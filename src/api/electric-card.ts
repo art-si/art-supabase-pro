@@ -1,7 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
-import { buildSupabasePageRange } from '@/utils/supabase/pagination'
+import { buildSupabasePageRange, decodeSupabaseRpcPage } from '@/utils/supabase/pagination'
 import { normalizeNullableText } from '@/utils/form/normalize'
-import { isPlainObjectRecord } from '@/utils/type-guards'
 import { buildSupabaseRpcRange } from '@/utils/supabase'
 import type {
   EmployeeSelectorContractParams,
@@ -171,23 +170,10 @@ function readStatus(row: Record<string, unknown>, key: string): ElectricCardStat
   return value
 }
 
-function parsePage<T>(
-  value: unknown,
-  parser: (row: Record<string, unknown>) => T
-): { data: T[]; total: number } {
-  if (!isPlainObjectRecord(value) || !Array.isArray(value.records)) {
-    throw new Error('电卡查询结果异常，请刷新后重试')
-  }
-  if (typeof value.total !== 'number' || !Number.isSafeInteger(value.total) || value.total < 0) {
-    throw new Error('电卡查询总数异常，请刷新后重试')
-  }
-  return {
-    total: value.total,
-    data: value.records.map((item) => {
-      if (!isPlainObjectRecord(item)) throw new Error('电卡记录格式异常，请刷新后重试')
-      return parser(item)
-    })
-  }
+const pageErrors = {
+  page: '电卡查询结果异常，请刷新后重试',
+  total: '电卡查询总数异常，请刷新后重试',
+  row: '电卡记录格式异常，请刷新后重试'
 }
 
 function parseCard(row: Record<string, unknown>): ElectricCard {
@@ -297,7 +283,7 @@ export async function fetchElectricCards(
       }),
     { breakReturn: true, showErrorMessage: false, errorMessage: '电卡档案加载失败，请重试' }
   )
-  return parsePage(data, parseCard)
+  return decodeSupabaseRpcPage(data, pageErrors, parseCard)
 }
 
 export async function fetchElectricCardEntries(
@@ -319,7 +305,7 @@ export async function fetchElectricCardEntries(
       }),
     { breakReturn: true, showErrorMessage: false, errorMessage: '电卡流水加载失败，请重试' }
   )
-  return parsePage(data, parseEntry)
+  return decodeSupabaseRpcPage(data, pageErrors, parseEntry)
 }
 
 /** Waybills from the selected electric card's own tenant and vehicle. */

@@ -1,6 +1,30 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 
 test.use({ storageState: { cookies: [], origins: [] } })
+
+async function expectNormalWorkspaceTableLayout(card: Locator) {
+  await expect(card).toBeVisible()
+  if (await card.evaluate(() => matchMedia('(max-width: 768px)').matches)) {
+    const tableBody = card.locator('.el-table__body-wrapper')
+    await expect.poll(() => tableBody.evaluate((el) => el.clientHeight)).toBeGreaterThan(200)
+    await card.scrollIntoViewIfNeeded()
+    await expect(card).toBeInViewport({ ratio: 0.99 })
+    expect(
+      await card.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+    ).toBeLessThanOrEqual(1)
+    return
+  }
+
+  await expect
+    .poll(() =>
+      card.evaluate((el) => {
+        const workspace = el.closest('.layout-content')!
+        const bottomPadding = parseFloat(getComputedStyle(workspace).paddingBottom)
+        return Math.abs(innerHeight - el.getBoundingClientRect().bottom - bottomPadding)
+      })
+    )
+    .toBeLessThanOrEqual(1)
+}
 
 test('665px 窄屏保留可读表格并由工作区滚动', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 665, height: 700 })
@@ -111,15 +135,12 @@ test('长筛选在矮窗口内独立滚动并保留输入与分页', async ({ pa
   expect(pageErrors).toEqual([])
 })
 
-test('全局滚动条、普通模式填充与操作列拖动空间', async ({ page }, testInfo) => {
+test('全局滚动条、普通模式布局与操作列拖动空间', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
   await page.goto('/tests/e2e/fixtures/scrollbar-workspace.html')
   const card = page.locator('.art-table-card')
-  await expect(card).toBeVisible()
-  await expect
-    .poll(() => card.evaluate((el) => window.innerHeight - el.getBoundingClientRect().bottom))
-    .toBeLessThanOrEqual(17)
+  await expectNormalWorkspaceTableLayout(card)
   const table = page.locator('.el-table')
   await table.hover()
   const vertical = table.locator('.el-scrollbar__bar.is-vertical')
@@ -168,14 +189,11 @@ test('全局滚动条、普通模式填充与操作列拖动空间', async ({ pa
   await page.screenshot({ path: testInfo.outputPath('tree-scrollbar.png') })
 })
 
-test('发货通知单普通模式填满内容区', async ({ page }, testInfo) => {
+test('发货通知单普通模式适应工作区', async ({ page }, testInfo) => {
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
   await page.goto('/tests/e2e/fixtures/scrollbar-workspace.html?page=shipping')
   const card = page.locator('.art-table-card')
-  await expect(card).toBeVisible()
-  await expect
-    .poll(() => card.evaluate((el) => window.innerHeight - el.getBoundingClientRect().bottom))
-    .toBeLessThanOrEqual(17)
+  await expectNormalWorkspaceTableLayout(card)
   await page.screenshot({ path: testInfo.outputPath('shipping-normal.png') })
 })
 

@@ -186,9 +186,11 @@ for (const feature of [
         })
       })
       await page.goto(`#${feature.path}`)
-      const node = page
-        .locator('.master-group-panel .el-tree-node__content')
-        .filter({ hasText: 'GROUP-001' })
+      const groupPanel = page.locator('.master-group-panel')
+      await expect(groupPanel).toBeVisible({ timeout: 60_000 })
+      const expand = groupPanel.getByRole('button', { name: '展开分组', exact: true })
+      if (await expand.isVisible()) await expand.click()
+      const node = groupPanel.locator('.el-tree-node__content').filter({ hasText: 'GROUP-001' })
       await expect(node).toBeVisible({ timeout: 60_000 })
       if (state === 'child') {
         await node.locator('.el-tree-node__expand-icon').click()
@@ -277,8 +279,12 @@ for (const feature of [
         return
       }
       if (state === 'concurrent') {
-        await expect(page.getByRole('dialog')).toContainText('SUP-001')
-        await expect(page.getByRole('dialog')).toHaveCount(1)
+        const references = page.getByRole('dialog', {
+          name: `暂时无法删除${feature.name}分组`,
+          exact: true
+        })
+        await expect(references).toContainText('SUP-001')
+        await expect(confirmation).toBeHidden()
         expect(events).toEqual(['inspect', 'delete', 'inspect'])
       } else if (state === 'clear') {
         await expect(page.getByText(`${feature.name}分组已删除`, { exact: true })).toBeVisible()

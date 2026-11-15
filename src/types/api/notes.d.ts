@@ -24,6 +24,7 @@ declare namespace Api {
     interface NoteSearchParams extends Partial<Api.Common.CommonSearchParams> {
       keyword?: string
       dateRange?: [string, string] | null
+      userId?: string
     }
 
     interface NoteListParams extends NoteSearchParams {
@@ -32,10 +33,11 @@ declare namespace Api {
     }
 
     interface NotePayload {
-      id?: string
+      id: string
       content: string
       tags: string[]
-      images?: string[]
+      images: string[]
+      expectedUpdatedAt?: string
     }
 
     interface NoteStats {

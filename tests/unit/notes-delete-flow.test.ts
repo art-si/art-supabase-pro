@@ -21,40 +21,37 @@ const deleteCode = ts.transpileModule(
   { compilerOptions: { target: ts.ScriptTarget.ES2022 } }
 ).outputText
 
-test('notes bulk delete sends one filtered request and returns the actual affected count', async () => {
+test('notes bulk delete calls the platform RPC with distinct IDs and requires the full result', async () => {
   let requests = 0
   const remove = vm.runInNewContext(deleteCode, {
     uniq,
     supabase: {
-      from: (table: string) => {
-        assert.equal(table, 'notes')
-        return {
-          delete: (options: { count: string }) => {
-            requests++
-            assert.equal(options.count, 'exact')
-            return {
-              in: (column: string, ids: string[]) => {
-                assert.equal(column, 'id')
-                assert.deepEqual(Array.from(ids), ['a', 'b'])
-                return { count: 1, error: null }
-              }
-            }
-          }
-        }
+      rpc: (name: string, params: { p_ids: string[] }) => {
+        assert.equal(name, 'delete_platform_notes')
+        assert.deepEqual(Array.from(params.p_ids), ['a', 'b'])
+        requests++
+        return { data: 2, error: null }
       }
     },
     responseHandle: async (request: () => Promise<unknown>, options: Record<string, unknown>) => {
       assert.equal(options.requireAffected, true)
       assert.equal(options.breakReturn, true)
       assert.equal(options.showReferenceFeedback, false)
-      await request()
-      return { total: 1 }
+      return request()
     }
   }) as (ids: string[]) => Promise<number>
-  assert.equal(await remove(['a', 'b', 'a', '']), 1)
+  assert.equal(await remove(['a', 'b', 'a', '']), 2)
   assert.equal(requests, 1)
   await assert.rejects(remove([]), /请选择需要删除的笔记/)
   assert.equal(requests, 1)
+})
+
+test('notes bulk delete treats a partial result as a failure', async () => {
+  const remove = vm.runInNewContext(deleteCode, {
+    uniq,
+    responseHandle: async () => ({ data: 1 })
+  }) as (ids: string[]) => Promise<number>
+  await assert.rejects(remove(['a', 'b']), /无法确认所选笔记已删除/)
 })
 
 test('notes bulk delete preserves server rejection for the reference guard to recheck', async () => {
@@ -103,6 +100,7 @@ test('notes bulk action stays pending until the guarded deletion completes', asy
       }
     }),
     deleteBusy: busy,
+    canAddInScope: { value: true },
     removeSelected: (rows: unknown[]) => {
       assert.equal(rows, selectedRows)
       return pending
@@ -113,7 +111,6 @@ test('notes bulk action stays pending until the guarded deletion completes', asy
         type: string
         confirm?: boolean
         disabled?: boolean
-        buttonProps: { loading: boolean }
         onClick: (context: { selectedRows: typeof selectedRows }) => Promise<void>
       }>
     }
@@ -124,7 +121,6 @@ test('notes bulk action stays pending until the guarded deletion completes', asy
   const result = action.onClick({ selectedRows })
   assert.equal(result, pending)
   busy.value = true
-  assert.equal(table.headerActions.value[1].buttonProps.loading, true)
   assert.equal(table.headerActions.value[1].disabled, true)
   finish()
   await result

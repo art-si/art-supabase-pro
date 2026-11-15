@@ -40,6 +40,8 @@
         :disabled="disabled"
         :show-file-list="false"
         :show-tip="false"
+        :show-resource-picker="!uploadRequest"
+        :upload-request="uploadRequest"
         @resource-change="handleResourceChange"
       >
         <template #trigger="{ uploading }">
@@ -102,6 +104,7 @@
       resourceTenantId?: string
       disabled?: boolean
       allowUrl?: boolean
+      uploadRequest?: (file: File) => Promise<Api.DataCenter.Resources.ResourceListItem[]>
       urlPlaceholder?: string
     }>(),
     {

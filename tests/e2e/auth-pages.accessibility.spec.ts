@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { firstPartyOAuthClients } from '../../src/config/first-party-oauth'
+import { WEBSITE_CONFIG_DEFAULTS } from '../../src/config/website-config-defaults'
 
 for (const existingSession of [false, true]) {
   test(`BFF SSO ${existingSession ? '已有会话' : '密码登录'}返回本地回调并跳过 pro 工作台`, async ({
@@ -283,6 +284,50 @@ test('login remains usable when website configuration cannot be loaded', async (
   await expect(page.locator('.auth-right-wrap .form')).toBeVisible({ timeout: 60_000 })
   await expect(page.locator('button[type="submit"]')).toBeEnabled()
   expect(configRequests).toBeGreaterThan(0)
+})
+
+test('login preserves valid settings when branding is malformed and loads corrected branding after reload', async ({
+  page
+}) => {
+  const errors: Error[] = []
+  page.on('pageerror', (error) => errors.push(error))
+  let repaired = false
+  await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+  await page.route('**/rest/v1/sys_param?*', (route) => {
+    if (new URL(route.request().url()).searchParams.get('param_key') !== 'eq.website.config')
+      return route.fulfill({ json: [] })
+    return route.fulfill({
+      json: {
+        id: 'website-config-recovery',
+        param_key: 'website.config',
+        enabled: true,
+        param_value: JSON.stringify({
+          siteName: repaired ? 'Recovered Brand' : 123,
+          faviconUrl: repaired ? null : {},
+          seoTitle: repaired ? 'Recovered Website' : {},
+          loginTitle: repaired ? 'Corrected login' : 'Usable login',
+          captchaEnabled: false,
+          registerEnabled: false
+        })
+      }
+    })
+  })
+
+  await page.goto('#/auth/login', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: 'Usable login', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('img', { name: `${WEBSITE_CONFIG_DEFAULTS.siteName} Logo` })
+  ).toBeVisible()
+  await expect(page.locator('button[type="submit"]')).toBeEnabled()
+  await expect(page).not.toHaveTitle(/\[object Object\]/)
+  await expectNoHorizontalOverflow(page)
+
+  repaired = true
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: 'Corrected login', exact: true })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Recovered Brand Logo', exact: true })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  expect(errors).toEqual([])
 })
 
 test('login fills saved browser credentials without removing them when remember is unchecked', async ({

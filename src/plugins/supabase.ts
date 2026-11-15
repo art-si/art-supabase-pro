@@ -1,13 +1,11 @@
-import cloudbase from '@cloudbase/js-sdk'
 import type { ICloudbaseRequest } from '@cloudbase/js-sdk/types/request'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isSupabaseApi } from '@/config/api-provider'
+import cloudbase from '@/plugins/cloudbase-sdk'
 import { decodeFunctionResponse } from '@/utils/http/response'
 import {
-  normalizePlatformTenantReadUrl,
-  readPlatformTenantScopeActive,
-  readMutationTenantScopeId,
   readTenantScopeId,
+  resolveDataApiTenantScope,
   shouldAttachTenantScopeHeader,
   shouldAttachStorageTenantScopeHeader,
   getDataApiTenantScopeHeader
@@ -27,45 +25,31 @@ if (
 }
 
 const tenantScopeFetch: typeof fetch = async (input, init) => {
-  const selectedTenantScopeId = readTenantScopeId()
   const requestUrl = input instanceof Request ? input.url : String(input)
-  const isStorageObjectRequest = shouldAttachStorageTenantScopeHeader(requestUrl, supabaseUrl)
-  const requestMethod = (
-    init?.method ?? (input instanceof Request ? input.method : 'GET')
-  ).toUpperCase()
-  const isDataApiRequest = shouldAttachTenantScopeHeader(requestUrl)
-  const isPlatformScopeActive = readPlatformTenantScopeActive()
-  const isReadRequest = requestMethod === 'GET' || requestMethod === 'HEAD'
   const headers = new Headers(input instanceof Request ? input.headers : undefined)
   new Headers(init?.headers).forEach((value, key) => headers.set(key, value))
-  const hasExplicitReadTenantScope =
-    isReadRequest && isDataApiRequest && headers.has(tenantScopeHeader)
-  const explicitReadTenantScopeId = hasExplicitReadTenantScope
-    ? (headers.get(tenantScopeHeader)?.trim() ?? '')
-    : null
-  const shouldNormalizeRead = isPlatformScopeActive && isReadRequest && isDataApiRequest
-  const mutationTenantScopeId =
-    isPlatformScopeActive && !isReadRequest && isDataApiRequest
-      ? readMutationTenantScopeId(
-          init?.body ?? (input instanceof Request ? await input.clone().text() : null)
-        )
-      : null
-  const tenantScopeId = selectedTenantScopeId ?? explicitReadTenantScopeId ?? mutationTenantScopeId
-  const normalizedUrl = shouldNormalizeRead
-    ? normalizePlatformTenantReadUrl(requestUrl, hasExplicitReadTenantScope)
-    : requestUrl
+  const { normalizedUrl, tenantScopeId } = shouldAttachTenantScopeHeader(requestUrl)
+    ? await resolveDataApiTenantScope({
+        requestUrl,
+        requestMethod: init?.method ?? (input instanceof Request ? input.method : 'GET'),
+        readScopeHeader: headers.get(tenantScopeHeader),
+        readMutationBody: () =>
+          init?.body ?? (input instanceof Request ? input.clone().text() : null)
+      })
+    : {
+        normalizedUrl: requestUrl,
+        tenantScopeId: shouldAttachStorageTenantScopeHeader(requestUrl, supabaseUrl)
+          ? readTenantScopeId()
+          : null
+      }
 
-  if (!tenantScopeId || (!isDataApiRequest && !isStorageObjectRequest)) {
-    if (normalizedUrl === requestUrl) return fetch(input, init)
-    const normalizedInput =
-      input instanceof Request ? new Request(normalizedUrl, input) : normalizedUrl
-    return fetch(normalizedInput, init)
-  }
-
-  headers.set(tenantScopeHeader, tenantScopeId)
+  if (!tenantScopeId && normalizedUrl === requestUrl) return fetch(input, init)
 
   const normalizedInput =
     input instanceof Request ? new Request(normalizedUrl, input) : normalizedUrl
+  if (!tenantScopeId) return fetch(normalizedInput, init)
+
+  headers.set(tenantScopeHeader, tenantScopeId)
   return fetch(normalizedInput, { ...init, headers })
 }
 
@@ -93,28 +77,19 @@ const createCloudBaseClient = (): SupabaseClient => {
     const requestUrl = String(options.url ?? '')
     if (!shouldAttachTenantScopeHeader(requestUrl)) return cloudBaseFetch(options)
 
-    const requestMethod = String(options.method ?? 'GET').toUpperCase()
-    const isReadRequest = requestMethod === 'GET' || requestMethod === 'HEAD'
-    const isPlatformScopeActive = readPlatformTenantScopeActive()
     const headers = new Headers(options.headers)
-    const hasExplicitReadTenantScope = isReadRequest && headers.has(tenantScopeHeader)
-    const explicitReadTenantScopeId = hasExplicitReadTenantScope
-      ? (headers.get(tenantScopeHeader)?.trim() ?? '')
-      : null
-    const normalizedUrl =
-      isPlatformScopeActive && isReadRequest
-        ? normalizePlatformTenantReadUrl(requestUrl, hasExplicitReadTenantScope)
-        : requestUrl
     const requestBody =
       typeof options.body === 'string'
         ? options.body
         : options.body == null
           ? null
           : JSON.stringify(options.body)
-    const tenantScopeId =
-      readTenantScopeId() ??
-      explicitReadTenantScopeId ??
-      (isPlatformScopeActive && !isReadRequest ? readMutationTenantScopeId(requestBody) : null)
+    const { normalizedUrl, tenantScopeId } = await resolveDataApiTenantScope({
+      requestUrl,
+      requestMethod: String(options.method ?? 'GET'),
+      readScopeHeader: headers.get(tenantScopeHeader),
+      readMutationBody: () => requestBody
+    })
     if (!tenantScopeId && normalizedUrl === requestUrl) return cloudBaseFetch(options)
 
     if (tenantScopeId) headers.set(tenantScopeHeader, tenantScopeId)

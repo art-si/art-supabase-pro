@@ -834,16 +834,16 @@ export async function saveRoleMenuList(params: {
   menuRevision?: number
   roleVersion?: number
 }) {
-  // BFF hosts can compare the opening snapshot; native pro's RPC retains its original signature.
-  const { p_role_id, p_menu_ids } = params
-  const normalizedMenuIds = uniq(p_menu_ids)
-  return await responseHandle(
-    () => supabase.rpc('set_role_menus', { p_role_id, p_menu_ids: normalizedMenuIds }),
-    {
-      showMessage: true,
-      breakReturn: true
-    }
-  )
+  const { p_role_id, p_menu_ids, expectedMenuIds } = params
+  const payload = {
+    p_role_id,
+    p_menu_ids: uniq(p_menu_ids),
+    ...(!__CLOUDBASE_BUILD__ && expectedMenuIds && { p_expected_menu_ids: uniq(expectedMenuIds) })
+  }
+  return await responseHandle(() => supabase.rpc('set_role_menus', payload), {
+    showMessage: true,
+    breakReturn: true
+  })
 }
 
 export interface MenuListParams {

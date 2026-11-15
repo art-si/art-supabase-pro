@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { assertTableFocusContract } from './support/table-focus'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 for (const feature of ['organization', 'policy', 'contingent', 'review']) {
@@ -52,4 +53,21 @@ for (const feature of ['organization', 'policy', 'contingent', 'review']) {
       await page.screenshot({ path: testInfo.outputPath('page-table.png'), animations: 'disabled' })
     })
   }
+}
+
+for (const [feature, gridMinHeight] of [
+  ['benefits', '360px'],
+  ['organization', '420px']
+]) {
+  test(`${feature} 共享表格布局在专注模式退出后恢复`, async ({ page }, testInfo) => {
+    test.setTimeout(90000)
+    await prepareIsolatedSession(page)
+    await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+    await page.goto(`/tests/e2e/fixtures/hr-page-layout.html?page=${feature}`)
+    const query = page.locator('.business-workspace-page > .art-table-query')
+    await expect(query).toBeVisible({ timeout: 60000 })
+    await expect(query).toHaveCSS('min-height', gridMinHeight)
+    await assertTableFocusContract(page, testInfo)
+    await expect(query).toHaveCSS('min-height', gridMinHeight)
+  })
 }

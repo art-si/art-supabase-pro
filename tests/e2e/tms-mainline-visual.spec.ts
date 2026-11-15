@@ -7,6 +7,7 @@ const tenantId = '11111111-1111-4111-8111-111111111111'
 const orderIds = ['11111111-1111-4111-8111-111111111201', '11111111-1111-4111-8111-111111111202']
 const driverIds = ['11111111-1111-4111-8111-111111111401', '11111111-1111-4111-8111-111111111402']
 const vehicleIds = ['11111111-1111-4111-8111-111111111101', '11111111-1111-4111-8111-111111111102']
+const relationsTabName = '承运订单与车辆明细'
 const orders = [
   {
     id: orderIds[0],
@@ -211,6 +212,9 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
   await page.route('**/rest/v1/**', (route) => {
     const endpoint = new URL(route.request().url()).pathname.split('/').at(-1)
     const payload = route.request().postDataJSON?.() ?? {}
+    if (endpoint === 'get_table_column_runtime') {
+      return route.fulfill({ json: { enabled: false, profiles: [] } })
+    }
     if (endpoint === 'tms_list_orders_secure')
       return route.fulfill({
         json: { records: orders, total: 2, fieldAccess: orders[0].fieldAccess }
@@ -606,6 +610,9 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
     return route.fulfill({ json: [] })
   })
 
+  const list = page.locator('.art-table-query')
+  const relationsTab = page.getByRole('tab', { name: relationsTabName, exact: true })
+  const relationsPanel = page.getByRole('tabpanel', { name: relationsTabName, exact: true })
   for (const theme of ['light', 'dark'] as const) {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/tests/e2e/fixtures/tms-mainline-visual.html', {
@@ -613,8 +620,10 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
     })
     if (theme === 'dark') await page.evaluate(() => document.documentElement.classList.add('dark'))
     await expect(page.locator('.art-table-query')).toBeVisible({ timeout: 90_000 })
-    await expect(page.getByText('QA-ORDER-001').first()).toBeVisible()
-    await expect(page.getByText('QA-ORDER-002').first()).toBeVisible()
+    const firstOrderLink = list.getByRole('link', { name: 'QA-ORDER-001', exact: true })
+    await expect(firstOrderLink).toBeInViewport()
+    await expect(list.getByRole('link', { name: 'QA-ORDER-002', exact: true })).toBeVisible()
+    await expect(list.getByRole('button', { name: '查询', exact: true })).toBeEnabled()
     await expect(page.getByRole('button', { name: '导出', exact: true })).toBeVisible()
     await page.screenshot({ path: info.outputPath(`order-list-${theme}.png`), fullPage: true })
     if (theme === 'light') {
@@ -631,7 +640,8 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
       await expect(page.getByText('运输订单综合查询')).toBeVisible()
     }
 
-    await page.getByText('QA-ORDER-001').first().click()
+    await expect(firstOrderLink).toBeInViewport()
+    await firstOrderLink.click()
     await expect(page.locator('.order-query-detail')).toBeVisible()
     const orderHeaderBox = await page.locator('.order-query-detail .art-page-header').boundingBox()
     const orderFirstCardBox = await page
@@ -642,18 +652,20 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
     expect(orderFirstCardBox.y - orderHeaderBox.y - orderHeaderBox.height).toBeGreaterThanOrEqual(
       12
     )
-    await page.getByRole('tab', { name: '承运订单与车辆明细' }).click()
-    await expect(page.getByRole('link', { name: 'QA-WB-001' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'QA-WB-002' })).toBeVisible()
+    await relationsTab.click()
+    await expect(relationsPanel.getByRole('link', { name: 'QA-WB-001', exact: true })).toBeVisible()
+    await expect(relationsPanel.getByRole('link', { name: 'QA-WB-002', exact: true })).toBeVisible()
     await page.screenshot({ path: info.outputPath(`order-detail-${theme}.png`), fullPage: true })
     if (theme === 'light') {
       await page.goto('/tests/e2e/fixtures/tms-mainline-visual.html', {
         waitUntil: 'domcontentloaded'
       })
-      await page.getByText('QA-ORDER-002').first().click()
+      await list.getByRole('link', { name: 'QA-ORDER-002', exact: true }).click()
       await expect(page.locator('.order-query-detail')).toBeVisible()
-      await page.getByRole('tab', { name: '承运订单与车辆明细' }).click()
-      await expect(page.getByRole('link', { name: 'QA-WB-003' })).toBeVisible()
+      await relationsTab.click()
+      await expect(
+        relationsPanel.getByRole('link', { name: 'QA-WB-003', exact: true })
+      ).toBeVisible()
       await page.screenshot({
         path: info.outputPath('order-detail-second-light.png'),
         fullPage: true
@@ -664,8 +676,8 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
       waitUntil: 'domcontentloaded'
     })
     if (theme === 'dark') await page.evaluate(() => document.documentElement.classList.add('dark'))
-    await expect(page.getByText('验收司机甲').first()).toBeVisible()
-    await expect(page.getByText('验收司机乙').first()).toBeVisible()
+    await expect(list.getByRole('link', { name: '验收司机甲', exact: true })).toBeVisible()
+    await expect(list.getByRole('link', { name: '验收司机乙', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '导出', exact: true })).toBeVisible()
     await page.screenshot({ path: info.outputPath(`driver-list-${theme}.png`), fullPage: true })
     if (theme === 'light') {
@@ -682,7 +694,7 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
       await expect(page.getByText('司机综合查询')).toBeVisible()
     }
 
-    await page.getByText('验收司机甲').first().click()
+    await list.getByRole('link', { name: '验收司机甲', exact: true }).click()
     await expect(page.locator('.driver-query-detail')).toBeVisible()
     const driverHeaderBox = await page
       .locator('.driver-query-detail .art-page-header')
@@ -697,8 +709,10 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
     ).toBeGreaterThanOrEqual(12)
     await expect(page.getByRole('link', { name: 'QA-ORDER-001' }).first()).toBeVisible()
     await expect(page.getByText('当前出车')).toBeVisible()
-    await page.getByRole('tab', { name: '承运订单与车辆明细' }).click()
-    await expect(page.getByRole('link', { name: 'QA-ORDER-002' }).first()).toBeVisible()
+    await relationsTab.click()
+    await expect(
+      relationsPanel.getByRole('link', { name: 'QA-ORDER-002', exact: true })
+    ).toBeVisible()
     await page.getByRole('tab', { name: '档案与资质' }).click()
     await expect(page.getByText('道路运输从业资格').first()).toBeVisible()
     await expect(page.getByText('危险品运输资格').first()).toBeVisible()
@@ -710,17 +724,23 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
     await expect(page.getByText('验收违章记录').first()).toBeVisible()
     await expect(page.getByText('验收事故记录').first()).toBeVisible()
     await page.getByRole('tab', { name: '费用明细' }).click()
-    await expect(page.getByRole('link', { name: 'QA-COST-001' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'QA-COST-002' })).toBeVisible()
-    await expect(page.getByText('QA-LOAN-001')).toBeVisible()
-    await expect(page.getByText('QA-REPAY-001')).toBeVisible()
-    await expect(page.getByText('QA-REIMBURSE-001')).toBeVisible()
-    await expect(
-      page
-        .locator('.art-section-card')
-        .filter({ hasText: '运单费用明细' })
-        .getByRole('link', { name: 'QA-WB-001' })
-    ).toBeVisible()
+    const financePanel = page.getByRole('tabpanel', { name: '费用明细', exact: true })
+    const waybillCosts = financePanel.locator('.art-section-card').filter({
+      has: page.getByText('运单费用明细', { exact: true })
+    })
+    await expect(waybillCosts.getByRole('link', { name: 'QA-COST-001', exact: true })).toBeVisible()
+    await expect(waybillCosts.getByRole('link', { name: 'QA-COST-002', exact: true })).toBeVisible()
+    await expect(waybillCosts.getByRole('link', { name: 'QA-WB-001', exact: true })).toBeVisible()
+    for (const [title, documentNo] of [
+      ['借款明细', 'QA-LOAN-001'],
+      ['还款明细', 'QA-REPAY-001'],
+      ['费用报销明细', 'QA-REIMBURSE-001']
+    ]) {
+      const card = financePanel.locator('.art-section-card').filter({
+        has: page.getByText(title, { exact: true })
+      })
+      await expect(card.getByRole('cell', { name: documentNo, exact: true })).toBeVisible()
+    }
     await expect(page.getByText('停车费').first()).toBeVisible()
     await expect(
       page.locator('.driver-query-detail .el-tag:visible').filter({ hasText: '已审核' }).first()
@@ -733,10 +753,10 @@ test('订单与司机综合查询两条记录可穿透，并在明暗主题及�
       await page.goto('/tests/e2e/fixtures/tms-mainline-visual.html?page=driver-list', {
         waitUntil: 'domcontentloaded'
       })
-      await page.getByText('验收司机乙').first().click()
+      await list.getByRole('link', { name: '验收司机乙', exact: true }).click()
       await expect(page.locator('.driver-query-detail')).toBeVisible()
-      await page.getByRole('tab', { name: '承运订单与车辆明细' }).click()
-      await expect(page.getByText('QA-ORDER-001')).toBeVisible()
+      await relationsTab.click()
+      await expect(relationsPanel.getByText('QA-ORDER-001', { exact: true })).toBeVisible()
       await page.getByRole('tab', { name: '档案与资质' }).click()
       await expect(page.getByText('司机月薪方案乙')).toBeVisible()
       await expect(page.getByText('¥9,200.00')).toBeVisible()
@@ -923,22 +943,24 @@ test('订单详情页签展示两条承运关系与共享费用，1280 宽度可
   await expect(page.locator('.order-query-detail')).toBeVisible({ timeout: 360_000 })
   await expect(page.getByRole('tab', { name: '总览' })).toBeVisible()
   await expect(page.locator('.order-query-detail .el-tabs--card')).toHaveCount(0)
-  await page.getByRole('tab', { name: '承运订单与车辆明细' }).click()
-  await expect(page.getByRole('columnheader', { name: '运输订单号' })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: '调度运单号' })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: '总运费' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'QA-WB-001' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'QA-WB-002' })).toBeVisible()
-  await expect(page.getByText('¥1,200.00')).toBeVisible()
-  await expect(page.getByText('¥600.00')).toBeVisible()
-  await expect(page.getByText('承运方', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('个体司机', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('transporting', { exact: true })).toHaveCount(0)
+  const relationsTab = page.getByRole('tab', { name: relationsTabName, exact: true })
+  const relationsPanel = page.getByRole('tabpanel', { name: relationsTabName, exact: true })
+  await relationsTab.click()
+  await expect(relationsPanel.getByRole('columnheader', { name: '运输订单号' })).toBeVisible()
+  await expect(relationsPanel.getByRole('columnheader', { name: '调度运单号' })).toBeVisible()
+  await expect(
+    relationsPanel.getByRole('columnheader', { name: '总运费', exact: true })
+  ).toBeVisible()
+  await expect(relationsPanel.getByRole('link', { name: 'QA-WB-001', exact: true })).toBeVisible()
+  await expect(relationsPanel.getByRole('link', { name: 'QA-WB-002', exact: true })).toBeVisible()
+  await expect(relationsPanel.getByText('¥1,200.00', { exact: true })).toBeVisible()
+  await expect(relationsPanel.getByText('¥600.00', { exact: true })).toBeVisible()
+  await expect(relationsPanel.getByText('承运方', { exact: true })).toBeVisible()
+  await expect(relationsPanel.getByText('个体司机', { exact: true })).toBeVisible()
+  await expect(relationsPanel.getByText('transporting', { exact: true })).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('order-relations-1280.png'), fullPage: true })
-  const relationScroll = page
-    .locator('.order-query-detail .el-table__body-wrapper .el-scrollbar__wrap')
-    .first()
+  const relationScroll = relationsPanel.locator('.el-table__body-wrapper .el-scrollbar__wrap')
   await expect(relationScroll).toBeVisible()
   expect(
     await relationScroll.evaluate((element) => element.scrollWidth > element.clientWidth)
@@ -946,7 +968,9 @@ test('订单详情页签展示两条承运关系与共享费用，1280 宽度可
   await relationScroll.evaluate((element) => {
     element.scrollLeft = element.scrollWidth
   })
-  await expect(page.getByRole('columnheader', { name: '总运费' })).toBeInViewport()
+  await expect(
+    relationsPanel.getByRole('columnheader', { name: '总运费', exact: true })
+  ).toBeInViewport()
   await page.screenshot({ path: info.outputPath('order-relations-right-1280.png'), fullPage: true })
 
   await page.getByRole('tab', { name: '费用明细' }).click()
@@ -957,7 +981,7 @@ test('订单详情页签展示两条承运关系与共享费用，1280 宽度可
   await expect(page.getByText('不能仅凭同一司机承运过该订单就计入本订单')).toBeVisible()
   await page.screenshot({ path: info.outputPath('order-costs-1280.png'), fullPage: true })
   await page.evaluate(() => document.documentElement.classList.add('dark'))
-  await page.getByRole('tab', { name: '承运订单与车辆明细' }).click()
+  await relationsTab.click()
   await page.screenshot({ path: info.outputPath('order-relations-dark-1280.png'), fullPage: true })
   await page.getByRole('tab', { name: '费用明细' }).click()
   await page.screenshot({ path: info.outputPath('order-costs-dark-1280.png'), fullPage: true })
@@ -1063,26 +1087,31 @@ test('司机当前出车独立于历史分页且 1280 宽度处理状态完整�
   const currentCard = page.locator('.driver-query-detail .art-section-card').filter({
     has: page.getByText('当前出车', { exact: true })
   })
-  const historyCard = page.locator('.driver-query-detail .art-section-card').filter({
-    has: page.getByText('承运订单与车辆', { exact: true })
-  })
   await expect(currentCard.getByRole('link', { name: 'QA-ORDER-001' })).toBeVisible({
     timeout: 90_000
   })
-  await expect(historyCard.getByText('QA-WB-H-01')).toBeVisible()
-  await historyCard.locator('.btn-next').click()
-  await expect(historyCard.getByText('QA-WB-H-21')).toBeVisible()
-  await expect(currentCard.getByRole('link', { name: 'QA-ORDER-001' })).toBeVisible()
   await expect(page.getByText('主驾', { exact: true })).toBeVisible()
   await expect(page.getByText('启用', { exact: true })).toBeVisible()
-  await expect(historyCard.getByText('已完成', { exact: true })).toBeVisible()
-  await expect(historyCard.getByText('运输中', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: relationsTabName, exact: true }).click()
+  const historyPanel = page.getByRole('tabpanel', { name: relationsTabName, exact: true })
+  await expect(historyPanel.getByText('QA-WB-H-01', { exact: true })).toBeVisible()
+  await historyPanel.locator('.btn-next').click()
+  const lastHistoryRow = historyPanel.getByRole('row', { name: /QA-WB-H-21/ })
+  const currentHistoryRow = historyPanel.getByRole('row', { name: /QA-WB-001/ })
+  await expect(lastHistoryRow.getByRole('cell', { name: '已完成', exact: true })).toBeVisible()
+  await expect(currentHistoryRow.getByRole('cell', { name: '运输中', exact: true })).toBeVisible()
 
+  await page.getByRole('tab', { name: '总览', exact: true }).click()
+  await expect(currentCard.getByRole('link', { name: 'QA-ORDER-001' })).toBeVisible()
+
+  await page.getByRole('tab', { name: '风控记录', exact: true }).click()
   const violationCard = page.locator('.driver-query-detail .art-section-card').filter({
     has: page.getByText('违章扣分', { exact: true })
   })
+  const status = violationCard.getByText('处理状态', { exact: true })
+  await expect(status).toBeVisible()
   const violationBounds = await violationCard.boundingBox()
-  const statusBounds = await violationCard.getByText('处理状态', { exact: true }).boundingBox()
+  const statusBounds = await status.boundingBox()
   if (!violationBounds || !statusBounds) throw new Error('违章卡片或处理状态列未渲染')
   expect(statusBounds.x + statusBounds.width).toBeLessThanOrEqual(
     violationBounds.x + violationBounds.width - 8

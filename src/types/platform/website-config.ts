@@ -38,7 +38,7 @@ export interface WebsiteConfigValues {
   defaultLanguage: WebsiteDefaultLanguage
   captchaEnabled: boolean
   captchaType: WebsiteCaptchaType
-  turnstileSiteKey: string
+  turnstileSiteKey: string | null
   turnstileSize?: WebsiteTurnstileSize
   turnstileTheme?: WebsiteTurnstileTheme
   captchaMaxAttempts: number

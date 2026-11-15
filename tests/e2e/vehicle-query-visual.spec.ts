@@ -1,4 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Request } from '@playwright/test'
+import { electricEntry, fuelEntry } from './support/energy-card-data'
+import { expectPaginationControlsInView } from './support/pagination-layout'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(900_000)
@@ -58,6 +60,22 @@ const vehicles = [
     fieldAccess: { documents: 'hidden' }
   }
 ]
+const transportRpc = '**/rest/v1/rpc/tms_list_transport_mainline_relations_secure'
+const transportRecord = {
+  tenantId,
+  orderId: '11111111-1111-4111-8111-111111111201',
+  orderNo: 'TEST-ORDER-001',
+  orderStatus: 'transporting',
+  waybillId: '11111111-1111-4111-8111-111111111301',
+  waybillNo: 'TEST-WB-001',
+  waybillStatus: 'transporting',
+  vehicleId,
+  plateNo: vehicles[0].plateNo,
+  driverId: '11111111-1111-4111-8111-111111111401',
+  driverName: '验收司机甲',
+  departedAt: '2026-10-01',
+  completedAt: null
+}
 
 const mockVehicleApis = async (page: Page): Promise<void> => {
   await page.route('**/rest/v1/**', (route) => {
@@ -117,28 +135,7 @@ const mockVehicleApis = async (page: Page): Promise<void> => {
       })
     }
     if (endpoint === 'tms_list_transport_mainline_relations_secure') {
-      return route.fulfill({
-        json: {
-          records: [
-            {
-              tenantId,
-              orderId: '11111111-1111-4111-8111-111111111201',
-              orderNo: 'TEST-ORDER-001',
-              orderStatus: 'transporting',
-              waybillId: '11111111-1111-4111-8111-111111111301',
-              waybillNo: 'TEST-WB-001',
-              waybillStatus: 'transporting',
-              vehicleId,
-              plateNo: vehicles[0].plateNo,
-              driverId: '11111111-1111-4111-8111-111111111401',
-              driverName: '验收司机甲',
-              departedAt: '2026-10-01',
-              completedAt: null
-            }
-          ],
-          total: 1
-        }
-      })
+      return route.fulfill({ json: { records: [transportRecord], total: 1 } })
     }
     if (endpoint === 'sys_dictionary') {
       const code = new URL(route.request().url()).searchParams
@@ -224,13 +221,17 @@ test('普通年检用户可按查看权限打开详情，未授权时不显示�
     '/tests/e2e/fixtures/vehicle-query-visual.html?page=inspection&inspection-view=denied',
     { waitUntil: 'commit' }
   )
-  await expect(page.getByText('INSPECTION-READ', { exact: true })).toBeVisible({ timeout: 90_000 })
-  await expect(page.getByRole('button', { name: '更多操作', exact: true })).toHaveCount(0)
+  const inspectionRow = page.getByRole('row').filter({
+    has: page.getByRole('cell', { name: 'INSPECTION-READ', exact: true })
+  })
+  const moreActions = inspectionRow.getByRole('button', { name: '更多操作', exact: true })
+  await expect(inspectionRow).toBeInViewport({ timeout: 90_000 })
+  await expect(moreActions).toHaveCount(0)
   await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=inspection', {
     waitUntil: 'commit'
   })
-  await expect(page.getByText('INSPECTION-READ', { exact: true })).toBeVisible({ timeout: 90_000 })
-  await page.getByRole('button', { name: '更多操作', exact: true }).hover()
+  await expect(inspectionRow).toBeInViewport({ timeout: 90_000 })
+  await moreActions.hover()
   await expect(page.getByRole('menuitem', { name: '详情', exact: true })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '删除', exact: true })).toHaveCount(0)
   await page.screenshot({
@@ -419,6 +420,239 @@ test('车辆综合查询两条记录在明暗主题和窄桌面完整呈现', as
     await documentsTab.press('Enter')
     await expect(documentsTab).toHaveAttribute('aria-current', 'page')
     await expect(documentsTab).toBeInViewport()
+  }
+})
+
+test('车辆详情运输订单分页在可视区域内且页间序号连续', async ({ page }, info) => {
+  await mockVehicleApis(page)
+  const ranges: Array<[number, number]> = []
+  const total = 160
+  await page.route(transportRpc, (route) => {
+    const { p_vehicle_id, p_from, p_to } = route.request().postDataJSON() as {
+      p_vehicle_id: string
+      p_from: number
+      p_to: number
+    }
+    expect(p_vehicle_id).toBe(vehicleId)
+    ranges.push([p_from, p_to])
+    const records = Array.from({ length: Math.min(total, p_to + 1) - p_from }, (_, index) => {
+      const sequence = String(p_from + index + 1).padStart(3, '0')
+      return {
+        ...transportRecord,
+        orderId: `11111111-1111-4111-8111-111111111${sequence}`,
+        orderNo: `TEST-ORDER-${sequence}`,
+        waybillNo: `TEST-WB-${sequence}`
+      }
+    })
+    return route.fulfill({ json: { records, total } })
+  })
+
+  await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=detail')
+  await expect(
+    page.locator('.vehicle-query-detail__current').getByText('TEST-ORDER-001')
+  ).toBeVisible()
+  await page
+    .getByRole('navigation', { name: '车辆详情分类' })
+    .getByRole('button', { name: '运输订单', exact: true })
+    .click()
+  const pane = page.locator('.vehicle-query-detail__content')
+  const pager = pane.locator('.el-pagination')
+  await expectPaginationControlsInView(pager)
+  await pager.locator('button.btn-next').click()
+  const firstRow = pane.getByRole('row').filter({ hasText: 'TEST-ORDER-021' })
+  await expect(firstRow.getByRole('cell', { name: '21', exact: true })).toBeVisible()
+  expect(ranges).toEqual([
+    [0, 49],
+    [0, 19],
+    [20, 39]
+  ])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true
+  )
+  await pane.screenshot({
+    path: info.outputPath('transport-pagination.png'),
+    animations: 'disabled'
+  })
+})
+
+const makeEnergyLedgerRecord = (
+  entry: typeof fuelEntry | typeof electricEntry,
+  number: number
+) => ({
+  ...entry,
+  id: `energy-entry-${number}`,
+  vehicleId,
+  plateNo: vehicles[0].plateNo,
+  referenceNo: `ENERGY-${number}`
+})
+
+const energyPaginationCases = [
+  {
+    tab: '油耗与加油',
+    rpc: 'vms_list_vehicle_fuel_execution_secure',
+    isNewEnergy: false,
+    showRowNumber: true,
+    record: (number: number) => ({
+      waybillId: `fuel-waybill-${number}`,
+      waybillNo: `ENERGY-${number}`,
+      status: 'completed',
+      refueledLiters: 40,
+      consumedFuelLiters: 60,
+      totalMileageKm: 350,
+      fuelPer100km: 17.14
+    })
+  },
+  {
+    tab: '油卡流水',
+    rpc: 'vms_list_fuel_card_entries_secure',
+    isNewEnergy: false,
+    showRowNumber: false,
+    record: (number: number) => makeEnergyLedgerRecord(fuelEntry, number)
+  },
+  {
+    tab: '电卡流水',
+    rpc: 'vms_list_electric_card_entries_secure_v2',
+    isNewEnergy: true,
+    showRowNumber: false,
+    record: (number: number) => makeEnergyLedgerRecord(electricEntry, number)
+  }
+]
+
+for (const { tab, rpc, isNewEnergy, showRowNumber, record } of energyPaginationCases) {
+  test(`车辆详情${tab}分页完整显示且按翻页请求记录`, async ({ page }, info) => {
+    await mockVehicleApis(page)
+    await page.route('**/rest/v1/rpc/vms_get_vehicle_archive_secure', (route) =>
+      route.fulfill({ json: { ...vehicles[0], isNewEnergy } })
+    )
+    const ranges: Array<[number, number]> = []
+    const total = 160
+    await page.route(`**/rest/v1/rpc/${rpc}`, (route) => {
+      const { p_vehicle_id, p_from, p_to } = route.request().postDataJSON() as {
+        p_vehicle_id: string
+        p_from: number
+        p_to: number
+      }
+      expect(p_vehicle_id).toBe(vehicleId)
+      ranges.push([p_from, p_to])
+      const records = Array.from({ length: Math.min(total, p_to + 1) - p_from }, (_, index) =>
+        record(p_from + index + 1)
+      )
+      return route.fulfill({ json: { records, total } })
+    })
+
+    await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=detail')
+    await page
+      .getByRole('navigation', { name: '车辆详情分类' })
+      .getByRole('button', { name: tab, exact: true })
+      .click()
+    const pane = page.locator('.vehicle-query-detail__content')
+    const pager = pane.locator('.el-pagination')
+    await expect(pane.getByText('ENERGY-1', { exact: true })).toBeVisible()
+    await expectPaginationControlsInView(pager)
+    await pager.locator('button.btn-next').click()
+    const firstRecord = pane.getByText('ENERGY-21', { exact: true })
+    await expect(firstRecord).toBeVisible()
+    if (showRowNumber) {
+      await expect(
+        pane
+          .getByRole('row')
+          .filter({ has: page.getByText('ENERGY-21', { exact: true }) })
+          .getByRole('cell', { name: '21', exact: true })
+      ).toBeVisible()
+    }
+    expect(ranges).toEqual([
+      [0, 19],
+      [20, 39]
+    ])
+    await expectPaginationControlsInView(pager)
+    await pager.screenshot({
+      path: info.outputPath('energy-pagination.png'),
+      animations: 'disabled'
+    })
+  })
+}
+
+test('车辆详情当前承运重试得到空页时仍显示反馈并可手动收起', async ({ page }, info) => {
+  await mockVehicleApis(page)
+  let attempts = 0
+  await page.route(transportRpc, (route) => {
+    attempts += 1
+    return attempts === 1
+      ? route.fulfill({ status: 503, json: { message: 'Temporary fixture error' } })
+      : route.fulfill({ json: { records: [], total: 0 } })
+  })
+  await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=detail')
+  const current = page.locator('.vehicle-query-detail__current')
+  const empty = current.getByText('当前暂无在运订单', { exact: true })
+  const toggle = current.getByRole('button', { name: /^(展开|收起)$/ })
+  await expect(current.getByText('当前承运信息加载失败', { exact: true })).toBeVisible()
+  await current.getByRole('button', { name: '重新加载', exact: true }).click()
+  await expect(empty).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await current.screenshot({
+    path: info.outputPath('execution-retry-empty.png'),
+    animations: 'disabled'
+  })
+  await toggle.click()
+  await expect(empty).toBeHidden()
+  await toggle.click()
+  await expect(empty).toBeVisible()
+  expect(attempts).toBe(2)
+
+  const initialEmpty = page.waitForResponse((response) =>
+    response.url().endsWith('/tms_list_transport_mainline_relations_secure')
+  )
+  await page.reload()
+  await initialEmpty
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(attempts).toBe(3)
+})
+
+test('车辆详情切换车辆后忽略此前尚未完成的承运响应', async ({ page }) => {
+  await mockVehicleApis(page)
+  const otherVehicle = vehicles[1]
+  let resolveFirstVehicle = () => {}
+  const firstVehiclePending = new Promise<void>((resolve) => {
+    resolveFirstVehicle = resolve
+  })
+  await page.route(transportRpc, async (route) => {
+    const requestedId = route.request().postDataJSON()?.p_vehicle_id
+    if (requestedId === vehicleId) await firstVehiclePending
+    return route.fulfill({
+      json: {
+        records: [
+          requestedId === vehicleId
+            ? transportRecord
+            : { ...transportRecord, vehicleId: otherVehicle.id, orderNo: 'TEST-OTHER-ORDER' }
+        ],
+        total: 1
+      }
+    })
+  })
+  const isFirstVehicleRequest = (request: Request) =>
+    request.url().endsWith('/tms_list_transport_mainline_relations_secure') &&
+    request.postDataJSON()?.p_vehicle_id === vehicleId
+
+  try {
+    const firstVehicleStarted = page.waitForRequest(isFirstVehicleRequest)
+    await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=detail&switch-vehicle')
+    await firstVehicleStarted
+    await page.getByRole('link', { name: '查看另一辆测试车辆' }).click()
+    const current = page.locator('.vehicle-query-detail__current')
+    await expect(current.getByText('TEST-OTHER-ORDER', { exact: true })).toBeVisible()
+
+    const lateResponse = page.waitForResponse((response) =>
+      isFirstVehicleRequest(response.request())
+    )
+    resolveFirstVehicle()
+    await (await lateResponse).finished()
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    )
+    await expect(current.getByText('TEST-OTHER-ORDER', { exact: true })).toBeVisible()
+    await expect(current.getByText(transportRecord.orderNo, { exact: true })).toHaveCount(0)
+  } finally {
+    resolveFirstVehicle()
   }
 })
 

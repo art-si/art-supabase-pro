@@ -93,9 +93,7 @@ test('项目十个页签展示关联业务记录，详情抽屉内表格保持�
   await expect(workspace.getByText('审批自动归集', { exact: true })).toBeVisible()
   await workspace.getByRole('switch', { name: '进入专注模式', exact: true }).locator('..').click()
   await workspace.getByRole('button', { name: '退出专注模式', exact: true }).click()
-  const projectLink = workspace
-    .locator('.art-table__cell-link')
-    .filter({ hasText: '设备装配项目' })
+  const projectLink = workspace.locator('.art-table__cell-link').filter({ hasText: '设备装配项目' })
   await projectLink.focus()
   await projectLink.press('Enter')
   const drawer = page.getByRole('dialog', { name: '项目报价详情' })
@@ -153,7 +151,7 @@ test('项目资料失败可重试，业务列表失败与空状态可恢复', as
   )
   await page.route('**/rest/v1/rpc/scm_project_quotation_tab', (route) =>
     tabFails
-      ? route.fulfill({ status: 500, json: { message: 'temporary read error' } })
+      ? route.fulfill({ json: { records: [{ id: null }], total: 1 } })
       : route.fulfill({ json: { records: [], total: 0 } })
   )
   await page.goto('/tests/e2e/fixtures/scm-project-quotation.html')

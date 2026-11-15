@@ -1,12 +1,15 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
+import { fetchAllRangePages } from '@/utils/supabase/pagination'
 import { normalizeNonNullableText } from '@/utils/form/normalize'
+import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
 import { uniq } from 'lodash-es'
 
-const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
+const { supabase, responseHandle } = useSupabase()
 
 const NOTE_SELECT = 'id,user_id,content,content_text,images,tags,created_at,updated_at'
-const SIGNED_URL_TTL = 60 * 60
+const NOTE_IMAGE_BUCKET = 'note-images'
+const SIGNED_URL_TTL = 10 * 60
 
 type NoteItem = Api.Notes.NoteItem
 type NoteAuthor = Api.Notes.Author
@@ -26,18 +29,46 @@ interface NoteAuthorRow extends NoteAuthor {
   tenant?: { tenantName?: string | null } | null
 }
 
-const normalizeTags = (tags: string[]): string[] =>
-  uniq(tags.map((tag) => normalizeNonNullableText(tag).slice(0, 40)).filter(Boolean)).slice(0, 8)
+export function getNoteAuthorLabel(userId: string, author?: NoteAuthor | null): string {
+  return author?.nickName || author?.userName || `移动端用户 · ${userId.slice(0, 8)}`
+}
 
-async function signImageUrls(rows: NoteRow[]): Promise<Map<string, string>> {
-  const paths = uniq(rows.flatMap((row) => row.images).filter(Boolean))
-  if (!paths.length) return new Map()
+export async function fetchNoteImageUrls(paths: string[]): Promise<Map<string, string>> {
+  const objectPaths = uniq(paths.filter(Boolean))
+  if (!objectPaths.length) return new Map()
 
-  const { data } = await responseHandle<Array<{ path: string; signedUrl: string }>>(
-    () => supabase.storage.from('note-images').createSignedUrls(paths, SIGNED_URL_TTL),
-    { showErrorMessage: false, errorMessage: '笔记图片加载失败，请稍后重试' }
+  const { data } = await responseHandle<
+    Array<{ path: string | null; signedUrl: string | null; error: string | null }>
+  >(() => supabase.storage.from(NOTE_IMAGE_BUCKET).createSignedUrls(objectPaths, SIGNED_URL_TTL), {
+    showErrorMessage: false,
+    errorMessage: '笔记图片加载失败，请稍后重试'
+  })
+  return new Map(
+    (data ?? []).flatMap(({ path, signedUrl, error }) =>
+      path && signedUrl && !error ? [[path, signedUrl]] : []
+    )
   )
-  return new Map((data ?? []).map((item) => [item.path, item.signedUrl]))
+}
+
+export async function getNoteActorId(): Promise<string> {
+  const { data } = await responseHandle<{ user: { id: string } }>(() => supabase.auth.getUser(), {
+    breakReturn: true,
+    errorMessage: '无法确认当前账号，请重新登录后再上传图片'
+  })
+  if (!data?.user?.id) throw new Error('无法确认当前账号，请重新登录后再上传图片')
+  return data.user.id
+}
+
+export async function uploadNoteImage(path: string, file: File): Promise<void> {
+  await responseHandle(
+    () =>
+      supabase.storage.from(NOTE_IMAGE_BUCKET).upload(path, file, {
+        contentType: file.type,
+        cacheControl: '600',
+        upsert: false
+      }),
+    { breakReturn: true, errorMessage: '笔记图片上传失败，请检查权限和网络后重试' }
+  )
 }
 
 async function loadAuthors(userIds: string[]): Promise<Map<string, NoteAuthor>> {
@@ -49,6 +80,7 @@ async function loadAuthors(userIds: string[]): Promise<Map<string, NoteAuthor>> 
       supabase
         .from('sys_user')
         .select('auth_user_id,user_name,nick_name,avatar,tenant:sys_tenant(tenant_name)')
+        .is('deleted_at', null)
         .in('auth_user_id', ids),
     { showErrorMessage: false, errorMessage: '笔记作者信息加载失败，请稍后重试' }
   )
@@ -85,10 +117,11 @@ function mapRows(
 }
 
 export async function fetchNoteList(params: Api.Notes.NoteListParams) {
-  const { keyword = '', dateRange, from = 0, to = 19 } = params
+  const { keyword = '', dateRange, userId, from = 0, to = 19 } = params
+  const assertScope = createTenantScopeReadGuard()
   let query = supabase
-    .from('notes')
-    .select(NOTE_SELECT, { count: 'exact' })
+    .rpc('list_platform_notes', {}, { count: 'exact' })
+    .select(NOTE_SELECT)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(from, to)
@@ -96,18 +129,21 @@ export async function fetchNoteList(params: Api.Notes.NoteListParams) {
   const trimmedKeyword = normalizeNonNullableText(keyword)
   if (trimmedKeyword)
     query = query.or(buildOrIlikeFilter(['content_text', 'content'], trimmedKeyword))
+  if (userId) query = query.eq('user_id', userId)
   if (dateRange?.[0]) query = query.gte('created_at', `${dateRange[0]}T00:00:00+08:00`)
   if (dateRange?.[1]) query = query.lte('created_at', `${dateRange[1]}T23:59:59.999+08:00`)
 
   const result = await responseHandle<NoteRow[]>(() => query, {
-    showErrorMessage: true,
+    showErrorMessage: false,
     errorMessage: '时光笔记加载失败，请刷新后重试'
   })
+  assertScope()
   const rows = result.data ?? []
   const [authors, imageUrls] = await Promise.all([
     loadAuthors(rows.map((row) => row.userId)),
-    signImageUrls(rows)
+    fetchNoteImageUrls(rows.flatMap((row) => row.images))
   ])
+  assertScope()
   return {
     data: mapRows(rows, authors, imageUrls),
     total: result.total ?? 0,
@@ -115,23 +151,44 @@ export async function fetchNoteList(params: Api.Notes.NoteListParams) {
   }
 }
 
+export async function fetchNoteAuthorOptions() {
+  const result = await fetchAllRangePages<NoteAuthor>(({ from, to }) =>
+    responseHandle<NoteAuthor[]>(
+      () => supabase.rpc('list_platform_note_authors').order('auth_user_id').range(from, to),
+      { errorMessage: '笔记用户加载失败，请重新加载' }
+    )
+  )
+  if (result.error) throw result.error
+  return (result.data ?? []).map((author) => ({
+    ...author,
+    value: author.authUserId,
+    label: getNoteAuthorLabel(author.authUserId, author),
+    secondaryText: author.tenantName || '未关联后台用户'
+  }))
+}
+
 export async function fetchNoteStats(): Promise<{
   data: Api.Notes.NoteStats
   error: unknown | null
 }> {
-  const result = await responseHandle<Pick<NoteRow, 'id' | 'userId' | 'images' | 'createdAt'>[]>(
-    () => supabase.from('notes').select('id,user_id,images,created_at'),
-    {
-      showErrorMessage: false,
-      errorMessage: '笔记概览加载失败，请刷新后重试'
-    }
+  type StatsRow = Pick<NoteRow, 'userId' | 'images' | 'createdAt'>
+  const result = await fetchAllRangePages<StatsRow>(({ from, to }) =>
+    responseHandle<StatsRow[]>(
+      () =>
+        supabase
+          .rpc('list_platform_notes', {})
+          .select('id,user_id,images,created_at')
+          .order('id')
+          .range(from, to),
+      { errorMessage: '笔记概览加载失败，请刷新后重试' }
+    )
   )
   const rows = result.data ?? []
   const recentSince = Date.now() - 7 * 24 * 60 * 60 * 1000
   return {
     data: {
       total: rows.length,
-      users: new Set(rows.map((row) => row.userId)).size,
+      users: uniq(rows.map((row) => row.userId)).length,
       recent: rows.filter((row) => new Date(row.createdAt).getTime() >= recentSince).length,
       withImages: rows.filter((row) => row.images.length > 0).length,
       lastCreatedAt: rows
@@ -143,50 +200,23 @@ export async function fetchNoteStats(): Promise<{
   }
 }
 
-export async function addNote(payload: Api.Notes.NotePayload): Promise<void> {
-  await responseHandle(
+export async function saveNote(payload: Api.Notes.NotePayload): Promise<void> {
+  const { data } = await responseHandle<number>(
     () =>
-      supabase.from('notes').insert({
-        content: normalizeNonNullableText(payload.content),
-        tags: normalizeTags(payload.tags),
-        images: payload.images ?? []
+      supabase.rpc('save_platform_note', {
+        p_id: payload.id,
+        p_content: payload.content,
+        p_tags: payload.tags,
+        p_images: payload.images,
+        p_expected_updated_at: payload.expectedUpdatedAt ?? null
       }),
     {
-      showMessage: true,
-      breakReturn: true,
-      showErrorMessage: true,
-      errorMessage: '笔记创建失败，请检查权限后重试'
-    }
-  )
-}
-
-export async function editNote(payload: Api.Notes.NotePayload): Promise<void> {
-  if (!payload.id) throw new Error('笔记标识缺失，请刷新列表后重试')
-  const { id, ...rest } = payload
-  await responseHandle(
-    () =>
-      supabase
-        .from('notes')
-        .update(
-          keysToSnakeDeep({
-            ...rest,
-            content: normalizeNonNullableText(rest.content),
-            tags: normalizeTags(rest.tags)
-          }),
-          {
-            count: 'exact'
-          }
-        )
-        .eq('id', id),
-    {
-      showMessage: true,
       breakReturn: true,
       requireAffected: true,
-      showErrorMessage: true,
-      errorMessage: '笔记保存失败，请检查权限后重试',
-      noAffectedMessage: '笔记不存在或当前账号没有维护权限，请刷新后重试'
+      errorMessage: '笔记保存失败，请刷新列表后重试'
     }
   )
+  if (data !== 1) throw new Error('无法确认笔记已保存，请刷新列表后核对')
 }
 
 export async function deleteNote(id: string): Promise<void> {
@@ -196,16 +226,17 @@ export async function deleteNote(id: string): Promise<void> {
 export async function deleteNotes(ids: string[]): Promise<number> {
   const noteIds = uniq(ids.filter(Boolean))
   if (!noteIds.length) throw new Error('请选择需要删除的笔记')
-  const result = await responseHandle(
-    () => supabase.from('notes').delete({ count: 'exact' }).in('id', noteIds),
+  const { data } = await responseHandle<number>(
+    () => supabase.rpc('delete_platform_notes', { p_ids: noteIds }),
     {
       breakReturn: true,
       requireAffected: true,
-      showErrorMessage: true,
+      showErrorMessage: false,
       errorMessage: '笔记删除失败，请检查权限后重试',
       noAffectedMessage: '笔记不存在或当前账号没有删除权限，请刷新后重试',
       showReferenceFeedback: false
     }
   )
-  return result.total ?? 0
+  if (data !== noteIds.length) throw new Error('无法确认所选笔记已删除，请刷新列表后核对')
+  return data
 }

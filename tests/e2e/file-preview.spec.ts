@@ -1,8 +1,120 @@
 import { expect, test } from '@playwright/test'
+import ExcelJS from 'exceljs'
+import { readFile } from 'node:fs/promises'
 import { prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
+
+test('production PDF preview decodes JPEG 2000 without WebAssembly', async ({ context, page }) => {
+  test.skip(process.env.E2E_FILE_VIEWER_PRODUCTION !== 'true', '需提供生产构建的 E2E_BASE_URL')
+  const sample = await readFile(new URL('./fixtures/preview-jpx.pdf', import.meta.url))
+  await context.route('**/openjpeg.wasm', (route) => route.abort('failed'))
+  await page.route('**/preview-jpx.pdf', (route) =>
+    route.fulfill({ contentType: 'application/pdf', body: sample })
+  )
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'art-file-preview:jpx-test',
+      JSON.stringify({
+        file: {
+          url: new URL('preview-jpx.pdf', location.href).href,
+          name: 'JPEG 2000 预览.pdf',
+          fileType: 'pdf'
+        },
+        expiresAt: Date.now() + 120_000
+      })
+    )
+  })
+  const fallback = context.waitForEvent('response', {
+    predicate: (response) => response.url().endsWith('/openjpeg_nowasm_fallback.js')
+  })
+  await page.goto('#/file-preview?key=jpx-test')
+  expect((await fallback).ok()).toBe(true)
+
+  // The sample has a red JPEG 2000 image centered in an otherwise white PDF page.
+  const canvas = page.locator('.art-file-viewer-page__body canvas').first()
+  await expect(canvas).toBeVisible()
+  await expect
+    .poll(() =>
+      canvas.evaluate((element) => {
+        if (!(element instanceof HTMLCanvasElement)) throw new Error('预览未生成画布')
+        const context = element.getContext('2d')
+        const pixel = context?.getImageData(element.width / 2, element.height / 2, 1, 1)
+        return Array.from(pixel?.data ?? [])
+      })
+    )
+    .toEqual([220, 33, 45, 255])
+})
+
+test.describe('production spreadsheet preview', () => {
+  test.skip(process.env.E2E_FILE_VIEWER_PRODUCTION !== 'true', '需提供生产构建的 E2E_BASE_URL')
+
+  for (const workerFailure of [false, true]) {
+    test(`显示大型 Excel 文件${workerFailure ? '并从 Worker 失败回退' : ''}`, async ({ page }) => {
+      const workbook = new ExcelJS.Workbook()
+      const sheet = workbook.addWorksheet('测试产线')
+      sheet.addRow(['Worker 回归样本', '状态'])
+      for (let row = 1; row <= 2400; row += 1) {
+        sheet.addRow([`测试零件 ${row} ${'样本数据'.repeat(32)}`, row])
+      }
+      const bytes = Buffer.from(await workbook.xlsx.writeBuffer({ zip: { compression: 'STORE' } }))
+      // File Viewer uses a background worker at 1 MiB and above.
+      expect(bytes.byteLength).toBeGreaterThan(1024 * 1024)
+      await page.route('**/preview-test.xlsx', (route) =>
+        route.fulfill({
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          body: bytes
+        })
+      )
+      if (workerFailure) {
+        await page.route('**/vendor/xlsx/sheet.worker.js', (route) => route.abort('failed'))
+      }
+      const errors: string[] = []
+      page.on('pageerror', (error) => errors.push(error.message))
+      await page.addInitScript(() => {
+        window.Worker = class extends Worker {
+          constructor(url: string | URL, options?: WorkerOptions) {
+            super(url, options)
+            if (String(url).endsWith('/vendor/xlsx/sheet.worker.js')) {
+              this.addEventListener('message', ({ data }) => {
+                if (data?.type === 'sheets') document.documentElement.dataset.sheetWorker = 'ready'
+              })
+            }
+          }
+        }
+        localStorage.setItem(
+          'art-file-preview:spreadsheet-test',
+          JSON.stringify({
+            file: {
+              url: new URL('preview-test.xlsx', location.href).href,
+              name: '产线数据预览.xlsx',
+              fileType: 'xlsx'
+            },
+            expiresAt: Date.now() + 120_000
+          })
+        )
+      })
+      const workerRequest = page.waitForEvent(workerFailure ? 'requestfailed' : 'response', {
+        predicate: (event) => event.url().endsWith('/vendor/xlsx/sheet.worker.js')
+      })
+      await page.goto('#/file-preview?key=spreadsheet-test')
+      await workerRequest
+      const preview = page.locator('.art-file-viewer-page__body')
+      await expect(preview.getByRole('button', { name: '测试产线', exact: true })).toBeVisible()
+      await expect(preview.getByText('共 2,401 行，2 列，按视口预取平滑加载')).toBeVisible()
+      if (!workerFailure)
+        await expect(page.locator('html')).toHaveAttribute('data-sheet-worker', 'ready')
+      const search = page.getByRole('search', { name: '搜索' })
+      if (!(await search.isVisible()))
+        await page.getByRole('button', { name: '搜索', exact: true }).click()
+      await search.getByRole('searchbox').fill('Worker 回归样本')
+      await search.getByRole('button', { name: '搜索', exact: true }).click()
+      await expect(search.getByText('1/1', { exact: true })).toBeVisible()
+      expect(errors).toEqual([])
+    })
+  }
+})
 
 test('file preview renders an image and an expired-link state', async ({ page }, testInfo) => {
   const pageErrors: string[] = []
@@ -338,4 +450,43 @@ test('旧 Blob 请求晚于切换的预览结果不会覆盖当前图片', async
   await expect
     .poll(() => current.evaluate((element) => (element as HTMLImageElement).naturalWidth))
     .toBe(1)
+})
+
+test('代码附件保留高亮原文，HTML 可从沙箱切回源代码', async ({ page }) => {
+  const fixtures = {
+    'file-preview-source.ts': 'export   const value:number =  41\nconst label = "原文保留"\n',
+    'file-preview-source.html':
+      '<!doctype html>\n<html><body>  <strong>原文保留</strong></body></html>\n'
+  }
+  for (const [name, source] of Object.entries(fixtures)) {
+    await page.route(`**/${name}`, (route) =>
+      route.fulfill({ contentType: 'text/plain; charset=utf-8', body: source })
+    )
+  }
+  await page.addInitScript((names) => {
+    if (window.top !== window.self) return
+    for (const name of names) {
+      localStorage.setItem(
+        `art-file-preview:${name}`,
+        JSON.stringify({
+          file: { name, url: new URL(name, location.href).href, fileType: name.split('.').at(-1) },
+          expiresAt: Date.now() + 60_000
+        })
+      )
+    }
+  }, Object.keys(fixtures))
+
+  for (const [name, source] of Object.entries(fixtures)) {
+    await page.goto(`#/file-preview?key=${name}`)
+    if (name.endsWith('.html')) {
+      await expect(page.locator('.html-preview-frame')).toHaveAttribute('sandbox', '')
+      await page.locator('[data-html-view="source"]').click()
+    }
+    const preview = page.locator('.code-viewer')
+    const code = preview.locator('.code-area code')
+    await expect(code.locator('[class^="hljs-"]').first()).toBeAttached()
+    expect(await code.textContent()).toBe(source)
+    await expect(code.locator('strong')).toHaveCount(0)
+    await expect(preview.locator('.code-format-toggle')).toBeHidden()
+  }
 })

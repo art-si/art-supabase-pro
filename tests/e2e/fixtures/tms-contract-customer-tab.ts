@@ -28,7 +28,10 @@ useMenuStore(store).setButtonList(
   }))
 )
 const app = createApp({
-  render: () => h(ContractPage, { customerId, customerTenantId: tenantId, embedded: true })
+  render: () =>
+    h('main', { style: { '--art-full-height': '100dvh' } }, [
+      h(ContractPage, { customerId, customerTenantId: tenantId, embedded: true })
+    ])
 })
 app.use(store)
 app.use(

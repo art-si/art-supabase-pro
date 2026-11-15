@@ -33,6 +33,9 @@ export const SELF_HOSTED_OCR_JAVASCRIPT_PATHS: readonly string[] = [
 export const isSelfHostedOcrJavascriptAsset = (assetPath: string): boolean =>
   SELF_HOSTED_OCR_JAVASCRIPT_PATHS.includes(assetPath)
 
+export const isPublishedJavaScriptAsset = (assetPath: string): boolean =>
+  /\.[cm]?js$/i.test(assetPath)
+
 export const isLazyCapabilityAsset = (assetPath: string): boolean =>
   LAZY_CAPABILITY_PATTERN.test(assetPath)
 

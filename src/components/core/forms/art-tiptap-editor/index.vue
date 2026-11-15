@@ -5,6 +5,7 @@
     :class="{
       'is-disabled': disabled,
       'is-fullscreen': isFullscreen,
+      'is-fill-height': isFillHeight,
       'has-open-popover': hasOpenPopover
     }"
     :style="{ '--art-tiptap-height': height }"
@@ -393,13 +394,23 @@
             kind="image"
             label="插入图片"
             icon="ri:image-add-line"
-            :accept="mediaConfig.image.accept"
-            :max-size="mediaConfig.image.maxSize"
-            :disabled="isActionDisabled"
+            :accept="imageUpload?.accept ?? mediaConfig.image.accept"
+            :max-size="imageUpload?.maxSize ?? mediaConfig.image.maxSize"
+            :disabled="isActionDisabled || imageUpload?.disabled"
+            :allow-url="!imageUpload"
+            :upload-request="imageUpload?.upload"
             url-placeholder="https://example.com/image.png"
             @upload="insertUploadedImage"
             @url="insertImageUrl"
             @visibility-change="setMediaPopoverVisibility('image', $event)"
+          />
+          <ToolbarButton
+            v-if="imageUpload && isImageSelected"
+            label="移除所选图片"
+            icon="ri:delete-bin-2-line"
+            danger
+            :disabled="isActionDisabled"
+            @click="runCommand(() => editor?.chain().focus().deleteSelection().run())"
           />
           <MediaPopover
             v-if="isFeatureVisible('video')"
@@ -601,7 +612,7 @@
   import { useFullscreen } from '@vueuse/core'
   import { uploadAttachment } from '@/api/attachments'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
-  import type { Editor, JSONContent } from '@tiptap/core'
+  import { isNodeSelection, type Editor, type JSONContent } from '@tiptap/core'
   import { EditorContent, useEditor } from '@tiptap/vue-3'
   import { BubbleMenu } from '@tiptap/vue-3/menus'
   import StarterKit from '@tiptap/starter-kit'
@@ -622,6 +633,7 @@
   import { ArtAudio, ArtFileAttachment, ArtVideo } from './media-extensions'
   import { isAcceptedFileType } from '@/utils/file/accept'
   import { getAttachmentNameFromUrl } from '@/utils/file/attachment'
+  import { resolveFileActionUrl } from '@/utils/file/url'
   import { normalizeEditorUrl } from './utils'
 
   defineOptions({ name: 'ArtTiptapEditor' })
@@ -721,6 +733,25 @@
     viewVersion.value += 1
   }
 
+  const StoredImage = Image.extend({
+    parseHTML() {
+      return [...(this.parent?.() ?? []), { tag: 'img[data-storage-path]:not([src])' }]
+    },
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        storagePath: {
+          default: null,
+          parseHTML: (element) => element.getAttribute('data-storage-path'),
+          renderHTML: ({ storagePath }) =>
+            typeof storagePath === 'string' && storagePath
+              ? { 'data-storage-path': storagePath }
+              : {}
+        }
+      }
+    }
+  })
+
   const editor = useEditor({
     content: modelValue.value,
     editable: !props.disabled,
@@ -740,7 +771,7 @@
       TextStyleKit,
       TaskList,
       TaskItem.configure({ nested: true }),
-      Image.configure({ allowBase64: false }),
+      StoredImage.configure({ allowBase64: false }),
       ArtVideo,
       ArtAudio,
       ArtFileAttachment,
@@ -761,6 +792,23 @@
       })
     ],
     editorProps: {
+      handleDOMEvents: {
+        mousedown: (view, event): boolean => {
+          if (
+            !props.imageUpload ||
+            props.disabled ||
+            event.button !== 0 ||
+            !(event.target instanceof HTMLImageElement)
+          )
+            return false
+          const position = view.posAtDOM(event.target, 0, -1)
+          if (view.state.doc.nodeAt(position)?.type.name !== 'image') return false
+          event.preventDefault()
+          editor.value?.commands.setNodeSelection(position)
+          view.focus()
+          return true
+        }
+      },
       attributes: {
         class: 'art-tiptap-editor__prosemirror',
         'aria-label': '富文本内容编辑区'
@@ -790,9 +838,8 @@
       tablePopoverVisible.value ||
       activeMediaPopover.value !== null
   )
-  const editorViewportHeight = computed(() =>
-    isFullscreen.value ? 'calc(100vh - 164px)' : props.height
-  )
+  const isFillHeight = computed(() => Boolean(props.fillHeight || isFullscreen.value))
+  const editorViewportHeight = computed(() => (isFillHeight.value ? '100%' : props.height))
   const characterCount = computed(() => {
     touchViewVersion()
     return editor.value?.storage.characterCount.characters() ?? 0
@@ -800,6 +847,11 @@
   const isCharacterLimitReached = computed(() =>
     Boolean(props.maxLength && characterCount.value >= props.maxLength)
   )
+  const isImageSelected = computed(() => {
+    touchViewVersion()
+    const selection = editor.value?.state.selection
+    return isNodeSelection(selection) && selection.node.type.name === 'image'
+  })
 
   const isActive = (nameOrAttributes: string | Record<string, unknown>) => {
     touchViewVersion()
@@ -982,14 +1034,24 @@
     return url
   }
 
-  const buildMediaNode = (
-    kind: keyof typeof mediaConfig,
-    resource: { url: string; name?: string; size?: string; mimeType?: string }
-  ): JSONContent => {
+  type MediaResource = {
+    url: string
+    name?: string
+    size?: string
+    mimeType?: string
+    storagePath?: string
+  }
+
+  const buildMediaNode = (kind: keyof typeof mediaConfig, resource: MediaResource): JSONContent => {
     if (kind === 'image') {
       return {
         type: 'image',
-        attrs: { src: resource.url, alt: resource.name, title: resource.name }
+        attrs: {
+          src: resource.url,
+          alt: resource.name,
+          title: resource.name,
+          storagePath: resource.storagePath
+        }
       }
     }
     if (kind === 'video') {
@@ -1011,7 +1073,7 @@
 
   const insertMediaNode = (
     kind: keyof typeof mediaConfig,
-    resource: { url: string; name?: string; size?: string; mimeType?: string },
+    resource: MediaResource,
     targetEditor: Editor | undefined = editor.value,
     position?: number
   ) => {
@@ -1025,15 +1087,19 @@
 
   const getUploadedResource = (
     resource: Api.DataCenter.Resources.ResourceListItem,
-    fallbackName?: string
-  ) => {
-    const url = normalizeMediaUrl(resource.url || '', '文件')
+    fallbackName?: string,
+    customImage = false
+  ): MediaResource | null => {
+    const url = customImage
+      ? resolveFileActionUrl(resource.url, window.location.href)
+      : normalizeMediaUrl(resource.url || '', '文件')
     if (!url) return null
     return {
       url,
       name: resource.originName || fallbackName || '附件',
       size: resource.sizeInfo,
-      mimeType: resource.mimeType
+      mimeType: resource.mimeType,
+      storagePath: customImage ? resource.storagePath : undefined
     }
   }
 
@@ -1042,7 +1108,11 @@
     resource: Api.DataCenter.Resources.ResourceListItem,
     fileName: string
   ) => {
-    const normalized = getUploadedResource(resource, fileName)
+    const normalized = getUploadedResource(
+      resource,
+      fileName,
+      kind === 'image' && !!props.imageUpload
+    )
     if (!normalized) return
     runCommand(() => insertMediaNode(kind, normalized))
   }
@@ -1107,34 +1177,52 @@
     position?: number
   ): Promise<void> => {
     if (props.disabled || !files.length) return
-    const validFiles = files.filter((file) => {
+    const enabledFiles = files.filter((file) => isFeatureVisible(getMediaKind(file)))
+    if (!enabledFiles.length) return
+    const validFiles = enabledFiles.filter((file) => {
       const kind = getMediaKind(file)
-      const config = mediaConfig[kind]
+      const config = kind === 'image' && props.imageUpload ? props.imageUpload : mediaConfig[kind]
       return isAcceptedFileType(file, config.accept) && file.size <= config.maxSize
     })
     if (!validFiles.length) {
       ElMessage.warning('文件格式不受支持或超过大小限制')
       return
     }
-    if (validFiles.length !== files.length) {
+    if (validFiles.length !== enabledFiles.length) {
       ElMessage.warning(
-        `已忽略 ${files.length - validFiles.length} 个格式不支持或超过大小限制的文件`
+        `已忽略 ${enabledFiles.length - validFiles.length} 个格式不支持或超过大小限制的文件`
       )
     }
 
     try {
-      const resources = await uploadAttachment(validFiles, {
-        targetTenantId: props.resourceTenantId || undefined
-      })
       let insertPosition = position
-      resources.forEach((resource) => {
+      const imageUpload = props.imageUpload
+      const usesBusinessUpload = (file: File) => !!imageUpload && getMediaKind(file) === 'image'
+      let inserted = 0
+      for (const file of validFiles.filter(usesBusinessUpload)) {
+        const [resource] = (await imageUpload?.upload(file)) ?? []
+        const normalized = resource && getUploadedResource(resource, file.name, true)
+        if (normalized && insertMediaNode('image', normalized, targetEditor, insertPosition)) {
+          inserted++
+          insertPosition = undefined
+        }
+      }
+      const otherFiles = validFiles.filter((file) => !usesBusinessUpload(file))
+      const resources = otherFiles.length
+        ? await uploadAttachment(otherFiles, {
+            targetTenantId: props.resourceTenantId || undefined
+          })
+        : []
+      for (const resource of resources) {
         const normalized = getUploadedResource(resource)
-        if (!normalized) return
+        if (!normalized) continue
         const kind = getMediaKind({ name: normalized.name, type: normalized.mimeType })
-        insertMediaNode(kind, normalized, targetEditor, insertPosition)
-        insertPosition = undefined
-      })
-      ElMessage.success(`已插入 ${resources.length} 个文件`)
+        if (insertMediaNode(kind, normalized, targetEditor, insertPosition)) {
+          inserted++
+          insertPosition = undefined
+        }
+      }
+      if (inserted) ElMessage.success(`已插入 ${inserted} 个文件`)
     } catch (error) {
       ElMessage.error(getFriendlySupabaseErrorMessage(error, '文件上传失败，请稍后重试'))
     }

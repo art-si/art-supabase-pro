@@ -15,6 +15,7 @@ useUserStore(store).setUserInfo({
   tenantId: '11111111-1111-4111-8111-111111111111',
   platformSuper: false
 })
+useUserStore(store).setLoginStatus(true)
 useMenuStore(store).setButtonList(
   [
     'FuelCardArchive:View',

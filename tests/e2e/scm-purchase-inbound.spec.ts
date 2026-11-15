@@ -3,6 +3,28 @@ import { expect, test } from '@playwright/test'
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(120_000)
 
+test('采购订单明细双向换算单价并保留四位小数', async ({ page }, testInfo) => {
+  await page.route('**/rest/v1/**', (route) =>
+    route.fulfill({
+      json: [],
+      headers: { 'content-range': '*/0', 'access-control-expose-headers': 'content-range' }
+    })
+  )
+  await page.goto('/tests/e2e/fixtures/scm-purchase-inbound.html?view=price')
+  await page.getByRole('button', { name: '打开测试采购订单' }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑采购订单 · QA-PRICE-ORDER' })
+  const netPrice = dialog.getByRole('spinbutton', { name: '单价', exact: true })
+  const grossPrice = dialog.getByRole('spinbutton', { name: '含税单价', exact: true })
+  await expect(netPrice).toHaveValue('1.0000')
+  await netPrice.fill('0.005')
+  await netPrice.press('Tab')
+  await expect(grossPrice).toHaveValue('0.0057')
+  await grossPrice.fill('0.0113')
+  await grossPrice.press('Tab')
+  await expect(netPrice).toHaveValue('0.0100')
+  await page.screenshot({ path: testInfo.outputPath('scm-purchase-unit-price.png') })
+})
+
 for (const kind of ['purchase_order', 'receipt_notice'] as const) {
   test(`${kind} 按单据和明细下推、分批数量与收料撤回`, async ({ page }, testInfo) => {
     const tenantId = '11111111-1111-4111-8111-111111111111'

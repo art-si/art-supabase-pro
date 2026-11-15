@@ -7,6 +7,7 @@ import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useUserStore } from '@/store/modules/user'
 import PurchaseWorkspace from '@scm/views/purchase-document/purchase-workspace.vue'
 import PurchaseDialog from '@scm/views/purchase-document/modules/purchase-dialog.vue'
+import type { ScmPurchaseDocument } from '@scm/api'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -15,9 +16,49 @@ const kind =
     ? 'receipt_notice'
     : 'purchase_order'
 const importMode = new URLSearchParams(location.search).get('view') === 'import'
+const priceMode = new URLSearchParams(location.search).get('view') === 'price'
 const importKind = new URLSearchParams(location.search).get('kind')
 const tenantA = '11111111-1111-4111-8111-111111111111'
 const tenantB = '22222222-2222-4222-8222-222222222222'
+const priceRecord: ScmPurchaseDocument = {
+  id: 'price-order',
+  tenantId: tenantA,
+  kind: 'purchase_order',
+  documentNo: 'QA-PRICE-ORDER',
+  documentTypeId: null,
+  projectId: null,
+  supplierId: null,
+  sourceId: null,
+  status: 'draft',
+  documentDate: '2026-10-10',
+  deliveryDate: null,
+  details: {},
+  lines: [
+    {
+      lineId: 'price-line',
+      materialId: 'price-material',
+      materialCode: 'PRICE',
+      materialDescription: '单价测试物料',
+      specification: '',
+      unit: '件',
+      quantity: 1,
+      unitPrice: 1,
+      taxInclusiveUnitPrice: 1.13,
+      taxRate: 13,
+      discountRate: 0,
+      gift: false
+    }
+  ],
+  paymentPlans: [],
+  deliveryPlans: [],
+  clauses: [],
+  subtotal: 1,
+  taxAmount: 0.13,
+  totalAmount: 1.13,
+  remark: null,
+  createdAt: '',
+  updatedAt: ''
+}
 const importPreview = defineComponent({
   setup() {
     const scope = useTenantScopeStore()
@@ -50,7 +91,7 @@ const importPreview = defineComponent({
       ])
   }
 })
-const sourceRace = defineComponent({
+const dialogPreview = defineComponent({
   setup() {
     const dialog = ref<InstanceType<typeof PurchaseDialog>>()
     const open = (id: string) =>
@@ -61,18 +102,29 @@ const sourceRace = defineComponent({
         effectiveTenantId: '11111111-1111-4111-8111-111111111111',
         tenantOptions: [{ label: '测试租户', value: '11111111-1111-4111-8111-111111111111' }]
       })
+    const openPriceRecord = () =>
+      dialog.value?.handleOpen({
+        kind: 'purchase_order',
+        record: priceRecord,
+        effectiveTenantId: tenantA,
+        tenantOptions: [{ label: '测试租户', value: tenantA }]
+      })
     return () =>
       h('main', { class: 'art-page-view p-4', style: { height: '100vh' } }, [
-        h('button', { type: 'button', onClick: () => void open('order-a') }, '打开 A 来源'),
-        h('button', { type: 'button', onClick: () => void open('order-b') }, '打开 B 来源'),
+        ...(priceMode
+          ? [h('button', { type: 'button', onClick: openPriceRecord }, '打开测试采购订单')]
+          : [
+              h('button', { type: 'button', onClick: () => void open('order-a') }, '打开 A 来源'),
+              h('button', { type: 'button', onClick: () => void open('order-b') }, '打开 B 来源')
+            ]),
         h(PurchaseDialog, { ref: dialog })
       ])
   }
 })
 const app = createApp({
   render: () =>
-    new URLSearchParams(location.search).get('race') === 'true'
-      ? h(sourceRace)
+    priceMode || new URLSearchParams(location.search).get('race') === 'true'
+      ? h(dialogPreview)
       : importMode
         ? h(importPreview)
         : h('main', { class: 'art-page-view p-4', style: { height: '100vh' } }, [

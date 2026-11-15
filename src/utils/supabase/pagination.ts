@@ -1,5 +1,6 @@
 import type { QueryResult } from '@/types/api/response'
 import { createTenantScopeReadGuard } from '../tenant-scope-context'
+import { isPlainObjectRecord } from '../type-guards'
 
 export interface SupabaseRange {
   from: number
@@ -45,6 +46,26 @@ export function buildSupabaseRpcRange(from: number, to: number): { p_from: numbe
   }
   const start = Math.max(from, 0)
   return { p_from: start, p_to: Math.max(to, start) }
+}
+
+/** Decode the JSON page returned by an RPC before exposing its records to table consumers. */
+export function decodeSupabaseRpcPage<T>(
+  value: unknown,
+  errors: { page: string; total: string; row: string },
+  parseRow: (record: Record<string, unknown>) => T
+): { data: T[]; total: number } {
+  if (!isPlainObjectRecord(value) || !Array.isArray(value.records)) {
+    throw new Error(errors.page)
+  }
+  const { records, total } = value
+  if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0) {
+    throw new Error(errors.total)
+  }
+  const data = records.map((record: unknown) => {
+    if (!isPlainObjectRecord(record)) throw new Error(errors.row)
+    return parseRow(record)
+  })
+  return { data, total }
 }
 
 export async function fetchAllRangePages<T>(

@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   buildSupabaseRpcRange,
   buildSupabasePageRange,
+  decodeSupabaseRpcPage,
   withSupabaseTableRange,
   fetchAllRangePages,
   type SupabaseRange
@@ -61,6 +62,60 @@ test('RPC ranges remain inclusive and ordered after clamping negative offsets', 
     assert.throws(() => buildSupabaseRpcRange(value, 9), /分页范围无效/)
     assert.throws(() => buildSupabaseRpcRange(0, value), /分页范围无效/)
   }
+})
+
+const rpcPageErrors = {
+  page: '查询响应异常',
+  total: '查询总数异常',
+  row: '记录格式异常'
+}
+
+test('RPC page decoding distinguishes envelope, total and record errors', () => {
+  let decoded = 0
+  const parseRow = (row: Record<string, unknown>) => {
+    decoded++
+    return row.id
+  }
+
+  for (const value of [null, [], { records: {}, total: -1 }]) {
+    assert.throws(() => decodeSupabaseRpcPage(value, rpcPageErrors, parseRow), {
+      message: rpcPageErrors.page
+    })
+  }
+  for (const total of ['1', -1, 0.5, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(
+      () => decodeSupabaseRpcPage({ records: [null], total }, rpcPageErrors, parseRow),
+      { message: rpcPageErrors.total }
+    )
+  }
+  for (const record of [null, [], new Date()]) {
+    assert.throws(
+      () => decodeSupabaseRpcPage({ records: [record], total: 1 }, rpcPageErrors, parseRow),
+      { message: rpcPageErrors.row }
+    )
+  }
+  assert.equal(decoded, 0)
+})
+
+test('RPC page decoding preserves server totals, row order and domain errors', () => {
+  const value = { records: [{ id: 'B' }, { id: 'A' }], total: 12 }
+  const parseId = (row: Record<string, unknown>) => row.id
+  assert.deepEqual(decodeSupabaseRpcPage(value, rpcPageErrors, parseId), {
+    data: ['B', 'A'],
+    total: 12
+  })
+  assert.deepEqual(decodeSupabaseRpcPage({ ...value, records: [] }, rpcPageErrors, parseId), {
+    data: [],
+    total: 12
+  })
+  const domainError = new Error('原业务错误')
+  assert.throws(
+    () =>
+      decodeSupabaseRpcPage(value, rpcPageErrors, () => {
+        throw domainError
+      }),
+    (error) => error === domainError
+  )
 })
 
 test('collects every range until the final partial page', async () => {

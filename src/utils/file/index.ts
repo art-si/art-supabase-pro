@@ -187,11 +187,14 @@ export const exportExcel = async <TRecord extends object>(
   onProgress?.(100)
 }
 
-export async function importExcelFile(file: File): Promise<Array<Record<string, unknown>>> {
+export async function importExcelFile(
+  file: File,
+  { keepCsvText = false }: { keepCsvText?: boolean } = {}
+): Promise<Array<Record<string, unknown>>> {
   const XLSX = await import('./sheetjs')
-  const isCsv = file.name.toLowerCase().endsWith('.csv')
-  const data = isCsv ? await file.text() : await file.arrayBuffer()
-  const workbook = XLSX.read(data, { type: isCsv ? 'string' : 'array' })
+  const workbook = file.name.toLowerCase().endsWith('.csv')
+    ? XLSX.read(await file.text(), { type: 'string', raw: keepCsvText })
+    : XLSX.read(await file.arrayBuffer(), { type: 'array' })
   const worksheet = workbook.Sheets[workbook.SheetNames[0]]
   return XLSX.utils.sheet_to_json(worksheet) as Array<Record<string, unknown>>
 }

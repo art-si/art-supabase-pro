@@ -4,6 +4,7 @@ import { gzipSync } from 'node:zlib'
 import {
   isLazyCapabilityAsset,
   isLazyCapabilityStyle,
+  isPublishedJavaScriptAsset,
   isSelfHostedOcrJavascriptAsset,
   SELF_HOSTED_OCR_JAVASCRIPT_PATHS
 } from './bundle-boundaries'
@@ -29,9 +30,10 @@ for (const relativePath of relativePaths) {
     assets.push({
       path: normalizedPath,
       size: metadata.size,
-      transferredSize: /\.(?:css|js)$/.test(normalizedPath)
-        ? gzipSync(await readFile(assetPath), { level: 9 }).byteLength
-        : undefined
+      transferredSize:
+        isPublishedJavaScriptAsset(normalizedPath) || normalizedPath.endsWith('.css')
+          ? gzipSync(await readFile(assetPath), { level: 9 }).byteLength
+          : undefined
     })
   }
 }
@@ -40,7 +42,7 @@ const requiredOcrRuntimePaths = [
   ...SELF_HOSTED_OCR_JAVASCRIPT_PATHS,
   'ocr/driver/langs/chi_sim.traineddata.gz'
 ]
-const publishedJavascriptAssets = assets.filter((asset) => asset.path.endsWith('.js'))
+const publishedJavascriptAssets = assets.filter((asset) => isPublishedJavaScriptAsset(asset.path))
 const staticOcrJavascriptAssets = publishedJavascriptAssets.filter((asset) =>
   isSelfHostedOcrJavascriptAsset(asset.path)
 )
@@ -125,7 +127,9 @@ async function getInitialAssetPaths(): Promise<Set<string>> {
   const html = await readFile(resolve(outputDirectory, 'index.html'), 'utf8')
   const paths = new Set<string>()
 
-  for (const match of html.matchAll(/(?:src|href)=["']([^"']+\.(?:js|css))(?:\?[^"']*)?["']/g)) {
+  for (const match of html.matchAll(
+    /(?:src|href)=["']([^"']+\.(?:[cm]?js|css))(?:\?[^"']*)?["']/gi
+  )) {
     const assetPath = match[1]?.split('/assets/')[1]
     if (assetPath) paths.add(`assets/${assetPath}`)
   }

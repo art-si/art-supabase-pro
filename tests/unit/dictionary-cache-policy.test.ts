@@ -12,7 +12,7 @@ test('empty per-code results remain fresh until the dictionary TTL expires', () 
   assert.equal(isDictionaryCacheFresh(now, 0, now + DICTIONARY_CACHE_TTL_MS), false)
 })
 
-test('a completed full list covers codes with no rows', () => {
+test('cache freshness uses the latest applicable fetch timestamp', () => {
   assert.equal(isDictionaryCacheFresh(undefined, now, now + 1), true)
   assert.equal(isDictionaryCacheFresh(now - DICTIONARY_CACHE_TTL_MS, now, now + 1), true)
 })

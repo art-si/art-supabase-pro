@@ -15,7 +15,15 @@ const router = createRouter({
   routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }]
 })
 const app = createApp({
-  render: () => h('main', { class: 'art-page-view p-4 h-screen flex flex-col' }, h(Workspace))
+  render: () =>
+    h(
+      'main',
+      {
+        class: 'art-page-view p-4 h-screen flex flex-col',
+        style: { '--art-full-height': 'calc(100dvh - 32px)' }
+      },
+      h(Workspace)
+    )
 })
 app.use(store)
 app.use(language)

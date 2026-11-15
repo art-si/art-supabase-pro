@@ -1,7 +1,7 @@
 <template>
   <div
     ref="screenRef"
-    class="domain-command-screen"
+    class="domain-command-screen command-screen"
     :class="[
       `is-${kind}`,
       `is-layout-${definition.layout}`,
@@ -14,7 +14,7 @@
     :style="{ '--theme-color': definition.accent }"
   >
     <ArtAsyncState
-      class="domain-command-screen__state"
+      class="domain-command-screen__state command-screen__state"
       :loading="state.loading"
       :loading-mode="state.loaded ? 'mask' : 'skeleton'"
       :error="state.loaded ? null : state.error"
@@ -22,16 +22,16 @@
       full-height
       @retry="loadData"
     >
-      <ElScrollbar class="domain-command-screen__scrollbar">
+      <ElScrollbar class="domain-command-screen__scrollbar command-screen__scrollbar">
         <div
-          class="domain-command-screen__stage"
+          class="domain-command-screen__stage command-screen__stage"
           :class="{ 'has-refresh-error': state.loaded && state.error }"
         >
-          <header class="domain-header">
-            <div class="domain-header__identity">
+          <header class="domain-header command-screen__header">
+            <div class="domain-header__identity command-screen__identity">
               <button
                 type="button"
-                class="domain-icon-button"
+                class="domain-icon-button command-screen__icon-button"
                 aria-label="返回工作台"
                 title="返回工作台"
                 @click="exitScreen"
@@ -43,9 +43,9 @@
               </div>
             </div>
 
-            <nav class="domain-nav" aria-label="专业大屏场景">
-              <ElScrollbar class="domain-nav__scrollbar">
-                <div class="domain-nav__items">
+            <nav class="domain-nav command-screen__nav" aria-label="专业大屏场景">
+              <ElScrollbar class="domain-nav__scrollbar command-screen__nav-scrollbar">
+                <div class="domain-nav__items command-screen__nav-items">
                   <RouterLink to="/dashboard/business-cockpit">
                     <ArtSvgIcon icon="ri:dashboard-3-line" />
                     综合总览
@@ -64,17 +64,20 @@
               </ElScrollbar>
             </nav>
 
-            <div class="domain-header__status">
+            <div class="domain-header__status command-screen__status">
               <div>
                 <time :datetime="currentTime">{{ timeText }}</time>
                 <span>{{ dateText }}</span>
               </div>
-              <span class="domain-live-status" :class="{ 'is-warning': state.error }">
+              <span
+                class="domain-live-status command-screen__live-status"
+                :class="{ 'is-warning': state.error }"
+              >
                 <i /> {{ state.error ? '数据更新失败' : `数据融合 ${refreshText}` }}
               </span>
               <button
                 type="button"
-                class="domain-icon-button"
+                class="domain-icon-button command-screen__icon-button"
                 :aria-label="fullscreenButtonLabel"
                 :aria-pressed="isFullscreen"
                 :title="fullscreenButtonLabel"
@@ -86,7 +89,7 @@
               </button>
               <button
                 type="button"
-                class="domain-icon-button"
+                class="domain-icon-button command-screen__icon-button"
                 :disabled="state.loading"
                 aria-label="刷新大屏数据"
                 title="刷新大屏数据"
@@ -104,30 +107,43 @@
             @retry="loadData()"
           />
 
-          <main class="domain-content">
+          <main class="domain-content command-screen__content">
             <section
-              class="domain-metric-rail"
+              class="domain-metric-rail command-screen__metric-rail"
               :style="{ gridTemplateColumns: `repeat(${visibleMetrics.length}, minmax(0, 1fr))` }"
               :aria-label="`${definition.shortTitle}核心指标`"
             >
-              <article v-for="metric in visibleMetrics" :key="metric.label" class="domain-metric">
-                <div class="domain-metric__icon" :class="`is-${metric.tone}`">
+              <article
+                v-for="metric in visibleMetrics"
+                :key="metric.label"
+                class="domain-metric command-screen__metric"
+              >
+                <div
+                  class="domain-metric__icon command-screen__metric-icon"
+                  :class="`is-${metric.tone}`"
+                >
                   <ArtSvgIcon :icon="metric.icon" />
                 </div>
-                <div class="domain-metric__content">
+                <div class="domain-metric__content command-screen__metric-content">
                   <span>{{ metric.label }}</span>
                   <strong
                     >{{ metric.value }}<em v-if="metric.unit">{{ metric.unit }}</em></strong
                   >
                   <small>{{ metric.hint }}</small>
                 </div>
-                <i class="domain-metric__signal" :class="`is-${metric.tone}`" />
+                <i
+                  class="domain-metric__signal command-screen__metric-signal"
+                  :class="`is-${metric.tone}`"
+                />
               </article>
             </section>
 
             <section class="domain-layout">
               <div class="domain-column domain-column--left">
-                <article v-if="showScorePanel" class="domain-panel domain-score-panel">
+                <article
+                  v-if="showScorePanel"
+                  class="domain-panel domain-score-panel command-screen__panel"
+                >
                   <ScreenPanelHeading title="态势研判" :icon="definition.icon">
                     <template #aside>
                       <span class="domain-status-pill" :class="`is-${scoreTone}`">
@@ -135,18 +151,21 @@
                       </span>
                     </template>
                   </ScreenPanelHeading>
-                  <div class="domain-score">
+                  <div class="domain-score command-screen__score">
                     <ScreenGaugeChart
-                      class="domain-score__gauge"
+                      class="domain-score__gauge command-screen__score-gauge"
                       :value="data.score"
                       :label="definition.scoreLabel"
                     />
-                    <div class="domain-score__copy">
+                    <div class="domain-score__copy command-screen__score-copy">
                       <strong>{{ data.headline }}</strong>
                       <p>{{ data.description }}</p>
                     </div>
                   </div>
-                  <div class="domain-score__signals" :class="{ 'is-compact': !showRiskSignal }">
+                  <div
+                    class="domain-score__signals command-screen__score-signals"
+                    :class="{ 'is-compact': !showRiskSignal }"
+                  >
                     <div>
                       <span>综合指数</span>
                       <strong>{{ data.score }}<em>/100</em></strong>
@@ -164,7 +183,7 @@
                   </div>
                 </article>
 
-                <article class="domain-panel domain-distribution-panel">
+                <article class="domain-panel domain-distribution-panel command-screen__panel">
                   <ScreenPanelHeading
                     :title="definition.distributionTitle"
                     icon="ri:bar-chart-horizontal-line"
@@ -186,7 +205,7 @@
               </div>
 
               <div class="domain-column domain-column--center">
-                <article class="domain-panel domain-core-panel">
+                <article class="domain-panel domain-core-panel command-screen__panel">
                   <ScreenPanelHeading
                     :title="`${definition.shortTitle}数字孪生`"
                     :icon="definition.icon"
@@ -214,7 +233,10 @@
                   />
                 </article>
 
-                <article v-if="showTrendPanel" class="domain-panel domain-trend-panel">
+                <article
+                  v-if="showTrendPanel"
+                  class="domain-panel domain-trend-panel command-screen__panel"
+                >
                   <ScreenPanelHeading :title="definition.trendTitle" icon="ri:pulse-line">
                     <template #aside>
                       <span class="domain-panel-caption">主指标 / 风险</span>
@@ -234,7 +256,7 @@
               <div class="domain-column domain-column--right">
                 <article
                   v-if="showAlertPanel"
-                  class="domain-panel domain-alert-panel"
+                  class="domain-panel domain-alert-panel command-screen__panel"
                   :class="{ 'is-sparse': data.alerts.length <= 2 }"
                 >
                   <ScreenPanelHeading :title="definition.alertTitle" icon="ri:alarm-warning-line">
@@ -244,7 +266,11 @@
                   </ScreenPanelHeading>
                   <ElScrollbar v-if="data.alerts.length" class="domain-alert-scrollbar">
                     <div class="domain-alert-list">
-                      <div v-for="alert in data.alerts" :key="alert.id" class="domain-alert">
+                      <div
+                        v-for="alert in data.alerts"
+                        :key="alert.id"
+                        class="domain-alert command-screen__alert"
+                      >
                         <i :class="`is-${alert.tone}`" />
                         <div>
                           <strong>{{ alert.title }}</strong>
@@ -264,7 +290,10 @@
                   />
                 </article>
 
-                <article v-if="showStagePanel" class="domain-panel domain-stage-panel">
+                <article
+                  v-if="showStagePanel"
+                  class="domain-panel domain-stage-panel command-screen__panel"
+                >
                   <ScreenPanelHeading :title="definition.stageTitle" icon="ri:node-tree" />
                   <div v-if="isTreasury && !hasStageData" class="domain-zero-state">
                     <ArtSvgIcon icon="ri:funds-line" />
@@ -291,6 +320,7 @@
 </template>
 
 <script setup lang="ts">
+  import './command-screen-shell.scss'
   import dayjs from 'dayjs'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import {

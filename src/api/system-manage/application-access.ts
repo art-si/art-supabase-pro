@@ -37,14 +37,15 @@ export async function fetchCurrentUserMenus(
   )
   if (result.error) return { ...result, data: null }
 
-  const data: Record<string, AppRouteRecord[]> = {}
-  for (const code of applicationCodes) {
-    const rows = result.data?.[code]
-    if (!Array.isArray(rows) || !rows.every(isAuthorizedMenuRow)) {
-      throw new Error('菜单服务返回的数据无效')
-    }
-    data[code] = rows.map((row) => ({ ...row, path: row.path ?? '' }))
-  }
+  const data: Record<string, AppRouteRecord[]> = Object.fromEntries(
+    applicationCodes.map((code) => {
+      const rows = result.data?.[code]
+      if (!Array.isArray(rows) || !rows.every(isAuthorizedMenuRow)) {
+        throw new Error('菜单服务返回的数据无效')
+      }
+      return [code, rows.map((row) => ({ ...row, path: row.path ?? '' }))] as const
+    })
+  )
   return { ...result, data }
 }
 
@@ -127,8 +128,11 @@ export async function fetchAccessibleApplications(signal?: AbortSignal) {
   // 路由初始化携带的 signal 只服务当前导航，不能共享给壳层组件。
   if (signal) return await requestAccessibleApplications(signal)
 
-  accessibleApplicationsRequest ??= requestAccessibleApplications().finally(() => {
-    accessibleApplicationsRequest = undefined
-  })
+  if (!accessibleApplicationsRequest) {
+    const request = requestAccessibleApplications().finally(() => {
+      if (accessibleApplicationsRequest === request) accessibleApplicationsRequest = undefined
+    })
+    accessibleApplicationsRequest = request
+  }
   return await accessibleApplicationsRequest
 }

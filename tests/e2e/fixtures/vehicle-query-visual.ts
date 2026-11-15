@@ -1,5 +1,5 @@
 import { createApp, h } from 'vue'
-import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
+import { createMemoryHistory, createRouter, RouterLink, RouterView } from 'vue-router'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
@@ -8,11 +8,15 @@ import { setupGlobDirectives } from '@/directives'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
-useUserStore(store).setUserInfo({
+const query = new URLSearchParams(location.search)
+const user = useUserStore(store)
+
+user.setUserInfo({
   userId: 'vehicle-query-visual',
   tenantId: '11111111-1111-4111-8111-111111111111',
   platformSuper: false
 })
+user.setLoginStatus(true)
 useMenuStore(store).setButtonList(
   [
     'VehicleQuery:View',
@@ -31,9 +35,7 @@ useMenuStore(store).setButtonList(
     'TmsDriverQuery:View'
   ]
     .filter(
-      (name) =>
-        name !== 'VehicleInspection:View' ||
-        new URLSearchParams(location.search).get('inspection-view') !== 'denied'
+      (name) => name !== 'VehicleInspection:View' || query.get('inspection-view') !== 'denied'
     )
     .map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
 )
@@ -73,8 +75,23 @@ const app = createApp({
   render: () =>
     h(
       'main',
-      { class: 'art-page-view min-h-screen p-4', style: { background: 'var(--el-bg-color-page)' } },
-      [h(RouterView)]
+      {
+        class: 'art-page-view min-h-screen p-4',
+        style: {
+          background: 'var(--el-bg-color-page)',
+          '--art-full-height': 'calc(100dvh - 2rem)'
+        }
+      },
+      [
+        query.has('switch-vehicle')
+          ? h(
+              RouterLink,
+              { to: '/vms/vehicle-query/detail/11111111-1111-4111-8111-111111111102' },
+              () => '查看另一辆测试车辆'
+            )
+          : null,
+        h(RouterView)
+      ]
     )
 })
 app.use(store)
@@ -82,11 +99,11 @@ app.use(router)
 app.use(language)
 setupGlobDirectives(app)
 await router.push(
-  new URLSearchParams(location.search).get('page') === 'inspection'
+  query.get('page') === 'inspection'
     ? '/vms/vehicle-manage/vehicle-inspection'
-    : new URLSearchParams(location.search).get('page') === 'archive'
+    : query.get('page') === 'archive'
       ? '/vms/vehicle-archive-manage'
-      : new URLSearchParams(location.search).get('page') === 'detail'
+      : query.get('page') === 'detail'
         ? '/vms/vehicle-query/detail/11111111-1111-4111-8111-111111111101'
         : '/vms/vehicle-query'
 )

@@ -1,0 +1,18 @@
+@use './ai-surface-mixins' as ai;
+
+.art-section-card.art-ai-ocr-surface {
+  @include ai.surface;
+}
+
+.art-ai-ocr-surface {
+  & &__icon {
+    @include ai.identity-icon(
+      var(--art-ai-ocr-icon-size, 38px),
+      var(--art-ai-ocr-icon-font-size, 19px)
+    );
+  }
+
+  & &__eyebrow {
+    @include ai.eyebrow;
+  }
+}

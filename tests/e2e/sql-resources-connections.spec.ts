@@ -237,6 +237,19 @@ test('resource groups, external connection tabs, JSON details and MySQL plans wo
   ).toBeVisible()
   await page.keyboard.press('Escape')
   await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.insertText(
+    'SELECT * FROM orders AS entry WHERE entry.;\n' +
+      'SELECT * FROM analytics.archived_orders AS entry;'
+  )
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.press('End')
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('ControlOrMeta+Space')
+  await expect(
+    page.locator('.suggest-widget.visible').getByText('payload', { exact: true })
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('ControlOrMeta+a')
   await page.keyboard.insertText('SELECT `id`, `payload` FROM `analytics`.`orders` LIMIT 10;')
   await page.keyboard.press('ControlOrMeta+Enter')
   await expect.poll(() => queries.length).toBe(1)

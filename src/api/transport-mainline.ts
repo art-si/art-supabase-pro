@@ -1,5 +1,5 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
-import { isPlainObjectRecord } from '@/utils/type-guards'
+import { decodeSupabaseRpcPage } from '@/utils/supabase/pagination'
 
 /** One order-to-waybill execution link. An order may have several of these rows. */
 export interface TransportMainlineRelation {
@@ -51,6 +51,11 @@ export interface TransportMainlineQuery {
 }
 
 const { supabase, responseHandle } = useSupabase()
+const pageErrors = {
+  page: '主线关联查询结果异常，请刷新后重试',
+  total: '主线关联查询总数异常，请刷新后重试',
+  row: '主线关联数据格式异常，请刷新后重试'
+}
 
 function readRequiredText(row: Record<string, unknown>, key: string): string {
   const value = row[key]
@@ -90,18 +95,7 @@ export function parseTransportMainlineRelations(value: unknown): {
   data: TransportMainlineRelation[]
   total: number
 } {
-  if (!isPlainObjectRecord(value) || !Array.isArray(value.records)) {
-    throw new Error('主线关联查询结果异常，请刷新后重试')
-  }
-  if (typeof value.total !== 'number' || !Number.isSafeInteger(value.total) || value.total < 0) {
-    throw new Error('主线关联查询总数异常，请刷新后重试')
-  }
-
-  const data = value.records.map((item: unknown) => {
-    if (!isPlainObjectRecord(item)) {
-      throw new Error('主线关联数据格式异常，请刷新后重试')
-    }
-    const row = item
+  return decodeSupabaseRpcPage(value, pageErrors, (row) => {
     return {
       tenantId: readRequiredText(row, 'tenantId'),
       orderId: readRequiredText(row, 'orderId'),
@@ -140,7 +134,6 @@ export function parseTransportMainlineRelations(value: unknown): {
       relationFreightAmount: readNullableAmount(row, 'relationFreightAmount')
     } satisfies TransportMainlineRelation
   })
-  return { data, total: value.total }
 }
 
 export async function fetchTransportMainlineRelations(

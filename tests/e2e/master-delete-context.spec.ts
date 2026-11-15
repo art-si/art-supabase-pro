@@ -293,6 +293,54 @@ test('内置清理23503当前态只由本地守卫反馈且不发全局引用事
   await page.screenshot({ path: info.outputPath('governed-23503-local-only.png') })
 })
 
+test('删除引用分页失败时阻止删除，重试读取最后一页', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  await page.route('**/rest/v1/**', (route) => route.abort())
+  const offsets: number[] = []
+  const records = Array.from({ length: 1001 }, (_, index) => ({
+    resource_id: 'role-A',
+    dependency_code: 'role_menu_grant',
+    record_id: `grant-${index + 1}`,
+    target_id: `grant-${index + 1}`,
+    record_no: `角色授权 ${index + 1}`,
+    record_status: '草稿',
+    created_at: '2026-11-03T00:00:00Z',
+    cleanup_allowed: false
+  }))
+  let failSecondPage = true
+  await page.route('**/rest/v1/rpc/get_governed_delete_dependency_details*', (route) => {
+    const { searchParams } = new URL(route.request().url())
+    const offset = Number(searchParams.get('offset'))
+    const limit = Number(searchParams.get('limit'))
+    expect(searchParams.get('order')).toBe(
+      'resource_id.asc,dependency_code.asc,cleanup_allowed.asc,created_at.desc,record_id.asc,target_id.asc'
+    )
+    expect(limit).toBe(500)
+    offsets.push(offset)
+    if (offset === 500 && failSecondPage) {
+      failSecondPage = false
+      return route.fulfill({ status: 500, json: { message: '测试服务器错误' } })
+    }
+    return route.fulfill({ json: records.slice(offset, offset + limit) })
+  })
+
+  await page.goto(fixture, { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: '检查 A 内置清理' }).click()
+  const dialog = page.locator('.el-dialog:visible')
+  await expect(dialog).toContainText('删除检查未完成')
+  await expect(page.getByTestId('guard-a-result')).toHaveText('true')
+  await expect(dialog.getByText('角色授权 1', { exact: true })).toHaveCount(0)
+
+  await dialog.getByRole('button', { name: '重新检查' }).click()
+  await expect(dialog).toContainText('暂时无法删除角色')
+  const lastRecord = dialog.getByText('角色授权 1001', { exact: true })
+  await expect(lastRecord).toBeVisible()
+  await lastRecord.scrollIntoViewIfNeeded()
+  await expect(page.getByTestId('guard-a-result')).toHaveText('true')
+  expect(offsets).toEqual([0, 500, 0, 500, 1000])
+  await page.screenshot({ path: info.outputPath('last-reference-page.png') })
+})
+
 test('旧关联导航解析晚到不跳转且不关闭B', async ({ page }, info) => {
   const unexpectedRest = await prepare(page, info.project.name)
   await page.getByRole('button', { name: '检查 A 导航' }).click()

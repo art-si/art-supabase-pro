@@ -1,5 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
+
+test.use({ storageState: { cookies: [], origins: [] } })
+
+const scheduleDate = '2026-09-15'
 
 const meta = (title: string, icon = 'ri:dashboard-3-line') => ({
   title,
@@ -23,7 +28,7 @@ const pages = [
     '/mdm/production/personnel-work-center',
     '人员/工作中心配置'
   ],
-  ['process-route', 'MdmProcessRoute', '/mdm/production/process-route', '工艺路线']
+  ['process-route', 'MdmProcessRoute', '/mdm/process-master/process-route', '工艺路线']
 ] as const
 
 async function installFixtures(page: Page) {
@@ -169,6 +174,18 @@ async function installFixtures(page: Page) {
       json: body
     })
   })
+  await page.route('**/rest/v1/sys_dictionary?*', (route) => {
+    const code = new URL(route.request().url()).searchParams.get('dict_type_table.code')
+    return route.fulfill({
+      json:
+        code === 'eq.commonBoolean'
+          ? [
+              { label: '是', value: 'true', status: '1' },
+              { label: '否', value: 'false', status: '1' }
+            ]
+          : []
+    })
+  })
   await page.route('**/rest/v1/rpc/mdm_production_reference_list', async (route) => {
     const kind = (route.request().postDataJSON() as { p_kind?: string }).p_kind
     await route.fulfill({
@@ -290,8 +307,8 @@ async function installFixtures(page: Page) {
           shiftStartTime: '08:00',
           shiftEndTime: '17:00',
           dateMode: 'single',
-          startDate: '2026-09-15',
-          endDate: '2026-09-15',
+          startDate: scheduleDate,
+          endDate: scheduleDate,
           note: '总装一线试排',
           memberCount: 1,
           members: [
@@ -349,6 +366,8 @@ test('production master-data workspaces share the SMIS visual system', async ({
   page
 }, testInfo) => {
   test.setTimeout(180_000)
+  await page.clock.setFixedTime(new Date(`${scheduleDate}T10:00:00+08:00`))
+  await prepareIsolatedSession(page)
   await installFixtures(page)
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
@@ -372,7 +391,7 @@ test('production master-data workspaces share the SMIS visual system', async ({
       await page.getByRole('button', { name: '新增部门', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await expect(dialog.getByText('新增部门 / 产线', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('组织映射', { exact: true })).toBeVisible()
+      await expect(dialog.getByRole('combobox', { name: /系统部门/ })).toBeVisible()
       await expect(dialog.locator('.el-dialog__footer .el-button svg')).toHaveCount(0)
       await page.screenshot({
         path: testInfo.outputPath('department-dialog.png'),
@@ -384,6 +403,7 @@ test('production master-data workspaces share the SMIS visual system', async ({
       await page.getByRole('button', { name: '新增模板', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await expect(dialog.getByText('作业任务', { exact: true })).toBeVisible()
+      await dialog.getByRole('button', { name: '添加任务项', exact: true }).click()
       const copyTask = dialog.getByRole('button', { name: '复制任务项 1', exact: true })
       const deleteTask = dialog.getByRole('button', { name: '删除任务项 1', exact: true })
       await expect(copyTask).toBeVisible()
@@ -403,10 +423,14 @@ test('production master-data workspaces share the SMIS visual system', async ({
     if (path === 'shift-scheduling') {
       await expect(page.getByRole('button', { name: /白班.*1人/ })).toBeVisible()
       await page.getByRole('button', { name: '新增排班', exact: true }).first().click()
-      const dialog = page.getByRole('dialog')
-      await expect(dialog.getByText('班次安排', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('班组人员', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('单个日期', { exact: true })).toBeVisible()
+      const dialog = page.getByRole('dialog', { name: '新增排班', exact: true })
+      await expect(dialog.getByRole('tab', { name: '班次与日期' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+      await expect(dialog.getByRole('combobox', { name: '日期', exact: true })).toHaveValue(
+        scheduleDate
+      )
       expect(
         await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
       ).toBe(true)
@@ -414,15 +438,19 @@ test('production master-data workspaces share the SMIS visual system', async ({
         path: testInfo.outputPath('shift-scheduling-dialog.png'),
         animations: 'disabled'
       })
+      await dialog.getByRole('tab', { name: '班组人员' }).click()
       await dialog.locator('.art-data-select__multiple-input').click()
-      const peopleDialog = page.getByRole('dialog').filter({ hasText: '添加班组人员' }).last()
+      const peopleDialog = page.getByRole('dialog', { name: '添加班组人员', exact: true })
       await expect(peopleDialog.getByText('张明', { exact: true })).toBeVisible()
-      await expect(peopleDialog.getByText('总装一线', { exact: true })).toBeVisible()
+      await expect(
+        peopleDialog.getByText('仅显示“总装一线”及下级组织中的启用人员配置')
+      ).toBeVisible()
       await page.screenshot({
         path: testInfo.outputPath('shift-scheduling-people-dialog.png'),
         animations: 'disabled'
       })
       await peopleDialog.getByRole('button', { name: '取消', exact: true }).click()
+      await expect(peopleDialog).toBeHidden()
       await dialog.getByRole('button', { name: '取消', exact: true }).click()
       await page.getByText('班表视图', { exact: true }).click()
       await expect(page.getByText('两班轮换', { exact: true })).toBeVisible()
@@ -479,8 +507,11 @@ test('production master-data workspaces share the SMIS visual system', async ({
       await page.getByRole('button', { name: '新增路线', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await expect(dialog.getByText('新工艺路线', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('路线识别', { exact: true })).toBeVisible()
-      await expect(dialog.getByText('策略与状态', { exact: true })).toBeVisible()
+      await expect(dialog.getByRole('tab', { name: '路线识别' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+      await dialog.getByRole('tab', { name: '策略与状态' }).click()
       const enabledStatus = dialog.locator('.el-form-item').filter({ hasText: '启用状态' })
       await expect(enabledStatus.getByText('是', { exact: true })).toBeVisible()
       await expect(enabledStatus.getByText('否', { exact: true })).toBeVisible()

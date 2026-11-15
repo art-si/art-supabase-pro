@@ -62,6 +62,14 @@ test('CSV imports retain quoted multiline headers, commas and escaped quotes', a
   ])
 })
 
+test('CSV imports can preserve original text for validation without changing default parsing', async () => {
+  const csv = new File(['卡号,金额,禁用\n000123,"12,34",TRUE'], '油卡对账.xlsx.csv')
+  assert.deepEqual(await importExcelFile(csv, { keepCsvText: true }), [
+    { 卡号: '000123', 金额: '12,34', 禁用: 'TRUE' }
+  ])
+  assert.deepEqual(await importExcelFile(csv), [{ 卡号: 123, 金额: 1234, 禁用: true }])
+})
+
 test('empty spreadsheet imports return no rows and corrupt XLSX errors reach the caller', async () => {
   for (const filename of ['空文件.csv', '空文件.xlsx']) {
     assert.deepEqual(await importExcelFile(new File([], filename)), [])

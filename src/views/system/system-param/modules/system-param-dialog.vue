@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog ref="dialogRef" size="lg" @close="invalidateJsonEditor">
     <div class="system-param-dialog">
       <ArtSectionCard class="system-param-dialog__form" preserve-content-structure>
         <template #header>
@@ -31,9 +31,11 @@
               <button
                 type="button"
                 class="system-param-dialog__json-trigger"
+                :disabled="Boolean(loadingJsonField)"
+                :aria-busy="loadingJsonField === 'defaultValue'"
                 @click="openJsonEditor('defaultValue', '默认值')"
               >
-                <span>{{ formState.model.defaultValue || '点击编辑 JSON 默认值' }}</span>
+                <span>{{ jsonTriggerLabel('defaultValue', '点击编辑 JSON 默认值') }}</span>
                 <ArtSvgIcon icon="ri:code-s-slash-line" />
               </button>
             </template>
@@ -41,17 +43,21 @@
               ><button
                 type="button"
                 class="system-param-dialog__json-trigger"
+                :disabled="Boolean(loadingJsonField)"
+                :aria-busy="loadingJsonField === 'paramValue'"
                 @click="openJsonEditor('paramValue', '参数值')"
-                ><span>{{ formState.model.paramValue || '点击编辑 JSON 参数值' }}</span
+                ><span>{{ jsonTriggerLabel('paramValue', '点击编辑 JSON 参数值') }}</span
                 ><ArtSvgIcon icon="ri:code-s-slash-line" /></button
             ></template>
             <template #extendConfigText v-if="formState.model.paramType === 'json'">
               <button
                 type="button"
                 class="system-param-dialog__json-trigger"
+                :disabled="Boolean(loadingJsonField)"
+                :aria-busy="loadingJsonField === 'extendConfigText'"
                 @click="openJsonEditor('extendConfigText', '扩展配置')"
               >
-                <span>{{ formState.model.extendConfigText || '点击编辑 JSON 扩展配置' }}</span>
+                <span>{{ jsonTriggerLabel('extendConfigText', '点击编辑 JSON 扩展配置') }}</span>
                 <ArtSvgIcon icon="ri:code-s-slash-line" />
               </button>
             </template>
@@ -113,22 +119,24 @@
         </ArtSectionCard>
       </aside>
     </div>
-    <JsonValueDrawer ref="jsonDrawerRef" />
+    <component v-if="jsonDrawerComponent" :is="jsonDrawerComponent" ref="jsonDrawerRef" />
   </ArtDialog>
 </template>
 <script setup lang="ts">
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
+  import { useLazyComponent } from '@/hooks/core/useLazyComponent'
   import type { FormRules } from 'element-plus'
-  import type { ComputedRef } from 'vue'
+  import { unref, type ComputedRef } from 'vue'
   import { cloneDeep, omit } from 'lodash-es'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
-  import JsonValueDrawer from './json-value-drawer.vue'
+  import type JsonValueDrawer from './json-value-drawer.vue'
   import {
     addSystemParam,
     editSystemParam,
@@ -139,6 +147,7 @@
 
   type SystemParam = Api.SystemManage.SystemParamItem
   type SystemParamType = Api.SystemManage.SystemParamType
+  type JsonParamField = 'defaultValue' | 'paramValue' | 'extendConfigText'
 
   interface SystemParamForm extends Omit<SystemParam, 'extendConfig'> {
     extendConfigText: string
@@ -163,6 +172,15 @@
   const activeTab = ref('')
   const formRef = ref<ArtFormExpose>()
   const jsonDrawerRef = ref<InstanceType<typeof JsonValueDrawer>>()
+  const { component: jsonDrawerComponent, load: loadJsonDrawer } = useLazyComponent(
+    () => import('./json-value-drawer.vue')
+  )
+  const jsonEditorSession = useArtOverlaySession(() => !!unref(dialogRef.value?.visible))
+  const loadingJsonField = ref<JsonParamField>()
+  const invalidateJsonEditor = () => {
+    jsonEditorSession.invalidate()
+    loadingJsonField.value = undefined
+  }
   const registrationRoleLoading = ref(false)
   const registrationRoleOptions = shallowRef<Api.SystemManage.RegistrationRoleOption[]>([])
   const userStore = useUserStore()
@@ -188,20 +206,33 @@
   const typeOptions = computed(() => getDictMap.value.systemParamType ?? [])
   const booleanOptions = computed(() => getDictMap.value.commonBoolean ?? [])
 
-  const openJsonEditor = (
-    key: 'defaultValue' | 'paramValue' | 'extendConfigText',
-    label: string
-  ) => {
-    void jsonDrawerRef.value?.handleOpen({
-      label,
-      paramKey: formModel.paramKey,
-      fieldKey: key,
-      value: formModel[key] ?? '',
-      onApply: (value) => {
-        formModel[key] = value
-        void nextTick(() => formRef.value?.clearValidate())
-      }
-    })
+  const jsonTriggerLabel = (key: JsonParamField, fallback: string) =>
+    loadingJsonField.value === key ? '正在加载 JSON 编辑器…' : formModel[key] || fallback
+
+  const openJsonEditor = async (key: JsonParamField, label: string) => {
+    if (loadingJsonField.value) return
+    const version = jsonEditorSession.version.value
+    const isCurrent = () => jsonEditorSession.isCurrent(version)
+    loadingJsonField.value = key
+    try {
+      await loadJsonDrawer()
+      if (!isCurrent() || formModel.paramType !== 'json') return
+      await jsonDrawerRef.value?.handleOpen({
+        label,
+        paramKey: formModel.paramKey,
+        fieldKey: key,
+        value: formModel[key] ?? '',
+        onApply: (value) => {
+          if (!isCurrent()) return
+          formModel[key] = value
+          void nextTick(() => formRef.value?.clearValidate())
+        }
+      })
+    } catch (error) {
+      if (isCurrent()) notifyFriendlyError(error, 'JSON 编辑器加载失败，请重试')
+    } finally {
+      if (isCurrent()) loadingJsonField.value = undefined
+    }
   }
 
   const formModel = reactive<SystemParamForm>(createInitialForm())
@@ -529,6 +560,7 @@
   }
 
   const resetForm = async (): Promise<void> => {
+    invalidateJsonEditor()
     Object.assign(formState.model, createInitialForm())
     await nextTick()
     formRef.value?.clearValidate()

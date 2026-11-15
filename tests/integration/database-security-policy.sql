@@ -42,6 +42,15 @@ begin
           or (p.tablename = 'sys_table_column_profile'
             and normalized.predicate =
               'scope=''platform''andtenant_idisnullortenant_idisnotnullandapp_private.tenant_in_current_read_scopetenant_id')
+          -- Keep the permission disjunction grouped under the tenant condition.
+          or (p.tablename = 'vehicle_trailer_tractor'
+            and scope.policyname = 'vehicle_trailer_tractor_selected_tenant_guard'
+            and scope.qual = (
+              '(app_private.tenant_in_current_read_scope(tenant_id) AND ('
+              || 'app_private.has_permission(''TrailerManage:View''::text) OR '
+              || 'app_private.has_permission(''VehicleArchive:View''::text) OR '
+              || 'app_private.has_permission(''VehicleQuery:View''::text)))'
+            ))
         )
     );
 

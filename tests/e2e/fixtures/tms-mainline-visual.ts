@@ -30,7 +30,8 @@ useUserStore(store).setDictMap({
   tmsWaybillStatus: fixtureDict([
     ['transporting', '运输中'],
     ['accepted', '已接单'],
-    ['pending', '待调度']
+    ['pending', '待调度'],
+    ['completed', '已完成']
   ]),
   tmsDispatchOperatorMode: fixtureDict([
     ['carrier', '承运方'],
@@ -141,7 +142,10 @@ const app = createApp({
       'main',
       {
         class: 'art-page-view min-h-screen p-4',
-        style: { background: 'var(--el-bg-color-page)' }
+        style: {
+          background: 'var(--el-bg-color-page)',
+          '--art-full-height': 'calc(100dvh - 2rem)'
+        }
       },
       [
         ...(raceControls

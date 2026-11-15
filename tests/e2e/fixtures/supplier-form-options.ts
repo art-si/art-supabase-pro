@@ -19,7 +19,11 @@ const list = new URLSearchParams(location.search).has('list')
 const app = createApp({
   render: () =>
     list
-      ? h('main', { class: 'art-page-view h-screen p-4' }, [h(SupplierPage)])
+      ? h(
+          'main',
+          { class: 'art-page-view p-4', style: { '--art-full-height': 'calc(100dvh - 32px)' } },
+          [h(SupplierPage)]
+        )
       : h('main', { class: 'p-4' }, [
           h(
             'button',

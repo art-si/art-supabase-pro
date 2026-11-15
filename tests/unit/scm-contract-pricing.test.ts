@@ -3,9 +3,9 @@ import { test } from 'node:test'
 import {
   calculateContractLine,
   contractAuxiliaryQuantity,
-  quotationTaxExclusivePrice,
   quotationTaxInclusivePrice
 } from '../../modules/art-supabase-scm/src/views/sales-document/quotation-pricing'
+import { calculateTaxExclusiveUnitPrice } from '../../src/utils/finance/unit-price'
 import type {
   ScmDocumentLine,
   ScmMaterialOption
@@ -28,8 +28,8 @@ const line = (changes: Partial<ScmDocumentLine> = {}): ScmDocumentLine => ({
 
 test('合同未税和含税单价互推到四位小数', () => {
   assert.equal(quotationTaxInclusivePrice(line()), 113)
-  assert.equal(quotationTaxExclusivePrice(113, 13), 100)
-  assert.equal(quotationTaxExclusivePrice(10, 13), 8.8496)
+  assert.equal(calculateTaxExclusiveUnitPrice(113, 13), 100)
+  assert.equal(calculateTaxExclusiveUnitPrice(10, 13), 8.8496)
 })
 
 test('合同折扣按含税价计算，税额按未税价计算，赠品归零', () => {

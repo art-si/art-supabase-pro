@@ -23,7 +23,9 @@ const page = new URLSearchParams(location.search).get('page') as keyof typeof pa
 if (!Object.hasOwn(pages, page)) throw new Error('Unknown HR page fixture')
 document.documentElement.style.setProperty('--art-full-height', 'calc(100vh - 32px)')
 const component = defineAsyncComponent(pages[page])
-const app = createApp({ render: () => h('main', { style: { padding: '16px' } }, h(component)) })
+const app = createApp({
+  render: () => h('main', { class: 'art-page-view', style: { padding: '16px' } }, h(component))
+})
 app.use(store)
 app.use(language)
 app.use(createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: {} }] }))

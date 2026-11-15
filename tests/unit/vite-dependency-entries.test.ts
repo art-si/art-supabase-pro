@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { globSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { resolveConfig } from 'vite'
+import { createBuilder, createIdResolver, resolveConfig } from 'vite'
 import createHostConfig from '../../vite.config'
 import { createModuleViteConfig } from '../../scripts/module-vite-config.mjs'
 
@@ -38,6 +38,32 @@ test('host and standalone apps prebundle the lazy virtual-table dependency', asy
     assert.ok(
       config.optimizeDeps?.include?.includes('element-plus/es/components/table-v2/index.mjs')
     )
+  }
+})
+
+test('CloudBase SDK resolves to the real adapter only in CloudBase deployments', async () => {
+  const root = fileURLToPath(new URL('../..', import.meta.url))
+  for (const mode of ['production', 'cloudbase', 'e2e']) {
+    const cloudbaseEnabled = mode === 'cloudbase'
+    const config =
+      mode === 'e2e'
+        ? await createModuleViteConfig({
+            appCode: 'mes',
+            applicationRoot: `${root}/modules/art-supabase-mes`,
+            defaultPort: 0,
+            mode,
+            platformRoot: root,
+            authSessionMode: 'server',
+            inheritPlatformEnv: false
+          })
+        : await createHostConfig({ mode })
+    const { environments } = await createBuilder({ ...config, configFile: false, mode })
+    const client = environments.client
+    const sdk = await createIdResolver(client.config)(client, '@/plugins/cloudbase-sdk')
+    const file = cloudbaseEnabled ? 'cloudbase-sdk.ts' : 'cloudbase-sdk-disabled.ts'
+    assert.ok(sdk?.endsWith(`/src/plugins/${file}`), `${mode} resolved SDK to ${sdk}`)
+    assert.equal(client.config.define.__CLOUDBASE_BUILD__, String(cloudbaseEnabled))
+    assert.ok(!client.config.optimizeDeps.include?.includes('@cloudbase/js-sdk'))
   }
 })
 

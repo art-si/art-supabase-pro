@@ -26,8 +26,11 @@ export async function openTransportEntry(
     const request = route.request()
     const url = new URL(request.url())
     const name = url.pathname.split('/').at(-1) || ''
-    if (name === 'sys_dictionary') {
-      const code = (url.searchParams.get('dict_type_table.code') || '').replace(/^eq\./, '')
+    if (name === 'sys_dictionary' || name === 'material_unit_compatibility_options') {
+      const code =
+        name === 'material_unit_compatibility_options'
+          ? ((request.postDataJSON() as { p_source_code: string | null }).p_source_code ?? '')
+          : (url.searchParams.get('dict_type_table.code') ?? '').replace(/^eq\./, '')
       return route.fulfill({
         json: (formStandardTransportDictionaries[code] || []).map((item, sort) => ({
           ...item,

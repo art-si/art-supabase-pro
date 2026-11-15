@@ -138,7 +138,11 @@ test('返程收益 三分类只读详情与重开首项', async ({ page }, info)
 
 test('运输合同 明细表跨页签定位红框并保存实际行', async ({ page }, info) => {
   const writes: TransportWrite[] = []
-  const dialog = await open(page, 'contract', writes)
+  const cargoUnits = page.waitForResponse('**/rest/v1/rpc/material_unit_compatibility_options')
+  const dialog = await open(page, 'contract', writes, '&coldCargoUnit=1')
+  const unitResponse = await cargoUnits
+  expect(unitResponse.ok()).toBe(true)
+  expect(unitResponse.request().postDataJSON()).toEqual({ p_source_code: 'tmsCargoUnit' })
   await dialog.getByRole('tab', { name: '运输明细', exact: true }).click()
   await dialog.getByRole('button', { name: '新增明细', exact: true }).click()
   const table = dialog.locator('.contract-transport-details')

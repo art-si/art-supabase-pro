@@ -35,11 +35,15 @@ test('车辆能源类型决定卡档案与流水页签并按车辆查询', async
     ) {
       const payload = route.request().postDataJSON() as { p_vehicle_id?: string }
       electricRequests.push({ endpoint, vehicleId: payload.p_vehicle_id ?? null })
-      if (endpoint === 'vms_list_electric_cards_secure_v2' && ++archiveCalls === 1)
-        return route.fulfill({
-          status: 500,
-          json: { code: 'mock_failure', message: 'temporary failure' }
-        })
+      if (endpoint === 'vms_list_electric_cards_secure_v2') {
+        archiveCalls += 1
+        if (archiveCalls === 1)
+          return route.fulfill({
+            status: 500,
+            json: { code: 'mock_failure', message: 'temporary failure' }
+          })
+        if (archiveCalls === 2) return route.fulfill({ json: { records: [], total: -1 } })
+      }
       return route.fulfill({ json: { records: [], total: 0 } })
     }
     return route.fulfill({ json: [] })
@@ -54,12 +58,19 @@ test('车辆能源类型决定卡档案与流水页签并按车辆查询', async
   await expect(page.getByRole('button', { name: '油耗与加油' })).toHaveCount(0)
 
   await page.getByRole('button', { name: '电卡档案' }).click()
-  await expect(page.getByText('电卡记录加载失败，请重试。', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '重新加载', exact: true }).click()
+  const archiveError = page.getByText('电卡记录加载失败，请重试。', { exact: true })
+  const retry = page.getByRole('button', { name: '重新加载', exact: true })
+  await expect(archiveError).toBeVisible()
+  await retry.click()
+  await expect.poll(() => archiveCalls).toBe(2)
+  await expect(archiveError).toBeVisible()
+  await expect(page.getByText('暂无绑定电卡', { exact: true })).toHaveCount(0)
+  await retry.click()
   await expect(page.getByText('暂无绑定电卡', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '电卡流水' }).click()
   await expect(page.getByText('暂无电卡流水', { exact: true })).toBeVisible()
   expect(electricRequests).toEqual([
+    { endpoint: 'vms_list_electric_cards_secure_v2', vehicleId },
     { endpoint: 'vms_list_electric_cards_secure_v2', vehicleId },
     { endpoint: 'vms_list_electric_cards_secure_v2', vehicleId },
     { endpoint: 'vms_list_electric_card_entries_secure_v2', vehicleId }

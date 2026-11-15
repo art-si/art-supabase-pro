@@ -78,7 +78,19 @@ for (const kind of ['customer', 'carrier'] as const) {
     await page
       .getByRole('button', { name: kind === 'customer' ? '验收客户' : 'QA-PRICE-001' })
       .click()
-    await expect(page.locator('.rate-card-detail')).toBeVisible({ timeout: 120_000 })
+    const detail = page.locator('.rate-card-detail')
+    await expect(detail).toBeVisible({ timeout: 120_000 })
+    const summary = detail.locator('.rate-card-detail__summary')
+    await expect(summary).toHaveCSS('display', 'grid')
+    const viewportWidth = page.viewportSize()?.width ?? 1440
+    const columns = viewportWidth <= 600 ? 1 : viewportWidth <= 900 ? 2 : 4
+    await expect
+      .poll(() =>
+        summary.evaluate(
+          (element) => getComputedStyle(element).gridTemplateColumns.split(' ').length
+        )
+      )
+      .toBe(columns)
     await expect(page.getByText('关联合同名称', { exact: true })).toBeVisible()
     await expect(page.getByText('QA-CONTRACT-001', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('已生效', { exact: true })).toBeVisible()

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { expectPaginationControlsInView } from './support/pagination-layout'
 
 const driverId = '11111111-1111-4111-8111-111111111401'
 const orderId = '11111111-1111-4111-8111-111111111201'
@@ -163,6 +164,71 @@ test('司机详情按页签组织承运宽表与费用，窄屏只在表内滚�
     path: `.artifacts/driver-detail-tabs-${testInfo.project.name}-costs.png`,
     fullPage: true
   })
+})
+
+test('司机承运明细前后翻页控件完整可见并读取对应记录', async ({ page }, testInfo) => {
+  test.setTimeout(180_000)
+  const total = 160
+  const ranges: Array<[number, number]> = []
+  await page.route('**/rest/v1/**', (route) => {
+    const endpoint = new URL(route.request().url()).pathname.split('/').at(-1)
+    if (endpoint === 'tms_get_driver_secure') {
+      return route.fulfill({
+        json: { id: driverId, driverName: relation.driverName, tenantId: relation.tenantId }
+      })
+    }
+    if (endpoint === 'get_table_column_runtime') {
+      return route.fulfill({ json: { enabled: false, profiles: [] } })
+    }
+    if (endpoint === 'tms_list_transport_mainline_relations_secure') {
+      const { p_driver_id, p_from, p_to } = route.request().postDataJSON() as {
+        p_driver_id: string
+        p_from: number
+        p_to: number
+      }
+      expect(p_driver_id).toBe(driverId)
+      ranges.push([p_from, p_to])
+      const records = Array.from({ length: Math.min(total, p_to + 1) - p_from }, (_, index) => {
+        const sequence = String(p_from + index + 1).padStart(3, '0')
+        return {
+          ...relation,
+          orderId: `11111111-1111-4111-8111-111111111${sequence}`,
+          orderNo: `TMS-HISTORY-${sequence}`
+        }
+      })
+      return route.fulfill({ json: { records, total } })
+    }
+    return route.fulfill({
+      json: route.request().url().includes('/rpc/') ? { records: [], total: 0 } : []
+    })
+  })
+
+  await page.goto('/tests/e2e/fixtures/tms-mainline-visual.html?page=driver-detail')
+  await expect(page.getByRole('heading', { name: relation.driverName })).toBeVisible()
+  const tab = '承运订单与车辆明细'
+  await page.getByRole('tab', { name: tab }).click()
+  const panel = page.getByRole('tabpanel', { name: tab })
+  const pager = panel.locator('.el-pagination')
+  const firstOrder = panel.getByText('TMS-HISTORY-001', { exact: true })
+  await expect(firstOrder).toBeVisible()
+  await expectPaginationControlsInView(pager)
+  await pager.locator('.btn-next').click()
+  await expect(panel.getByText('TMS-HISTORY-021', { exact: true })).toBeVisible()
+  await expectPaginationControlsInView(pager)
+  await pager.screenshot({
+    path: testInfo.outputPath('driver-history-pagination.png'),
+    animations: 'disabled'
+  })
+  await pager.locator('.btn-prev').click()
+  await expect(firstOrder).toBeVisible()
+  expect(ranges).toEqual([
+    [0, 19],
+    [20, 39],
+    [0, 19]
+  ])
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+  ).toBeLessThanOrEqual(1)
 })
 
 test('司机资质和安全记录忽略迟到旧页，培训失败可重试', async ({ page }, testInfo) => {

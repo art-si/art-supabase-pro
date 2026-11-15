@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { pathToFileURL } from 'node:url'
 import { build, type InlineConfig } from 'vite'
 import {
   createFileViewerAssetSyncPlugin,
@@ -126,7 +127,7 @@ test('copies missing and changed file-viewer assets', async (context) => {
   const fixture = await createFixture()
   context.after(() => rm(fixture.root, { recursive: true, force: true }))
 
-  const sourceWorker = path.join(fixture.sourceRoot, 'vendor/pdf/pdf.worker.mjs')
+  const sourceWorker = path.join(fixture.sourceRoot, 'vendor/ppt/worker.mjs')
   const targetFont = path.join(fixture.targetRoot, 'vendor/pdf/fonts/files/font.woff2')
   await mkdir(path.dirname(sourceWorker), { recursive: true })
   await writeFile(sourceWorker, 'worker-content')
@@ -136,10 +137,45 @@ test('copies missing and changed file-viewer assets', async (context) => {
 
   assert.equal(await readFile(targetFont, 'utf8'), 'stable-font-content')
   assert.equal(
-    await readFile(path.join(fixture.targetRoot, 'vendor/pdf/pdf.worker.mjs'), 'utf8'),
+    await readFile(path.join(fixture.targetRoot, 'vendor/ppt/worker.mjs'), 'utf8'),
     'worker-content'
   )
   assert.deepEqual(result, { copied: 3, pruned: 0, unchanged: 0, total: 3 })
+})
+
+test('minifies the published PDF worker and keeps its license and module export', async (context) => {
+  const fixture = await createFixture()
+  context.after(() => rm(fixture.root, { recursive: true, force: true }))
+  const relativeWorker = 'vendor/pdf/pdf.worker.mjs'
+  const sourceWorker = path.join(fixture.sourceRoot, relativeWorker)
+  const targetWorker = path.join(fixture.targetRoot, relativeWorker)
+  const source = `/* @licstart PDF worker license notice @licend */
+    /* pdfjsVersion = 5.4.624 */
+    // Implementation details for testing the browser module interface.
+    export function WorkerMessageHandler(opaqueMessage) {
+      const messageToReturn = opaqueMessage;
+      return messageToReturn;
+    }
+  `
+  await mkdir(path.dirname(sourceWorker), { recursive: true })
+  await writeFile(sourceWorker, source)
+
+  await syncFileViewerAssets(fixture.sourceRoot, fixture.targetRoot)
+  const published = await readFile(targetWorker, 'utf8')
+  assert.ok(published.length < source.length)
+  assert.match(published, /@licstart PDF worker license notice @licend/)
+  assert.match(published.slice(0, 4096), /pdfjsVersion = 5\.4\.624/)
+  assert.equal(await readFile(sourceWorker, 'utf8'), source)
+  const { WorkerMessageHandler } = (await import(pathToFileURL(targetWorker).href)) as {
+    WorkerMessageHandler(message: string): string
+  }
+  assert.equal(WorkerMessageHandler('test message'), 'test message')
+  assert.deepEqual(await syncFileViewerAssets(fixture.sourceRoot, fixture.targetRoot), {
+    copied: 0,
+    pruned: 0,
+    unchanged: 3,
+    total: 3
+  })
 })
 
 test('omits compatibility assets that the application bundle already emits', async (context) => {

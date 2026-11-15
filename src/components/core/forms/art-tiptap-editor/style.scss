@@ -30,15 +30,48 @@ $editor-radius: var(--art-surface-radius);
 
   &.is-fullscreen {
     z-index: 3000;
-    display: flex;
-    flex-direction: column;
     width: 100vw;
     height: 100vh;
     border: 0;
     border-radius: 0;
+  }
+
+  &.is-fill-height {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+
+    .art-tiptap-editor__toolbar-scrollbar,
+    .art-tiptap-editor__statusbar {
+      flex: none;
+    }
+
+    .art-tiptap-editor__toolbar-scrollbar {
+      height: auto;
+    }
 
     .art-tiptap-editor__scrollbar {
       flex: 1;
+      height: auto;
+      min-height: 0;
+
+      > .el-scrollbar__wrap > .el-scrollbar__view {
+        display: flex;
+        flex-direction: column;
+        min-height: 100%;
+      }
+    }
+
+    .art-tiptap-editor__content {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+    }
+
+    .art-tiptap-editor__prosemirror {
+      flex: 1;
+      min-height: 0;
     }
   }
 }

@@ -1,5 +1,10 @@
 <template>
-  <ArtDrawer ref="drawerRef" size="lg" :show-footer="false">
+  <ArtDrawer
+    ref="drawerRef"
+    size="lg"
+    :show-footer="false"
+    :close-on-press-escape="!previewVisible"
+  >
     <div v-if="note" class="note-detail">
       <section class="note-detail__hero art-card-xs">
         <span class="note-detail__icon" aria-hidden="true">
@@ -20,6 +25,34 @@
           <span>{{ note.contentText.length }} 字</span>
         </header>
         <div class="note-detail__content" v-html="safeContent" />
+        <div v-if="previewUrls.length" class="note-detail__images">
+          <ElImage
+            v-for="(url, index) in previewUrls"
+            :key="url"
+            class="note-detail__image"
+            :src="url"
+            :preview-src-list="previewUrls"
+            :initial-index="index"
+            :show-progress="previewUrls.length > 1"
+            :alt="`笔记图片 ${index + 1}`"
+            :aria-label="`放大查看第 ${index + 1} 张图片`"
+            fit="cover"
+            role="button"
+            tabindex="0"
+            preview-teleported
+            hide-on-click-modal
+            @keydown.enter.prevent="previewImageFromKeyboard"
+            @keydown.space.prevent="previewImageFromKeyboard"
+            @show="previewVisible = true"
+            @close="previewVisible = false"
+          />
+        </div>
+        <span v-if="loadingImages" class="note-detail__image-status" role="status"
+          >正在加载图片</span
+        >
+        <ElButton v-else-if="imagesUnavailable" type="primary" link @click="loadImages">
+          重试加载图片
+        </ElButton>
       </ArtSectionCard>
 
       <ArtSectionCard class="note-detail__section" preserve-content-structure>
@@ -47,17 +80,6 @@
             ><dd>{{ note.images.length ? `${note.images.length} 张` : '无图片附件' }}</dd></div
           >
         </dl>
-        <div v-if="note.imageUrls.length" class="note-detail__images">
-          <img
-            v-for="(url, index) in note.imageUrls"
-            :key="url"
-            :src="url"
-            width="160"
-            height="160"
-            loading="lazy"
-            :alt="`笔记图片 ${index + 1}`"
-          />
-        </div>
       </ArtSectionCard>
     </div>
   </ArtDrawer>
@@ -65,28 +87,69 @@
 
 <script setup lang="ts">
   import DOMPurify from 'dompurify'
+  import { ElImage } from 'element-plus'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
+  import { fetchNoteImageUrls, getNoteAuthorLabel } from '@/api/notes'
+  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
   import { formatWithDayjs } from '@/utils/time'
 
   const drawerRef = ref<ArtDrawerExpose<Api.Notes.NoteItem>>()
   const note = shallowRef<Api.Notes.NoteItem>()
+  const signedUrls = shallowRef(new Map<string, string>())
+  const loadingImages = ref(false)
+  const previewVisible = ref(false)
   const safeContent = computed(() => DOMPurify.sanitize(note.value?.content ?? ''))
+  const previewUrls = computed(() =>
+    (note.value?.images ?? []).flatMap((path) => {
+      const url = signedUrls.value.get(path)
+      return url ? [url] : []
+    })
+  )
+  const imagesUnavailable = computed(
+    () =>
+      !loadingImages.value && (note.value?.images ?? []).some((path) => !signedUrls.value.has(path))
+  )
   const authorLabel = (row: Api.Notes.NoteItem): string =>
-    row.author?.nickName || row.author?.userName || `移动端用户 · ${row.userId.slice(0, 8)}`
+    getNoteAuthorLabel(row.userId, row.author)
+
+  function previewImageFromKeyboard(event: KeyboardEvent): void {
+    if (event.target instanceof HTMLImageElement) event.target.click()
+  }
+
+  async function loadImages(): Promise<void> {
+    const row = note.value
+    if (!row?.images.length || loadingImages.value) return
+    const assertScope = createTenantScopeReadGuard()
+    loadingImages.value = true
+    try {
+      const urls = await fetchNoteImageUrls(row.images)
+      assertScope()
+      if (note.value === row) signedUrls.value = urls
+    } catch (error) {
+      notifyFriendlyError(error, '图片加载失败，请重试')
+    } finally {
+      if (note.value === row) loadingImages.value = false
+    }
+  }
 
   async function handleOpen(row: Api.Notes.NoteItem): Promise<void> {
     note.value = row
+    signedUrls.value = new Map()
+    loadingImages.value = false
     await drawerRef.value?.handleOpen(row, {
       title: '笔记详情',
       subtitle: '按时间轴语义查看正文、标签与附件。',
       contentHeight: 'calc(100vh - 126px)',
       scrollbarAlways: true,
       showFooter: false,
+      onOpen: loadImages,
       onReset: () => {
+        previewVisible.value = false
         note.value = undefined
       }
     })
@@ -178,7 +241,31 @@
     &__content :deep(img) {
       max-width: 100%;
       height: auto;
+      max-height: 104px;
       border-radius: var(--art-control-radius);
+    }
+
+    &__images {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    &__image {
+      width: 128px;
+      max-width: 100%;
+      height: 96px;
+      border-radius: var(--art-control-radius);
+
+      :deep(.el-image__inner:focus-visible) {
+        outline: 2px solid var(--el-color-primary);
+        outline-offset: -2px;
+      }
+    }
+
+    &__image-status {
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
     }
 
     &__content :deep(a) {
@@ -214,20 +301,6 @@
     &__mono {
       font-family: var(--el-font-family-monospace);
       font-size: 12px;
-    }
-
-    &__images {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin-top: 14px;
-    }
-
-    &__images img {
-      width: 100%;
-      aspect-ratio: 1;
-      object-fit: cover;
-      border-radius: var(--art-control-radius);
     }
   }
 

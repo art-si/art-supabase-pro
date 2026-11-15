@@ -4,11 +4,20 @@ import test from 'node:test'
 import {
   isLazyCapabilityAsset,
   isLazyCapabilityStyle,
+  isPublishedJavaScriptAsset,
   isSelfHostedOcrJavascriptAsset,
   platformChunkFileName,
   SELF_HOSTED_OCR_JAVASCRIPT_PATHS,
   shouldPreloadHtmlDependency
 } from '../../scripts/bundle-boundaries'
+
+test('deployment JavaScript includes module and worker scripts but excludes source maps', () => {
+  assert.equal(isPublishedJavaScriptAsset('assets/dashboard.js'), true)
+  assert.equal(isPublishedJavaScriptAsset('vendor/pdf/pdf.worker.mjs'), true)
+  assert.equal(isPublishedJavaScriptAsset('vendor/optional.cjs'), true)
+  assert.equal(isPublishedJavaScriptAsset('assets/dashboard.mjs.map'), false)
+  assert.equal(isPublishedJavaScriptAsset('ocr/driver/langs/chi_sim.traineddata.gz'), false)
+})
 
 test('compact production URLs preserve every lazy-capability budget boundary', () => {
   for (const name of [

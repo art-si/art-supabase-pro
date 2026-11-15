@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test'
+import { createHash } from 'node:crypto'
+import type { FuelCard, FuelCardEntry } from '@/api/fuel-card'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(900_000)
@@ -6,6 +8,76 @@ test.setTimeout(900_000)
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const vehicleIds = ['11111111-1111-4111-8111-111111111101', '11111111-1111-4111-8111-111111111102']
 const cardIds = ['11111111-1111-4111-8111-111111111601', '11111111-1111-4111-8111-111111111602']
+
+test('油卡对账导入拒绝无效金额，合法文件可预览并提交', async ({ page }, info) => {
+  await page.route('**/rest/v1/**', (route) => {
+    const endpoint = new URL(route.request().url()).pathname.split('/').at(-1)
+    if (endpoint === 'get_table_column_runtime') {
+      return route.fulfill({ json: { enabled: false, profiles: [] } })
+    }
+    if (endpoint === 'vms_list_fuel_card_entries_secure') {
+      return route.fulfill({ json: { records: [], total: 0 } })
+    }
+    return route.fulfill({ json: [] })
+  })
+  const validFile = {
+    name: 'valid-station.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      '油卡号,消费时间,金额,加油站,加油升数\n000123,2026-11-02,"1,234.56",验收站,'
+    )
+  }
+  const invalidFile = {
+    ...validFile,
+    name: 'invalid-station.csv',
+    buffer: Buffer.from(validFile.buffer.toString().replace('1,234.56', '12,34'))
+  }
+  const imports: unknown[] = []
+  await page.route('**/rest/v1/rpc/vms_import_fuel_statement_secure', (route) => {
+    imports.push(route.request().postDataJSON())
+    return route.fulfill({
+      json: { batchId: 'fixture-batch', matched: 1, difference: 0, unmatched: 0 }
+    })
+  })
+
+  await page.goto('/tests/e2e/fixtures/vms-fuel-card-visual.html?page=ledger')
+  await page.getByRole('button', { name: '站点对账', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '加油站对账' })
+  const input = drawer.locator('input[type="file"]')
+  const confirm = drawer.getByRole('button', { name: '确认导入', exact: true })
+  await expect
+    .poll(async () => (await drawer.locator('.el-select').first().boundingBox())?.width ?? 0)
+    .toBeGreaterThan(150)
+  await input.setInputFiles(invalidFile)
+  const error = page.getByText('第 2 行金额无效。', { exact: true })
+  await expect(error).toBeVisible()
+  await expect(confirm).toHaveCount(0)
+  expect(imports).toHaveLength(0)
+
+  await input.setInputFiles(validFile)
+  await expect(drawer.getByRole('heading', { name: '待导入 · valid-station.csv' })).toBeVisible()
+  await expect(drawer.getByRole('cell', { name: /1,234\.56/ })).toBeInViewport({ ratio: 1 })
+  await expect(error).toBeHidden()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true
+  )
+  await drawer.screenshot({
+    path: info.outputPath('fuel-statement-preview.png'),
+    animations: 'disabled'
+  })
+  await confirm.click()
+  await expect(page.getByText(/已导入：一致 1 条/)).toBeVisible()
+  expect(imports).toEqual([
+    expect.objectContaining({
+      p_file_name: validFile.name,
+      p_sha256: createHash('sha256').update(validFile.buffer).digest('hex'),
+      p_rows: [
+        expect.objectContaining({ sourceRow: 2, cardNo: '000123', amount: 1234.56, liters: null })
+      ]
+    })
+  ])
+})
+
 interface FixtureCard {
   id: string
   tenantId: string
@@ -37,6 +109,56 @@ interface FixtureEntry {
   isReversed: boolean
   createTime: string
 }
+const cardFields = {
+  companyName: '验收物流',
+  vehicleOwnership: null,
+  carrierName: null,
+  driverPhone: null,
+  imagePath: null,
+  fuelType: 'diesel_0',
+  ownerEmployeeId: null,
+  ownerEmployeeName: null,
+  openerEmployeeId: null,
+  openerEmployeeName: null,
+  driverId: null,
+  driverName: null
+} satisfies Omit<FuelCard, keyof FixtureCard>
+
+const entryFields = {
+  companyName: cardFields.companyName,
+  vehicleOwnership: null,
+  carrierName: null,
+  vehicleDriverName: null,
+  vehicleDriverPhone: null,
+  cardStatus: 'active',
+  driverId: null,
+  driverName: null,
+  stationName: '',
+  liters: null,
+  unitPrice: null,
+  paymentMethod: null,
+  voucherPaths: [],
+  sourceCostId: null,
+  sourceCostNo: null,
+  rechargeChannel: '',
+  invoiceNo: '',
+  rechargerEmployeeId: null,
+  rechargerEmployeeName: null,
+  waybillId: null,
+  waybillNo: null,
+  occurredAt: null,
+  expenseLocation: '',
+  expenseLongitude: null,
+  expenseLatitude: null,
+  expenseCoordinateSystem: null,
+  expenseCoordinateSource: null,
+  expenseCoordinateStatus: 'pending',
+  expenseGeocodeProvider: null,
+  expenseGeocodedAt: null,
+  odometerKm: null,
+  tripFuelPer100Km: null
+} satisfies Omit<FuelCardEntry, keyof FixtureEntry | 'cardBalance'>
+
 const cards: FixtureCard[] = [
   {
     id: cardIds[0],
@@ -165,7 +287,7 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
       return route.fulfill({ json: { enabled: false, profiles: [] } })
     if (endpoint === 'vms_list_vehicle_archive_navigation_secure')
       return route.fulfill({ json: [] })
-    if (endpoint === 'vms_create_fuel_card') {
+    if (endpoint === 'vms_create_fuel_card_v2') {
       const vehicle = cards.find((card) => card.vehicleId === payload.p_vehicle_id)
       const created = {
         id: '11111111-1111-4111-8111-111111111603',
@@ -203,7 +325,7 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
       }
       return route.fulfill({ json: created.id })
     }
-    if (endpoint === 'vms_record_fuel_card_transaction') {
+    if (endpoint === 'vms_record_fuel_card_transaction_v4') {
       const card = cards.find((item) => item.id === payload.p_card_id)
       if (!card) return route.fulfill({ status: 400, json: { message: '油卡不存在' } })
       const original = entries.find((item) => item.id === payload.p_reverses_entry_id)
@@ -245,7 +367,8 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
           (!payload.p_status || card.status === payload.p_status) &&
           (!payload.p_keyword || `${card.cardNo} ${card.plateNo}`.includes(payload.p_keyword))
       )
-      return route.fulfill({ json: { records: filtered, total: filtered.length } })
+      const records = filtered.map((card) => ({ ...cardFields, ...card }))
+      return route.fulfill({ json: { records, total: records.length } })
     }
     if (endpoint === 'vms_list_fuel_card_entries_secure') {
       const filtered = entries.filter(
@@ -255,9 +378,14 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
           (!payload.p_card_id || entry.cardId === payload.p_card_id) &&
           (!payload.p_entry_type || entry.entryType === payload.p_entry_type)
       )
-      return route.fulfill({ json: { records: filtered, total: filtered.length } })
+      const records = filtered.map((entry) => ({
+        ...entryFields,
+        ...entry,
+        cardBalance: cards.find((card) => card.id === entry.cardId)?.balance ?? entry.balanceAfter
+      }))
+      return route.fulfill({ json: { records, total: records.length } })
     }
-    if (endpoint === 'vms_list_vehicle_archives_secure')
+    if (endpoint === 'list_vehicle_driver_choices_secure' && payload.p_source === 'energy_vehicle')
       return route.fulfill({
         json: {
           records: vehicleIds.map((vehicleId, index) => ({
@@ -277,6 +405,7 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
           ['active', '在用'],
           ['disabled', '停用']
         ],
+        fuelCardFuelType: [['diesel_0', '0号柴油']],
         fuelCardEntryType: [
           ['opening', '期初'],
           ['recharge', '充值'],
@@ -307,7 +436,7 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
     waitUntil: 'commit',
     timeout: 360_000
   })
-  await expect(page.getByText('QA-CARD-001')).toBeVisible({ timeout: 360_000 })
+  await expect(page.getByText('QA-CARD-001')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('QA-CARD-002')).toBeVisible()
   await expect(page.getByPlaceholder('输入油卡号或车牌号')).toBeVisible()
   await page.screenshot({ path: info.outputPath('fuel-card-archive-light.png'), fullPage: true })
@@ -326,11 +455,13 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
   await page.screenshot({ path: info.outputPath('fuel-card-create-dialog.png'), fullPage: true })
   const createDialog = page.getByRole('dialog', { name: '新增油卡' })
   await createDialog.getByPlaceholder('请输入油卡号').fill('QA-CARD-003')
-  await createDialog.locator('.art-data-select__single-input').click()
+  await createDialog.getByRole('textbox', { name: /绑定车辆/ }).click()
   const vehiclePicker = page.getByRole('dialog', { name: '选择已审批燃油车' })
   await vehiclePicker.getByRole('row').filter({ hasText: '测A·10001' }).first().click()
   await vehiclePicker.getByRole('button', { name: /确.*定/ }).click()
-  await createDialog.locator('.el-input-number input').fill('80')
+  await createDialog.getByRole('combobox', { name: /所属油品/ }).click()
+  await page.getByRole('option', { name: '0号柴油', exact: true }).click()
+  await createDialog.getByRole('spinbutton', { name: /期初余额/ }).fill('80')
   await createDialog.getByRole('button', { name: '创建油卡' }).click()
   await expect(page.getByText('QA-CARD-003')).toBeVisible()
 
@@ -339,7 +470,7 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
     waitUntil: 'commit',
     timeout: 360_000
   })
-  await expect(page.getByText('QA-RC-001')).toBeVisible({ timeout: 360_000 })
+  await expect(page.getByText('QA-RC-001')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('QA-CM-001')).toBeVisible()
   await expect(page.locator('.el-date-editor').first()).toBeVisible()
   await page.screenshot({ path: info.outputPath('fuel-card-ledger-1280.png'), fullPage: true })
@@ -375,12 +506,12 @@ test('两张油卡与多笔流水在档案、流水、弹窗和窄桌面呈现',
   ]) {
     await page.getByRole('button', { name: flow.action }).click()
     const dialog = page.getByRole('dialog', { name: flow.title })
-    await dialog.locator('.art-data-select__single-input').click()
+    await dialog.getByRole('textbox', { name: /油卡/ }).click()
     const cardPicker = page.getByRole('dialog', { name: '选择油卡' })
     await cardPicker.getByRole('row').filter({ hasText: 'QA-CARD-001' }).first().click()
     await cardPicker.getByRole('button', { name: /确.*定/ }).click()
     await expect(dialog.getByText(flow.balance)).toBeVisible({ timeout: 15_000 })
-    await dialog.locator('.el-input-number input').fill(flow.amount)
+    await dialog.getByRole('spinbutton', { name: /充值金额|消费金额/ }).fill(flow.amount)
     await dialog.getByPlaceholder('可填写充值单号或消费凭证号').fill(flow.reference)
     await dialog.getByRole('button', { name: flow.confirm }).click()
     await expect(page.getByText(flow.reference)).toBeVisible()

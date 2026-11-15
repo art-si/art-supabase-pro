@@ -1,11 +1,11 @@
 <template>
   <div
     ref="screenRef"
-    class="enterprise-screen asset-maintenance-screen"
+    class="enterprise-screen asset-maintenance-screen command-screen"
     :class="{ 'is-empty-assets': isAssetEmpty }"
   >
     <ArtAsyncState
-      class="enterprise-screen__state"
+      class="enterprise-screen__state command-screen__state"
       :loading="state.loading"
       :loading-mode="state.loaded ? 'mask' : 'skeleton'"
       :error="state.loaded ? null : state.error"
@@ -13,16 +13,16 @@
       full-height
       @retry="loadData"
     >
-      <ElScrollbar class="enterprise-screen__scrollbar">
+      <ElScrollbar class="enterprise-screen__scrollbar command-screen__scrollbar">
         <div
-          class="enterprise-screen__stage asset-maintenance-stage"
+          class="enterprise-screen__stage asset-maintenance-stage command-screen__stage"
           :class="{ 'has-refresh-error': state.loaded && state.error }"
         >
-          <header class="command-header">
-            <div class="command-header__identity">
+          <header class="command-header command-screen__header">
+            <div class="command-header__identity command-screen__identity">
               <button
                 type="button"
-                class="screen-icon-button"
+                class="screen-icon-button command-screen__icon-button"
                 aria-label="返回工作台"
                 title="返回工作台"
                 @click="exitScreen"
@@ -34,9 +34,9 @@
               </div>
             </div>
 
-            <nav class="screen-nav" aria-label="大屏场景">
-              <ElScrollbar class="screen-nav__scrollbar">
-                <div class="screen-nav__items">
+            <nav class="screen-nav command-screen__nav" aria-label="大屏场景">
+              <ElScrollbar class="screen-nav__scrollbar command-screen__nav-scrollbar">
+                <div class="screen-nav__items command-screen__nav-items">
                   <RouterLink to="/dashboard/business-cockpit">
                     <ArtSvgIcon icon="ri:bar-chart-box-line" />
                     经营驾驶舱
@@ -57,17 +57,20 @@
               </ElScrollbar>
             </nav>
 
-            <div class="command-header__status">
+            <div class="command-header__status command-screen__status">
               <div>
                 <time :datetime="currentTime">{{ timeText }}</time>
                 <span>{{ dateText }}</span>
               </div>
-              <span class="live-status" :class="{ 'is-warning': state.error }">
+              <span
+                class="live-status command-screen__live-status"
+                :class="{ 'is-warning': state.error }"
+              >
                 <i /> {{ state.error ? '数据更新失败' : 'PMIS · MDM 已联通' }}
               </span>
               <button
                 type="button"
-                class="screen-icon-button"
+                class="screen-icon-button command-screen__icon-button"
                 :aria-label="fullscreenButtonLabel"
                 :aria-pressed="isFullscreen"
                 :title="fullscreenButtonLabel"
@@ -79,7 +82,7 @@
               </button>
               <button
                 type="button"
-                class="screen-icon-button"
+                class="screen-icon-button command-screen__icon-button"
                 :disabled="state.loading"
                 aria-label="刷新设备运维数据"
                 title="刷新设备运维数据"
@@ -99,28 +102,38 @@
 
           <main class="asset-screen-content">
             <section
-              class="metric-rail"
+              class="metric-rail command-screen__metric-rail"
               :style="{ gridTemplateColumns: `repeat(${primaryMetrics.length}, minmax(0, 1fr))` }"
               aria-label="设备运维核心指标"
             >
-              <article v-for="metric in primaryMetrics" :key="metric.label" class="hero-metric">
-                <div class="hero-metric__icon" :class="`is-${metric.tone}`">
+              <article
+                v-for="metric in primaryMetrics"
+                :key="metric.label"
+                class="hero-metric command-screen__metric"
+              >
+                <div
+                  class="hero-metric__icon command-screen__metric-icon"
+                  :class="`is-${metric.tone}`"
+                >
                   <ArtSvgIcon :icon="metric.icon" />
                 </div>
-                <div class="hero-metric__content">
+                <div class="hero-metric__content command-screen__metric-content">
                   <span>{{ metric.label }}</span>
                   <strong
                     >{{ metric.value }}<em>{{ metric.unit }}</em></strong
                   >
                   <small>{{ metric.hint }}</small>
                 </div>
-                <i class="hero-metric__signal" :class="`is-${metric.tone}`" />
+                <i
+                  class="hero-metric__signal command-screen__metric-signal"
+                  :class="`is-${metric.tone}`"
+                />
               </article>
             </section>
 
             <section class="asset-command-layout">
               <div class="asset-column asset-column--left">
-                <article class="screen-panel asset-health-panel">
+                <article class="screen-panel asset-health-panel command-screen__panel">
                   <ScreenPanelHeading title="设备生命体征" icon="ri:pulse-line">
                     <template #aside>
                       <span class="panel-caption is-live">{{ healthLabel }}</span>
@@ -156,7 +169,10 @@
                   </div>
                 </article>
 
-                <article v-if="!isAssetEmpty" class="screen-panel department-load-panel">
+                <article
+                  v-if="!isAssetEmpty"
+                  class="screen-panel department-load-panel command-screen__panel"
+                >
                   <ScreenPanelHeading title="车间设备负荷" icon="ri:building-4-line">
                     <template #aside>
                       <span class="panel-caption">{{ data.departmentLoad.length }} 个车间</span>
@@ -182,7 +198,7 @@
               </div>
 
               <div class="asset-column asset-column--center">
-                <article class="screen-panel asset-reactor-panel">
+                <article class="screen-panel asset-reactor-panel command-screen__panel">
                   <ScreenPanelHeading
                     :title="isAssetEmpty ? '设备接入概览' : '设备可靠性反应堆'"
                     icon="ri:cpu-line"
@@ -215,7 +231,7 @@
                   />
                 </article>
 
-                <article class="screen-panel maintenance-pipeline-panel">
+                <article class="screen-panel maintenance-pipeline-panel command-screen__panel">
                   <ScreenPanelHeading title="维修闭环推进" icon="ri:git-merge-line">
                     <template #aside>
                       <span class="pipeline-rate"
@@ -243,7 +259,10 @@
               </div>
 
               <div class="asset-column asset-column--right">
-                <article v-if="!isAssetEmpty" class="screen-panel work-order-panel">
+                <article
+                  v-if="!isAssetEmpty"
+                  class="screen-panel work-order-panel command-screen__panel"
+                >
                   <ScreenPanelHeading title="故障抢修队列" icon="ri:alarm-warning-line">
                     <template #aside>
                       <span class="risk-count">{{ data.repair.open }}</span>
@@ -281,7 +300,10 @@
                   />
                 </article>
 
-                <article v-if="!isAssetEmpty" class="screen-panel upcoming-task-panel">
+                <article
+                  v-if="!isAssetEmpty"
+                  class="screen-panel upcoming-task-panel command-screen__panel"
+                >
                   <ScreenPanelHeading title="近期保养窗口" icon="ri:calendar-check-line">
                     <template #aside>
                       <span class="panel-caption"
@@ -338,6 +360,7 @@
 </template>
 
 <script setup lang="ts">
+  import './command-screen-shell.scss'
   import './enterprise-big-screen.scss'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import dayjs from 'dayjs'

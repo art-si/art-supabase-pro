@@ -278,7 +278,14 @@
           <ElButton type="primary" @click="handleRefresh">重新加载</ElButton>
         </ArtEmptyState>
       </ElScrollbar>
-      <div v-else class="art-table-query__table-host">
+      <div
+        v-else
+        class="art-table-query__table-host"
+        :class="{
+          'art-table-query__table-host--configured-height':
+            !focusMode && resolvedTableProps.height != null
+        }"
+      >
         <ArtTable
           ref="tableRef"
           v-bind="artTableBindings"

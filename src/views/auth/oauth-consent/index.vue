@@ -95,7 +95,6 @@
   </div>
 </template>
 <script setup lang="ts">
-  import '../login/style.css'
   import { Loading } from '@element-plus/icons-vue'
   import {
     resumeFirstPartyOAuthAuthorization,

@@ -44,6 +44,58 @@ test('缺少卡号或无效金额会阻止整批导入', () => {
   )
 })
 
+const validStatementRow = {
+  油卡号: 'VMS-QA-20261026-001',
+  消费时间: '2026-10-27 10:15:00',
+  金额: 25,
+  加油站: 'QA测试加油站'
+}
+
+test('布尔值不能作为对账金额或加油升数', () => {
+  for (const field of ['金额', '加油升数'] as const) {
+    assert.throws(
+      () => parseFuelStatementRows([validStatementRow, { ...validStatementRow, [field]: true }]),
+      new RegExp(`第 3 行${field}无效`)
+    )
+  }
+})
+
+test('非法千分组及混用的数字分隔符会阻止导入', () => {
+  for (const [field, value] of [
+    ['金额', '12,34'],
+    ['金额', '1.234,56'],
+    ['加油升数', '2,0'],
+    ['加油升数', '1,234,56']
+  ] as const) {
+    assert.throws(
+      () => parseFuelStatementRows([{ ...validStatementRow, [field]: value }]),
+      new RegExp(`第 2 行${field}无效`)
+    )
+  }
+})
+
+test('对账导入支持标准千分组和空油量，拒绝金额或油量为零', () => {
+  const rows = parseFuelStatementRows([
+    { ...validStatementRow, 金额: ' 1,234.56 ', 加油升数: '1,234,567.89' },
+    { ...validStatementRow, 金额: '25.00', 加油升数: '  ' }
+  ])
+  assert.deepEqual(
+    rows.map(({ amount, liters }) => [amount, liters]),
+    [
+      [1234.56, 1234567.89],
+      [25, null]
+    ]
+  )
+  assert.throws(
+    () => parseFuelStatementRows([{ ...validStatementRow, 金额: 0 }]),
+    /第 2 行金额无效/
+  )
+  assert.throws(
+    () => parseFuelStatementRows([{ ...validStatementRow, 加油升数: '0' }]),
+    /第 2 行加油升数无效/
+  )
+})
+
 test('超过 500 行的账单必须拆分', () => {
   assert.throws(() => parseFuelStatementRows(Array.from({ length: 501 }, () => ({}))), /500 行/)
 })

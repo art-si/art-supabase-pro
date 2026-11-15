@@ -467,6 +467,7 @@
     payableLiabilityAmount,
     payableDocumentForEditing
   } from '@/utils/finance/payable'
+  import { calculateTaxInclusiveUnitPrice } from '@/utils/finance/unit-price'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { formatCurrencyValue } from '@/utils/ui/format'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -1423,7 +1424,7 @@
     const currentDocument = document.value
     currentDocument.lines.forEach((line) => {
       line.taxRate ??= line.amount ? Math.round((line.taxAmount / line.amount) * 100) : 0
-      line.taxInclusiveUnitPrice ??= Number((line.unitPrice * (1 + line.taxRate / 100)).toFixed(4))
+      line.taxInclusiveUnitPrice ??= calculateTaxInclusiveUnitPrice(line.unitPrice, line.taxRate)
       line.discountMethod ||= 'none'
       line.baseUnitId ||= line.materialUnits?.baseUnitId || line.inventoryUnitId
       line.baseQuantity ??= calculatePayableLine(

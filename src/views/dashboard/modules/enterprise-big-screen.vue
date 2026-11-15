@@ -1,7 +1,7 @@
 <template>
-  <div ref="screenRef" class="enterprise-screen" :class="`is-${mode}`">
+  <div ref="screenRef" class="enterprise-screen command-screen" :class="`is-${mode}`">
     <ArtAsyncState
-      class="enterprise-screen__state"
+      class="enterprise-screen__state command-screen__state"
       :loading="state.loading"
       :loading-mode="state.loaded ? 'mask' : 'skeleton'"
       :error="state.loaded ? null : state.error"
@@ -9,16 +9,16 @@
       full-height
       @retry="loadData"
     >
-      <ElScrollbar class="enterprise-screen__scrollbar">
+      <ElScrollbar class="enterprise-screen__scrollbar command-screen__scrollbar">
         <div
-          class="enterprise-screen__stage"
+          class="enterprise-screen__stage command-screen__stage"
           :class="{ 'has-refresh-error': state.loaded && state.error }"
         >
-          <header class="command-header">
-            <div class="command-header__identity">
+          <header class="command-header command-screen__header">
+            <div class="command-header__identity command-screen__identity">
               <button
                 type="button"
-                class="screen-icon-button"
+                class="screen-icon-button command-screen__icon-button"
                 aria-label="返回工作台"
                 title="返回工作台"
                 @click="exitScreen"
@@ -30,9 +30,9 @@
               </div>
             </div>
 
-            <nav class="screen-nav" aria-label="大屏场景">
-              <ElScrollbar class="screen-nav__scrollbar">
-                <div class="screen-nav__items">
+            <nav class="screen-nav command-screen__nav" aria-label="大屏场景">
+              <ElScrollbar class="screen-nav__scrollbar command-screen__nav-scrollbar">
+                <div class="screen-nav__items command-screen__nav-items">
                   <RouterLink
                     v-for="item in screenNavItems"
                     :key="item.path"
@@ -55,17 +55,20 @@
               </ElScrollbar>
             </nav>
 
-            <div class="command-header__status">
+            <div class="command-header__status command-screen__status">
               <div>
                 <time :datetime="currentTime">{{ timeText }}</time>
                 <span>{{ dateText }}</span>
               </div>
-              <span class="live-status" :class="{ 'is-warning': state.error }">
+              <span
+                class="live-status command-screen__live-status"
+                :class="{ 'is-warning': state.error }"
+              >
                 <i /> {{ state.error ? '数据更新失败' : '数据已同步' }}
               </span>
               <button
                 type="button"
-                class="screen-icon-button"
+                class="screen-icon-button command-screen__icon-button"
                 :aria-label="fullscreenButtonLabel"
                 :aria-pressed="isFullscreen"
                 :title="fullscreenButtonLabel"
@@ -77,7 +80,7 @@
               </button>
               <button
                 type="button"
-                class="screen-icon-button"
+                class="screen-icon-button command-screen__icon-button"
                 :disabled="state.loading"
                 aria-label="刷新大屏数据"
                 title="刷新大屏数据"
@@ -95,40 +98,50 @@
             @retry="loadData()"
           />
 
-          <main class="screen-content">
-            <section class="metric-rail" aria-label="核心经营指标">
-              <article v-for="metric in primaryMetrics" :key="metric.label" class="hero-metric">
-                <div class="hero-metric__icon" :class="`is-${metric.tone}`">
+          <main class="screen-content command-screen__content">
+            <section class="metric-rail command-screen__metric-rail" aria-label="核心经营指标">
+              <article
+                v-for="metric in primaryMetrics"
+                :key="metric.label"
+                class="hero-metric command-screen__metric"
+              >
+                <div
+                  class="hero-metric__icon command-screen__metric-icon"
+                  :class="`is-${metric.tone}`"
+                >
                   <ArtSvgIcon :icon="metric.icon" />
                 </div>
-                <div class="hero-metric__content">
+                <div class="hero-metric__content command-screen__metric-content">
                   <span>{{ metric.label }}</span>
                   <strong
                     >{{ metric.value }}<em v-if="metric.unit">{{ metric.unit }}</em></strong
                   >
                   <small>{{ metric.hint }}</small>
                 </div>
-                <i class="hero-metric__signal" :class="`is-${metric.tone}`" />
+                <i
+                  class="hero-metric__signal command-screen__metric-signal"
+                  :class="`is-${metric.tone}`"
+                />
               </article>
             </section>
 
             <template v-if="mode === 'business'">
               <section class="business-layout">
                 <div class="screen-column screen-column--left">
-                  <article class="screen-panel decision-panel">
+                  <article class="screen-panel decision-panel command-screen__panel">
                     <ScreenPanelHeading title="今日经营决策" icon="ri:focus-2-line" />
-                    <div class="decision-score">
+                    <div class="decision-score command-screen__score">
                       <ScreenGaugeChart
-                        class="decision-score__gauge"
+                        class="decision-score__gauge command-screen__score-gauge"
                         :value="businessScore"
                         label="综合健康度"
                       />
-                      <div class="decision-score__copy">
+                      <div class="decision-score__copy command-screen__score-copy">
                         <strong>{{ decisionHeadline }}</strong>
                         <p>{{ decisionDescription }}</p>
                       </div>
                     </div>
-                    <div class="decision-signals">
+                    <div class="decision-signals command-screen__score-signals">
                       <div v-for="item in decisionSignals" :key="item.label">
                         <span>{{ item.label }}</span>
                         <strong :class="`is-${item.tone}`">{{ item.value }}</strong>
@@ -136,7 +149,7 @@
                     </div>
                   </article>
 
-                  <article class="screen-panel finance-panel">
+                  <article class="screen-panel finance-panel command-screen__panel">
                     <ScreenPanelHeading title="资金收支对比" icon="ri:bar-chart-box-line">
                       <template #aside>
                         <span class="finance-margin">毛利率 {{ grossMarginRate }}%</span>
@@ -153,7 +166,7 @@
                 </div>
 
                 <div class="screen-column screen-column--center">
-                  <article class="screen-panel trend-panel">
+                  <article class="screen-panel trend-panel command-screen__panel">
                     <ScreenPanelHeading title="全域经营数字孪生" icon="ri:global-line">
                       <template #aside>
                         <span class="panel-caption is-live">六域实时融合</span>
@@ -170,14 +183,14 @@
                     />
                   </article>
 
-                  <article class="screen-panel chain-panel">
+                  <article class="screen-panel chain-panel command-screen__panel">
                     <ScreenPanelHeading title="运输履约链路" icon="ri:route-line" />
                     <ScreenStageChart class="fulfillment-stage-chart" :items="fulfillmentStages" />
                   </article>
                 </div>
 
                 <div class="screen-column screen-column--right">
-                  <article class="screen-panel health-panel">
+                  <article class="screen-panel health-panel command-screen__panel">
                     <ScreenPanelHeading title="跨域健康度" icon="ri:heart-pulse-line" />
                     <ScreenHorizontalBarChart
                       class="domain-health-chart"
@@ -188,7 +201,7 @@
                     />
                   </article>
 
-                  <article class="screen-panel risk-panel">
+                  <article class="screen-panel risk-panel command-screen__panel">
                     <ScreenPanelHeading title="待关注事项" icon="ri:alarm-warning-line">
                       <template #aside
                         ><span class="risk-count">{{ totalRiskCount }}</span></template
@@ -196,7 +209,11 @@
                     </ScreenPanelHeading>
                     <ElScrollbar class="screen-list-scrollbar">
                       <div class="risk-list">
-                        <div v-for="item in visibleRiskItems" :key="item.label" class="risk-item">
+                        <div
+                          v-for="item in visibleRiskItems"
+                          :key="item.label"
+                          class="risk-item command-screen__alert"
+                        >
                           <i :class="`is-${item.tone}`" />
                           <div
                             ><strong>{{ item.label }}</strong
@@ -213,7 +230,7 @@
 
             <template v-else>
               <section class="operations-layout">
-                <article class="screen-panel dispatch-panel">
+                <article class="screen-panel dispatch-panel command-screen__panel">
                   <ScreenPanelHeading title="运输任务队列" icon="ri:truck-line">
                     <template #aside
                       ><span class="panel-caption"
@@ -257,7 +274,7 @@
                   />
                 </article>
 
-                <article class="screen-panel network-panel">
+                <article class="screen-panel network-panel command-screen__panel">
                   <ScreenPanelHeading title="全域运营态势" icon="ri:radar-line">
                     <template #aside>
                       <span class="panel-caption is-live">
@@ -276,7 +293,7 @@
                   />
                 </article>
 
-                <article class="screen-panel alert-panel">
+                <article class="screen-panel alert-panel command-screen__panel">
                   <ScreenPanelHeading title="异常与资源" icon="ri:error-warning-line">
                     <template #aside>
                       <span class="risk-count">{{ totalRiskCount }} 项</span>
@@ -284,7 +301,11 @@
                   </ScreenPanelHeading>
                   <ElScrollbar class="screen-list-scrollbar">
                     <div class="risk-list risk-list--compact">
-                      <div v-for="item in riskItems" :key="item.label" class="risk-item">
+                      <div
+                        v-for="item in riskItems"
+                        :key="item.label"
+                        class="risk-item command-screen__alert"
+                      >
                         <i :class="`is-${item.tone}`" />
                         <div
                           ><strong>{{ item.label }}</strong
@@ -311,7 +332,7 @@
                   </div>
                 </article>
 
-                <article class="screen-panel flow-panel">
+                <article class="screen-panel flow-panel command-screen__panel">
                   <ScreenPanelHeading title="订单阶段分布" icon="ri:bar-chart-grouped-line" />
                   <ScreenStageChart class="operations-stage-chart" :items="fulfillmentStages" />
                 </article>
@@ -325,6 +346,7 @@
 </template>
 
 <script setup lang="ts">
+  import './command-screen-shell.scss'
   import './enterprise-big-screen.scss'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import dayjs from 'dayjs'

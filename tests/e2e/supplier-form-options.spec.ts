@@ -70,7 +70,12 @@ test('供应商列表和导出复用字典显示策略并保留停用历史值',
   page.on('pageerror', (error) => errors.push(error.message))
   const values = ['named-option', 'disabled-option', 'unknown-option', null]
   await page.route('**/rest/v1/**', async (route) => {
-    const path = new URL(route.request().url()).pathname
+    const url = new URL(route.request().url())
+    const dictionaryValue = url.searchParams.get('value')
+    const dictionaryRows = [
+      { label: '', name: '公共名称回退', value: 'named-option', status: '1' },
+      { label: '公共停用历史值', value: 'disabled-option', status: '0' }
+    ]
     const rows = values.map((value, index) => ({
       id: `supplier-${index}`,
       tenant_id: 'test-tenant',
@@ -87,12 +92,9 @@ test('供应商列表和导出复用字典显示策略并保留停用历史值',
         'content-range': `0-3/${rows.length}`,
         'access-control-expose-headers': 'content-range'
       },
-      json: path.endsWith('/sys_dictionary')
-        ? [
-            { label: '', name: '公共名称回退', value: 'named-option', status: '1' },
-            { label: '公共停用历史值', value: 'disabled-option', status: '0' }
-          ]
-        : path.endsWith('/mdm_supplier')
+      json: url.pathname.endsWith('/sys_dictionary')
+        ? dictionaryRows.filter((row) => !dictionaryValue || dictionaryValue === `eq.${row.value}`)
+        : url.pathname.endsWith('/mdm_supplier')
           ? rows
           : []
     })
@@ -102,7 +104,7 @@ test('供应商列表和导出复用字典显示策略并保留停用历史值',
   await expect(table.getByText('SUP-0', { exact: true }).first()).toBeVisible()
   await expect(table.getByText('公共名称回退', { exact: true })).toHaveCount(2)
   await expect(table.getByText('公共停用历史值', { exact: true })).toHaveCount(2)
-  await expect(table.getByText('unknown-option', { exact: true })).toHaveCount(2)
+  await expect(table.getByText('待核对', { exact: true })).toHaveCount(2)
   const pending = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出', exact: true }).click()
   const path = await (await pending).path()
@@ -110,12 +112,7 @@ test('供应商列表和导出复用字典显示策略并保留停用历史值',
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.readFile(path)
   const sheet = workbook.worksheets[0]
-  for (const [index, expected] of [
-    '公共名称回退',
-    '公共停用历史值',
-    'unknown-option',
-    '—'
-  ].entries()) {
+  for (const [index, expected] of ['公共名称回退', '公共停用历史值', '待核对', '—'].entries()) {
     for (const column of [3, 5, 6, 7])
       expect(sheet.getRow(index + 2).getCell(column).value).toBe(expected)
   }
@@ -124,4 +121,117 @@ test('供应商列表和导出复用字典显示策略并保留停用历史值',
     await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
   ).toBeLessThanOrEqual(1)
   expect(errors).toEqual([])
+})
+
+test('分组刷新保留最新响应并支持失败重试', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  const lateResponse = Promise.withResolvers<void>()
+  let requestCount = 0
+  await page.route('**/rest/v1/mdm_master_group?*', async (route) => {
+    const request = ++requestCount
+    if (request === 1) return route.fulfill({ json: [] })
+    if (request === 2) await lateResponse.promise
+    if (request === 4)
+      return route.fulfill({
+        status: 500,
+        json: { code: 'XX000', message: 'Database unavailable' }
+      })
+    return route.fulfill({
+      json: [
+        {
+          id: 'group-1',
+          tenant_id: 'test-tenant',
+          domain: 'supplier',
+          name: request === 2 ? '旧分组' : '最新分组',
+          code: 'GROUP-1',
+          sort: 0,
+          enabled: true
+        }
+      ]
+    })
+  })
+  await page.route('**/rest/v1/mdm_supplier?*', (route) => {
+    const isFiltered = new URL(route.request().url()).searchParams.has('group_id')
+    const rows = [
+      {
+        id: 'supplier-1',
+        supplier_code: 'SUP-1',
+        supplier_name: '分组供应商',
+        group_id: 'group-1'
+      },
+      { id: 'supplier-2', supplier_code: 'SUP-2', supplier_name: '未分组供应商' }
+    ]
+    const records = isFiltered ? rows.slice(0, 1) : rows
+    return route.fulfill({
+      headers: {
+        'content-range': `0-${records.length - 1}/${records.length}`,
+        'access-control-expose-headers': 'content-range'
+      },
+      json: records
+    })
+  })
+
+  await page.goto('/tests/e2e/fixtures/supplier-form-options.html?list=1')
+  const panel = page.locator('.master-group-panel')
+  await expect(panel).toBeVisible()
+  const expand = panel.getByRole('button', { name: '展开分组', exact: true })
+  if (await expand.isVisible()) await expand.click()
+  await expect(panel.getByText('尚未建立分组')).toBeVisible()
+  const refresh = panel.getByRole('button', { name: '刷新分组', exact: true })
+  try {
+    await refresh.click()
+    await expect.poll(() => requestCount).toBe(2)
+    await expect(panel).toHaveAttribute('aria-busy', 'true')
+    await refresh.click()
+    await expect(panel.getByText('最新分组', { exact: true })).toBeVisible()
+
+    const oldResponse = page.waitForResponse((response) =>
+      response.url().includes('/rest/v1/mdm_master_group?')
+    )
+    lateResponse.resolve()
+    await (await oldResponse).finished()
+    await page.evaluate(async () => {
+      await new Promise<number>(requestAnimationFrame)
+      await new Promise<number>(requestAnimationFrame)
+    })
+    await expect(panel.getByText('最新分组', { exact: true })).toBeVisible()
+    await expect(panel.getByText('旧分组', { exact: true })).toHaveCount(0)
+  } finally {
+    lateResponse.resolve()
+  }
+
+  await refresh.click()
+  await expect(panel.getByText('内容加载失败', { exact: true })).toBeVisible()
+  await panel.getByRole('button', { name: '重新加载', exact: true }).click()
+  await expect(panel.getByText('最新分组', { exact: true })).toBeVisible()
+  await expect(panel).toHaveAttribute('aria-busy', 'false')
+
+  const supplierMetric = page.locator('.business-workspace-header__metric').filter({
+    has: page.getByText('当前供应商', { exact: true })
+  })
+  await expect(supplierMetric.locator('strong')).toHaveText('2')
+  await panel.getByText('最新分组', { exact: true }).click()
+  await expect(supplierMetric.locator('strong')).toHaveText('1')
+  await expect(page.getByText('未分组供应商', { exact: true })).toHaveCount(0)
+
+  const enterFocus = page.locator('.el-switch').filter({
+    has: page.getByRole('switch', { name: '进入专注模式' })
+  })
+  const exitFocus = page.getByRole('button', { name: '退出专注模式' })
+  await enterFocus.click({ timeout: 10_000 })
+  await expect(supplierMetric).toBeHidden()
+  await expect(panel.getByText('最新分组', { exact: true })).toBeVisible()
+  await exitFocus.click({ timeout: 10_000 })
+  await expect(supplierMetric.locator('strong')).toHaveText('1')
+  await enterFocus.click({ timeout: 10_000 })
+  await page.keyboard.press('Escape')
+  await expect(supplierMetric.locator('strong')).toHaveText('1')
+  const supplier = page.getByRole('button', { name: '分组供应商', exact: true })
+  await supplier.scrollIntoViewIfNeeded()
+  await expect(supplier).toBeInViewport()
+
+  await page.screenshot({ path: info.outputPath('supplier-groups-recovered.png'), fullPage: true })
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+  ).toBeLessThanOrEqual(1)
 })

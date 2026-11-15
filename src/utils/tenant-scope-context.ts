@@ -174,6 +174,39 @@ export const normalizePlatformTenantReadUrl = (
   }
 }
 
+/** Resolve the outgoing scope for an already recognized Data API request. */
+export const resolveDataApiTenantScope = async ({
+  requestUrl,
+  requestMethod,
+  readScopeHeader,
+  readMutationBody
+}: {
+  requestUrl: string
+  requestMethod: string
+  readScopeHeader: string | null
+  readMutationBody: () => BodyInit | null | Promise<BodyInit | null>
+}): Promise<{ normalizedUrl: string; tenantScopeId: string | null }> => {
+  const selectedTenantScopeId = readTenantScopeId()
+  const isPlatformScopeActive = readPlatformTenantScopeActive()
+  const method = requestMethod.toUpperCase()
+  const isReadRequest = method === 'GET' || method === 'HEAD'
+  // An empty header marks an explicit multi-tenant query without choosing one tenant.
+  const explicitReadTenantScopeId = isReadRequest ? (readScopeHeader?.trim() ?? null) : null
+  const mutationTenantScopeId =
+    isPlatformScopeActive && !isReadRequest
+      ? readMutationTenantScopeId(await readMutationBody())
+      : null
+  const normalizedUrl =
+    isPlatformScopeActive && isReadRequest
+      ? normalizePlatformTenantReadUrl(requestUrl, explicitReadTenantScopeId !== null)
+      : requestUrl
+
+  return {
+    normalizedUrl,
+    tenantScopeId: selectedTenantScopeId ?? explicitReadTenantScopeId ?? mutationTenantScopeId
+  }
+}
+
 /**
  * Resolve an optional tenant query parameter against the platform scope selected in the shell.
  * Explicit feature parameters always win; ordinary tenant users have no stored platform scope

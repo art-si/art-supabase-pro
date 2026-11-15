@@ -6,7 +6,7 @@ All consumers use the complete pro role page, including organization filters and
 
 `RoleListItem.version` and `collectionVersion` are optional optimistic write tokens. The edit dialog retains both from the opened row. Native pro `addRole` and `editRole` remove these tokens before writing `sys_role`.
 
-The permission dialog keeps the complete opening set of role-menu IDs (including IDs not present in the current menu catalog). The API may return `revision`, `menuRevision`, and `roleVersion` with `getCurrentRoleMenus`; `fetchMenuCatalog` may return a `revision` for the exact displayed catalog. The save call passes these optional values and `expectedMenuIds` to a API provider. Native pro `saveRoleMenuList` sends only `p_role_id` and `p_menu_ids` to its existing RPC. The backend must compare the supplied snapshot and enforce authorization in its own transaction.
+The permission dialog passes its complete opening set of role-menu IDs as `expectedMenuIds`, including IDs absent from the visible catalog. It also passes the optional `revision`, `menuRevision`, and `roleVersion` tokens supplied by the provider. Native Supabase sends the opening set as `p_expected_menu_ids` to `set_role_menus`. The RPC serializes saves per role and rejects stale snapshots with HTTP 409. The dialog keeps the draft visible and prompts the user to close and reopen it to load current grants. CloudBase uses the two-argument contract on its separate database gateway.
 
 ## Assign users from a role
 

@@ -72,7 +72,11 @@ async function prepare(page: Page, initialMenuIds: string[] = [menuId(0)]) {
   )
   // Read the real page, but intercept every permission save before opening the
   // dialog. Test choices must never be persisted to any real role.
-  const savedPayloads: Array<{ p_role_id: string; p_menu_ids: string[] }> = []
+  const savedPayloads: Array<{
+    p_role_id: string
+    p_menu_ids: string[]
+    p_expected_menu_ids: string[]
+  }> = []
   await page.route('**/rest/v1/rpc/set_role_menus', async (route) => {
     savedPayloads.push(route.request().postDataJSON())
     await route.fulfill({
@@ -122,7 +126,11 @@ test('a selected child shows its ancestor as half checked without granting it on
   await save.click()
   await expect.poll(() => savedPayloads.length).toBe(1)
   expect(savedPayloads[0].p_menu_ids).toEqual([menuId(0)])
-  expect(Object.keys(savedPayloads[0]).sort()).toEqual(['p_menu_ids', 'p_role_id'])
+  expect(savedPayloads[0]).toEqual({
+    p_role_id: 'permission-role-A',
+    p_menu_ids: [menuId(0)],
+    p_expected_menu_ids: [menuId(0)]
+  })
   expect(pageErrors).toEqual([])
 })
 
@@ -338,5 +346,49 @@ test('pending save freezes the draft and closes only after a successful response
   await pendingSave.fulfill({ json: null })
   await expect(dialog).toBeHidden()
   expect(savedPayloads).toHaveLength(1)
+  expect(pageErrors).toEqual([])
+})
+
+test('stale role permissions preserve the draft and reopening loads the new snapshot', async ({
+  page
+}) => {
+  const { dialog, openButtons, save, selected, savedPayloads, pageErrors } = await prepare(page, [])
+  let currentMenuIds = [menuId(0)]
+  await page.route('**/rest/v1/rpc/set_role_menus', async (route) => {
+    const payload = route.request().postDataJSON() as (typeof savedPayloads)[number]
+    savedPayloads.push(payload)
+    await route.fulfill(
+      payload.p_expected_menu_ids?.join() === currentMenuIds.join()
+        ? { json: null }
+        : {
+            status: 409,
+            json: { code: 'PT409', message: '角色权限已更新，请关闭配置窗口并重新打开后再保存' }
+          }
+    )
+  })
+  await openButtons.first().click()
+  await expect(save).toBeEnabled()
+  await expect(selected).toHaveText('已选 0 / 1601 项')
+  const firstPermission = page.getByRole('checkbox', { name: '测试操作 0000权限', exact: true })
+  const firstPermissionLabel = dialog.locator('label.el-checkbox').filter({ has: firstPermission })
+  await firstPermissionLabel.click({ timeout: 10000 })
+  await expect(firstPermissionLabel.getByRole('checkbox')).toBeChecked()
+  await save.click()
+  await expect(page.getByText('角色权限已更新，请关闭配置窗口并重新打开后再保存')).toBeVisible()
+  await expect(selected).toHaveText('已选 1 / 1601 项')
+  expect(savedPayloads[0].p_expected_menu_ids).toEqual([])
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+
+  currentMenuIds = [menuId(1), 'grant-not-in-current-menu-catalog']
+  await page.route('**/rest/v1/sys_role_menu?*', (route) =>
+    route.fulfill({ json: currentMenuIds.map((id) => ({ menu_id: id })) })
+  )
+  await openButtons.first().click()
+  await expect(save).toBeEnabled()
+  await expect(selected).toHaveText('已选 1 / 1601 项')
+  await save.click()
+  await expect(dialog).toBeHidden()
+  expect(savedPayloads[1].p_expected_menu_ids).toEqual(currentMenuIds)
   expect(pageErrors).toEqual([])
 })

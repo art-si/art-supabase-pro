@@ -28,12 +28,31 @@ test('图片预览不会加载 PDF 与 DOCX 转换器', async ({ page }) => {
 
   expect(result).toEqual([{ width: 12, height: 8 }])
   expect(
-    requests.filter((url) => /docx-preview|html-to-image|pdfjs-dist.*pdf\.mjs/i.test(url))
+    requests.filter((url) => /docx-preview|html-to-image|pdfjs[-_]dist|pdf\.worker/i.test(url))
   ).toEqual([])
 })
 
-test('PDF 转换器在打开 PDF 时才加载并生成页面', async ({ page }) => {
+test('PDF 解析失败后释放 Worker，并可再次打开有效文件', async ({ page }) => {
+  const pdfWorkerUrls: string[] = []
+  page.on('worker', (worker) => {
+    if (worker.url().includes('pdf.worker')) pdfWorkerUrls.push(worker.url())
+  })
   await page.goto('/tests/e2e/fixtures/document-pages.html')
+
+  const failure = await page.evaluate(async (moduleUrl) => {
+    const { rasterizeProcessingList } = (await import(moduleUrl)) as {
+      rasterizeProcessingList: (file: File) => Promise<unknown>
+    }
+    try {
+      await rasterizeProcessingList(new File(['invalid PDF'], 'invalid.pdf'))
+    } catch (error) {
+      return (error as Error).name
+    }
+  }, documentModuleUrl)
+
+  expect(failure).toBe('InvalidPDFException')
+  expect(pdfWorkerUrls).toHaveLength(1)
+  await expect.poll(() => page.workers().length).toBe(0)
 
   const pages = await page.evaluate(async (moduleUrl) => {
     const { rasterizeProcessingList } = (await import(moduleUrl)) as {
@@ -78,6 +97,8 @@ test('PDF 转换器在打开 PDF 时才加载并生成页面', async ({ page }) 
   }, documentModuleUrl)
 
   expect(pages).toEqual([{ width: 240, height: 160 }])
+  expect(pdfWorkerUrls).toHaveLength(2)
+  await expect.poll(() => page.workers().length).toBe(0)
 })
 
 test('DOCX 转换器按需渲染仓库中的模板', async ({ page }) => {

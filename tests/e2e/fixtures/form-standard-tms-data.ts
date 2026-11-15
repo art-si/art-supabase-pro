@@ -11,7 +11,7 @@ export const transportContract = {
   contractCategory: 'transport',
   transportMode: 'road',
   businessContractType: 'customer',
-  carrierId: referenceId,
+  customerId: referenceId,
   billingMethod: 'monthly',
   signTime: '2026-10-31',
   isCompleted: false,

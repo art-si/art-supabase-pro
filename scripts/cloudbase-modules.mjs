@@ -1,9 +1,8 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { isAbsolute, relative, resolve } from 'node:path'
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const root = resolve(import.meta.dirname, '..')
 const manifestPath = resolve(root, 'scripts/cloudbase-modules.json')
 
 function git(args, cwd = root, stream = false) {
@@ -16,7 +15,7 @@ function git(args, cwd = root, stream = false) {
   if (result.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed: ${result.stderr || result.status}`)
   }
-  return result.stdout?.trim() || ''
+  return result.stdout?.trim() ?? ''
 }
 
 function fromIndex() {
@@ -37,7 +36,7 @@ function fromIndex() {
 function validate(modules) {
   if (!Array.isArray(modules) || modules.length === 0) throw new Error('Empty module manifest')
   for (const module of modules) {
-    if (!module || typeof module.path !== 'string' || typeof module.url !== 'string') {
+    if (typeof module?.path !== 'string' || typeof module.url !== 'string') {
       throw new Error('Invalid module manifest entry')
     }
     const path = relative(root, resolve(root, module.path))
@@ -66,7 +65,9 @@ if (action === 'write') {
   const modules = JSON.parse(source)
   validate(modules)
   if (JSON.stringify(modules) !== JSON.stringify(fromIndex())) {
-    throw new Error('CloudBase module manifest does not match the Git index. Run node scripts/cloudbase-modules.mjs write, then stage scripts/cloudbase-modules.json.')
+    throw new Error(
+      'CloudBase module manifest does not match the Git index. Run node scripts/cloudbase-modules.mjs write, then stage scripts/cloudbase-modules.json.'
+    )
   }
   console.log(`Verified ${modules.length} pinned module revisions`)
 } else if (action === 'install') {

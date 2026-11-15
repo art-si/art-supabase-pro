@@ -6,8 +6,8 @@ import {
 } from '../../src/components/business/master-data-delete-guard/record-meta'
 
 test('引用分类只读取显式业务配置', () => {
-  for (const table of ['mdm_employee', 'mdm_employee_assignment'])
-    assert.equal(getRecordReferenceMeta(table).statusDictCode, 'hrEmploymentStatus')
+  assert.equal(getRecordReferenceMeta('mdm_employee').statusDictCode, 'hrEmploymentStatus')
+  assert.deepEqual(getRecordReferenceMeta('mdm_employee_assignment'), { label: '员工任职记录' })
   assert.deepEqual(getRecordReferenceMeta('hr_employee_contract'), {
     label: '劳动合同',
     routeName: 'HrCompliance'
