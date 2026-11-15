@@ -1,9 +1,9 @@
 import { omit } from 'lodash-es'
-import { useSupabase } from '@/hooks/core/useSupabase'
+import { useSupabase, WRITE_PERMISSION_DENIED_MESSAGE } from '@/hooks/core/useSupabase'
 import { useUserStore } from '@/store/modules/user'
-import { WRITE_PERMISSION_DENIED_MESSAGE } from '@/hooks/core/useSupabase'
 import { createFriendlySupabaseFunctionError } from '@/utils/supabase/error'
 import { invokeSupabaseFunctionWithSessionRecovery } from '@/utils/supabase/functions'
+import { decodeWebsiteConfig } from './website-config.model'
 
 type SystemParamItem = Api.SystemManage.SystemParamItem
 type WebsiteConfigItem = Api.SystemManage.WebsiteConfigItem
@@ -30,7 +30,8 @@ const parseWebsiteConfigParam = (row: SystemParamItem | null): WebsiteConfigItem
   if (!row?.paramValue) return null
 
   try {
-    const parsed = JSON.parse(row.paramValue) as WebsiteConfigItem
+    const parsed = decodeWebsiteConfig(JSON.parse(row.paramValue))
+    if (!parsed) return null
     return {
       ...parsed,
       id: row.id,

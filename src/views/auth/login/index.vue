@@ -369,7 +369,7 @@
   const showTurnstile = computed(
     () => websiteConfigLoaded.value && websiteConfig.value.captchaEnabled
   )
-  const turnstileSiteKey = computed(() => websiteConfig.value.turnstileSiteKey)
+  const turnstileSiteKey = computed(() => websiteConfig.value.turnstileSiteKey ?? '')
   const turnstileWidgetSize = computed(() =>
     websiteConfig.value.turnstileSize === 'compact' ? 'compact' : 'flexible'
   )
