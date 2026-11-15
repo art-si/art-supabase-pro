@@ -1,5 +1,7 @@
 # Project Instructions
 
+- Use `master` for remote delivery unless the user created and designated another branch. Keep AI-created branches local, and delete each after its work is integrated into `master` or intentionally discarded. Publish shared packages from commits reachable on `master`. Gitee is the source repository and GitHub follows its mirror. Preserve user-created branches.
+
 - Shared pro pages have one standard interface in every consuming project. Do not add host-specific props, profiles, hidden sections, or alternate layouts for BFF or other consumers. Integrate authentication, data, and authorization through the standard API/provider boundaries. Publish shared changes and upgrade consumers to the published package; do not ship consumer-specific copies of shared pages.
 
 - Business forms must use `ArtForm` item configuration for every supported field type. Use a named field slot only for a genuinely missing or composite control; do not handwrite `ElFormItem`, bypass configuration with ordinary `custom-layout` forms, or split a field into a separate form merely for permissions or display. Keep per-field visibility, disabled state, validation, descriptions and control slots in metadata. The existing login, registration and password-recovery pages under `src/views/auth/**` are an explicit user exception: preserve their special layout and styling.

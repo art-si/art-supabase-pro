@@ -7,6 +7,12 @@ description: Enforce repository-wide code quality for art-supabase-pro. Use befo
 
 Keep every change maintainable at repository scale, not merely functional in the edited file.
 
+## Keep AI Branches Local
+
+- Deliver authorized changes to Gitee `master`. Use another remote branch only when the user created and designated it. GitHub is the mirror for this project.
+- Keep every AI-created branch local. After integrating or discarding its work, remove its temporary worktree and local branch. Preserve user-created branches.
+- Publish shared packages from a commit reachable on `master`. Push the shared source first when consumers need its archive, then update consumer pins and publish their new revisions. Verify the pinned commit remains reachable before retiring any existing release branch.
+
 ## Inspect Before Editing
 
 1. Read `AGENTS.md`, the target module, related types, and the closest established implementation.
