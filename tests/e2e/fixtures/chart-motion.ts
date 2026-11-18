@@ -6,6 +6,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { echarts } from '@/plugins/echarts'
 import ArtLineChart from '@/components/core/charts/art-line-chart/index.vue'
 import ArtBarChart from '@/components/core/charts/art-bar-chart/index.vue'
+import ArtHBarChart from '@/components/core/charts/art-h-bar-chart/index.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -15,6 +16,8 @@ const app = createApp({
     const empty = ref(false)
     const state = ref('[]')
     const kind = new URLSearchParams(location.search).get('kind')
+    const chartComponent =
+      kind === 'bar' ? ArtBarChart : kind === 'h-bar' ? ArtHBarChart : ArtLineChart
     const visible = ref(kind !== 'hidden')
     const delayed =
       kind === 'delayed' || kind === 'delayed-update' || kind === 'hidden' || kind === 'dispose'
@@ -67,23 +70,18 @@ const app = createApp({
               ref: delayed.chartRef,
               style: { height: '300px', display: visible.value ? '' : 'none' }
             })
-          : h(
-              new URLSearchParams(location.search).get('kind') === 'bar'
-                ? ArtBarChart
-                : ArtLineChart,
-              {
-                height: '300px',
-                xAxisData: ['本月'],
-                data: empty.value
-                  ? []
-                  : [
-                      { name: '事故', data: [value.value] },
-                      { name: '复核', data: [value.value + 1] }
-                    ],
-                animationDelay: 5000,
-                symbol: 'circle'
-              }
-            ),
+          : h(chartComponent, {
+              height: '300px',
+              xAxisData: ['本月'],
+              data: empty.value
+                ? []
+                : [
+                    { name: '事故', data: [value.value] },
+                    { name: '复核', data: [value.value + 1] }
+                  ],
+              animationDelay: 5000,
+              symbol: 'circle'
+            }),
         h('output', { 'data-testid': 'chart-state', hidden: true }, state.value)
       ])
   }

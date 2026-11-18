@@ -1,7 +1,7 @@
 <template>
   <ArtDialog ref="dialogRef" size="lg" :dialog-props="{ appendToBody: true }">
     <div class="number-rule-create">
-      <ArtSectionCard class="number-rule-create__form" preserve-content-structure>
+      <ArtSectionCard class="number-rule-create__form p-0!" preserve-content-structure>
         <template #header>
           <header class="number-rule-create__header">
             <div>
@@ -491,7 +491,7 @@
       gap: 16px;
       align-items: flex-start;
       justify-content: space-between;
-      padding: 16px;
+      padding: var(--art-space-4);
       border-bottom: 1px solid var(--el-border-color-lighter);
 
       :deep(.art-section-title) {
@@ -506,7 +506,7 @@
     }
 
     :deep(.art-form) {
-      padding: 12px 16px 4px !important;
+      padding: var(--art-space-3) var(--art-space-4) var(--art-space-1) !important;
     }
 
     &__tokens {

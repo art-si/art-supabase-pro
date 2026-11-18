@@ -286,18 +286,52 @@ for (const authority of ['super', 'ordinary', 'ordinary-viewonly'] as const) {
     serialManaged = true
     await page.getByRole('button', { name: '项目调拨', exact: true }).click()
     await expect(submit).toBeEnabled()
+    const serial = dialog.getByRole('combobox', { name: /随批次调拨的序列号/ })
+    const serialOption = page.getByRole('option', { name: 'SN-TEST-001', exact: true })
+    if (await page.evaluate(() => window.innerWidth >= 768)) {
+      const enterFocus = dialog.getByRole('button', { name: '进入专注填单', exact: true })
+      const exitFocus = dialog.getByRole('button', { name: '退出专注填单', exact: true })
+      const labelHint = page.getByRole('tooltip').filter({ hasText: /^随批次调拨的序列号$/ })
+      await enterFocus.press('Enter')
+      await expect(exitFocus).toBeVisible()
+      await dialog.getByRole('textbox', { name: '调拨原因', exact: true }).focus()
+      await expect(page.getByRole('tooltip').filter({ hasText: /^调拨原因$/ })).toBeHidden()
+      await page.keyboard.press('Shift+Tab')
+      await expect(serial).toBeFocused()
+      await expect(serial).toHaveAttribute('aria-expanded', 'false')
+      await expect(labelHint).toBeVisible()
+
+      await page.keyboard.press('ArrowDown')
+      await expect(serial).toHaveAttribute('aria-expanded', 'true')
+      await expect(serialOption).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(serial).toHaveAttribute('aria-expanded', 'false')
+      await expect(serialOption).toBeHidden()
+      await expect(labelHint).toBeVisible()
+      await expect(dialog).toBeVisible()
+      await expect(serial).toBeFocused()
+      await page.screenshot({
+        path: testInfo.outputPath('project-transfer-serial-keyboard-label.png'),
+        animations: 'disabled'
+      })
+
+      await page.keyboard.press('Escape')
+      await expect(labelHint).toBeHidden()
+      await expect(exitFocus).toBeVisible()
+      await expect(serial).toBeFocused()
+      await exitFocus.press('Enter')
+      await expect(enterFocus).toBeVisible()
+    }
     await submit.click()
     await expect(dialog.locator('.el-form-item__error')).toHaveText('序列号件数必须与调拨数量一致')
-    await expect(dialog.getByRole('combobox', { name: /随批次调拨的序列号/ })).toBeFocused()
+    await expect(serial).toBeFocused()
     await page.screenshot({
       path: testInfo.outputPath('project-transfer-serial-required.png'),
       animations: 'disabled'
     })
     expect(writes).toHaveLength(4)
-    if (!(await page.getByRole('option', { name: 'SN-TEST-001', exact: true }).isVisible())) {
-      await dialog.getByRole('combobox', { name: /随批次调拨的序列号/ }).press('ArrowDown')
-    }
-    await page.getByRole('option', { name: 'SN-TEST-001', exact: true }).click()
+    if (!(await serialOption.isVisible())) await serial.press('ArrowDown')
+    await serialOption.click()
     await page.keyboard.press('Escape')
     await expect(dialog.locator('.el-form-item__error')).toHaveCount(0)
     await page.screenshot({

@@ -4,6 +4,60 @@ import ExcelJS from 'exceljs'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
+test('键盘导出保持防重入，失败后回到按钮，主动换焦点时不抢回', async ({ page }) => {
+  const first = Promise.withResolvers<void>()
+  const retry = Promise.withResolvers<void>()
+  const calls = { 甲: 0, 乙: 0 }
+  const downloads: string[] = []
+  page.on('download', (download) => downloads.push(download.suggestedFilename()))
+  await page.route('**/test-data/table-export/*', async (route) => {
+    const type = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1) || '')
+    if (type === '甲' && ++calls.甲 === 1) {
+      await first.promise
+      await route.fulfill({ status: 503 })
+    } else {
+      if (type === '乙') calls.乙++
+      if (type === '甲') await retry.promise
+      await route.fulfill({ status: 200 })
+    }
+  })
+
+  try {
+    await page.goto('/tests/e2e/fixtures/art-table-export.html?mode=keyboard', {
+      waitUntil: 'domcontentloaded'
+    })
+    await expect(page.getByText('测试记录-0', { exact: true })).toBeVisible()
+    const firstButton = page.getByRole('button', { name: '导出甲', exact: true })
+    const secondButton = page.getByRole('button', { name: '导出乙', exact: true })
+    await firstButton.focus()
+    await firstButton.press('Enter')
+    await expect.poll(() => calls.甲).toBe(1)
+    await expect(firstButton).toBeDisabled()
+    await expect(secondButton).toBeDisabled()
+
+    first.resolve()
+    await expect(page.getByText('导出暂未完成，请重试', { exact: true })).toBeVisible()
+    await expect(firstButton).toBeEnabled()
+    await expect(secondButton).toBeEnabled()
+    await expect(firstButton).toBeFocused({ timeout: 3000 })
+    expect(downloads).toEqual([])
+
+    await page.keyboard.press('Enter')
+    await expect.poll(() => calls.甲).toBe(2)
+    const browsing = page.getByRole('button', { name: '继续浏览', exact: true })
+    await browsing.focus()
+    const download = page.waitForEvent('download')
+    retry.resolve()
+    expect((await download).suggestedFilename()).toContain('导出甲')
+    await expect(secondButton).toBeEnabled()
+    await expect(browsing).toBeFocused()
+    expect(calls).toEqual({ 甲: 2, 乙: 0 })
+  } finally {
+    first.resolve()
+    retry.resolve()
+  }
+})
+
 test('默认导出读取字典名称、历史停用值、动态值和嵌套字段，保留零与否', async ({ page }) => {
   await page.route('**/rest/v1/sys_dictionary?**', (route) => {
     const parameters = new URL(route.request().url()).searchParams

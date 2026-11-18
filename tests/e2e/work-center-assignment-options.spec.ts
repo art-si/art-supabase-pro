@@ -1,15 +1,19 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 30_000 })
 test.setTimeout(240_000)
 test('工作中心资料复用公共字典', async ({ page }, info) => {
   await prepareIsolatedSession(page)
   const errors: string[] = []
+  let writes = 0
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.route('**/rest/v1/**', (route) =>
-    route.fulfill({
-      json: new URL(route.request().url()).pathname.endsWith('/sys_dictionary')
+  await page.route('**/rest/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/mdm_save_work_center_with_activities')) writes += 1
+    return route.fulfill({
+      json: path.endsWith('/sys_dictionary')
         ? [
             { label: '', name: '公共资料选项', value: 'test-option', status: '1' },
             { label: '停用字典项', value: 'obsolete', status: '0' }
@@ -17,7 +21,7 @@ test('工作中心资料复用公共字典', async ({ page }, info) => {
         : [],
       headers: { 'content-range': '*/0', 'access-control-expose-headers': 'content-range' }
     })
-  )
+  })
   await page.goto('/tests/e2e/fixtures/work-center-assignment-options.html?mode=center')
   await page.getByRole('button', { name: '打开安排', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '编辑工作中心', exact: true })
@@ -40,6 +44,22 @@ test('工作中心资料复用公共字典', async ({ page }, info) => {
     ).toBeLessThanOrEqual(0)
     await page.screenshot({ path: info.outputPath(`${label}.png`) })
   }
+  await test.step('从活动信息保存时定位未填写的名称', async () => {
+    const name = dialog.getByRole('textbox', { name: /^\*?\s*名称$/ })
+    await expect(name).toBeVisible()
+    await name.clear()
+    const activity = dialog.getByRole('tab', { name: '活动信息', exact: true })
+    await activity.click()
+    await expect(activity).toHaveAttribute('aria-selected', 'true')
+    const save = dialog.getByRole('button', { name: '保存工作中心', exact: true })
+    await expect(save).toBeEnabled()
+    await save.press('Enter')
+    const panel = await expectOverlayTabPanel(dialog, '基本资料')
+    await expect(panel.getByText('请输入名称', { exact: true })).toBeVisible()
+    await expect(name).toBeFocused()
+    expect(writes).toBe(0)
+    await dialog.screenshot({ path: info.outputPath('work-center-invalid-name.png') })
+  })
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
   ).toBeLessThanOrEqual(1)

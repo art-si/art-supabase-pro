@@ -132,7 +132,7 @@
             </div>
             <ElTabs
               v-model="resultTab"
-              class="min-w-0"
+              class="min-w-0 art-overlay-tab-card p-0!"
               @tab-change="responsePreviewRef?.invalidateCopy()"
             >
               <ElTabPane label="数据视图" name="data">

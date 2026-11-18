@@ -1,10 +1,12 @@
 <!-- 右键菜单 -->
 <template>
-  <Teleport to="body">
-    <Transition name="context-menu" @before-enter="onBeforeEnter">
+  <Teleport :to="portalTarget">
+    <Transition name="context-menu" @before-enter="onBeforeEnter" @after-leave="onAfterLeave">
       <div
         ref="menuRef"
         v-show="visible"
+        :popover="usesDialogPopover ? 'manual' : undefined"
+        :tabindex="usesDialogPopover ? -1 : undefined"
         :style="menuStyle"
         class="menu-right context-menu art-card-xs min-w-[var(--menu-width)] w-[var(--menu-width)]"
         @keydown.stop="handleKeydown"
@@ -111,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, nextTick, ref, type CSSProperties } from 'vue'
+  import { computed, nextTick, ref, shallowRef, type CSSProperties } from 'vue'
   import { ElScrollbar, useZIndex } from 'element-plus'
   import { useEventListener, useTimeoutFn } from '@vueuse/core'
 
@@ -173,6 +175,13 @@
   }>()
 
   const visible = ref(false)
+  const portalTarget = shallowRef<HTMLElement | string>('body')
+  const drawerPortalSelector = '.el-drawer[aria-modal="true"]'
+  const dialogPortalSelector = '.el-dialog'
+  const usesDialogPopover = computed(
+    () =>
+      portalTarget.value instanceof HTMLElement && portalTarget.value.matches(dialogPortalSelector)
+  )
   const { nextZIndex } = useZIndex()
   const zIndex = ref(2000)
   let opener: HTMLElement | null = null
@@ -307,10 +316,28 @@
     }
   }
 
+  const closeDialogPopover = (element?: Element) => {
+    if (
+      element instanceof HTMLElement &&
+      element.hasAttribute('popover') &&
+      element.matches(':popover-open')
+    )
+      element.hidePopover()
+  }
+
   const show = (e: MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const anchor = e.target instanceof Element ? e.target : opener
+    const supportsPopover = typeof HTMLElement.prototype.showPopover === 'function'
+    const target =
+      anchor?.closest<HTMLElement>(
+        supportsPopover ? `${dialogPortalSelector}, ${drawerPortalSelector}` : drawerPortalSelector
+      ) ?? 'body'
+    if (target !== portalTarget.value) closeDialogPopover(menuRef.value)
+    // Keep the menu inside the focus trap, while top-layer positioning bypasses dialog transforms.
+    portalTarget.value = target
     zIndex.value = nextZIndex()
 
     stopListenersDelay()
@@ -321,11 +348,16 @@
     visible.value = true
 
     emit('show')
-    void nextTick(() =>
-      menuRef.value
-        ?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)')
-        ?.focus()
-    )
+    void nextTick(() => {
+      const menu = menuRef.value
+      if (!visible.value || !menu?.isConnected) return
+      if (usesDialogPopover.value && !menu.matches(':popover-open')) menu.showPopover()
+      const firstItem = menu.querySelector<HTMLButtonElement>(
+        'button[role="menuitem"]:not(:disabled)'
+      )
+      const focusTarget = firstItem ?? (usesDialogPopover.value ? menu : undefined)
+      focusTarget?.focus()
+    })
 
     // 延迟监听，避免打开菜单的点击事件立即关闭菜单。
     startListenersDelay()
@@ -353,6 +385,10 @@
     element.style.transformOrigin = 'top left'
   }
 
+  const onAfterLeave = (element: Element) => {
+    if (!visible.value) closeDialogPopover(element)
+  }
+
   useEventListener(listenerTarget, 'click', handleDocumentClick)
   useEventListener(listenerTarget, 'contextmenu', handleDocumentContextmenu)
   useEventListener(listenerTarget, 'keydown', handleKeydown)
@@ -373,6 +409,14 @@
     );
 
     border-radius: var(--border-radius) !important;
+
+    &[popover] {
+      inset: auto;
+      padding: 0;
+      margin: 0;
+      overflow: visible;
+      color: inherit;
+    }
   }
 
   .submenu-list {

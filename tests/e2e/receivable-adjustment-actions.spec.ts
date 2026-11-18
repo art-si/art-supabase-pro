@@ -1,9 +1,14 @@
 import { expect, test } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15000 })
 test.setTimeout(60000)
 
 test('两条调整提交部分失败后回读、混合状态阻断与审核终态', async ({ page }, info) => {
+  await prepareIsolatedSession(page, {
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    platformSuper: true
+  })
   const records = [1, 2].map((index) => ({
     id: `adjustment-${index}`,
     documentNo: `QA-ADJUSTMENT-${index}`,
@@ -64,11 +69,18 @@ test('两条调整提交部分失败后回读、混合状态阻断与审核终�
     return route.fulfill({ json: [] })
   })
   const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
-  await page.goto(`/tests/e2e/fixtures/receivable-workspace.html?kind=financial&theme=${theme}`)
+  const box = theme === 'dark' ? 'shadow-mode' : 'border-mode'
+  await page.goto(
+    `/tests/e2e/fixtures/receivable-workspace.html?kind=financial&theme=${theme}&box=${box}`
+  )
+  if (theme === 'dark') await expect(page.locator('html')).toHaveClass(/\bdark\b/)
+  else await expect(page.locator('html')).not.toHaveClass(/\bdark\b/)
+  await expect(page.locator('html')).toHaveAttribute('data-box-mode', box)
   await page.getByRole('button', { name: '调整记录', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '应收调整记录', exact: true })
   const selectAll = dialog.locator('.el-table__header-wrapper label.el-checkbox')
   await expect(dialog.getByText('QA-ADJUSTMENT-2', { exact: true })).toBeVisible()
+  await expect(dialog.getByRole('row').filter({ hasText: 'QA-ADJUSTMENT-2' })).toBeInViewport()
   await selectAll.click()
   await expect(dialog.getByRole('button', { name: '审核调整', exact: true })).toBeDisabled()
   await dialog.getByRole('button', { name: '提交调整', exact: true }).click()

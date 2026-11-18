@@ -84,6 +84,7 @@
     highlightCurrentRow: boolean
     scrollbarAlwaysOn: boolean
     selectedRowKeys: Array<string | number>
+    selectAllLabel: string
     rowIdentity: (row: Row) => string
     renderCell: (column: ColumnOption<Row>, row: Row, index: number) => VNode
     renderHeader: (column: ColumnOption<Row>, index: number) => VNode
@@ -317,7 +318,7 @@
                 modelValue: allSelected.value,
                 indeterminate: partiallySelected.value,
                 disabled: !props.data.some(selectable),
-                'aria-label': '选择当前页全部行',
+                'aria-label': props.selectAllLabel,
                 'onUpdate:modelValue': toggleAllSelection,
                 onClick: (event: MouseEvent) => event.stopPropagation()
               })
@@ -421,7 +422,20 @@
         rowIndex: item.index,
         columnIndex: index
       }),
-      onMousedown: (event: MouseEvent) => beginSelectionDrag(item.index, event)
+      onMousedown: (event: MouseEvent) => beginSelectionDrag(item.index, event),
+      onFocusin: (event: FocusEvent) => {
+        const { target, currentTarget } = event
+        if (
+          !(target instanceof HTMLElement) ||
+          !(currentTarget instanceof HTMLElement) ||
+          target.closest('.art-table') !== currentTarget.closest('.art-table')
+        )
+          return
+        requestAnimationFrame(() => {
+          if (target.isConnected && target.ownerDocument.activeElement === target)
+            revealCenterColumn(index)
+        })
+      }
     }
   }
   const headerCellProps = (scope: { column: Column<unknown> }) => {
@@ -528,27 +542,27 @@
   useEventListener(window, 'mouseup', () => {
     dragStart = undefined
   })
+  const revealCenterColumn = (columnIndex: number): void => {
+    const columns = v2Columns.value
+    const column = columns[columnIndex]
+    if (!column || column.fixed) return
+    // The scrollable pane groups fixed columns at its edges, regardless of descriptor order.
+    let left = 0
+    let visibleWidth = viewportWidth.value
+    columns.forEach((candidate, index) => {
+      if (candidate.fixed) visibleWidth -= candidate.width
+      else if (index < columnIndex) left += candidate.width
+    })
+    if (visibleWidth <= 0) return
+    const right = left + column.width
+    if (left < scrollLeft.value) table.value?.scrollToLeft(left)
+    else if (right > scrollLeft.value + visibleWidth)
+      table.value?.scrollToLeft(right - visibleWidth)
+  }
   const ensureCellVisible = async (row: Row, field: string) => {
     const index = orderedRows.value.findIndex((item) => item.row === row)
     if (index >= 0) table.value?.scrollToRow(index, 'smart')
-    const columnIndex = v2Columns.value.findIndex((column) => column.key === field),
-      column = v2Columns.value[columnIndex]
-    if (column && !column.fixed) {
-      const left = v2Columns.value
-          .slice(0, columnIndex)
-          .reduce((sum, column) => sum + column.width, 0),
-        right = left + column.width
-      const fixedLeft = v2Columns.value
-          .filter((column) => column.fixed === 'left' || column.fixed === true)
-          .reduce((sum, column) => sum + column.width, 0),
-        fixedRight = v2Columns.value
-          .filter((column) => column.fixed === 'right')
-          .reduce((sum, column) => sum + column.width, 0)
-      if (left < scrollLeft.value + fixedLeft)
-        table.value?.scrollToLeft(Math.max(0, left - fixedLeft))
-      else if (right > scrollLeft.value + viewportWidth.value - fixedRight)
-        table.value?.scrollToLeft(right - viewportWidth.value + fixedRight)
-    }
+    revealCenterColumn(v2Columns.value.findIndex((column) => column.key === field))
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     await nextTick()
   }

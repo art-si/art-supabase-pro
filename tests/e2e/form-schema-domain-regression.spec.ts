@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectCompactOverlayLabel } from './support/overlay-label-layout'
 import {
   formStandardDictionaries,
   formStandardCompensationPlan
@@ -169,20 +170,89 @@ test('MDM配置dataSelect保持单选选择器与字段回填', async ({ page },
 })
 
 test('MDM库存策略普通数字和开关字段使用同一配置表单', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   const { writes, errors } = await openFixture(page, 'mdm-inventory-policy')
   const dialog = page.getByRole('dialog', { name: '配置呆滞库存口径', exact: true })
   await expect(dialog).toBeVisible({ timeout: 60_000 })
-  await expect(dialog.locator('form')).toHaveCount(1)
+  const form = dialog.locator('form')
+  await expect(form).toHaveCount(1)
+  await expect(form).toHaveClass(/el-form--label-top/)
   const days = dialog.getByRole('spinbutton', { name: '无活动天数（天）', exact: true })
   await expect(days).toHaveValue('90')
   await days.fill('120')
   await days.blur()
-  const reserve = dialog.getByRole('switch', { name: '工单下达时自动预留原料', exact: true })
+  const label = '工单下达时自动预留原料'
+  const field = dialog.locator('[data-art-form-item-key="autoReserveOnRelease"]')
+  const reserve = field.getByRole('switch', { name: label, exact: true })
   await expect(reserve).toBeChecked()
-  await dialog.locator('[data-art-form-item-key="autoReserveOnRelease"] .el-switch').click()
+  await field.locator('.el-switch').click()
   await expect(reserve).not.toBeChecked()
   await expect(days).toHaveValue('120')
   await page.screenshot({ path: info.outputPath('mdm-inventory-policy-schema.png') })
+
+  const enterFocus = dialog.getByRole('button', { name: '进入专注填单', exact: true })
+  const exitFocus = dialog.getByRole('button', { name: '退出专注填单', exact: true })
+  await enterFocus.press('Enter')
+  await expect(form).toHaveClass(/el-form--label-left/)
+  const caption = await expectCompactOverlayLabel(field)
+  const tooltip = page.getByRole('tooltip').filter({ hasText: label })
+  await caption.hover()
+  await expect(tooltip).toHaveText(label)
+  await expect(reserve).toHaveAccessibleName(label)
+  await page.screenshot({ path: info.outputPath('mdm-inventory-policy-focus-label.png') })
+  await days.hover()
+  await expect(tooltip).toBeHidden()
+
+  await days.focus()
+  await page.keyboard.press('Tab')
+  await expect(reserve).toBeFocused()
+  await expect(tooltip).toHaveText(label)
+  await page.screenshot({ path: info.outputPath('mdm-inventory-policy-keyboard-label.png') })
+  await page.keyboard.press('Shift+Tab')
+  await expect(days).toBeFocused()
+  await expect(tooltip).toBeHidden()
+  await page.keyboard.press('Tab')
+  await expect(reserve).toBeFocused()
+  await expect(tooltip).toHaveText(label)
+  await page.keyboard.down('Escape')
+  try {
+    await expect(tooltip).toBeHidden()
+    await page.keyboard.down('Escape')
+    await expect(dialog).toBeVisible()
+    await expect(exitFocus).toBeVisible()
+    await expect(reserve).toBeFocused()
+  } finally {
+    await page.keyboard.up('Escape')
+  }
+
+  await exitFocus.press('Enter')
+  await expect(form).toHaveClass(/el-form--label-top/)
+  await expect(enterFocus).toBeFocused()
+  await expect(days).toHaveValue('120')
+  await expect(reserve).not.toBeChecked()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await enterFocus.click()
+  await expect(exitFocus).toBeVisible()
+  await expect(form).toHaveClass(/el-form--label-top/)
+  await expect(caption).toHaveCount(0)
+  const fullLabel = field.locator('.el-form-item__label')
+  await expect(fullLabel).toHaveText(label)
+  await fullLabel.scrollIntoViewIfNeeded()
+  expect(
+    await fullLabel.evaluate((element) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      const text = range.getBoundingClientRect()
+      const labelBounds = element.getBoundingClientRect()
+      return text.left >= labelBounds.left && text.right <= labelBounds.right + 1
+    })
+  ).toBe(true)
+  await expect(days).toHaveValue('120')
+  await expect(reserve).not.toBeChecked()
+  await page.screenshot({ path: info.outputPath('mdm-inventory-policy-focus-mobile.png') })
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
   expect(writes).toEqual([])
   expect(errors).toEqual([])
 })

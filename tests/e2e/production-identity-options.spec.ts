@@ -47,6 +47,8 @@ for (const mode of ['person', 'department', 'template', 'shift']) {
       await expect(field.getByText('停用字典项', { exact: true })).toHaveCount(0)
       await page.screenshot({ path: info.outputPath('有效方式.png') })
     }
+    if (mode === 'person')
+      await dialog.getByRole('tab', { name: '组织与岗位', exact: true }).click()
     for (const label of mode === 'person'
       ? ['工作类型', '性别']
       : mode === 'department'

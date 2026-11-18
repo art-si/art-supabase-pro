@@ -6,12 +6,11 @@ import {
   onBeforeUnmount,
   onDeactivated,
   onMounted,
-  ref,
+  shallowRef,
   watch,
   type ComputedRef
 } from 'vue'
 import { routeLocationKey } from 'vue-router'
-import { ElNotification } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { fetchTableColumnRuntime } from '@/api/table-column-config'
@@ -25,7 +24,6 @@ import type { TableColumnRuntime } from '@/types/table-column-config'
 import {
   tableColumnRuntimeCache,
   tableColumnRuntimeRevision,
-  tableColumnRuntimeWarnings,
   type TableColumnRuntimeCacheEntry
 } from '@/utils/table/column-runtime-cache'
 
@@ -52,27 +50,36 @@ export function useConfiguredTableColumns<T>(factory: () => ColumnOption<T>[]): 
   const ownedPath = route.matched.at(-1)?.path ?? route.path
   const routePath = ownedPath.replace(/\/:.*$/, '')
   if (!registeredRoutes.has(routePath)) return { factory, revision: computed(() => '') }
-  const runtime = ref<TableColumnRuntime | null>(null)
+  const loadedRuntime = shallowRef<{ scope: string; value: TableColumnRuntime } | null>(null)
   let request = 0
   let active = false
-  const context = computed(
-    () =>
-      `${user.getUserInfo.userId ?? ''}:${tenant.effectiveTenantId ?? 'all'}:${tenant.revision}:${tableColumnRuntimeRevision.value}`
+  const scope = computed(
+    () => `${user.getUserInfo.userId ?? ''}:${tenant.effectiveTenantId ?? 'all'}:${tenant.revision}`
+  )
+  // Reloads can retain the current columns only while the user and tenant stay the same.
+  const context = computed(() => `${scope.value}:${tableColumnRuntimeRevision.value}`)
+  const runtime = computed(() =>
+    loadedRuntime.value?.scope === scope.value ? loadedRuntime.value.value : null
   )
 
   async function load(): Promise<void> {
     if (!active) return
     if (!user.getUserInfo.userId) {
       request += 1
-      runtime.value = null
+      loadedRuntime.value = null
       return
     }
     if (!factory().length) return
     const current = ++request
-    runtime.value = null
     const element = owner?.proxy?.$el
-    if (element instanceof Element && element.closest('.el-dialog, .el-drawer')) return
-    const key = `${context.value}:${routePath}`
+    if (element instanceof Element && element.closest('.el-dialog, .el-drawer')) {
+      loadedRuntime.value = null
+      return
+    }
+    const requestScope = scope.value
+    const requestContext = context.value
+    const key = `${requestContext}:${routePath}`
+    const isCurrent = () => current === request && requestContext === context.value
     let requestEntry: TableColumnRuntimeCacheEntry | undefined
     try {
       const now = Date.now()
@@ -86,30 +93,28 @@ export function useConfiguredTableColumns<T>(factory: () => ColumnOption<T>[]): 
       }
       requestEntry = entry
       const value = await requestEntry.value
-      const currentKey = `${context.value}:${routePath}`
-      if (current === request && currentKey === key) runtime.value = value
+      if (isCurrent()) loadedRuntime.value = value ? { scope: requestScope, value } : null
     } catch {
       if (requestEntry && tableColumnRuntimeCache.get(key) === requestEntry)
         tableColumnRuntimeCache.delete(key)
-      const currentKey = `${context.value}:${routePath}`
-      if (current !== request || currentKey !== key || tableColumnRuntimeWarnings.has(key)) return
-      tableColumnRuntimeWarnings.add(key)
-      ElNotification({
-        title: '已使用前端默认列',
-        message: '列配置暂时无法加载，列表仍可使用；重新进入页面可重试。',
-        type: 'warning',
-        duration: 5000
-      })
+      if (isCurrent()) loadedRuntime.value = null
     }
   }
-  onMounted(() => {
+
+  const activate = () => {
+    if (active) return
     active = true
     void load()
-  })
-  onActivated(() => {
-    active = true
-    void load()
-  })
+  }
+  const deactivate = () => {
+    if (!active) return
+    active = false
+    request += 1
+  }
+  onMounted(activate)
+  onActivated(activate)
+  onDeactivated(deactivate)
+  onBeforeUnmount(deactivate)
   watch(context, () => {
     void load()
   })
@@ -119,14 +124,6 @@ export function useConfiguredTableColumns<T>(factory: () => ColumnOption<T>[]): 
       if (active && count > 0 && previous === 0) void load()
     }
   )
-  onDeactivated(() => {
-    active = false
-    request += 1
-  })
-  onBeforeUnmount(() => {
-    active = false
-    request += 1
-  })
   const configuredFactory = () => {
     const original = factory()
     const current = runtime.value

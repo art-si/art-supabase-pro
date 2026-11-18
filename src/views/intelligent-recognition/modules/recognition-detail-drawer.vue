@@ -32,7 +32,7 @@
           </div>
         </section>
 
-        <section class="recognition-detail__context" aria-label="任务上下文">
+        <section class="recognition-detail__context mb-4" aria-label="任务上下文">
           <div>
             <span>任务编号</span>
             <strong>{{ detail.data.id.slice(0, 8) }}</strong>
@@ -50,7 +50,7 @@
           </div>
         </section>
 
-        <ElTabs v-model="activeTab" class="min-w-0">
+        <ElTabs v-model="activeTab" class="art-card-xs art-overlay-tab-card">
           <ElTabPane name="results" label="识别结果与进度" :lazy="false"
             ><div class="grid min-w-0 gap-4">
               <ArtSectionTitle class="recognition-detail__section">处理进度</ArtSectionTitle>

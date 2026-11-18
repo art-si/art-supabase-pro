@@ -2,6 +2,7 @@
   --art-sidebar-resize-duration: 170ms;
   --art-sidebar-content-duration: 140ms;
 
+  position: relative;
   display: flex;
   height: 100vh;
   user-select: none;
@@ -181,45 +182,33 @@
     .el-menu {
       height: 100%;
     }
+  }
+
+  .dual-menu-collapse-btn {
+    position: absolute;
+    inset-inline-end: -14px;
+    top: 50%;
+    z-index: 10;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 32px;
+    font-size: 15px;
+    color: var(--art-gray-700);
+    cursor: pointer;
+    background: var(--default-box-color);
+    border: 1px solid var(--art-layout-divider);
+    border-radius: var(--art-surface-radius);
+    transform: translateY(-50%);
 
     &:hover {
-      .dual-menu-collapse-btn {
-        opacity: 1 !important;
-      }
+      color: var(--art-gray-900);
+      border-color: var(--theme-color);
     }
 
-    .dual-menu-collapse-btn {
-      position: absolute;
-      top: 50%;
-      right: -11px;
-      z-index: 10;
-      width: 11px;
-      height: 50px;
-      cursor: pointer;
-      background-color: var(--default-box-color);
-      border: 1px solid var(--art-card-border);
-      border-radius: 0 var(--art-surface-radius) var(--art-surface-radius) 0;
-      opacity: 0;
-      transform: translateY(-50%);
-      transition: opacity var(--art-motion-duration-fast) ease;
-
-      &:hover {
-        .art-svg-icon {
-          color: var(--art-gray-800) !important;
-        }
-      }
-
-      .art-svg-icon {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: -4px;
-        margin: auto;
-        transition:
-          color var(--art-motion-duration-fast) ease,
-          background-color var(--art-motion-duration-fast) ease,
-          transform var(--art-motion-duration-fast) var(--art-motion-ease-out);
-      }
+    &:focus-visible {
+      outline: 2px solid var(--theme-color);
+      outline-offset: 2px;
     }
   }
 

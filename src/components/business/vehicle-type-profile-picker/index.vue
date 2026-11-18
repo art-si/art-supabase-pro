@@ -1,6 +1,6 @@
 <template>
   <div class="vehicle-type-profile-picker">
-    <div class="vehicle-type-profile-picker__categories">
+    <div v-if="profiles.length" class="vehicle-type-profile-picker__categories">
       <button
         v-for="category in categories"
         :key="category"
@@ -43,13 +43,13 @@
           class="vehicle-type-profile-picker__choice"
           :class="{ 'is-active': modelValue === profile.id }"
           :aria-pressed="modelValue === profile.id"
-          :aria-label="`${profileLabel(profile)}，容积${metric(profile.volumeM3, '立方米')}，载重${metric(profile.loadTons, '吨')}`"
+          :aria-label="`${vehicleTypeProfileLabel(profile)}，容积${formatVehicleTypeMetric(profile.volumeM3, '立方米')}，载重${formatVehicleTypeMetric(profile.loadTons, '吨')}`"
           @click="emit('update:modelValue', profile.id)"
         >
           {{
             profile.category === '按载重'
-              ? metric(profile.loadTons, '吨')
-              : metric(profile.lengthM, '米')
+              ? formatVehicleTypeMetric(profile.loadTons, '吨')
+              : formatVehicleTypeMetric(profile.lengthM, '米')
           }}
         </button>
       </div>
@@ -75,25 +75,25 @@
         <ElImage
           v-if="selectedProfile.imageUrl"
           :src="selectedProfile.imageUrl"
-          :alt="`${profileLabel(selectedProfile)}图片`"
+          :alt="`${vehicleTypeProfileLabel(selectedProfile)}图片`"
           fit="contain"
         />
         <VehicleTypeArt v-else :category="selectedProfile.category" />
       </div>
       <div class="vehicle-type-profile-picker__summary-content">
         <div class="vehicle-type-profile-picker__summary-title">
-          <strong>{{ profileLabel(selectedProfile) }}</strong
+          <strong>{{ vehicleTypeProfileLabel(selectedProfile) }}</strong
           ><span>已选规格</span>
         </div>
         <div class="vehicle-type-profile-picker__metrics">
           <span
-            >车长 <b>{{ metric(selectedProfile.lengthM, '米') }}</b></span
+            >车长 <b>{{ formatVehicleTypeMetric(selectedProfile.lengthM, '米') }}</b></span
           >
           <span
-            >容积 <b>{{ metric(selectedProfile.volumeM3, '立方米') }}</b></span
+            >容积 <b>{{ formatVehicleTypeMetric(selectedProfile.volumeM3, '立方米') }}</b></span
           >
           <span
-            >载重 <b>{{ metric(selectedProfile.loadTons, '吨') }}</b></span
+            >载重 <b>{{ formatVehicleTypeMetric(selectedProfile.loadTons, '吨') }}</b></span
           >
         </div>
       </div>
@@ -107,6 +107,10 @@
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import VehicleTypeArt from './vehicle-type-art.vue'
   import type { VehicleTypeProfileOption } from './types'
+  import {
+    formatVehicleTypeMetric,
+    vehicleTypeProfileLabel
+  } from '@/utils/business/vehicle-type-display'
 
   const props = defineProps<{
     profiles: readonly VehicleTypeProfileOption[]
@@ -141,17 +145,6 @@
     if (!categoryProfiles(category).length || selectedCategory.value === category) return
     selectedCategory.value = category
     emit('update:modelValue', null)
-  }
-
-  function metric(value: number | null, unit: string): string {
-    return value == null ? '未配置' : `${value} ${unit}`
-  }
-
-  function profileLabel(profile: VehicleTypeProfileOption): string {
-    const value = profile.category === '按载重' ? profile.loadTons : profile.lengthM
-    return value == null
-      ? profile.category
-      : `${profile.category} · ${metric(value, profile.category === '按载重' ? '吨' : '米')}`
   }
 </script>
 

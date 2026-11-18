@@ -15,6 +15,10 @@
     "requestConfigError": "请求配置错误"
   },
   "topBar": {
+    "breadcrumb": {
+      "title": "当前位置",
+      "ancestors": "查看上级路径"
+    },
     "search": {
       "title": "搜索"
     },
@@ -312,7 +316,8 @@
   },
   "table": {
     "pagination": {
-      "pageSize": "每页显示条数"
+      "pageSize": "每页显示条数",
+      "selectAllRowsOnPage": "选择当前页全部行"
     },
     "form": {
       "reset": "重置",
@@ -323,6 +328,10 @@
       "search": "查询",
       "expand": "展开",
       "collapse": "收起",
+      "appliedFilterCount": "已应用 {count} 项",
+      "filledFilterCount": "已填 {count} 项",
+      "expandAppliedFilters": "展开，已应用 {count} 项隐藏条件",
+      "expandFilledFilters": "展开，已填 {count} 项隐藏条件",
       "searchInputPlaceholder": "请输入",
       "searchSelectPlaceholder": "请选择"
     },

@@ -3701,7 +3701,8 @@ export const systemButtonPermissionCatalog: BusinessMenuButtonCatalogEntry[] = [
       button('Edit', '编辑用户'),
       button('Delete', '注销用户'),
       button('AssignRole', '分配角色'),
-      button('ResetPassword', '初始化密码')
+      button('ResetPassword', '初始化密码'),
+      button('ManageMobile', '移动端账号管理', 'System:User:ManageMobile')
     ]
   },
   {

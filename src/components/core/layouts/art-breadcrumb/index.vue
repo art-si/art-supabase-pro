@@ -1,13 +1,47 @@
 <!-- 面包屑导航 -->
 <template>
   <nav
+    v-if="breadcrumbItems.length"
+    ref="rootRef"
     class="art-breadcrumb max-lg:!hidden"
     :class="`art-breadcrumb--${breadcrumbStyle}`"
-    aria-label="breadcrumb"
+    :aria-label="t('topBar.breadcrumb.title')"
   >
-    <ul class="art-breadcrumb__list">
+    <ol class="art-breadcrumb__list">
+      <li v-if="isCondensed" class="art-breadcrumb__item art-breadcrumb__overflow">
+        <ElDropdown trigger="click" @command="handleAncestorSelect">
+          <button
+            type="button"
+            class="art-breadcrumb__content art-breadcrumb__content--interactive"
+            :aria-label="t('topBar.breadcrumb.ancestors')"
+            :title="t('topBar.breadcrumb.ancestors')"
+          >
+            <ArtSvgIcon icon="ri:more-fill" class="art-breadcrumb__icon" aria-hidden="true" />
+          </button>
+          <template #dropdown>
+            <ElDropdownMenu>
+              <ElDropdownItem
+                v-for="item in ancestorItems"
+                :key="item.path"
+                :command="item.path"
+                :disabled="item.path === '/outside'"
+              >
+                <span class="art-icon-label">
+                  <ArtSvgIcon
+                    v-if="showBreadcrumbIcon && item.icon"
+                    :icon="item.icon"
+                    aria-hidden="true"
+                  />
+                  {{ item.title }}
+                </span>
+              </ElDropdownItem>
+            </ElDropdownMenu>
+          </template>
+        </ElDropdown>
+        <span class="art-breadcrumb__separator" aria-hidden="true">/</span>
+      </li>
       <li
-        v-for="(item, index) in breadcrumbItems"
+        v-for="(item, index) in visibleItems"
         :key="item.path"
         class="art-breadcrumb__item"
         :class="{ 'is-current': isLastItem(index) }"
@@ -15,9 +49,9 @@
         <button
           v-if="isClickable(item, index)"
           type="button"
-          class="art-breadcrumb__content art-breadcrumb__content--interactive"
+          class="art-breadcrumb__content art-breadcrumb__content--interactive art-icon-label art-icon-label--compact"
           :title="item.title"
-          @click="handleBreadcrumbClick(item, index)"
+          @click="navigateToAncestor(item.path)"
         >
           <ArtSvgIcon
             v-if="showBreadcrumbIcon && item.icon"
@@ -25,17 +59,22 @@
             class="art-breadcrumb__icon"
             aria-hidden="true"
           />
-          <span class="art-breadcrumb__label">{{ formatMenuTitle(item.title) }}</span>
+          <span class="art-breadcrumb__label">{{ item.title }}</span>
         </button>
 
-        <span v-else class="art-breadcrumb__content" aria-current="page" :title="item.title">
+        <span
+          v-else
+          class="art-breadcrumb__content art-icon-label art-icon-label--compact"
+          :aria-current="isLastItem(index) ? 'page' : undefined"
+          :title="item.title"
+        >
           <ArtSvgIcon
             v-if="showBreadcrumbIcon && item.icon"
             :icon="item.icon"
             class="art-breadcrumb__icon"
             aria-hidden="true"
           />
-          <span class="art-breadcrumb__label">{{ formatMenuTitle(item.title) }}</span>
+          <span class="art-breadcrumb__label">{{ item.title }}</span>
         </span>
 
         <span
@@ -46,13 +85,15 @@
           /
         </span>
       </li>
-    </ul>
+    </ol>
   </nav>
 </template>
 
 <script setup lang="ts">
-  import { computed } from 'vue'
+  import { computed, useTemplateRef } from 'vue'
   import { storeToRefs } from 'pinia'
+  import { useElementSize } from '@vueuse/core'
+  import { useI18n } from 'vue-i18n'
   import { useRouter, useRoute } from 'vue-router'
   import type { RouteLocationMatched, RouteRecordRaw } from 'vue-router'
   import { useSettingStore } from '@/store/modules/setting'
@@ -69,8 +110,11 @@
 
   const route = useRoute()
   const router = useRouter()
+  const { t } = useI18n()
   const settingStore = useSettingStore()
   const { breadcrumbStyle, showBreadcrumbIcon } = storeToRefs(settingStore)
+  const rootRef = useTemplateRef<HTMLElement>('rootRef')
+  const { width } = useElementSize(rootRef)
 
   const getMetaString = (value: unknown): string => (typeof value === 'string' ? value : '')
 
@@ -79,7 +123,7 @@
 
     return {
       path: matchedRoute.path,
-      title: getMetaString(matchedRoute.meta.title),
+      title: formatMenuTitle(getMetaString(matchedRoute.meta.title)),
       icon: icon || undefined,
       isIframe: matchedRoute.meta.isIframe === true
     }
@@ -120,7 +164,18 @@
     return items
   })
 
-  const isLastItem = (index: number): boolean => index === breadcrumbItems.value.length - 1
+  const ancestorItems = computed(() => breadcrumbItems.value.slice(0, -1))
+  // 为路径名称和图标预留可读空间；路径层级较深时把上级集中到一个入口。
+  const isCondensed = computed(
+    () =>
+      ancestorItems.value.length > 0 &&
+      width.value > 0 &&
+      width.value < breadcrumbItems.value.length * 100
+  )
+  const visibleItems = computed(() =>
+    isCondensed.value ? breadcrumbItems.value.slice(-1) : breadcrumbItems.value
+  )
+  const isLastItem = (index: number): boolean => index === visibleItems.value.length - 1
 
   const isClickable = (item: BreadcrumbItem, index: number): boolean =>
     item.path !== '/outside' && !isLastItem(index)
@@ -128,23 +183,21 @@
   const findFirstValidChild = (targetRoute: RouteRecordRaw): RouteRecordRaw | undefined =>
     targetRoute.children?.find((child) => !child.redirect && !child.meta?.isHide)
 
-  const buildFullPath = (childPath: string): string => `/${childPath}`.replace('//', '/')
+  const handleAncestorSelect = (path: unknown): void => {
+    if (typeof path === 'string') void navigateToAncestor(path)
+  }
 
-  async function handleBreadcrumbClick(item: BreadcrumbItem, index: number): Promise<void> {
-    if (isLastItem(index) || item.path === '/outside') {
-      return
-    }
+  async function navigateToAncestor(path: string): Promise<void> {
+    if (path === '/outside') return
 
     try {
-      const targetRoute = router.getRoutes().find((matchedRoute) => matchedRoute.path === item.path)
-
-      if (!targetRoute?.children?.length) {
-        await router.push(item.path)
-        return
-      }
-
-      const firstValidChild = findFirstValidChild(targetRoute)
-      await router.push(firstValidChild ? buildFullPath(firstValidChild.path) : item.path)
+      const targetRoute = router.getRoutes().find((matchedRoute) => matchedRoute.path === path)
+      const childPath = targetRoute && findFirstValidChild(targetRoute)?.path
+      await router.push(
+        !childPath || childPath.startsWith('/')
+          ? childPath || path
+          : `${path.replace(/\/$/, '')}/${childPath}`
+      )
     } catch (error) {
       console.error('导航失败:', error)
     }
@@ -153,6 +206,7 @@
 
 <style scoped lang="scss">
   .art-breadcrumb {
+    flex: 1 1 0;
     min-width: 0;
     max-width: min(46vw, 680px);
     margin-left: 10px;
@@ -176,6 +230,9 @@
       height: 28px;
 
       &.is-current {
+        flex: none;
+        max-width: 100%;
+
         .art-breadcrumb__content {
           font-weight: 600;
           color: var(--art-gray-900);
@@ -184,6 +241,14 @@
         .art-breadcrumb__icon {
           color: var(--theme-color);
         }
+      }
+    }
+
+    &__overflow {
+      flex: none;
+
+      + .is-current {
+        flex-shrink: 1;
       }
     }
 
@@ -225,7 +290,6 @@
 
     &__icon {
       flex: 0 0 auto;
-      margin-right: 5px;
       font-size: 14px;
       color: var(--art-gray-500);
       transition: color var(--art-motion-duration-fast) ease;

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { installDictionaryOptions } from './support/dictionary-options'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(120_000)
@@ -231,6 +232,12 @@ for (const kind of ['purchase_order', 'receipt_notice'] as const) {
         }
       })
     })
+    await installDictionaryOptions(page, {
+      commonDocumentDisplayMode: [
+        { value: 'document', label: '按单据' },
+        { value: 'line', label: '按明细' }
+      ]
+    })
     await page.goto(`/tests/e2e/fixtures/scm-purchase-inbound.html?kind=${kind}`)
     const rows = page.locator('.el-table__body-wrapper tbody tr')
     await expect(rows).toHaveCount(2)
@@ -271,8 +278,10 @@ for (const kind of ['purchase_order', 'receipt_notice'] as const) {
     await page.getByRole('button', { name: '下推采购入库单', exact: true }).click()
     await expect(drawer.locator('.el-table__body tr')).toHaveCount(1)
     expect(pushes[1].p_selections).toEqual([{ document_id: sources[0].id, line_ids: ['line-2'] }])
+    const materialLinesTab = drawer.getByRole('tab', { name: '物料明细', exact: true })
+    await materialLinesTab.click()
     const quantityColumn = await drawer
-      .getByRole('columnheader', { name: '数量', exact: true })
+      .getByRole('columnheader', { name: /^数量(?:\s|（|$)/ })
       .evaluate((cell) => (cell as HTMLTableCellElement).cellIndex)
     const quantity = drawer
       .locator('.el-table__body tr')
@@ -289,6 +298,7 @@ for (const kind of ['purchase_order', 'receipt_notice'] as const) {
     await page.getByRole('button', { name: '查询', exact: true }).click()
     await rows.nth(1).getByRole('checkbox').locator('..').click()
     await page.getByRole('button', { name: '下推采购入库单', exact: true }).click()
+    await materialLinesTab.click()
     await expect(quantity).toHaveValue(kind === 'purchase_order' ? '14.0000' : '15.0000')
     await drawer.getByRole('button', { name: '取消', exact: true }).click()
     if (kind === 'receipt_notice') {

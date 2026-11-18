@@ -1,8 +1,30 @@
 import { expect, test, type Page } from '@playwright/test'
 import { installFixtures, tenantId, materialId } from './support/inventory-fixtures'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 20_000 })
 test.setTimeout(90_000)
+
+test('生产组织树键盘选择保留当前范围直至确认', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await prepareIsolatedSession(page)
+  await page.goto('/tests/e2e/fixtures/mdm-scroll-ownership.html?entry=production')
+  const tree = page.locator('.production-tree').getByRole('tree')
+  const first = tree.getByRole('treeitem').filter({ hasText: '验收生产组织 01' })
+  const next = tree.getByRole('treeitem').filter({ hasText: '验收生产组织 02' })
+  await expect(first).toBeVisible()
+  await first.focus()
+  await page.keyboard.press('Enter')
+  await expect(first).toHaveClass(/is-current/)
+
+  await page.keyboard.press('ArrowDown')
+  await expect(next).toBeFocused()
+  await page.keyboard.press('ArrowRight')
+  await expect(first).toHaveClass(/is-current/)
+  await page.keyboard.press('Space')
+  await expect(next).toHaveClass(/is-current/)
+  await expect(first).not.toHaveClass(/is-current/)
+})
 
 async function expectSceneFill(page: Page) {
   const frame = page.locator('.scene-frame')

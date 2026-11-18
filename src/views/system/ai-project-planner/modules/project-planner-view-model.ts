@@ -113,18 +113,19 @@ export function createProjectPlannerBatchView(
   state: Pick<AiPlannerState, 'latestBatch' | 'suggestions'>,
   selectedBatchId: string
 ): ProjectPlannerBatchView {
+  const batches = Object.entries(groupBy(state.suggestions, 'batchId'))
+  const suggestionsByBatch = new Map(batches)
   const suggestionBatches = orderBy(
-    Object.entries(groupBy(state.suggestions, (suggestion) => suggestion.batchId)),
+    batches,
     ([, suggestions]) => suggestions[0]?.createTime ?? '',
     ['desc']
   )
-  const latestAvailableBatchId = suggestionBatches[0]?.[0]
-  const latestBatchHasSuggestions = state.latestBatch?.id
-    ? state.suggestions.some((suggestion) => suggestion.batchId === state.latestBatch?.id)
-    : false
-  const latestBatchId = latestBatchHasSuggestions ? state.latestBatch?.id : latestAvailableBatchId
-  const suggestionsByBatch = groupBy(state.suggestions, (suggestion) => suggestion.batchId)
-  const latestAvailableSuggestions = latestBatchId ? (suggestionsByBatch[latestBatchId] ?? []) : []
+  const reportedBatchId = state.latestBatch?.id
+  const latestBatchHasSuggestions = !!reportedBatchId && suggestionsByBatch.has(reportedBatchId)
+  const latestBatchId = latestBatchHasSuggestions ? reportedBatchId : suggestionBatches[0]?.[0]
+  const latestAvailableSuggestions = latestBatchId
+    ? (suggestionsByBatch.get(latestBatchId) ?? [])
+    : []
   const historyOptions = suggestionBatches
     .filter(([batchId]) => batchId !== latestBatchId)
     .map(([batchId, suggestions], index) => ({
@@ -142,23 +143,15 @@ export function createProjectPlannerBatchView(
     ...historyOptions
   ]
 
-  if (selectedBatchId === ALL_BATCHES) {
-    return {
-      batchOptions,
-      latestBatchHasSuggestions,
-      latestAvailableSuggestions,
-      scopedSuggestions: state.suggestions
-    }
-  }
-
   const resolvedBatchId = selectedBatchId === LATEST_BATCH ? latestBatchId : selectedBatchId
   return {
     batchOptions,
     latestBatchHasSuggestions,
     latestAvailableSuggestions,
-    scopedSuggestions: resolvedBatchId
-      ? state.suggestions.filter((suggestion) => suggestion.batchId === resolvedBatchId)
-      : state.suggestions
+    scopedSuggestions:
+      selectedBatchId === ALL_BATCHES || !resolvedBatchId
+        ? state.suggestions
+        : (suggestionsByBatch.get(resolvedBatchId) ?? [])
   }
 }
 

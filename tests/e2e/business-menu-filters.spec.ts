@@ -23,7 +23,7 @@ test('共享菜单面板保留审批与编号的领域选择、筛选和完整�
   await expect(panel.getByText('销售订单', { exact: true })).toBeVisible()
   await expect(panel.getByText('销售合同', { exact: true })).toBeHidden()
   await panel.getByRole('textbox').clear()
-  await panel.getByText('销售合同', { exact: true }).click()
+  await panel.getByRole('treeitem').filter({ hasText: '销售合同' }).last().press('Enter')
   await expect(panel.locator('.el-tree-node.is-current > .el-tree-node__content')).toContainText(
     '销售合同'
   )

@@ -4,6 +4,8 @@
       <ElInput
         v-if="!multiple"
         :model-value="singleDisplayLabel"
+        :title="singleDisplayLabel || undefined"
+        :aria-label="triggerAriaLabel"
         :placeholder="placeholder"
         :disabled="disabled"
         readonly
@@ -33,7 +35,7 @@
       <ElInputTag
         v-else
         :model-value="multipleDisplayLabels"
-        :aria-label="placeholder"
+        :aria-label="triggerAriaLabel"
         :max="displayRows.length"
         :placeholder="placeholder"
         :disabled="disabled"
@@ -89,7 +91,11 @@
       @opened="handleDialogOpened"
       @closed="handleDialogClosed"
     >
-      <div class="art-data-select-dialog__body" :style="compactTableBodyStyle">
+      <div
+        class="art-data-select-dialog__body"
+        :style="compactTableBodyStyle"
+        @keydown.capture="dismissPreviewWithEscape"
+      >
         <div
           class="art-data-select-dialog__layout"
           :class="[
@@ -108,6 +114,7 @@
               v-if="navigationRows.length"
               v-model="navigationKeyword"
               clearable
+              :aria-label="navigation.title ? `搜索${navigation.title}` : '搜索分类'"
               :placeholder="navigation.searchPlaceholder || '搜索分类'"
               class="art-data-select-dialog__navigation-search"
             >
@@ -133,6 +140,7 @@
             <ElScrollbar class="art-data-select-dialog__navigation-scrollbar">
               <ElTree
                 ref="navigationTreeRef"
+                :aria-label="navigation.title || '分类导航'"
                 :data="navigationTreeData"
                 :props="navigationTreeProps"
                 :node-key="navigationRowKey"
@@ -143,13 +151,29 @@
                 :expand-on-click-node="false"
                 :empty-text="navigation.emptyText || '暂无分类'"
                 @node-click="selectNavigation"
+                @keydown.capture="handleSelectableTreeKeydown"
+                @focusin="handleNavigationFocusin"
+                @focusout="hidePreview"
               >
                 <template #default="{ data }">
                   <span class="art-data-select-dialog__navigation-node">
-                    <span class="art-data-select-dialog__navigation-icon" aria-hidden="true">
+                    <button
+                      v-if="clippedKeys.has(getNavigationPreviewKey(data))"
+                      type="button"
+                      tabindex="-1"
+                      class="art-data-select-dialog__navigation-icon art-data-select-dialog__preview-trigger"
+                      aria-label="查看分类全称"
+                      @click.stop="previewClickedLabel"
+                    >
+                      <ArtSvgIcon icon="ri:information-line" />
+                    </button>
+                    <span v-else class="art-data-select-dialog__navigation-icon" aria-hidden="true">
                       <ArtSvgIcon icon="ri:folder-3-line" />
                     </span>
-                    <span class="art-data-select-dialog__navigation-copy">
+                    <span
+                      v-clipped-label="getNavigationPreviewKey(data)"
+                      class="art-data-select-dialog__navigation-copy"
+                    >
                       <strong>{{ getNavigationLabel(data) }}</strong>
                       <small v-if="getNavigationDescription(data)">
                         {{ getNavigationDescription(data) }}
@@ -174,6 +198,8 @@
           <section
             ref="mainPanelRef"
             class="art-data-select-dialog__main"
+            aria-label="可选数据"
+            tabindex="-1"
             :class="{
               'has-error': loadError,
               'is-empty': !loading && !loadError && !tableRows.length
@@ -185,10 +211,11 @@
               :class="{ 'has-filter': normalizedFilterOptions.length }"
             >
               <ElInput
+                ref="mainSearchRef"
                 v-model="keyword"
                 clearable
                 :placeholder="searchPlaceholder"
-                @keyup.enter="handleSearch"
+                @keydown.enter="handleSearchEnter"
                 @clear="handleSearch"
               >
                 <template #prefix>
@@ -243,6 +270,7 @@
                 :loading="loading"
                 loading-overlay
                 :pagination="false"
+                :external-pagination="showPagination"
                 :show-table-header="showTableHeader"
                 :row-key="getTableRowKey"
                 height="100%"
@@ -283,6 +311,7 @@
                     <ElCheckbox
                       :model-value="isDraftSelected(row)"
                       :disabled="loading || !!loadError || isRowDisabled(row)"
+                      :aria-label="getRowLabel(row)"
                       @click.stop
                       @change="() => setSingle(row)"
                     />
@@ -341,6 +370,8 @@
                 <ElTree
                   ref="treeRef"
                   class="art-data-select-dialog__tree"
+                  :aria-label="title || placeholder"
+                  :inert="loading"
                   :data="tableRows"
                   :props="treeProps"
                   :node-key="treeNodeKey"
@@ -348,9 +379,10 @@
                   :check-strictly="treeCheckStrictly"
                   :default-expand-all="true"
                   :expand-on-click-node="false"
-                  :highlight-current="!multiple"
                   :empty-text="emptyText"
                   :filter-node-method="filterTreeNode"
+                  @keydown.capture="handleSelectableTreeKeydown"
+                  @focusin="handleSelectableTreeFocusin"
                   @check="handleTreeCheck"
                   @node-click="handleTreeNodeClick"
                 >
@@ -399,7 +431,7 @@
               <span>{{
                 loadError
                   ? '数量暂不可用'
-                  : mainPanelWidth < 440
+                  : compactMainPanel
                     ? `共 ${total} 条 · 第 ${page} 页`
                     : `共 ${total} 条`
               }}</span>
@@ -408,7 +440,7 @@
                 v-model:page-size="innerPageSize"
                 background
                 :size="mainPanelWidth < 640 ? 'small' : 'default'"
-                :layout="mainPanelWidth < 440 ? 'prev, next, sizes' : 'prev, pager, next, sizes'"
+                :layout="compactMainPanel ? 'prev, next, sizes' : 'prev, pager, next, sizes'"
                 :pager-count="5"
                 :page-sizes="pageSizes"
                 :total="total"
@@ -420,6 +452,7 @@
 
           <aside
             v-if="shouldShowSelectedPanel"
+            ref="selectedPanelRef"
             class="art-data-select-dialog__selected"
             :class="{ 'is-empty': !draftRows.length }"
           >
@@ -438,23 +471,36 @@
                 size="compact"
               />
               <div
-                v-for="row in draftRows"
+                v-for="(row, index) in draftRows"
                 :key="getRowKey(row)"
                 class="art-data-select-dialog__selected-item"
               >
-                <div class="art-data-select-dialog__selected-icon">
+                <button
+                  v-if="clippedKeys.has(getSelectedPreviewKey(row))"
+                  type="button"
+                  class="art-data-select-dialog__selected-icon art-data-select-dialog__preview-trigger"
+                  :aria-label="`查看 ${getSelectedRowIdentity(row)} 完整信息`"
+                  @click="previewClickedLabel"
+                  @blur="hidePreview"
+                >
+                  <ArtSvgIcon icon="ri:information-line" />
+                </button>
+                <div v-else class="art-data-select-dialog__selected-icon" aria-hidden="true">
                   <ArtSvgIcon :icon="mode === 'tree' ? 'ri:node-tree' : 'ri:building-4-line'" />
                 </div>
-                <div class="art-data-select-dialog__selected-text">
+                <div
+                  v-clipped-label="getSelectedPreviewKey(row)"
+                  class="art-data-select-dialog__selected-text"
+                >
                   <strong>{{ getRowLabel(row) }}</strong>
                   <span v-if="getRowDescription(row)">{{ getRowDescription(row) }}</span>
                 </div>
                 <ElButton
                   text
                   class="art-data-select-dialog__selected-remove"
-                  :aria-label="`移除 ${getRowLabel(row)}`"
-                  :title="`移除 ${getRowLabel(row)}`"
-                  @click="removeDraft(row)"
+                  :aria-label="`移除 ${getSelectedRowIdentity(row)}`"
+                  :title="`移除 ${getSelectedRowIdentity(row)}`"
+                  @click="removeDraft(row, index, $event)"
                 >
                   <ArtSvgIcon icon="ri:close-line" />
                 </ElButton>
@@ -462,22 +508,50 @@
             </ElScrollbar>
           </aside>
         </div>
+        <ArtTooltip
+          v-if="preview"
+          :key="`${preview.key}-${preview.origin}`"
+          :visible="true"
+          :virtual-ref="preview.anchor"
+          :enterable="false"
+          virtual-triggering
+          placement="top-start"
+        >
+          <template #content>
+            <div class="max-w-72 leading-5 wrap-anywhere">
+              <strong v-if="preview.label" class="font-medium">{{ preview.label }}</strong>
+              <small v-if="preview.description" class="block text-xs opacity-80">{{
+                preview.description
+              }}</small>
+            </div>
+          </template>
+        </ArtTooltip>
       </div>
 
-      <template #footer-left>{{ selectionSummary }}</template>
+      <template #footer-left
+        ><span role="status">{{ selectionSummary }}</span></template
+      >
     </ArtDialog>
   </div>
 </template>
 
 <script setup lang="ts" generic="T extends object = DataSelectRecord">
   import { dataSelectDefaults } from './defaults'
+  import { useClippedLabelPreview } from './use-clipped-label-preview'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtPickerEmpty from '@/components/core/feedback/art-picker-empty/index.vue'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
+  import ArtTooltip from '@/components/core/feedback/art-tooltip/index.vue'
   import { useElementSize } from '@vueuse/core'
   import { get, uniqBy } from 'lodash-es'
   import type { Component } from 'vue'
-  import type { ElTree } from 'element-plus'
+  import { useFormItem, type ElTree, type InputInstance } from 'element-plus'
+  import { getFocusedKeyboardButton } from '@/utils/ui/button-focus'
+  import {
+    handleSelectableTreeFocusin,
+    handleSelectableTreeKeydown,
+    syncSelectableTreeTabStop
+  } from '@/utils/ui/selection-tree-keyboard'
   import { ArrowDown, CircleClose, Search } from '@element-plus/icons-vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -511,13 +585,41 @@
   })
 
   const emit = defineEmits<ArtDataSelectEmits<T>>()
+  const { formItem } = useFormItem()
+  const triggerAriaLabel = computed(() =>
+    formItem?.hasLabel && !formItem.isGroup ? undefined : props.placeholder
+  )
   const { isPlatformScope } = storeToRefs(useTenantScopeStore())
 
   const mainPanelRef = ref<HTMLElement>()
+  const mainSearchRef = ref<InputInstance>()
+  const selectedPanelRef = ref<HTMLElement>()
   const { width: mainPanelWidth } = useElementSize(mainPanelRef)
+  const compactMainPanel = computed(() => mainPanelWidth.value < 440)
   const tableRef = ref<ArtTableExpose>()
   const treeRef = ref<InstanceType<typeof ElTree>>()
   const navigationTreeRef = ref<InstanceType<typeof ElTree>>()
+  const {
+    clippedKeys,
+    preview,
+    vClippedLabel,
+    showPreview,
+    previewClickedLabel,
+    dismissPreviewWithEscape,
+    hidePreview
+  } = useClippedLabelPreview()
+  const handleNavigationFocusin = (event: FocusEvent) => {
+    handleSelectableTreeFocusin(event)
+    const target = event.target
+    if (!(target instanceof HTMLElement) || !target.matches('[role="treeitem"]:focus-visible'))
+      return
+    const row = target.querySelector<HTMLElement>(':scope > .el-tree-node__content')
+    if (row) showPreview(row, 'focus')
+  }
+  const treeRoots = computed<(HTMLElement | undefined)[]>(() => [
+    navigationTreeRef.value?.$el,
+    treeRef.value?.$el
+  ])
   const dialogRef = ref<ArtDialogExpose<void>>()
   const dialogSizePresets: readonly ArtDialogSize[] = ['sm', 'md', 'lg', 'xl', 'full']
   const requestLoading = ref(false)
@@ -548,7 +650,6 @@
 
   const confirmedKeys = computed(() => confirmedRows.value.map((row) => getRowKey(row)))
   const draftKeys = computed(() => draftRows.value.map((row) => getRowKey(row)))
-  const currentSingleKey = computed(() => draftRows.value[0] && getRowKey(draftRows.value[0]))
   const displayRows = computed(() => confirmedRows.value)
   const singleDisplayLabel = computed(() =>
     displayRows.value[0] ? getRowLabel(displayRows.value[0]) : ''
@@ -661,8 +762,22 @@
     return String(get(row, props.descriptionKey) ?? '')
   }
 
+  const getSelectedRowIdentity = (row: DataSelectRecord): string => {
+    const label = getRowLabel(row)
+    const description = getRowDescription(row)
+    return label && description && label !== description
+      ? `${label} · ${description}`
+      : label || description
+  }
+
   function getNavigationKey(row: DataSelectRecord): DataSelectKey {
     return get(row, navigationRowKey.value) as DataSelectKey
+  }
+
+  const getNavigationPreviewKey = (row: DataSelectRecord) => `navigation:${getNavigationKey(row)}`
+  const getSelectedPreviewKey = (row: DataSelectRecord) => {
+    const key = getRowKey(row)
+    return `selected:${typeof key}:${key}`
   }
 
   function getNavigationLabel(row: DataSelectRecord): string {
@@ -849,10 +964,8 @@
 
       if (props.multiple) {
         treeRef.value?.setCheckedKeys?.(draftKeys.value, false)
-      } else {
-        treeRef.value?.setCurrentKey?.(currentSingleKey.value)
+        await nextTick()
       }
-      await nextTick()
     } finally {
       syncingSelection.value = false
     }
@@ -962,7 +1075,20 @@
     void loadData()
   }
 
+  const handleSearchEnter = (event: Event) => {
+    if (
+      !(event instanceof KeyboardEvent) ||
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.repeat
+    )
+      return
+    event.preventDefault()
+    handleSearch()
+  }
+
   const selectNavigation = (row?: DataSelectRecord) => {
+    hidePreview()
     selectedNavigationKey.value = row ? getNavigationKey(row) : undefined
     navigationTreeRef.value?.setCurrentKey?.(selectedNavigationKey.value)
     handleSearch()
@@ -995,6 +1121,7 @@
   }
 
   const invalidateLoad = () => {
+    hidePreview()
     ++loadGeneration
     isOpen.value = false
     requestLoading.value = false
@@ -1052,15 +1179,43 @@
     emit('clear')
   }
 
-  const clearDraft = () => {
-    draftRows.value = []
+  function updateDraftAfterRemoval(
+    remaining: DataSelectRecord[],
+    event: MouseEvent,
+    removedIndex?: number
+  ) {
+    if (getFocusedKeyboardButton(event)) focusBeforeDraftRemoval(removedIndex)
+    draftRows.value = remaining
     void applyDraftToControls()
   }
 
-  const removeDraft = (row: DataSelectRecord) => {
+  function focusBeforeDraftRemoval(removedIndex?: number) {
+    const removeButtons = selectedPanelRef.value?.querySelectorAll<HTMLButtonElement>(
+      '.art-data-select-dialog__selected-remove'
+    )
+    const nextRemove =
+      removedIndex === undefined
+        ? undefined
+        : (removeButtons?.[removedIndex + 1] ?? removeButtons?.[removedIndex - 1])
+    const main = mainPanelRef.value
+    const firstChoice = loading.value
+      ? undefined
+      : main?.querySelector<HTMLElement>(
+          '.el-table__body input[type="checkbox"]:not(:disabled), [role="treeitem"][tabindex="0"]:not([aria-disabled="true"]), .art-async-state button:not(:disabled)'
+        )
+    const target = nextRemove ?? mainSearchRef.value?.input ?? firstChoice ?? main
+    target?.focus()
+  }
+
+  const clearDraft = (event: MouseEvent) => updateDraftAfterRemoval([], event)
+
+  const removeDraft = (row: DataSelectRecord, index: number, event: MouseEvent) => {
     const key = getRowKey(row)
-    draftRows.value = draftRows.value.filter((item) => getRowKey(item) !== key)
-    void applyDraftToControls()
+    return updateDraftAfterRemoval(
+      draftRows.value.filter((item) => getRowKey(item) !== key),
+      event,
+      index
+    )
   }
 
   const removeConfirmed = (row: DataSelectRecord) => {
@@ -1126,6 +1281,19 @@
     )
   }
 
+  const restoreTreeTabStops = () => {
+    for (const root of treeRoots.value) {
+      if (root && !root.inert) syncSelectableTreeTabStop(root)
+    }
+  }
+  watch([treeRoots, loading], restoreTreeTabStops, { flush: 'post' })
+  useMutationObserver(treeRoots, restoreTreeTabStops, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['style']
+  })
+
   watch(
     [loading, loadError],
     () => dialogRef.value?.setOptions({ confirmDisabled: loading.value || !!loadError.value }),
@@ -1166,7 +1334,10 @@
     }
   )
 
-  watch(navigationKeyword, (value) => navigationTreeRef.value?.filter?.(value))
+  watch(navigationKeyword, (value) => {
+    hidePreview()
+    navigationTreeRef.value?.filter?.(value)
+  })
 
   defineExpose<ArtDataSelectExpose>({
     open,
@@ -1428,6 +1599,22 @@
     }
   }
 
+  .art-data-select-dialog__preview-trigger {
+    padding: 0;
+    cursor: pointer;
+    border: 0;
+
+    &:hover,
+    &:focus-visible {
+      background: color-mix(in srgb, var(--theme-color) 16%, var(--default-box-color));
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--el-color-primary);
+      outline-offset: 2px;
+    }
+  }
+
   .art-data-select-dialog__content {
     position: relative;
     flex: 1;
@@ -1508,14 +1695,24 @@
         box-shadow 0.16s ease;
     }
 
-    :deep(.el-tree-node__content:hover),
-    :deep(.el-tree-node.is-current > .el-tree-node__content) {
+    :deep(.el-tree-node__content:hover) {
       background: var(--art-gray-100);
     }
 
     :deep(.el-tree-node:has(> .el-tree-node__content .is-selected) > .el-tree-node__content) {
       background: color-mix(in srgb, var(--theme-color) 8%, var(--default-box-color));
       box-shadow: inset 3px 0 0 var(--theme-color);
+    }
+
+    :deep(.el-tree-node:focus-visible) {
+      outline: none;
+    }
+
+    :deep(.el-tree-node:focus-visible > .el-tree-node__content) {
+      --art-themed-action-focus-shadow: none;
+
+      outline: 2px solid var(--el-color-primary);
+      outline-offset: -2px;
     }
 
     :deep(.el-checkbox) {

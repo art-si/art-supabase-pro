@@ -37,7 +37,7 @@ for (const workerFailure of [false, true]) {
       )
     })
     await page.goto('#/file-preview?key=cad-test')
-    await expect(page.locator('.art-file-viewer-page__title strong')).toHaveText('测试立方体.stp')
+    await expect(page.getByRole('heading', { level: 1, name: '测试立方体.stp' })).toBeVisible()
     await expect.poll(() => wasmResponses, { timeout: 90_000 }).toContain(200)
     const model = page.locator('[data-model-status]')
     await expect(model).toHaveAttribute('data-model-status', 'ready')

@@ -78,31 +78,37 @@
           <component
             :is="useTabs ? ElTabs : 'div'"
             v-bind="useTabs ? { modelValue: activeTab } : {}"
-            :class="useTabs ? 'min-w-0' : 'workflow-version__detail-sections'"
+            :class="
+              useTabs
+                ? 'min-w-0 art-card-xs art-overlay-tab-card'
+                : 'workflow-version__detail-sections'
+            "
             @update:model-value="setActiveTab"
           >
             <component
               :is="useTabs ? ElTabPane : 'div'"
               v-bind="useTabs ? { name: 'changes', label: '版本差异', lazy: false } : {}"
             >
-              <ArtSectionCard class="workflow-version__diff" preserve-content-structure>
-                <template #header
-                  ><div class="workflow-version__section-heading">
-                    <div>
-                      <ArtSectionTitle :show-line="false">版本差异</ArtSectionTitle>
-                      <p>
-                        {{
-                          comparisonVersion
-                            ? `与 V${comparisonVersion.versionNo} 对比`
-                            : '首个版本，无历史基线'
-                        }}
-                      </p>
-                    </div>
-                    <ElTag :type="changes.length ? 'warning' : 'success'" effect="light" round>
-                      {{ changes.length ? `${changes.length} 项变化` : '配置一致' }}
-                    </ElTag>
-                  </div></template
-                >
+              <component
+                :is="useTabs ? ArtPageSection : ArtSectionCard"
+                class="workflow-version__diff"
+                :preserve-content-structure="!useTabs || undefined"
+              >
+                <div class="workflow-version__section-heading">
+                  <div>
+                    <ArtSectionTitle :show-line="false">版本差异</ArtSectionTitle>
+                    <p>
+                      {{
+                        comparisonVersion
+                          ? `与 V${comparisonVersion.versionNo} 对比`
+                          : '首个版本，无历史基线'
+                      }}
+                    </p>
+                  </div>
+                  <ElTag :type="changes.length ? 'warning' : 'success'" effect="light" round>
+                    {{ changes.length ? `${changes.length} 项变化` : '配置一致' }}
+                  </ElTag>
+                </div>
 
                 <ArtEmptyState
                   v-if="!changes.length"
@@ -129,21 +135,23 @@
                     </div>
                   </article>
                 </div>
-              </ArtSectionCard>
+              </component>
             </component>
             <component
               :is="useTabs ? ElTabPane : 'div'"
               v-bind="useTabs ? { name: 'nodes', label: '节点快照', lazy: false } : {}"
             >
-              <ArtSectionCard class="workflow-version__nodes" preserve-content-structure>
-                <template #header
-                  ><div class="workflow-version__section-heading">
-                    <div>
-                      <ArtSectionTitle :show-line="false">节点快照</ArtSectionTitle>
-                      <p>历史版本只读，恢复操作会生成或覆盖草稿，不修改已发布证据。</p>
-                    </div>
-                  </div></template
-                >
+              <component
+                :is="useTabs ? ArtPageSection : ArtSectionCard"
+                class="workflow-version__nodes"
+                :preserve-content-structure="!useTabs || undefined"
+              >
+                <div class="workflow-version__section-heading">
+                  <div>
+                    <ArtSectionTitle :show-line="false">节点快照</ArtSectionTitle>
+                    <p>历史版本只读，恢复操作会生成或覆盖草稿，不修改已发布证据。</p>
+                  </div>
+                </div>
                 <div class="workflow-version__node-list">
                   <article
                     v-for="node in [...selectedVersion.config.nodes].sort(
@@ -168,7 +176,7 @@
                     </div>
                   </article>
                 </div>
-              </ArtSectionCard>
+              </component>
             </component>
           </component>
         </main>
@@ -179,6 +187,7 @@
 
 <script setup lang="ts">
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtPageSection from '@/components/core/layouts/art-page-section/index.vue'
   import { ElMessage, ElTabs, ElTabPane } from 'element-plus'
   import { unref } from 'vue'
   import { cloneDeep } from 'lodash-es'
@@ -552,6 +561,10 @@
     &__diff,
     &__nodes {
       padding: 14px;
+
+      &.art-page-section {
+        padding: 0;
+      }
     }
 
     &__section-heading {

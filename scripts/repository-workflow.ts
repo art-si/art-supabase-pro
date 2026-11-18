@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { gitSubmodulePathPattern, parseGitSubmodulePaths } from './lib/git-submodule-paths.mjs'
 
 interface CommandResult {
   output: string
@@ -74,40 +75,32 @@ function gitOutput(repository: Repository, args: string[]): string {
 function readModules(): Repository[] {
   const result = execute(
     'git',
-    ['config', '--file', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'],
+    ['config', '--file', '.gitmodules', '--get-regexp', gitSubmodulePathPattern],
     projectRoot
   )
   if (result.status !== 0) throw new Error('读取 .gitmodules 失败。')
 
-  return result.output
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const separatorIndex = line.indexOf(' ')
-      const key = line.slice(0, separatorIndex)
-      const modulePath = line.slice(separatorIndex + 1).trim()
-      const name = key.slice('submodule.'.length, -'.path'.length)
-      const absoluteModulePath = resolve(projectRoot, modulePath)
-      const relativeModulePath = relative(projectRoot, absoluteModulePath)
-      if (
-        !relativeModulePath ||
-        relativeModulePath.startsWith('..') ||
-        isAbsolute(relativeModulePath)
-      ) {
-        throw new Error(`子仓 ${name} 的路径超出主仓目录：${modulePath}`)
-      }
-      const branchResult = execute(
-        'git',
-        ['config', '--file', '.gitmodules', '--get', `submodule.${name}.branch`],
-        projectRoot
-      )
-      return {
-        branch: branchResult.status === 0 ? branchResult.output.trim() : undefined,
-        name,
-        path: absoluteModulePath
-      }
-    })
+  return parseGitSubmodulePaths(result.output).map(({ name, path: modulePath }) => {
+    const absoluteModulePath = resolve(projectRoot, modulePath)
+    const relativeModulePath = relative(projectRoot, absoluteModulePath)
+    if (
+      !relativeModulePath ||
+      relativeModulePath.startsWith('..') ||
+      isAbsolute(relativeModulePath)
+    ) {
+      throw new Error(`子仓 ${name} 的路径超出主仓目录：${modulePath}`)
+    }
+    const branchResult = execute(
+      'git',
+      ['config', '--file', '.gitmodules', '--get', `submodule.${name}.branch`],
+      projectRoot
+    )
+    return {
+      branch: branchResult.status === 0 ? branchResult.output.trim() : undefined,
+      name,
+      path: absoluteModulePath
+    }
+  })
 }
 
 function isInitialized(repository: Repository): boolean {

@@ -53,6 +53,7 @@ export const useSettingStore = defineStore(
     )
     const getInitialAppearanceConfig = (): string | null => initialAppearanceConfig
     const hasLocalAppearance = ref(false)
+    const workspaceAppearance = ref<'default' | 'silver-mist'>('default')
     const rememberLocalAppearance = (): void => {
       hasLocalAppearance.value = true
     }
@@ -409,6 +410,7 @@ export const useSettingStore = defineStore(
       getInitialAppearanceConfig,
       hasLocalAppearance,
       rememberLocalAppearance,
+      workspaceAppearance,
       menuType,
       menuOpenWidth,
       systemThemeType,

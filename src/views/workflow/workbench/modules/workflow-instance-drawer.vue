@@ -49,7 +49,7 @@
           </div>
         </section>
 
-        <ElTabs v-model="activeTab" class="min-w-0">
+        <ElTabs v-model="activeTab" class="art-card-xs art-overlay-tab-card">
           <ElTabPane name="overview" label="业务与概览" :lazy="false"
             ><div class="grid min-w-0 gap-4">
               <WorkflowBusinessSnapshot

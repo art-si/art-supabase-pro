@@ -535,10 +535,12 @@ for (const profile of [
       const card = page.locator('.payable-writeoff-page__workspace > .art-section-card').first()
       await expect(card.getByText('验收往来01', { exact: true })).toBeVisible()
       await cardScroll(card)
-      await card.getByText('验收往来35', { exact: true }).click()
-      await expect(page.locator('.payable-writeoff-page__document-section').first()).toContainText(
-        'primary-35'
-      )
+      const party = card.getByRole('treeitem', { name: '验收往来35', exact: true })
+      await party.press('Enter')
+      await expect(party).toHaveClass(/is-current/)
+      const selection = page.locator('.payable-writeoff-page__document-section').first()
+      await expect(selection).toContainText('primary-35')
+      await expect(selection).not.toContainText('primary-01')
       await card.getByRole('textbox', { name: '搜索往来单位', exact: true }).fill('往来35')
       await expect(card.locator('.el-tree-node:visible')).toHaveCount(2)
       await noOverflow(page)

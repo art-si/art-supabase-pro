@@ -4,15 +4,22 @@
     trigger="click"
     :width="300"
     placement="bottom-start"
+    role="dialog"
+    :aria-label="`${label}过滤`"
     @before-enter="resetDraft"
+    @after-enter="focusFilterInput"
   >
     <template #reference>
       <ArtIconButton
+        ref="triggerButton"
         size="small"
         icon="ri:filter-3-line"
         :label="`${label}过滤`"
         :class="{ 'text-[var(--el-color-primary)]!': active }"
         :aria-pressed="active"
+        :aria-expanded="open"
+        aria-haspopup="dialog"
+        data-art-column-filter
         @click="stopHeaderClick"
       />
     </template>
@@ -22,6 +29,7 @@
         <span class="shrink-0 text-xs text-g-600">当前页过滤</span>
       </div>
       <ElSelect
+        ref="emptySelect"
         v-model="draft.empty"
         :teleported="false"
         clearable
@@ -34,6 +42,7 @@
       <template v-if="draft.empty !== 'empty'">
         <ElInput
           v-if="type === 'text'"
+          ref="primaryInput"
           v-model="draft.text"
           clearable
           placeholder="输入关键字，不区分大小写"
@@ -42,37 +51,50 @@
         />
         <template v-else-if="type === 'select'">
           <ElInput
+            ref="primaryInput"
             v-model="optionSearch"
             clearable
             placeholder="搜索选项"
             :aria-label="`${label}选项搜索`"
           />
-          <ElCheckbox :model-value="allChecked" :indeterminate="partChecked" @change="toggleAll"
+          <ElCheckbox
+            :model-value="allChecked"
+            :indeterminate="partChecked"
+            :disabled="visibleOptions.length === 0"
+            @change="toggleAll"
             >全选当前选项</ElCheckbox
           >
-          <ElCheckboxGroup
-            v-model="draft.values"
-            class="max-h-48 overflow-y-auto"
-            :aria-label="`${label}过滤选项`"
+          <ElScrollbar
+            v-if="visibleOptions.length"
+            class="art-table-column-filter__options"
+            max-height="192px"
           >
-            <div v-for="option in visibleOptions" :key="option.value" class="min-w-0">
-              <ElCheckbox :value="option.value" class="max-w-full">
-                <ArtDictDisplay
-                  v-if="dictCode && option.value !== 'empty'"
-                  :dict-code="dictCode"
-                  :value="String(option.raw)"
-                  display="text"
-                />
-                <span
-                  v-else
-                  class="inline-block max-w-52 truncate align-middle"
-                  :title="option.label"
-                  >{{ option.label }}</span
-                >
+            <ElCheckboxGroup v-model="draft.values" :aria-label="`${label}过滤选项`">
+              <ElCheckbox
+                v-for="option in visibleOptions"
+                :key="option.value"
+                :value="option.value"
+                class="art-table-column-filter__option"
+              >
+                <span class="block truncate" :title="option.label">
+                  <ArtDictDisplay
+                    v-if="dictCode && option.value !== 'empty'"
+                    :dict-code="dictCode"
+                    :value="String(option.raw)"
+                    display="text"
+                  />
+                  <template v-else>{{ option.label }}</template>
+                </span>
               </ElCheckbox>
-            </div>
-          </ElCheckboxGroup>
-          <p v-if="!visibleOptions.length" class="text-xs text-g-600">暂无匹配选项</p>
+            </ElCheckboxGroup>
+          </ElScrollbar>
+          <p
+            class="text-xs text-g-600"
+            :class="{ 'sr-only': visibleOptions.length > 0 }"
+            role="status"
+          >
+            {{ visibleOptions.length ? '' : '暂无匹配选项' }}
+          </p>
         </template>
         <template v-else-if="type === 'number-range'">
           <ElInputNumber
@@ -128,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, reactive, ref } from 'vue'
+  import { computed, reactive, ref, useTemplateRef } from 'vue'
   import dayjs from 'dayjs'
   import { cloneDeep, uniq } from 'lodash-es'
   import { normalizeNullableNumber } from '@/utils/form/normalize'
@@ -143,7 +165,10 @@
     ElInputNumber,
     ElOption,
     ElPopover,
-    ElSelect
+    ElScrollbar,
+    ElSelect,
+    type InputInstance,
+    type SelectInstance
   } from 'element-plus'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
@@ -159,24 +184,27 @@
   }>()
   const emit = defineEmits<{ 'update:modelValue': [value: ColumnFilterCondition] }>()
   const open = ref(false)
+  const triggerButton = useTemplateRef<InstanceType<typeof ArtIconButton>>('triggerButton')
+  const primaryInput = useTemplateRef<InputInstance>('primaryInput')
+  const emptySelect = useTemplateRef<SelectInstance>('emptySelect')
   const optionSearch = ref('')
   const draft = reactive<ColumnFilterCondition>({ values: [] })
   const active = computed(() => isColumnFilterActive(props.modelValue))
   const userStore = useUserStore()
-  const visibleOptions = computed(() =>
-    props.options
-      .map((option) => {
-        const item = props.dictCode
-          ? userStore.getDictDisplayItemByValue(props.dictCode, String(option.raw))
-          : undefined
-        return props.dictCode && option.value !== 'empty'
-          ? { ...option, label: getDictionaryDisplayLabel(item, option.raw) }
-          : option
-      })
-      .filter((option) =>
-        option.label.toLocaleLowerCase().includes(optionSearch.value.trim().toLocaleLowerCase())
-      )
-  )
+  const visibleOptions = computed(() => {
+    const query = optionSearch.value.trim().toLocaleLowerCase()
+    const options = props.options.map((option) => {
+      const item = props.dictCode
+        ? userStore.getDictDisplayItemByValue(props.dictCode, String(option.raw))
+        : undefined
+      return props.dictCode && option.value !== 'empty'
+        ? { ...option, label: getDictionaryDisplayLabel(item, option.raw) }
+        : option
+    })
+    return query
+      ? options.filter(({ label }) => label.toLocaleLowerCase().includes(query))
+      : options
+  })
   const allChecked = computed(
     () =>
       visibleOptions.value.length > 0 &&
@@ -235,6 +263,18 @@
       ? (draft.values ?? []).filter((value) => !visible.has(value))
       : uniq([...(draft.values ?? []), ...visible])
   }
+  function focusFilterInput(): void {
+    const trigger: unknown = triggerButton.value?.$el
+    if (
+      open.value &&
+      trigger instanceof HTMLButtonElement &&
+      trigger.ownerDocument.activeElement === trigger &&
+      trigger.matches(':focus-visible')
+    ) {
+      const control = primaryInput.value ?? emptySelect.value
+      control?.focus()
+    }
+  }
   function stopHeaderClick(event: MouseEvent): void {
     event.stopPropagation()
   }
@@ -248,3 +288,26 @@
     open.value = false
   }
 </script>
+
+<style scoped lang="scss">
+  .art-table-column-filter {
+    &__options {
+      min-width: 0;
+    }
+
+    &__option {
+      display: flex;
+      width: 100%;
+      min-width: 0;
+      margin-inline-end: 0;
+
+      :deep(.el-checkbox__input) {
+        flex: none;
+      }
+
+      :deep(.el-checkbox__label) {
+        min-width: 0;
+      }
+    }
+  }
+</style>

@@ -206,6 +206,49 @@ test('分页与查询只采用已接受的树和服务端概览', async ({ page 
   expect(requests.at(-1)?.keyword).toBe('筛选')
 })
 
+test('存放位置树键盘选择按原 ID 查询并保留焦点', async ({ page }) => {
+  await prepareIsolatedSession(page)
+  const root = { ...location(1), child_count: 1 }
+  const archived = { ...location(2), parent_id: root.id, status: 'disabled' }
+  const tree = [root, archived]
+  const ancestors: unknown[] = []
+  await page.route('**/rest/v1/rpc/smis_list_storage_locations_secure', (route) => {
+    const ancestor = requestParams(route).p_ancestor_id
+    ancestors.push(ancestor)
+    const records = ancestor === archived.id ? [archived] : tree
+    return fulfillList(route, records, records.length, tree)
+  })
+  await page.goto(fixture, { waitUntil: 'domcontentloaded' })
+  const table = page.locator('.art-table-query')
+  const navigator = page.locator('.storage-location-navigator')
+  const branch = navigator.getByRole('treeitem', { name: /^存放位置 1/ })
+  const leaf = navigator.getByRole('treeitem', { name: /^存放位置 2/ })
+  const all = navigator.getByRole('button', { name: /^全部位置/ })
+  await expect(table.getByText(root.location_name, { exact: true })).toBeVisible()
+  await expect(leaf).toContainText('已停用')
+  await branch.focus()
+  const initialRequests = ancestors.length
+  await page.keyboard.press('ArrowRight')
+  await expect(leaf).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(branch).toBeFocused()
+  expect(ancestors).toHaveLength(initialRequests)
+
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('Space')
+  await expect.poll(() => ancestors.at(-1)).toBe(archived.id)
+  await expect(table.getByText(root.location_name, { exact: true })).toHaveCount(0)
+  await expect(table.getByText(archived.location_name, { exact: true })).toBeVisible()
+  await expect(leaf).toBeFocused()
+  await expect(leaf).toHaveClass(/\bis-current\b/)
+
+  await all.focus()
+  await page.keyboard.press('Enter')
+  await expect.poll(() => ancestors.at(-1)).toBeNull()
+  await expect(table.getByText(root.location_name, { exact: true })).toBeVisible()
+  await expect(all).toBeFocused()
+})
+
 test('窄屏长位置树保持独立滚动', async ({ page }) => {
   await page.setViewportSize({ width: 570, height: 900 })
   await prepareIsolatedSession(page)

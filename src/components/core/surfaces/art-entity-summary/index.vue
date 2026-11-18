@@ -17,7 +17,7 @@
     <div class="art-entity-summary__content">
       <slot>
         <small v-if="eyebrow">{{ eyebrow }}</small>
-        <strong>{{ title }}</strong>
+        <strong :title="title">{{ title }}</strong>
         <p v-if="description">{{ description }}</p>
       </slot>
     </div>

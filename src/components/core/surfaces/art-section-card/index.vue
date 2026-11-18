@@ -12,28 +12,7 @@
     ]"
     :aria-busy="loading"
   >
-    <slot v-if="$slots.header" name="header" />
-    <header v-else-if="hasHeader" class="art-section-card__header">
-      <div class="art-section-card__identity">
-        <ArtSectionTitle :show-line="false" :show-marker="showMarker">{{ title }}</ArtSectionTitle>
-        <p v-if="subtitle" class="art-section-card__subtitle">{{ subtitle }}</p>
-      </div>
-      <div v-if="$slots.actions" class="art-section-card__actions">
-        <slot name="actions" />
-      </div>
-    </header>
-
-    <div v-if="$slots.toolbar" class="art-section-card__toolbar">
-      <slot name="toolbar" />
-    </div>
-
-    <slot v-if="preserveContentStructure && !hasActiveState" />
-    <ElScrollbar
-      v-else-if="hasScrollBody"
-      class="art-section-card__scrollbar art-scroll-viewport-inset"
-      :max-height="scrollMaxHeight"
-      :always="scrollbarAlways"
-    >
+    <DefineCardBody>
       <ArtAsyncState
         class="art-section-card__body"
         :class="bodyClass"
@@ -53,28 +32,35 @@
           <slot name="error-action" />
         </template>
       </ArtAsyncState>
-    </ElScrollbar>
+    </DefineCardBody>
 
-    <ArtAsyncState
-      v-else
-      class="art-section-card__body"
-      :class="bodyClass"
-      v-bind="asyncStateProps"
-      @retry="emit('retry')"
+    <slot v-if="$slots.header" name="header" />
+    <header v-else-if="hasHeader" class="art-section-card__header">
+      <div v-if="title || subtitle" class="art-section-card__identity">
+        <ArtSectionTitle v-if="title" :show-line="false" :show-marker="showMarker">
+          {{ title }}
+        </ArtSectionTitle>
+        <p v-if="subtitle" class="art-section-card__subtitle">{{ subtitle }}</p>
+      </div>
+      <div v-if="$slots.actions" class="art-section-card__actions">
+        <slot name="actions" />
+      </div>
+    </header>
+
+    <div v-if="$slots.toolbar" class="art-section-card__toolbar">
+      <slot name="toolbar" />
+    </div>
+
+    <slot v-if="preserveContentStructure && !hasActiveState" />
+    <ElScrollbar
+      v-else-if="hasScrollBody"
+      class="art-section-card__scrollbar art-scroll-viewport-inset"
+      :max-height="scrollMaxHeight"
+      :always="scrollbarAlways"
     >
-      <slot />
-
-      <template v-if="$slots.loading" #loading>
-        <slot name="loading" />
-      </template>
-
-      <template v-if="$slots['empty-action']" #empty-action>
-        <slot name="empty-action" />
-      </template>
-      <template v-if="$slots['error-action']" #error-action>
-        <slot name="error-action" />
-      </template>
-    </ArtAsyncState>
+      <ReuseCardBody />
+    </ElScrollbar>
+    <ReuseCardBody v-else />
 
     <footer v-if="$slots.footer" class="art-section-card__footer">
       <slot name="footer" />
@@ -83,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+  import { createReusableTemplate } from '@vueuse/core'
   import { ElScrollbar } from 'element-plus'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
@@ -137,15 +124,15 @@
   })
 
   const emit = defineEmits<{ retry: [] }>()
+  const [DefineCardBody, ReuseCardBody] = createReusableTemplate()
   const slots = useSlots()
   const hasHeader = computed(() => Boolean(props.title || props.subtitle || slots.actions))
   const hasCardHeader = computed(() => Boolean(slots.header || hasHeader.value))
   const hasScrollBody = computed(() => props.showScrollbar && !props.preserveContentStructure)
-  const stateMinHeight = computed(() => {
-    if (props.loading || props.error || props.empty) return props.minHeight
-    return hasScrollBody.value ? 'auto' : 0
-  })
   const hasActiveState = computed(() => Boolean(props.loading || props.error || props.empty))
+  const stateMinHeight = computed(() =>
+    hasActiveState.value ? props.minHeight : hasScrollBody.value ? 'auto' : 0
+  )
   const hasReplacementState = computed(
     () => (props.loading && props.loadingMode === 'skeleton') || Boolean(props.error || props.empty)
   )
@@ -166,8 +153,10 @@
 
 <style scoped lang="scss">
   .art-section-card {
+    --art-section-card-gutter: var(--art-section-padding);
+
     min-width: 0;
-    padding: var(--art-section-padding);
+    padding: var(--art-section-card-gutter);
 
     &__header {
       display: flex;
@@ -191,24 +180,35 @@
 
     &__subtitle {
       min-width: 0;
-      padding-left: 11px;
-      margin: 2px 0 0;
+      margin: 0;
       font-size: var(--art-font-size-caption);
       line-height: 20px;
       color: var(--el-text-color-secondary);
       overflow-wrap: anywhere;
     }
 
+    &__identity :deep(.art-section-title) + &__subtitle {
+      margin-block-start: 2px;
+    }
+
+    &__identity :deep(.art-section-title--with-marker) + &__subtitle {
+      padding-inline-start: calc(var(--art-space-2) + 3px);
+    }
+
     &__actions {
       display: flex;
       flex: 0 0 auto;
-      flex-wrap: nowrap;
+      flex-wrap: wrap;
       gap: var(--art-space-2);
       align-items: center;
       justify-content: flex-end;
       min-width: 0;
       max-width: 100%;
-      margin-left: auto;
+      margin-inline-start: auto;
+
+      :deep(> .el-button + .el-button) {
+        margin-inline-start: 0;
+      }
     }
 
     &__body {
@@ -228,7 +228,7 @@
     }
 
     &__scrollbar {
-      --art-scroll-viewport-inset: var(--art-section-padding);
+      --art-scroll-viewport-inset: var(--art-section-card-gutter);
 
       flex: 1 1 auto;
       width: 100%;
@@ -248,30 +248,30 @@
       padding: 0;
 
       .art-section-card__header {
-        padding: var(--art-section-padding) var(--art-section-padding) 0;
+        padding: var(--art-section-card-gutter) var(--art-section-card-gutter) 0;
       }
 
       .art-section-card__toolbar {
-        padding-inline: var(--art-section-padding);
+        padding-inline: var(--art-section-card-gutter);
       }
 
       .art-section-card__footer {
-        padding: var(--art-space-3) var(--art-section-padding) var(--art-section-padding);
+        padding: var(--art-space-3) var(--art-section-card-gutter) var(--art-section-card-gutter);
       }
 
       &:not(.has-header) .art-section-card__toolbar {
-        padding-top: var(--art-section-padding);
+        padding-top: var(--art-section-card-gutter);
       }
 
       .art-section-card__body {
         box-sizing: border-box;
         flex: 1 1 auto;
         min-height: 100%;
-        padding: 0 var(--art-section-padding) var(--art-section-padding);
+        padding: 0 var(--art-section-card-gutter) var(--art-section-card-gutter);
       }
 
       &:not(.has-header, .has-toolbar) .art-section-card__body {
-        padding-top: var(--art-section-padding);
+        padding-top: var(--art-section-card-gutter);
       }
 
       &.has-replacement-state .art-section-card__body {
@@ -280,47 +280,7 @@
     }
 
     @media (width <= 640px) {
-      padding: var(--art-space-4);
-
-      &.is-scrollable {
-        padding: 0;
-
-        .art-section-card__header {
-          padding: var(--art-space-4) var(--art-space-4) 0;
-        }
-
-        .art-section-card__toolbar {
-          padding-inline: var(--art-space-4);
-        }
-
-        .art-section-card__footer {
-          padding-right: var(--art-space-4);
-          padding-bottom: var(--art-space-4);
-          padding-left: var(--art-space-4);
-        }
-
-        &:not(.has-header) .art-section-card__toolbar {
-          padding-top: var(--art-space-4);
-        }
-
-        .art-section-card__body {
-          padding-right: var(--art-space-4);
-          padding-bottom: var(--art-space-4);
-          padding-left: var(--art-space-4);
-        }
-
-        .art-section-card__scrollbar {
-          --art-scroll-viewport-inset: var(--art-space-4);
-        }
-
-        &:not(.has-header, .has-toolbar) .art-section-card__body {
-          padding-top: var(--art-space-4);
-        }
-
-        &.has-replacement-state .art-section-card__body {
-          padding: 0 0 var(--art-scroll-viewport-inset);
-        }
-      }
+      --art-section-card-gutter: var(--art-space-4);
     }
   }
 </style>

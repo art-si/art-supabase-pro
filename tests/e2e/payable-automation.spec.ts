@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15000 })
 test.setTimeout(150000)
@@ -155,6 +156,10 @@ test('后台核销两配置保存失败保留输入及编辑', async ({ page }, 
 })
 
 test('后台核销任务状态与重试权限及失败恢复', async ({ page }, info) => {
+  await prepareIsolatedSession(page, {
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    platformSuper: false
+  })
   let failRead = true
   let failRetry = true
   const retries: string[] = []
@@ -274,8 +279,12 @@ test('后台核销任务状态与重试权限及失败恢复', async ({ page }, 
     return route.fulfill({ json: [] })
   })
   const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
-  const fixture = `/tests/e2e/fixtures/receivable-workspace.html?kind=ap_automation&theme=${theme}&permissions=FinancePayableWriteoff:View,FinancePayableWriteoff:AutomationRetry`
+  const box = theme === 'dark' ? 'shadow-mode' : 'border-mode'
+  const fixture = `/tests/e2e/fixtures/receivable-workspace.html?kind=ap_automation&theme=${theme}&box=${box}&permissions=FinancePayableWriteoff:View,FinancePayableWriteoff:AutomationRetry`
   await page.goto(fixture)
+  if (theme === 'dark') await expect(page.locator('html')).toHaveClass(/\bdark\b/)
+  else await expect(page.locator('html')).not.toHaveClass(/\bdark\b/)
+  await expect(page.locator('html')).toHaveAttribute('data-box-mode', box)
   await page.getByRole('button', { name: '后台核销', exact: true }).click({ timeout: 60000 })
   const manager = page.getByRole('dialog', { name: '后台应付核销管理', exact: true })
   await expect(manager.getByText('后台核销资料未加载，请重试', { exact: true })).toBeVisible()
@@ -320,11 +329,15 @@ test('后台核销任务状态与重试权限及失败恢复', async ({ page }, 
     const recordsDialog = page.getByRole('dialog', { name: '后台任务生成记录', exact: true })
     await expect(recordsDialog.getByText(`job-${i}-核销1`, { exact: true })).toBeVisible()
     await expect(recordsDialog.getByText(`job-${i}-核销2`, { exact: true })).toBeVisible()
+    for (const index of [1, 2])
+      await expect(
+        recordsDialog.getByRole('row').filter({ hasText: `job-${i}-核销${index}` })
+      ).toBeInViewport()
     await expect(recordsDialog.getByText('已核销', { exact: true })).toHaveCount(2)
     await expect(recordsDialog.getByText(`job-${1 - i}-核销1`, { exact: true })).toHaveCount(0)
     await expect(page.locator('.el-message')).toHaveCount(0)
     await recordsDialog.screenshot({ path: info.outputPath(`automation-records-${i}.png`) })
-    await recordsDialog.getByRole('button', { name: '关闭此对话框', exact: true }).click()
+    await recordsDialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
   }
   expect(recordReads).toEqual(['job-0', 'job-1'])
   await expect(page.locator('.el-message')).toHaveCount(0)

@@ -14,7 +14,7 @@
           >
           <ElButton :disabled="busy || loading" @click="load">刷新</ElButton>
         </div>
-        <ElTabs v-model="tab" @tab-change="resetPage">
+        <ElTabs v-model="tab" class="art-card-xs art-overlay-tab-card" @tab-change="resetPage">
           <ElTabPane label="自动暂估参数" name="policies">
             <ArtTable
               :data="workspace.configurations.data"

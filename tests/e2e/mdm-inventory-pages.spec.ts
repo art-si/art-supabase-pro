@@ -1,7 +1,9 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 import {
   tenantId,
   zoneId,
@@ -12,6 +14,119 @@ import {
   material,
   installFixtures
 } from './support/inventory-fixtures'
+
+test.describe('仓库分组树键盘', () => {
+  test.use({ storageState: { cookies: [], origins: [] } })
+
+  test('行内按钮操作另一分组时保留当前筛选', async ({ page }) => {
+    test.setTimeout(90_000)
+    await prepareIsolatedSession(page)
+    await page.goto('/tests/e2e/fixtures/section-card-navigation.html?feature=warehouse')
+    const tree = page.locator('.warehouse-group-panel').getByRole('tree')
+    const selected = page.getByLabel('选中分组')
+    const action = page.getByLabel('最近操作')
+    const first = tree.locator('[role="treeitem"][data-key="group-0"]')
+    const second = tree.locator('[role="treeitem"][data-key="group-1"]')
+    await expect(first).toBeVisible()
+    await first.press('Enter')
+    await expect(selected).toHaveText('group-0')
+
+    const edit = second.getByRole('button', { name: '编辑分组', exact: true })
+    await edit.focus()
+    await expect(second.locator('.warehouse-group-panel__node-actions')).toHaveCSS('opacity', '1')
+    await page.keyboard.press('Enter')
+    await expect(action).toHaveText('编辑分组')
+    await expect(selected).toHaveText('group-0')
+
+    await second.getByRole('button', { name: '新增下级分组', exact: true }).press('Space')
+    await expect(action).toHaveText('新增分组')
+    await expect(selected).toHaveText('group-0')
+  })
+
+  test('只读真实页面确认选组才查询对应范围', async ({ page }) => {
+    test.setTimeout(120_000)
+    await prepareIsolatedSession(page, { platformSuper: false, tenantId })
+    const path = '/mdm/inventory-master/warehouse-definition'
+    const menu = {
+      id: 'warehouse-keyboard',
+      parentId: null,
+      name: 'MdmWarehouseDefinition',
+      path,
+      component: path,
+      type: 'menu',
+      sort: 1,
+      meta: { title: '仓库定义', is_enable: true, is_hide: false, roles: [] }
+    }
+    await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
+      route.fulfill({ json: [{ code: 'mdm', name: 'MDM主数据', baseUrl: '/mdm/' }] })
+    )
+    await mockApplicationMenus(page, {
+      mdm: [
+        menu,
+        {
+          ...menu,
+          id: 'warehouse-keyboard-view',
+          parentId: menu.id,
+          name: 'MdmWarehouseDefinition:View',
+          path: '',
+          component: '',
+          type: 'button'
+        }
+      ]
+    })
+    const parentId = '81818181-8181-4181-8181-818181818181'
+    const childId = '82828282-8282-4282-8282-828282828282'
+    const groups = [
+      {
+        id: parentId,
+        tenant_id: tenantId,
+        parent_id: null,
+        name: '原料仓分组',
+        code: 'RAW',
+        sort: 1
+      },
+      {
+        id: childId,
+        tenant_id: tenantId,
+        parent_id: parentId,
+        name: '一号原料仓',
+        code: 'RAW-01',
+        sort: 2
+      }
+    ]
+    const scopes: Array<string | null> = []
+    await page.route('**/rest/v1/rpc/mdm_list_warehouses_secure', (route) => {
+      scopes.push(route.request().postDataJSON().p_group_id)
+      return route.fulfill({ json: { data: [], total: 0, groups } })
+    })
+    await page.goto(`#${path}`, { waitUntil: 'domcontentloaded' })
+    const panel = page.locator('.warehouse-group-panel')
+    const branch = panel.locator(`[role="treeitem"][data-key="${parentId}"]`)
+    const child = panel.locator(`[role="treeitem"][data-key="${childId}"]`)
+    await expect(child).toBeVisible({ timeout: 90_000 })
+    await expect(page.locator('.art-global-loading')).toBeHidden({ timeout: 30_000 })
+    await expect(panel.getByRole('button', { name: /新增|编辑分组|删除分组/ })).toHaveCount(0)
+    const before = scopes.length
+    await branch.focus()
+    await page.keyboard.press('ArrowLeft')
+    await expect(child).toBeHidden()
+    await page.keyboard.press('ArrowRight')
+    await expect(child).toBeVisible()
+    await page.keyboard.press('ArrowRight')
+    await expect(child).toBeFocused()
+    expect(scopes).toHaveLength(before)
+
+    await page.keyboard.press('Enter')
+    await expect(child).toHaveClass(/is-current/)
+    await expect.poll(() => scopes.slice(before)).toEqual([childId])
+    await page.keyboard.press('ArrowLeft')
+    await expect(branch).toBeFocused()
+    expect(scopes.slice(before)).toEqual([childId])
+    await page.keyboard.press('Space')
+    await expect(branch).toHaveClass(/is-current/)
+    await expect.poll(() => scopes.slice(before)).toEqual([childId, parentId])
+  })
+})
 
 async function expectSceneFooterLayout(page: Page): Promise<void> {
   const [frame, legend, hint] = await Promise.all([
@@ -1158,7 +1273,7 @@ test('物料编码列表描述与编辑字段使用同一规则', async ({ page 
     parentId: folder.id,
     name: 'MdmMaterialArchive',
     path: 'material-archive',
-    component: '/mdm/material/archive',
+    component: '/mdm/material-master/material-archive',
     type: 'menu',
     sort: 1,
     meta: meta('物料编码')
@@ -1230,9 +1345,32 @@ test('物料编码列表描述与编辑字段使用同一规则', async ({ page 
   mkdirSync(visualDir, { recursive: true })
   await page.screenshot({ path: join(visualDir, 'material-description.png'), fullPage: true })
   await row.getByRole('button', { name: '编辑' }).click()
-  await expect(page.getByRole('textbox', { name: '自动生成的物料描述' })).toHaveValue(
+  const dialog = page.getByRole('dialog', { name: '编辑物料编码', exact: true })
+  const basePanel = await expectOverlayTabPanel(dialog, '基本信息')
+  await expect(basePanel.getByRole('textbox', { name: '自动生成的物料描述' })).toHaveValue(
     '雨篷侧封檐 _展宽 360 mm × 长度 1.1 m _蓝色彩钢板'
   )
+  const card = dialog.locator('.art-section-card').filter({ has: page.getByRole('tablist') })
+  await expect(card).toHaveCount(1)
+  await expect(card.getByText('统一物料身份', { exact: true })).toBeVisible()
+  await expect(card.getByText('资料完整度', { exact: true })).toBeVisible()
+  await expect(card.getByText(/优先完成带星号的核心字段/)).toBeVisible()
+  await expect(card.locator('.art-form__tabs')).toHaveCSS('border-top-width', '0px')
+  await expect(card.locator('.art-form__tabs')).toHaveCSS('box-shadow', 'none')
+  await dialog.screenshot({ path: testInfo.outputPath('material-form-card.png') })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await card.getByRole('tab', { name: '采购', exact: true }).click()
+  await expectOverlayTabPanel(dialog, '采购')
+  await expect(card.getByText('采购默认视图', { exact: true })).toBeVisible()
+  await expect(card.getByText(/采购单位默认继承基本单位/)).toBeVisible()
+  await expect(card.getByText('定义采购单位、责任人和补货批量边界。', { exact: true })).toHaveCount(
+    1
+  )
+  expect(await dialog.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(
+    1
+  )
+  await dialog.screenshot({ path: testInfo.outputPath('material-form-card-390.png') })
 })
 
 test('库区新增弹窗先出现，再等待基础数据', async ({ page }) => {

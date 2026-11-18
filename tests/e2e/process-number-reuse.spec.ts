@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
@@ -11,10 +12,14 @@ for (const theme of ['light', 'dark']) {
       }, info) => {
         await prepareIsolatedSession(page)
         const errors: string[] = []
+        let writes = 0
         page.on('pageerror', (error) => errors.push(error.message))
         await page.route('**/rest/v1/**', (route) => {
-          const url = new URL(route.request().url())
+          const request = route.request()
+          const url = new URL(request.url())
           const path = url.pathname
+          if (path.endsWith('/mdm_process_route_step') && /^(POST|PATCH)$/.test(request.method()))
+            writes += 1
           let json: object = []
           if (path.endsWith('/sys_dictionary')) {
             const code = url.searchParams.get('dict_type_table.code')?.replace('eq.', '')
@@ -132,6 +137,24 @@ for (const theme of ['light', 'dark']) {
           )
           await option.click()
           await expect(operationMode).toContainText('公共字典作业类型')
+          await test.step('从单位换算保存时定位工序名称', async () => {
+            const name = detail.getByRole('textbox', { name: /工序名称$/ })
+            await expect(name).toBeVisible()
+            const originalName = await name.inputValue()
+            await name.clear()
+            const conversion = detail.getByRole('tab', { name: /单位换算/ })
+            await conversion.click()
+            await expect(conversion).toHaveAttribute('aria-selected', 'true')
+            const save = detail.getByRole('button', { name: '保存更改', exact: true })
+            await expect(save).toBeEnabled()
+            await save.press('Enter')
+            const panel = await expectOverlayTabPanel(detail, /工序明细/)
+            await expect(panel.getByText('请输入工序名称', { exact: true })).toBeVisible()
+            await expect(name).toBeFocused()
+            expect(writes).toBe(0)
+            await detail.screenshot({ path: info.outputPath('process-invalid-name.png') })
+            await name.fill(originalName)
+          })
         }
         if (!edit) {
           await expect(detail).toContainText('12,345.678901 pcs')
@@ -141,7 +164,8 @@ for (const theme of ['light', 'dark']) {
           await detail.screenshot({ path: info.outputPath('process-quantity.png') })
         }
         await detail.getByRole('tab', { name: /单位换算/ }).click()
-        await expect(detail.locator('.step-editor__equation')).toContainText(
+        const conversionPanel = await expectOverlayTabPanel(detail, /单位换算/)
+        await expect(conversionPanel.locator('.step-editor__equation')).toContainText(
           '12,345.678901 工序单位'
         )
         await expect(detail.locator('.step-editor__equation')).toBeVisible()
@@ -177,7 +201,8 @@ for (const theme of ['light', 'dark']) {
           await detail.screenshot({ path: info.outputPath('process-unit-default.png') })
         }
         await detail.getByRole('tab', { name: /活动信息/ }).click()
-        const activityTable = detail.locator('.art-table.process-activity-table')
+        const activityPanel = await expectOverlayTabPanel(detail, /活动信息/)
+        const activityTable = activityPanel.locator('.art-table.process-activity-table')
         if (edit) {
           await detail
             .getByRole('textbox', { name: '第 1 行活动名称', exact: true })

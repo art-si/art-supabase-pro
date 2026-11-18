@@ -58,7 +58,14 @@
       label: '序列号清单',
       type: 'input',
       span: 24,
-      props: { type: 'textarea', rows: 8, placeholder: '每行一个序列号；支持粘贴扫码结果' }
+      get props() {
+        return {
+          type: 'textarea',
+          rows: 8,
+          placeholder: '每行一个序列号；支持粘贴扫码结果',
+          readonly: unref(dialogRef.value?.confirmLoading) === true
+        }
+      }
     }
   ]
   const rules = { serialText: [{ required: true, message: '请录入本行全部 SN', trigger: 'blur' }] }

@@ -4,6 +4,76 @@ import { prepareIsolatedSession } from './support/isolated-session'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
+test('开单在窄屏按实际站点编码区分同区同名发货站', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  const stationName = '验收国际联运综合仓配华东区域多式联运集散中心临港发货站'
+  const regionCode = '310115'
+  const stations = [
+    { id: 'station-1', stationCode: 'QA-ST-001', stationName },
+    { id: 'station-2', stationCode: 'QA-ST-002', stationName },
+    { id: 'station-no-code', stationCode: '  ', stationName: '历史无编号站' }
+  ].map((station) => ({ ...station, stationType: 'shipping', regionCode }))
+  await page.route('**/rest/v1/**', (route) => {
+    const url = new URL(route.request().url())
+    if (
+      url.pathname.endsWith('/mdm_station') &&
+      url.searchParams.get('stationRoleFilter.role_type') === 'eq.shipping'
+    ) {
+      return route.fulfill({
+        json: stations,
+        headers: { 'content-range': '0-2/3', 'access-control-expose-headers': 'content-range' }
+      })
+    }
+    return route.fulfill({ json: [] })
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/tests/e2e/fixtures/order-numeric.html?role=ordinary')
+  await page.getByRole('radiogroup').getByText('完整表单', { exact: true }).click()
+  const field = page.locator('[data-art-form-item-key="originStationId"]')
+  const editor = field.getByRole('combobox')
+  await editor.press('ArrowDown')
+  const options = page.getByRole('option').filter({ hasText: stationName })
+  await expect(options).toHaveCount(2)
+  await page.screenshot({ path: info.outputPath('same-name-shipping-stations-390.png') })
+  const codes = stations.slice(0, 2).map(({ stationCode }) => stationCode)
+  const readableCodes = await options.evaluateAll(
+    (items, codes) =>
+      items.map((item, index) => {
+        const label = item.querySelector('span')?.firstChild
+        if (!(label instanceof Text)) return false
+        const offset = label.data.indexOf(codes[index])
+        if (offset < 0) return false
+        const code = new Range()
+        code.setStart(label, offset)
+        code.setEnd(label, offset + codes[index].length)
+        const right =
+          item.getBoundingClientRect().right -
+          Number.parseFloat(getComputedStyle(item).paddingRight)
+        return code.getBoundingClientRect().right <= Math.min(right, innerWidth)
+      }),
+    codes
+  )
+  expect(readableCodes).toEqual([true, true])
+  await expect(page.getByRole('option', { name: `历史无编号站（${regionCode}）` })).toBeVisible()
+
+  const station = stations[1]
+  const selectedLabel = `${station.stationCode} · ${stationName}（${regionCode}）`
+  await editor.fill(station.stationCode)
+  await expect(options).toHaveCount(1)
+  await editor.press('ArrowDown')
+  await editor.press('Enter')
+  await expect(editor).toBeFocused()
+  await expect(field.locator('.el-select__placeholder:not(.is-transparent) span')).toHaveAttribute(
+    'title',
+    selectedLabel
+  )
+  await editor.press('ArrowDown')
+  await expect(page.getByRole('option', { name: selectedLabel, selected: true })).toBeVisible()
+  await editor.press('Escape')
+  await expect(editor).toBeFocused()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+})
+
 test('开单完整表单在桌面和窄屏的深浅主题下保持可用', async ({ page }, info) => {
   await prepareIsolatedSession(page)
   const errors: string[] = []

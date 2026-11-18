@@ -87,7 +87,10 @@ const app = createApp({
   render: () =>
     h(
       'main',
-      { class: 'art-page-view p-4', style: { height: '100vh' } },
+      {
+        class: 'art-page-view p-4',
+        style: { height: '100vh', '--art-full-height': 'calc(100dvh - 32px)' }
+      },
       h(
         ElConfigProvider,
         { locale: zhCn },

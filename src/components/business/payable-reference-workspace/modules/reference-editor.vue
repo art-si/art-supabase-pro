@@ -10,6 +10,7 @@
         name: [{ required: true, message: '请填写名称' }]
       }"
       :span="12"
+      :disabled="saving"
       label-position="top"
     >
       <template #matchingRules>
@@ -19,7 +20,7 @@
               <ElSwitch
                 v-model="separateRules"
                 aria-label="按核销关系分别配置"
-                :disabled="!supportsMatrix"
+                :disabled="saving || !supportsMatrix"
                 :before-change="beforeModeChange"
                 @change="changeMode"
               />按核销关系分别配置
@@ -47,7 +48,7 @@
                 class="w-52! shrink-0"
                 aria-label="新增核销关系"
                 placeholder="选择核销关系"
-                :disabled="!availableRelations.length"
+                :disabled="saving || !availableRelations.length"
               >
                 <ElOption
                   v-for="option in availableRelations"
@@ -56,7 +57,7 @@
                   :label="option.label"
                 />
               </ElSelect>
-              <ElButton :disabled="!pendingRelation" @click="addRelation"
+              <ElButton :disabled="saving || !pendingRelation" @click="addRelation"
                 ><ArtSvgIcon icon="ri:add-line" />新增关系</ElButton
               >
             </template>
@@ -72,17 +73,20 @@
                   v-model="row.description"
                   :aria-label="`${relationLabel(row.relation)}关系说明`"
                   :maxlength="1000"
+                  :disabled="saving"
                   placeholder="可选：说明本关系的适用范围"
               /></template>
               <template #operation="{ row }">
                 <ArtButtonTable
                   icon="ri:settings-3-line"
                   label="配置匹配规则"
+                  :disabled="saving"
                   @click="editRelation(row)"
                 />
                 <ArtButtonTable
                   icon="ri:subtract-line"
                   label="移除核销关系"
+                  :disabled="saving"
                   @click="removeRelation(row)"
                 />
               </template>
@@ -99,7 +103,7 @@
       </template>
     </ArtForm>
   </ArtDialog>
-  <ArtDialog ref="relationDialogRef" size="xl" confirm-text="应用条件">
+  <ArtDialog ref="relationDialogRef" size="xl" confirm-text="应用条件" :confirm-disabled="saving">
     <p v-if="editingConfig?.relation === 'payable_receivable'" class="mb-4 text-sm text-g-600"
       >应付冲应收以主数据确认的统一往来单位匹配；跨往来仍须在工作台明确启用并授权。</p
     >
@@ -107,6 +111,7 @@
       ref="relationEditorRef"
       v-model="editingRules"
       :context-label="editingConfig ? relationLabel(editingConfig.relation) : ''"
+      :disabled="saving"
     />
   </ArtDialog>
   <MasterDataDeleteGuard ref="deleteGuardRef" />
@@ -133,6 +138,7 @@
   } from '@/api/payable-reference'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import {
     newPayableMatchRule,
@@ -154,6 +160,8 @@
   const settlementCashMethodOptions = useDictionaryOptions('fmsPayableSettlementCashMethod')
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose>()
+  const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
+  const saving = ref(false)
   const activeTab = ref('identity')
   const formRef = ref<InstanceType<typeof ArtForm>>()
   watch(
@@ -165,7 +173,7 @@
   const relationEditorRef = ref<InstanceType<typeof PayableMatchRuleEditor>>()
   const relationDialogRef = ref<ArtDialogExpose>()
   const deleteGuardRef = ref<InstanceType<typeof MasterDataDeleteGuard>>()
-  const { confirmDelete } = useArtFeedback()
+  const { confirm, confirmDelete } = useArtFeedback()
   const form = ref<PayableReference>({ code: '', name: '', enabled: true })
   const supportsMatrix = computed(() => props.configurationVersion === 2)
   const separateRules = ref(false)
@@ -175,6 +183,7 @@
   const commonRules = computed({
     get: () => form.value.rules || [],
     set: (value: PayableMatchRule[]) => {
+      if (saving.value) return
       form.value.rules = value
     }
   })
@@ -203,6 +212,7 @@
   ]
   function addRelation(): void {
     if (
+      saving.value ||
       !pendingRelation.value ||
       !availableRelations.value.some((option) => option.value === pendingRelation.value)
     )
@@ -211,21 +221,34 @@
     pendingRelation.value = availableRelations.value[0]?.value
   }
   async function editRelation(config: PayableRelationRuleConfig): Promise<void> {
+    const version = session.version.value
     const current = form.value
+    if (saving.value || !session.isCurrent(version) || !current.relationRules?.includes(config))
+      return
     editingConfig.value = config
     editingRules.value = cloneDeep(config.rules)
     await relationDialogRef.value?.handleOpen(undefined, {
       title: `核销匹配规则 · ${relationLabel(config.relation)}`,
       onConfirm: async () => {
+        if (saving.value || !session.isCurrent(version) || form.value !== current) return false
         if (!(await relationEditorRef.value?.validate())) return false
-        if (form.value !== current || !form.value.relationRules?.includes(config)) return false
+        if (
+          saving.value ||
+          !session.isCurrent(version) ||
+          form.value !== current ||
+          !current.relationRules?.includes(config)
+        )
+          return false
         config.rules = cloneDeep(editingRules.value)
         return true
       }
     })
   }
   async function removeRelation(config: PayableRelationRuleConfig): Promise<void> {
+    const version = session.version.value
     const current = form.value
+    if (saving.value || !session.isCurrent(version) || !current.relationRules?.includes(config))
+      return
     const guard = deleteGuardRef.value
     if (!guard) {
       ElMessage.warning('关联检查尚未就绪，请重新打开配置后再试')
@@ -239,19 +262,24 @@
       })
     )
       return
+    if (saving.value || !session.isCurrent(version) || form.value !== current) return
     try {
       await confirmDelete('移除此关系？保存后此方案不再用于该关系，不会删除既有核销记录。')
     } catch {
       return
     }
-    if (form.value !== current) return
+    if (saving.value || !session.isCurrent(version) || form.value !== current) return
     form.value.relationRules = form.value.relationRules?.filter((entry) => entry !== config)
     pendingRelation.value = availableRelations.value[0]?.value
   }
   async function beforeModeChange(): Promise<boolean> {
+    const version = session.version.value
     const current = form.value
-    if (!supportsMatrix.value) return false
-    if (!separateRules.value) return (await commonEditorRef.value?.validate()) === true
+    if (saving.value || !session.isCurrent(version) || !supportsMatrix.value) return false
+    if (!separateRules.value) {
+      const valid = await commonEditorRef.value?.validate()
+      return valid === true && !saving.value && session.isCurrent(version) && form.value === current
+    }
     const configs = form.value.relationRules || []
     if (!configs.length) return true
     const guard = deleteGuardRef.value
@@ -270,16 +298,19 @@
       })
     )
       return false
+    if (saving.value || !session.isCurrent(version) || form.value !== current) return false
     try {
-      await confirmDelete(
-        '切换为共用条件后，所有关系使用第一种关系的规则，历史快照不变。确定继续？'
-      )
-      return form.value === current
+      await confirm('切换为共用条件后，所有关系使用第一种关系的规则，历史快照不变。确定继续？', {
+        title: '切换匹配模式',
+        confirmButtonText: '切换为共用条件'
+      })
+      return !saving.value && session.isCurrent(version) && form.value === current
     } catch {
       return false
     }
   }
   function changeMode(): void {
+    if (saving.value) return
     if (separateRules.value)
       form.value.relationRules = props.relationOptions.map((option) => ({
         relation: option.value,
@@ -377,7 +408,12 @@
         ]
       : [])
   ])
+  function resetSession(): void {
+    session.invalidate()
+    saving.value = false
+  }
   async function open(value?: PayableReference): Promise<void> {
+    resetSession()
     activeTab.value = 'identity'
     if (props.kind === 'scheme' && value?.relationRules != null && !supportsMatrix.value) {
       ElMessage.warning('分关系配置能力尚未就绪，请刷新后再修改')
@@ -409,12 +445,19 @@
     pendingRelation.value = availableRelations.value[0]?.value
     await dialogRef.value?.handleOpen(undefined, {
       title: `${value ? '编辑' : '新增'}${props.kind === 'purpose' ? '付款用途' : props.kind === 'method' ? '结算方式' : '核销方案'}`,
+      onClose: resetSession,
+      onReset: resetSession,
       onConfirm: async () => {
-        if (!(await validateArtFormForSubmit(formRef.value))) return false
+        const version = session.version.value
+        if (saving.value || !session.isCurrent(version)) return false
+        if (!(await validateArtFormForSubmit(formRef.value)) || !session.isCurrent(version))
+          return false
         if (props.kind === 'scheme') {
           activeTab.value = 'rulesSection'
           await nextTick()
+          if (!session.isCurrent(version)) return false
           if (!separateRules.value && !(await commonEditorRef.value?.validate())) return false
+          if (!session.isCurrent(version)) return false
           const invalid = separateRules.value
             ? validatePayableRelationConfigs(form.value.relationRules)
             : validatePayableMatchRules(form.value.rules)
@@ -423,19 +466,25 @@
             return false
           }
         }
+        if (saving.value || !session.isCurrent(version)) return false
+        saving.value = true
         try {
           await savePayableReference(props.kind, form.value)
+          if (!session.isCurrent(version)) return false
           ElMessage.success('配置已保存')
           emit('success')
           return true
         } catch (error) {
-          notifyFriendlyError(error, '配置未保存，请重试')
+          if (session.isCurrent(version)) notifyFriendlyError(error, '配置未保存，请重试')
           return false
+        } finally {
+          if (version === session.version.value) saving.value = false
         }
       }
     })
   }
   function close(): void {
+    resetSession()
     void relationDialogRef.value?.handleClose()
     void dialogRef.value?.handleClose()
   }

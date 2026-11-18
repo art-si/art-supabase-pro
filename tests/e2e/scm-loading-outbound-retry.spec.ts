@@ -1,64 +1,13 @@
 import { expect, test, type Route } from '@playwright/test'
-import { prepareIsolatedSession } from './support/isolated-session'
-import { mockApplicationMenus } from './support/menu-rpc'
+import {
+  prepareScmLoadingOutboundSession,
+  scmLoadingOutboundPath
+} from './support/scm-document-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(240_000)
 test('装车出库库存重试、数量汇总与旧响应失效', async ({ page }, testInfo) => {
-  const tenant = await prepareIsolatedSession(page)
-  await page.route('**/rest/v1/sys_dictionary?*', (route) =>
-    route.fulfill({
-      json: [
-        {
-          id: 'display-document',
-          value: 'document',
-          label: '按单据',
-          status: '1',
-          sort: 1,
-          dict_type_table: { code: 'commonDocumentDisplayMode' }
-        },
-        {
-          id: 'display-line',
-          value: 'line',
-          label: '按明细',
-          status: '1',
-          sort: 2,
-          dict_type_table: { code: 'commonDocumentDisplayMode' }
-        }
-      ]
-    })
-  )
-  await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
-  await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
-    route.fulfill({ json: [{ code: 'scm', name: '测试供应链', baseUrl: '/scm/' }] })
-  )
-  const path = '/scm/sales-management/loading-outbound'
-  const menu = {
-    id: 'outbound-retry',
-    parentId: null,
-    name: 'ScmLoadingOutbound',
-    path,
-    component: path,
-    type: 'menu',
-    sort: 1,
-    meta: { title: '装车出库', is_enable: true, is_hide: false, roles: [] }
-  }
-  await mockApplicationMenus(page, {
-    scm: [
-      menu,
-      ...['ScmLoadingOutbound:View', 'ScmLoadingOutbound:Issue', 'WmsStockOperation:Issue'].map(
-        (name, index) => ({
-          ...menu,
-          id: `outbound-${index}`,
-          parentId: menu.id,
-          name,
-          path: '',
-          component: '',
-          type: 'button'
-        })
-      )
-    ]
-  })
+  const tenant = await prepareScmLoadingOutboundSession(page, 'issue')
   await page.route('**/rest/v1/scm_sales_document?**', (route) =>
     route.fulfill({
       json: [
@@ -124,7 +73,7 @@ test('装车出库库存重试、数量汇总与旧响应失效', async ({ page 
   })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto(`#${path}`)
+  await page.goto(`#${scmLoadingOutboundPath}`)
   await expect(page.getByRole('heading', { name: '装车出库', exact: true })).toBeVisible({
     timeout: 120_000
   })
@@ -154,12 +103,12 @@ test('装车出库库存重试、数量汇总与旧响应失效', async ({ page 
     path: testInfo.outputPath('outbound-recovered.png'),
     animations: 'disabled'
   })
-  await dialog.getByRole('button', { name: '关闭此对话框', exact: true }).click()
+  await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
   await expect(dialog).not.toBeVisible()
   hold = true
   await issue.click()
   await expect.poll(() => pending.length).toBe(1)
-  await dialog.getByRole('button', { name: '关闭此对话框', exact: true }).click()
+  await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
   await expect(dialog).not.toBeVisible()
   await issue.click()
   await expect(dialog.getByText('BATCH-A', { exact: true })).toBeVisible()

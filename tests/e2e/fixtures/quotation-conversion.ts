@@ -2,6 +2,7 @@ import { createApp, defineAsyncComponent, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import language from '@/locales'
 import { store } from '@/store'
+import { useMenuStore } from '@/store/modules/menu'
 import { useUserStore } from '@/store/modules/user'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { setupGlobDirectives } from '@/directives'
@@ -70,6 +71,24 @@ const quotation: ScmSalesDocument = {
   createdAt: '',
   updatedAt: ''
 }
+const query = new URLSearchParams(location.search)
+const quotationTenant = query.get('quotationTenant') ?? quotation.tenantId
+const otherQuotationTenant = query.get('otherQuotationTenant')
+document.documentElement.style.setProperty('--art-full-height', 'calc(100dvh - 32px)')
+
+function openQuotationAction(
+  dialog:
+    { handleOpen: (input: ScmSalesDocument | ScmSalesDocument[]) => Promise<void> } | undefined,
+  record: ScmSalesDocument
+) {
+  const source = { ...record, tenantId: quotationTenant }
+  return dialog?.handleOpen(
+    otherQuotationTenant
+      ? [source, { ...source, id: 'quote-other', tenantId: otherQuotationTenant }]
+      : source
+  )
+}
+
 const app = createApp({
   render: () =>
     h('main', { class: 'art-page-view p-4 h-screen flex flex-col' }, [
@@ -79,9 +98,22 @@ const app = createApp({
           onClick: () => {
             useUserStore(store).setUserInfo({
               userId: 'scope-test-user',
-              tenantId: 'tenant-a',
-              platformSuper: true
+              tenantId: quotationTenant,
+              platformSuper: false
             })
+            useMenuStore(store).setButtonList(
+              [
+                ...[
+                  'View',
+                  'Add',
+                  'Delete',
+                  'GenerateMaterial',
+                  'GenerateWorkOrder',
+                  'GenerateBom'
+                ].map((action) => `ScmSalesQuotationDoc:${action}`),
+                'MdmMaterialArchive:Add'
+              ].map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
+            )
             workspaceVisible.value = true
           }
         },
@@ -279,7 +311,7 @@ const app = createApp({
         'button',
         {
           onClick: () =>
-            bom.value?.handleOpen({
+            openQuotationAction(bom.value, {
               ...quotation,
               status: 'effective',
               lines: [
@@ -303,7 +335,7 @@ const app = createApp({
         'button',
         {
           onClick: () =>
-            material.value?.handleOpen({
+            openQuotationAction(material.value, {
               ...quotation,
               lines: [
                 {
@@ -341,7 +373,7 @@ const app = createApp({
         'button',
         {
           onClick: () =>
-            workOrder.value?.handleOpen({
+            openQuotationAction(workOrder.value, {
               ...quotation,
               status: 'effective',
               lines: [

@@ -19,12 +19,24 @@ const batch = {
     serial_management_enabled: true
   }
 }
-test('办理领料SN数量校验及过账失败重试保留选择', async ({ page }, testInfo) => {
+test('办理领料切换库存来源清空选择，过账失败重试保留选择', async ({ page }, testInfo) => {
   const payloads: Record<string, unknown>[] = []
+  await page.setViewportSize({ width: 390, height: 844 })
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
-  await page.route('**/rest/v1/wms_inventory_batch?*', (route) =>
-    route.fulfill({ json: [batch], headers: { 'content-range': '0-0/1' } })
-  )
+  await page.route('**/rest/v1/wms_inventory_batch?*', (route) => {
+    const { searchParams } = new URL(route.request().url())
+    const availableBatch =
+      searchParams.get('project_id') === 'is.null'
+        ? {
+            ...batch,
+            id: 'public-batch-test',
+            batch_no: 'BATCH-PUBLIC-001',
+            project_id: null,
+            construction_no: null
+          }
+        : batch
+    return route.fulfill({ json: [availableBatch], headers: { 'content-range': '0-0/1' } })
+  })
   await page.route('**/rest/v1/wms_serial_number?*', (route) =>
     route.fulfill({
       json: [1, 2].map((index) => ({
@@ -47,10 +59,41 @@ test('办理领料SN数量校验及过账失败重试保留选择', async ({ pag
   await page.goto('/tests/e2e/fixtures/wms-operation-retry.html')
   await page.getByRole('button', { name: '测试办理领料', exact: true }).click()
   const dialog = page.locator('.el-dialog:visible').first()
-  await dialog.getByPlaceholder('选择来源库存批次').click()
+  const scopeGroup = dialog.getByRole('radiogroup', { name: '库存来源' })
+  const project = scopeGroup.getByRole('radio', { name: '本项目库存' })
+  const publicStock = scopeGroup.getByRole('radio', { name: '公共库存' })
+  const batchTrigger = dialog.getByPlaceholder('选择来源库存批次')
   const picker = page.getByRole('dialog', { name: '选择领料批次' })
-  await picker.getByText('测试序列号物料 · BATCH-TEST-001', { exact: true }).click()
-  await picker.getByRole('button', { name: '确定', exact: true }).click()
+  const projectBatch = picker.getByText('测试序列号物料 · BATCH-TEST-001', { exact: true })
+  const openBatchPicker = async (scope: 'project' | 'public') => {
+    const requested = page.waitForRequest((request) =>
+      new URL(request.url()).pathname.endsWith('/wms_inventory_batch')
+    )
+    await batchTrigger.click()
+    const { searchParams } = new URL((await requested).url())
+    expect(searchParams.get('tenant_id')).toBe('eq.tenant-test')
+    expect(searchParams.get('warehouse_id')).toBe('eq.source-warehouse')
+    expect(searchParams.get('organization_id')).toBe('eq.source-org')
+    expect(searchParams.get('material_id')).toBe('eq.material-test')
+    expect(searchParams.get('project_id')).toBe(scope === 'project' ? 'eq.project-test' : 'is.null')
+    expect(searchParams.get('construction_no')).toBe(
+      scope === 'project' ? 'eq.TEST-SECTION-001' : null
+    )
+  }
+  const selectProjectBatch = async () => {
+    await openBatchPicker('project')
+    await projectBatch.click()
+    await picker.getByRole('button', { name: '确定', exact: true }).click()
+  }
+
+  await expect(project).toBeChecked()
+  await expect(dialog.getByText('公共库存领用后，流水仍关联当前工单与施工号。')).toBeVisible()
+  await scopeGroup.scrollIntoViewIfNeeded()
+  await expect(scopeGroup).toBeInViewport()
+  await expect(dialog.getByRole('button', { name: '确定', exact: true })).toBeInViewport()
+  expect(await dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+  await dialog.screenshot({ path: testInfo.outputPath('issue-stock-source-390.png') })
+  await selectProjectBatch()
   const quantity = dialog.getByRole('spinbutton', { name: /本次领料数量/ })
   await quantity.fill('3')
   await quantity.press('Tab')
@@ -59,6 +102,28 @@ test('办理领料SN数量校验及过账失败重试保留选择', async ({ pag
   await expect(page.getByText('SN 件数必须与本次领料数量一致', { exact: true })).toBeVisible()
   expect(payloads).toHaveLength(0)
   const scan = dialog.getByPlaceholder('扫描当前批次的 SN，回车带入')
+  await scan.fill('SN-POST-1')
+  await scan.press('Enter')
+  await expect(dialog.getByText(/已选 1 \/ 2 件/)).toBeVisible()
+  await scan.fill('SN-POST-2')
+  await scopeGroup.getByText('公共库存', { exact: true }).click()
+  await expect(publicStock).toBeChecked()
+  await expect(quantity).toHaveValue('1.000')
+  await expect(scan).toBeEmpty()
+  await expect(dialog.getByText(/已选 0 \/ 1 件/)).toBeVisible()
+  await expect(batchTrigger).toBeEmpty()
+  expect(payloads).toHaveLength(0)
+  await openBatchPicker('public')
+  await expect(picker.getByText('测试序列号物料 · BATCH-PUBLIC-001', { exact: true })).toBeVisible()
+  await expect(projectBatch).toHaveCount(0)
+  await picker.getByRole('button', { name: '取消', exact: true }).click()
+  await scopeGroup.getByText('本项目库存', { exact: true }).click()
+  await expect(project).toBeChecked()
+  await selectProjectBatch()
+  await quantity.fill('2')
+  await quantity.press('Tab')
+  await expect(quantity).toHaveValue('2.000')
+
   for (const serial of ['SN-POST-1', 'SN-POST-2']) {
     await scan.fill(serial)
     await dialog.getByRole('button', { name: '带入 SN', exact: true }).click()

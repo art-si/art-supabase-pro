@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
+import { gitSubmodulePathPattern, parseGitSubmodulePaths } from './lib/git-submodule-paths.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const manifestPath = resolve(root, 'scripts/cloudbase-modules.json')
@@ -19,18 +20,12 @@ function git(args, cwd = root, stream = false) {
 }
 
 function fromIndex() {
-  return git(['config', '--blob', ':.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'])
-    .split('\n')
-    .map((line) => {
-      const separator = line.indexOf(' ')
-      const key = line.slice(0, separator).replace(/\.path$/, '.url')
-      const path = line.slice(separator + 1).trim()
-      return {
-        path,
-        url: git(['config', '--blob', ':.gitmodules', '--get', key]),
-        ref: git(['rev-parse', `:${path}`])
-      }
-    })
+  const output = git(['config', '--blob', ':.gitmodules', '--get-regexp', gitSubmodulePathPattern])
+  return parseGitSubmodulePaths(output).map(({ name, path }) => ({
+    path,
+    url: git(['config', '--blob', ':.gitmodules', '--get', `submodule.${name}.url`]),
+    ref: git(['rev-parse', `:${path}`])
+  }))
 }
 
 function validate(modules) {

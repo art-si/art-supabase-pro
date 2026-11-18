@@ -11,6 +11,8 @@ import type { ScmPurchaseDocument } from '@scm/api'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
+document.documentElement.style.setProperty('--art-full-height', 'calc(100dvh - 32px)')
+
 const kind =
   new URLSearchParams(location.search).get('kind') === 'receipt_notice'
     ? 'receipt_notice'
@@ -139,11 +141,13 @@ app.use(store)
 app.use(router)
 app.use(language)
 setupGlobDirectives(app)
-useUserStore(store).setUserInfo({
+const user = useUserStore(store)
+user.setUserInfo({
   userId: 'purchase-preview-user',
   tenantId: '11111111-1111-4111-8111-111111111111',
   platformSuper: true
 })
+user.setLoginStatus(true)
 useTenantScopeStore(store).selectedTenantId = '11111111-1111-4111-8111-111111111111'
 if (importMode)
   useTenantScopeStore(store).tenantOptions = [

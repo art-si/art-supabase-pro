@@ -20,6 +20,8 @@ const projectAllowed = ref(false)
 const nativeCalls = ref(0)
 const projectCalls = ref(0)
 const callbackContract = new URLSearchParams(location.search).has('callback-contract')
+const deferConfirm = new URLSearchParams(location.search).has('defer-confirm')
+let finishConfirm: (() => void) | undefined
 const callbackCounts = ref({ open: 0, confirm: 0, close: 0, reset: 0 })
 const callbackApiValid = ref(true)
 type OverlayApi = ArtDialogExpose | ArtDrawerExpose
@@ -32,6 +34,11 @@ const callbackProps = callbackContract
       onOpen: (_data: unknown, api: OverlayApi) => recordCallback('open', api),
       onConfirm: (_data: unknown, api: OverlayApi) => {
         recordCallback('confirm', api)
+        if (deferConfirm) {
+          return new Promise<false>((resolve) => {
+            finishConfirm = () => resolve(false)
+          })
+        }
         return false
       },
       onClose: (_data: unknown, api: OverlayApi) => {
@@ -61,6 +68,22 @@ const onClose = () => {
   projectCalls.value += 1
   return projectAllowed.value
 }
+const deferredConfirmButton = () =>
+  deferConfirm
+    ? [
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () => {
+              finishConfirm?.()
+              finishConfirm = undefined
+            }
+          },
+          '返回确认失败'
+        )
+      ]
+    : []
 const app = createApp({
   render: () =>
     h('main', { class: 'p-4' }, [
@@ -173,6 +196,7 @@ const app = createApp({
         {
           default: () => [
             h('p', '测试草稿保持完整'),
+            ...deferredConfirmButton(),
             ...(callbackContract
               ? [h('button', { onClick: () => dialog.value?.handleReset() }, '重置回调检查')]
               : []),
@@ -214,6 +238,7 @@ const app = createApp({
         {
           default: () => [
             h('p', '测试草稿保持完整'),
+            ...deferredConfirmButton(),
             ...(callbackContract
               ? [h('button', { onClick: () => drawer.value?.handleReset() }, '重置回调检查')]
               : []),

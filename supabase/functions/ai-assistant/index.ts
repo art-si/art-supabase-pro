@@ -12,6 +12,11 @@ import {
 } from '../_shared/ai-provider-endpoints.ts'
 import { loadPublishedAiPrompt } from '../_shared/ai-prompt-template.ts'
 import { detectTransportAnomalies } from '../_shared/transport-anomaly-rules.ts'
+import {
+  DRIVER_WORKFLOW_CONTEXT,
+  DRIVER_WORKFLOW_PROMPT,
+  isVerifiedAssistantDriver
+} from './driver-workflow.ts'
 
 const BUSINESS_ASSISTANT_DEFAULT_PROMPT = [
   '你是 Art Supabase Pro 中的业务副驾驶，覆盖运输与 SMIS 安全管理。',
@@ -46,6 +51,7 @@ interface AssistantContext {
   pageTitle?: string
   recordId?: string
   query?: Record<string, unknown>
+  assistantScope?: typeof DRIVER_WORKFLOW_CONTEXT.assistantScope
 }
 
 interface AssistantRequest {
@@ -751,7 +757,8 @@ async function requestProvider(
   endpoint: AiProviderEndpoint,
   messages: ProviderMessage[],
   allowTools: boolean,
-  config: AiRuntimeConfig
+  config: AiRuntimeConfig,
+  driverWorkflow = false
 ): Promise<ProviderResult> {
   const models = [...new Set([endpoint.model, endpoint.fallbackModel].filter(Boolean))] as string[]
   let lastError: Error = new Error('AI provider request failed')
@@ -764,6 +771,15 @@ async function requestProvider(
         max_tokens: config.maxTokens,
         stream: false,
         messages
+      }
+      if (
+        driverWorkflow &&
+        endpoint.id === 'openai_compatible' &&
+        model === 'nvidia/nemotron-3.5-lightning-30b-a3b' &&
+        new URL(endpoint.baseUrl).hostname === 'integrate.api.nvidia.com'
+      ) {
+        // NVIDIA counts thinking tokens in max_tokens, which can leave no visible answer.
+        requestBody.chat_template_kwargs = { enable_thinking: false }
       }
       if (allowTools) {
         Object.assign(requestBody, {
@@ -797,6 +813,10 @@ async function requestProvider(
 
         const payload = await response.json()
         const message = payload?.choices?.[0]?.message as ProviderMessage | undefined
+        // A reasoning-only reply is not a valid answer. Keep it out of the chat and try fallback.
+        if (driverWorkflow && !stringValue(message?.content)) {
+          throw new AiProviderRequestError(502)
+        }
         if (!message) throw new Error('AI provider returned an empty response')
         return { message, usage: payload?.usage ?? {}, model }
       } catch (error) {
@@ -1195,12 +1215,27 @@ Deno.serve(async (req) => {
     const providerEndpoints = resolveAiProviderEndpoints(runtimeConfig, {
       openAiModel: Deno.env.get('AI_ASSISTANT_OPENAI_MODEL')
     })
-    const publishedPrompt = await loadPublishedAiPrompt(
-      admin,
-      appUser.tenant_id,
-      'business_assistant',
-      { content: BUSINESS_ASSISTANT_DEFAULT_PROMPT, version: runtimeConfig.promptVersion }
-    )
+    const requestedContext: AssistantContext =
+      body.context && typeof body.context === 'object' ? { ...body.context } : {}
+    const driverWorkflow = await isVerifiedAssistantDriver(admin, user.id, appUser.tenant_id)
+    if (
+      !driverWorkflow &&
+      (requestedContext.routeName === DRIVER_WORKFLOW_CONTEXT.routeName ||
+        requestedContext.routePath === DRIVER_WORKFLOW_CONTEXT.routePath)
+    ) {
+      return json({ code: 'forbidden', message: '当前账号不是启用的司机账号' }, 403)
+    }
+    // The client may not claim the server-owned conversation scope.
+    delete requestedContext.assistantScope
+    const context = driverWorkflow ? DRIVER_WORKFLOW_CONTEXT : requestedContext
+    const publishedPrompt = driverWorkflow
+      ? { content: DRIVER_WORKFLOW_PROMPT, version: 'driver-workflow-v1', source: 'driver_workflow_help' }
+      : await loadPublishedAiPrompt(
+          admin,
+          appUser.tenant_id,
+          'business_assistant',
+          { content: BUSINESS_ASSISTANT_DEFAULT_PROMPT, version: runtimeConfig.promptVersion }
+        )
 
     const perMinute = runtimeConfig.rateLimitPerMinute
     const perDay = runtimeConfig.rateLimitPerDay
@@ -1222,20 +1257,59 @@ Deno.serve(async (req) => {
       return json({ code: 'rate_limited', message: 'AI 调用次数已达到限额，请稍后再试' }, 429)
     }
 
-    const context: AssistantContext =
-      body.context && typeof body.context === 'object' ? body.context : {}
-    const directTool = resolveDirectTool(latestUserMessage.content, context)
+    const directTool = driverWorkflow ? null : resolveDirectTool(latestUserMessage.content, context)
+    let providerHistory: AssistantMessage[] = driverWorkflow ? [latestUserMessage] : messages
     let conversationId = stringValue(body.conversationId)
     if (conversationId) {
       const { data: ownedConversation } = await admin
         .from('ai_conversation')
-        .select('id')
+        .select('id,context')
         .eq('id', conversationId)
         .eq('auth_user_id', user.id)
         .eq('tenant_id', appUser.tenant_id)
         .maybeSingle()
-      if (!ownedConversation) {
+      if (
+        !ownedConversation ||
+        (driverWorkflow &&
+          ownedConversation.context?.assistantScope !== DRIVER_WORKFLOW_CONTEXT.assistantScope)
+      ) {
         return json({ code: 'not_found', message: 'Conversation was not found' }, 404)
+      }
+      if (driverWorkflow) {
+        // Older clients could persist arbitrary page metadata. Only a server-originated
+        // workflow run establishes that this conversation contains safe driver history.
+        const { data: workflowRun, error: workflowError } = await admin
+          .from('ai_run')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .eq('auth_user_id', user.id)
+          .eq('tenant_id', appUser.tenant_id)
+          .eq('feature', 'business_assistant')
+          .eq('status', 'succeeded')
+          .eq('metadata->>promptSource', 'driver_workflow_help')
+          .limit(1)
+          .maybeSingle()
+        if (workflowError) throw workflowError
+        if (!workflowRun) {
+          return json({ code: 'not_found', message: 'Conversation was not found' }, 404)
+        }
+        // Do not relay client-supplied history, including responses from before the scope change.
+        const { data: previous, error: historyError } = await admin
+          .from('ai_message')
+          .select('role,content')
+          .eq('conversation_id', conversationId)
+          .eq('auth_user_id', user.id)
+          .eq('tenant_id', appUser.tenant_id)
+          .in('role', ['user', 'assistant'])
+          .order('id', { ascending: false })
+          .limit(MAX_HISTORY_MESSAGES - 1)
+        if (historyError) throw historyError
+        providerHistory = (previous ?? []).reverse().flatMap(({ role, content }) =>
+          role === 'user' || role === 'assistant'
+            ? [{ role, content: stringValue(content).slice(0, MAX_MESSAGE_LENGTH) }]
+            : []
+        )
+        providerHistory.push(latestUserMessage)
       }
       await admin
         .from('ai_conversation')
@@ -1391,12 +1465,14 @@ Deno.serve(async (req) => {
     ].join('\n')
     const providerMessages: ProviderMessage[] = [
       { role: 'system', content: systemPrompt },
-      ...messages.map((item) => ({ role: item.role, content: item.content }))
+      ...providerHistory.map((item) => ({ role: item.role, content: item.content }))
     ]
 
     let totalInputTokens = 0
     let totalOutputTokens = 0
-    const initialProviderResponse = await requestAiProviderWithFallback(providerEndpoints, (endpoint) => requestProvider(endpoint, providerMessages, true, runtimeConfig))
+    const initialProviderResponse = await requestAiProviderWithFallback(providerEndpoints, (endpoint) =>
+      requestProvider(endpoint, providerMessages, !driverWorkflow, runtimeConfig, driverWorkflow)
+    )
     const activeProvider = initialProviderResponse.endpoint
     const firstResponse = initialProviderResponse.result
     resolvedRunModel = firstResponse.model
@@ -1405,7 +1481,9 @@ Deno.serve(async (req) => {
 
     let assistantMessage = firstResponse.message
     const executedTools: Array<Record<string, unknown>> = []
-    const requestedToolCalls = (firstResponse.message.tool_calls ?? []).slice(0, MAX_TOOL_CALLS)
+    const requestedToolCalls = driverWorkflow
+      ? []
+      : (firstResponse.message.tool_calls ?? []).slice(0, MAX_TOOL_CALLS)
     if (requestedToolCalls.length) {
       providerMessages.push(firstResponse.message)
       for (const toolCall of requestedToolCalls) {

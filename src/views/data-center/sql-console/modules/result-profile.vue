@@ -140,7 +140,7 @@
         :label-width="76"
         class="px-0! pt-0!"
       />
-      <ElTabs v-if="showProfileTabs" v-model="profileTab">
+      <ElTabs v-if="showProfileTabs" v-model="profileTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane label="统计概览" name="overview" :lazy="false">
           <ReuseOverview />
         </ElTabPane>

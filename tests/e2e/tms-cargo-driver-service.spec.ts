@@ -155,6 +155,49 @@ test('货物编辑以 MDM 单位名称展示持久化单位代码', async ({ pag
   await page.screenshot({ path: testInfo.outputPath('cargo-edit-unit-name.png'), fullPage: true })
 })
 
+test('司机邀请仅在所选操作显示加载状态', async ({ page }, info) => {
+  await setup(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const invitation = {
+    id: driverId,
+    phone: '13800000001',
+    driverOwnership: 'self',
+    status: 'pending'
+  }
+  const requests: unknown[] = []
+  const pending = Promise.withResolvers<void>()
+  await page.route('**/rest/v1/rpc/tms_create_driver_invitation_secure', async (route) => {
+    requests.push(route.request().postDataJSON())
+    await pending.promise
+    await route.fulfill({ json: invitation })
+  })
+  await page.route('**/rest/v1/rpc/tms_get_driver_invitation_secure', (route) =>
+    route.fulfill({ json: invitation })
+  )
+  await page.goto('/tests/e2e/fixtures/tms-cargo-driver-service.html?kind=driver-list')
+  await page.getByRole('button', { name: '邀请司机', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '邀请司机', exact: true })
+  await dialog.getByRole('textbox', { name: /司机手机号$/ }).fill(invitation.phone)
+  const request = dialog.getByRole('button', { name: '立即添加', exact: true })
+  const profile = dialog.getByRole('button', { name: '添加并补充认证资料', exact: true })
+  await request.click()
+  try {
+    await expect.poll(() => requests.length).toBe(1)
+    await expect(request).toHaveClass(/is-loading/)
+    await expect(profile).not.toHaveClass(/is-loading/)
+    await expect(profile).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeDisabled()
+    await dialog.screenshot({ path: info.outputPath('driver-invitation-pending-390.png') })
+  } finally {
+    pending.resolve()
+  }
+  await expect(page.getByRole('dialog', { name: '邀请详情', exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '新增司机', exact: true })).toHaveCount(0)
+  expect(requests).toEqual([
+    expect.objectContaining({ p_phone: invitation.phone, p_driver_ownership: 'self' })
+  ])
+})
+
 test('司机姓名查看沿用编辑弹窗布局并禁止写入', async ({ page }, testInfo) => {
   await setup(page)
   await page.route('**/rest/v1/rpc/tms_get_driver_secure', (route) =>

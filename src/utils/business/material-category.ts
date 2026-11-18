@@ -16,7 +16,7 @@ export function buildMaterialCategoryNavigation(
     filterKey: 'categoryId',
     allLabel: '全部分类',
     allDescription: `${categories.length} 个分类节点`,
-    searchPlaceholder: '搜索分类名称或编码',
+    searchPlaceholder: '名称或编码',
     emptyText: '暂无物料分类'
   }
 }

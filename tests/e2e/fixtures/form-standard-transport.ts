@@ -249,6 +249,8 @@ const settings = useSettingStore(store)
 const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
 settings.setGlobalTheme(theme, theme)
 initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
 await router.push('/')
 await router.isReady()
 app.mount('#app')

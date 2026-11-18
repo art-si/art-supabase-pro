@@ -421,6 +421,15 @@
     },
     waybill: createWaybillMeta('关联运单', 40),
     driver_waybill: createWaybillMeta('司机关联运单', 10),
+    driver_mobile_account: {
+      ...referenceNavigation.driver_mobile_account,
+      label: '司机端登录账号',
+      unit: '个',
+      order: 11,
+      statusDictCode: 'status',
+      description: '请先在用户管理中更换或解除司机关联，再重试删除；业务历史会保留。',
+      actionLabel: '管理客户端关联'
+    },
     cargo_waybill: {
       ...createWaybillMeta('货物关联运单', 10),
       routeName: 'TmsWaybillDetail',

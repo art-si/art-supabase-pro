@@ -257,7 +257,7 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type { ColumnOption } from '@/types'
   import {
-    documentGroupSpan,
+    createDocumentGroupSpan,
     groupDocumentLines,
     loadAllLinePages
   } from '@/utils/business/document-detail-list'
@@ -351,22 +351,11 @@
     'stockStatus',
     'gift'
   ])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as WmsPurchaseListRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly WmsPurchaseListRow[] | undefined,
+    lineProperties
+  )
   const drawerRef = ref<InstanceType<typeof WmsPurchaseDocumentDrawer>>()
   const printSheetRef = ref<InstanceType<typeof PurchasePrintSheet>>()
   const printing = ref(false)

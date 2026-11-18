@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
@@ -62,8 +63,8 @@ const dictionaryRows = Object.entries(dictionary).flatMap(([code, options]) =>
   }))
 )
 
-async function mockRequests(page: Page): Promise<void> {
-  await prepareIsolatedSession(page)
+async function mockRequests(page: Page, { ordinary = false } = {}): Promise<void> {
+  await prepareIsolatedSession(page, ordinary ? { tenantId, platformSuper: false } : {})
   await page.route('**/rest/v1/**', async (route) => {
     const url = new URL(route.request().url())
     const table = url.pathname.split('/').pop()
@@ -320,6 +321,30 @@ async function open(page: Page, feature: string, extra = ''): Promise<Locator> {
   return dialog
 }
 
+async function expectSectionCardFormAlignment(
+  card: Locator,
+  header: Locator,
+  control: Locator
+): Promise<void> {
+  const [surface, heading, divider, tabs, input] = await Promise.all([
+    card.boundingBox(),
+    header.locator('.art-section-title').boundingBox(),
+    header.boundingBox(),
+    card.locator('.art-form__tabs').boundingBox(),
+    control.boundingBox()
+  ])
+  if (!surface || !heading || !divider || !tabs || !input)
+    throw new Error('表单卡片缺少标题、页签或输入框')
+  expect(Math.abs(divider.x - surface.x - 1)).toBeLessThanOrEqual(1)
+  expect(Math.abs(divider.x + divider.width - (surface.x + surface.width - 1))).toBeLessThanOrEqual(
+    1
+  )
+  expect(tabs.x - surface.x).toBeLessThanOrEqual(18)
+  expect(tabs.x).toBeGreaterThan(surface.x)
+  expect(Math.abs(heading.x - tabs.x)).toBeLessThanOrEqual(1)
+  expect(Math.abs(input.x - tabs.x)).toBeLessThanOrEqual(1)
+}
+
 const cases = [
   { feature: 'organization', label: '组织名称', value: '验收组织', tab: '组织层级' },
   { feature: 'menu', label: '菜单名称', value: '验收菜单', tab: '基础定义' },
@@ -333,6 +358,7 @@ for (const item of cases) {
   test(`真实编辑入口 ${item.feature}：非当前页校验、聚焦、纠正保存`, async ({ page }, info) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
+    if (item.feature === 'param') await page.setViewportSize({ width: 1440, height: 900 })
     const dialog = await open(page, item.feature)
     await dialog.getByRole('tab', { name: item.tab, exact: true }).click()
     const control = input(dialog, item.label)
@@ -364,6 +390,18 @@ for (const item of cases) {
       path: info.outputPath(`${item.feature}-edit.png`),
       animations: 'disabled'
     })
+    if (item.feature === 'param') {
+      const card = dialog.locator('.system-param-dialog__form')
+      const header = card.locator('.system-param-dialog__section-head')
+      const parameterName = field(dialog, '参数名称').locator('.el-input')
+      const preview = dialog.locator('.system-param-dialog__preview')
+      await expect(preview.getByText('配置预览', { exact: true })).toBeVisible()
+      await expectSectionCardFormAlignment(card, header, parameterName)
+      await page.setViewportSize({ width: 390, height: 844 })
+      await expect(preview).toBeHidden()
+      await expectSectionCardFormAlignment(card, header, parameterName)
+      await dialog.screenshot({ path: info.outputPath('param-edit-390.png') })
+    }
     expect(errors).toEqual([])
   })
 }
@@ -411,6 +449,8 @@ for (const feature of ['user-detail', 'menu-detail']) {
       await expect(root.locator('.el-tab-pane:visible .art-descriptions')).toBeVisible()
       await expect(root.locator('.el-tab-pane')).toHaveCount(paneCount)
     }
+    await expect(root.getByText('2026-10-31 08:09:10', { exact: true })).toBeAttached()
+    await expect(root.getByText('2026-11-01 09:10:11', { exact: true })).toBeAttached()
     await page.screenshot({
       path: info.outputPath(`${feature}-desktop.png`),
       animations: 'disabled'
@@ -451,6 +491,102 @@ for (const feature of ['user-detail', 'menu-detail']) {
     await expect(root).not.toBeVisible()
     await page.getByRole('button', { name: '重新打开验收入口' }).click()
     await expect(root.getByRole('tab').first()).toHaveAttribute('aria-selected', 'true')
+    if (feature === 'user-detail') {
+      const writes: string[] = []
+      page.on('request', (request) => {
+        if (
+          request.method() !== 'GET' &&
+          /\/(?:rest|functions)\/v1\//.test(request.url()) &&
+          !/\/rpc\/(?:current_is_super|material_unit_compatibility_options)$/.test(request.url())
+        )
+          writes.push(request.url())
+      })
+      const statusItems = [
+        { code: 'status', value: '1', label: '启用配置', status: '1', tag_type: 'warning' },
+        { code: 'status', value: '0', label: '停用历史', status: '0', tag_type: 'danger' },
+        {
+          code: 'hrEmploymentStatus',
+          value: 'active',
+          label: '在职',
+          status: '0',
+          tag_type: 'success'
+        }
+      ].map(({ code, ...item }) => ({
+        ...item,
+        id: `${code}-${item.value}`,
+        dict_type_table: { code, name: code }
+      }))
+      for (const variant of [
+        { value: '1', label: '启用配置', tone: 'warning', width: 1440 },
+        { value: '0', label: '停用历史', tone: 'danger', width: 1440 },
+        { value: '', label: '--', width: 390 },
+        { value: 'legacy-user-status', label: '待核对', width: 390 }
+      ]) {
+        await mockRequests(page, { ordinary: true })
+        const appearance = {
+          theme: variant.width === 390 ? ('dark' as const) : ('light' as const),
+          boxBorderMode: variant.width !== 390
+        }
+        await prepareAppearance(page, appearance)
+        await page.setViewportSize({ width: variant.width, height: 844 })
+        const displayReads: string[] = []
+        let dictionaryPreloaded = false
+        await page.route('**/rest/v1/sys_dictionary?*', (route) => {
+          const url = new URL(route.request().url())
+          const code = url.searchParams.get('dict_type_table.code')?.replace(/^eq\./, '')
+          const value = url.searchParams.get('value')?.replace(/^eq\./, '')
+          const rows = [
+            ...dictionaryRows.filter((item) => item.dict_type_table.code !== 'status'),
+            ...statusItems
+          ].filter((item) => !code || item.dict_type_table.code === code)
+          if (value !== undefined) {
+            expect(url.searchParams.has('status')).toBe(false)
+            displayReads.push(`${code}:${value}`)
+          } else {
+            expect(url.searchParams.get('status')).toBe('eq.1')
+            if (!code) dictionaryPreloaded = true
+          }
+          return route.fulfill({
+            json: rows.filter((item) =>
+              value === undefined ? item.status === '1' : item.value === value
+            )
+          })
+        })
+        const query = new URLSearchParams({
+          feature,
+          role: 'ordinary',
+          userStatus: variant.value,
+          employmentStatus: 'active',
+          theme: appearance.theme
+        })
+        await page.goto(`/tests/e2e/fixtures/form-standard-main.html?${query}`)
+        await assertAppearance(page, appearance)
+        await expect(page.locator('html')).toHaveAttribute('data-ui-scope', 'workspace')
+        const detail = page.getByRole('dialog', { name: '用户详情', exact: true })
+        await expect(detail.getByRole('heading', { name: '验收用户', exact: true })).toBeVisible()
+        expect(dictionaryPreloaded).toBe(true)
+        const status = detail.locator('.user-detail__title-row .el-tag').first()
+        await detail.getByRole('tab', { name: '员工档案关联', exact: true }).click()
+        const employment = detail
+          .getByText('在职状态', { exact: true })
+          .locator('xpath=following-sibling::*[1]')
+        await expect.soft(employment).toHaveText('在职')
+        expect.soft((await status.innerText()).trim()).toBe(variant.label)
+        if ('tone' in variant)
+          expect.soft(await status.getAttribute('class')).toContain(`el-tag--${variant.tone}`)
+        if (!['1', '0'].includes(variant.value))
+          expect.soft(await status.innerText()).not.toContain('停用')
+        expect.soft(await detail.innerText()).not.toContain('legacy-user-status')
+        expect.soft(displayReads).toContain('hrEmploymentStatus:active')
+        if (variant.value === '0') expect.soft(displayReads).toContain('status:0')
+        await expect(page.getByLabel('保存次数')).toHaveText('0')
+        await detail.screenshot({
+          path: info.outputPath(`user-status-${variant.value || 'empty'}-${variant.width}.png`),
+          animations: 'disabled'
+        })
+      }
+      expect(writes).toEqual([])
+    }
   })
 }
 
@@ -569,7 +705,22 @@ test('字典类型短模式同屏保留归属、级联与展示，校验后可�
 })
 
 test('编号规则跨页校验模板、聚焦修正并按目标租户提交', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   const dialog = await open(page, 'number')
+  const formCard = dialog.locator('.number-rule-create__form')
+  const formTabs = formCard.locator('.art-form__tabs')
+  const preview = dialog.locator('.number-rule-create__preview')
+  await expect(formCard.getByText('批量配置租户规则', { exact: true })).toBeVisible()
+  await expect(formCard).toHaveCSS('border-top-width', '1px')
+  await expect(formTabs).toHaveCSS('border-top-width', '0px')
+  await expect(formTabs).toHaveCSS('padding-inline-start', '0px')
+  await expect(formTabs).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(preview.getByText('配置预览', { exact: true })).toBeVisible()
+  await expect(preview).toHaveCSS('border-top-width', '1px')
+  const formBounds = (await formCard.boundingBox())!
+  const previewBounds = (await preview.boundingBox())!
+  expect(previewBounds.x).toBeGreaterThanOrEqual(formBounds.x + formBounds.width)
+
   await field(dialog, '所属菜单').getByRole('combobox').click()
   await page.getByRole('treeitem', { name: '验收菜单', exact: true }).click()
   await field(dialog, '编号功能').getByRole('combobox').click()
@@ -585,7 +736,11 @@ test('编号规则跨页校验模板、聚焦修正并按目标租户提交', as
   )
   await expect(template).toBeFocused()
   await expect(field(dialog, '编号模板')).toHaveClass(/is-error/)
+  const header = formCard.locator('.number-rule-create__header')
+  const templateControl = field(dialog, '编号模板').locator('.el-input')
+  await expectSectionCardFormAlignment(formCard, header, templateControl)
   await template.fill('FX{YYYYMM}-{SEQ:3}')
+  await expect(preview.locator('code')).toHaveText(/^FX\d{6}-\d{3}$/)
   const request = page.waitForRequest((request) =>
     request.url().includes('/configure_document_number_rule_for_tenants')
   )
@@ -599,6 +754,22 @@ test('编号规则跨页校验模板、聚焦修正并按目标租户提交', as
   await expect(page.getByLabel('保存次数')).toHaveText('1')
   await page.getByRole('button', { name: '重新打开验收入口' }).click()
   await page.screenshot({ path: info.outputPath('number-rule-tabs.png') })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.locator('html').evaluate((element) => {
+    element.classList.add('dark')
+    element.dataset.uiScope = 'workspace'
+    element.dataset.boxMode = 'shadow-mode'
+  })
+  await expect(preview).toBeHidden()
+  await expect(formCard).not.toHaveCSS('box-shadow', 'none')
+  await expect(formTabs).toHaveCSS('box-shadow', 'none')
+  await expect(formTabs).toHaveCSS('padding-inline-start', '0px')
+  await dialog.getByRole('tab', { name: '生成策略', exact: true }).click()
+  await expect(template).toBeVisible()
+  await expectSectionCardFormAlignment(formCard, header, templateControl)
+  expect(await formCard.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
+  await dialog.screenshot({ path: info.outputPath('number-rule-tabs-dark-390.png') })
 })
 
 test('围栏少字段配置保持单页，修改后按原权限发布', async ({ page }, info) => {

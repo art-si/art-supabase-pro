@@ -100,6 +100,54 @@ test('共享表格分页随窗口宽度更新且保留当前页', async ({ page 
   await expect(dialog.getByText('选择项 1', { exact: true })).toBeVisible()
 })
 
+test('共享表格当前页的键盘焦点与选中样式可区分', async ({ page }, testInfo) => {
+  await page.goto('/tests/e2e/fixtures/data-select-loading.html?table')
+  const pagination = page.locator('main .custom-pagination .el-pagination')
+  const pageOne = pagination.getByRole('listitem', { name: 'page 1', exact: true })
+  const pageTwo = pagination.getByRole('listitem', { name: 'page 2', exact: true })
+  const measurePageOne = () =>
+    pageOne.evaluate((element) => {
+      const { backgroundColor, outlineStyle, outlineWidth, outlineOffset } =
+        getComputedStyle(element)
+      return { backgroundColor, outlineStyle, outlineWidth, outlineOffset }
+    })
+  await expect(pageOne).toHaveAttribute('aria-current', 'true')
+
+  for (const appearance of [
+    { width: 390, workspace: false, dark: false, boxMode: 'border-mode' },
+    { width: 1440, workspace: true, dark: true, boxMode: 'shadow-mode' }
+  ]) {
+    await page.setViewportSize({ width: appearance.width, height: 844 })
+    await page.evaluate(({ workspace, dark, boxMode }) => {
+      const root = document.documentElement
+      if (workspace) root.dataset.uiScope = 'workspace'
+      root.classList.toggle('dark', dark)
+      root.dataset.boxMode = boxMode
+    }, appearance)
+    await pageTwo.focus()
+    const selected = await measurePageOne()
+    await page.keyboard.press('Shift+Tab')
+    await expect(pageOne).toBeFocused()
+    expect(await pageOne.evaluate((element) => element.matches(':focus-visible'))).toBe(true)
+    const focused = await measurePageOne()
+    expect(focused.backgroundColor).toBe(selected.backgroundColor)
+    expect(focused, `${appearance.width}px 当前页应保留独立焦点轮廓或描边`).not.toEqual(selected)
+    expect(focused.outlineStyle).not.toBe('none')
+    expect(parseFloat(focused.outlineOffset)).toBeGreaterThan(0)
+    await page.screenshot({
+      path: testInfo.outputPath(`pagination-active-focus-${appearance.width}.png`),
+      animations: 'disabled'
+    })
+  }
+
+  await page.keyboard.press('Tab')
+  await expect(pageTwo).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(pageTwo).toHaveAttribute('aria-current', 'true')
+  await expect(pageTwo).toBeFocused()
+  await expect(page.getByText('选择项 11', { exact: true })).toBeVisible()
+})
+
 test('共享表格显式分页配置优先且缩放后不被默认值覆盖', async ({ page }) => {
   await page.goto('/tests/e2e/fixtures/data-select-loading.html?table=custom')
   const pagination = page.locator('.el-pagination')

@@ -65,6 +65,7 @@ export function useProjectPlannerWorkflow(options: UseProjectPlannerWorkflowOpti
   const expandedTracked = new Set<string>()
   let activeStateRequest = 0
   let activeLoadingRequest = 0
+  let lastWriteSyncRequest = 0
 
   const canManageWorkflow = computed(
     () => capabilities.value?.access?.canManageWorkflow ?? options.isPlatformSuper.value
@@ -97,6 +98,7 @@ export function useProjectPlannerWorkflow(options: UseProjectPlannerWorkflowOpti
 
   async function syncStateSilently(): Promise<void> {
     const requestId = ++activeStateRequest
+    lastWriteSyncRequest = requestId
     try {
       const next = await fetchAiPlannerState()
       if (requestId === activeStateRequest) assignState(next)
@@ -143,14 +145,18 @@ export function useProjectPlannerWorkflow(options: UseProjectPlannerWorkflowOpti
     loading.generate = true
     try {
       const next = await generateAiSuggestions(controls)
-      if (requestId !== activeStateRequest) return false
-      assignState(next)
+      if (lastWriteSyncRequest > requestId) {
+        // A suggestion changed during generation; read both committed writes together.
+        await syncStateSilently()
+      } else {
+        // A read started before this write completed may still carry the old batch.
+        ++activeStateRequest
+        assignState(next)
+      }
       ElMessage.success('新一批项目建议已生成')
       return true
     } catch (error) {
-      if (requestId === activeStateRequest) {
-        ElMessage.error(getFriendlySupabaseErrorMessage(error, '生成建议失败，请稍后重试'))
-      }
+      ElMessage.error(getFriendlySupabaseErrorMessage(error, '生成建议失败，请稍后重试'))
       return false
     } finally {
       loading.generate = false

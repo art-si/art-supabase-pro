@@ -10,11 +10,13 @@ import { setupGlobDirectives } from '@/directives'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
-useUserStore(store).setUserInfo({
+const user = useUserStore(store)
+user.setUserInfo({
   userId: 'agreement-label-fixture',
   tenantId: '11111111-1111-4111-8111-111111111111',
   platformSuper: false
 })
+user.setLoginStatus(true)
 useMenuStore(store).setButtonList(
   ['View', 'Add', 'Edit', 'Export'].map((action) => ({
     name: `TmsTransportAgreement:${action}`,
@@ -40,7 +42,10 @@ const app = createApp({
         'main',
         {
           class: 'art-page-view h-screen p-4',
-          style: { background: 'var(--el-bg-color-page)' }
+          style: {
+            '--art-full-height': 'calc(100dvh - 2 * var(--art-space-4))',
+            background: 'var(--el-bg-color-page)'
+          }
         },
         [h(RouterView)]
       )

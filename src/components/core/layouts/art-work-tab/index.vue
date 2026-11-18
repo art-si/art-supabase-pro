@@ -2,97 +2,95 @@
 <template>
   <div
     v-if="showWorkTab"
-    class="art-work-tab box-border flex-b w-full select-none"
+    class="art-work-tab box-border flex-b w-full gap-1.5 select-none"
     :class="{
       'art-work-tab--default': tabStyle === 'tab-default',
       'art-work-tab--card': tabStyle === 'tab-card',
       'art-work-tab--google': tabStyle === 'tab-google'
     }"
   >
-    <button
-      v-show="hasOverflow"
-      type="button"
-      class="art-work-tab__scroll-button art-card-xs"
-      :disabled="!canScrollLeft"
-      aria-label="向左滚动已打开页面"
-      @click="scrollTabs('left')"
-    >
-      <ArtSvgIcon icon="ri:arrow-left-s-line" />
-    </button>
-
-    <div class="art-work-tab__viewport min-w-0 flex-1" ref="scrollRef">
-      <ul
-        class="float-left whitespace-nowrap !bg-transparent flex"
-        role="tablist"
-        aria-label="已打开页面"
-        :class="[tabStyle === 'tab-google' ? 'px-4' : '']"
-        ref="tabsRef"
-        :style="{
-          transform: `translateX(${scrollState.translateX}px)`,
-          transition: `${scrollState.transition}`
-        }"
+    <div ref="scrollAreaRef" class="flex min-w-0 flex-1 gap-1.5">
+      <button
+        v-show="hasOverflow"
+        type="button"
+        class="art-work-tab__scroll-button art-card-xs"
+        :disabled="!canScrollLeft"
+        aria-label="向左滚动已打开页面"
+        @click="scrollTabs('left')"
       >
-        <li
-          class="art-card-xs inline-flex flex-cc h-8 mr-1.5 text-xs c-p hover:text-theme group"
-          :class="[
-            item.path === activeTab ? 'activ-tab !text-theme' : 'text-g-600 dark:text-g-800',
-            tabStyle === 'tab-google' ? 'google-tab relative !h-8 !leading-8' : ''
-          ]"
-          :style="{
-            padding: item.fixedTab ? '0 10px' : '0 8px 0 12px'
+        <ArtSvgIcon icon="ri:arrow-left-s-line" />
+      </button>
+
+      <div class="art-work-tab__viewport min-w-0 flex-1" ref="scrollRef">
+        <ul
+          class="art-work-tab__track relative flex w-max whitespace-nowrap !bg-transparent"
+          role="tablist"
+          aria-label="已打开页面"
+          :class="{
+            'px-4': tabStyle === 'tab-google',
+            'art-work-tab__track--stepping': isArrowScroll
           }"
-          v-for="(item, index) in list"
-          :key="item.path"
-          :ref="item.path"
-          :id="`scroll-li-${index}`"
-          role="tab"
-          data-ui-audit-allow="aria-tab"
-          :aria-selected="item.path === activeTab"
-          :tabindex="item.path === activeTab ? 0 : -1"
-          @click="clickTab(item)"
-          @keydown="handleTabKeydown($event, index)"
-          @keydown.enter.prevent="clickTab(item)"
-          @keydown.space.prevent="clickTab(item)"
-          @contextmenu.prevent="(e: MouseEvent) => showMenu(e, item.path)"
+          ref="tabsRef"
+          :style="{ transform: `translateX(${scrollOffset}px)` }"
         >
-          <span class="art-icon-label art-icon-label--compact">
-            <ArtSvgIcon
-              v-if="item.icon"
-              :icon="item.icon"
-              class="group-hover:text-theme"
-              :class="item.path === activeTab ? 'text-theme' : 'text-g-600'"
-            />
-            <span class="work-tab-title" :title="item.customTitle || formatMenuTitle(item.title)">
-              {{ item.customTitle || formatMenuTitle(item.title) }}
+          <li
+            class="art-card-xs inline-flex flex-cc h-8 shrink-0 mr-1.5 text-xs c-p hover:text-theme group"
+            :class="[
+              item.path === activeTab ? 'activ-tab !text-theme' : 'text-g-600 dark:text-g-800',
+              tabStyle === 'tab-google' ? 'google-tab relative !h-8 !leading-8' : ''
+            ]"
+            :style="{
+              padding: item.fixedTab ? '0 10px' : '0 8px 0 12px'
+            }"
+            v-for="(item, index) in list"
+            :key="item.path"
+            role="tab"
+            data-ui-audit-allow="aria-tab"
+            :aria-selected="item.path === activeTab"
+            :tabindex="item.path === activeTab ? 0 : -1"
+            @click="clickTab(item)"
+            @keydown="handleTabKeydown($event, index)"
+            @contextmenu.prevent="(e: MouseEvent) => showMenu(e, item.path)"
+          >
+            <span class="art-icon-label art-icon-label--compact">
+              <ArtSvgIcon
+                v-if="item.icon"
+                :icon="item.icon"
+                class="group-hover:text-theme"
+                :class="item.path === activeTab ? 'text-theme' : 'text-g-600'"
+              />
+              <span class="work-tab-title" :title="item.customTitle || formatMenuTitle(item.title)">
+                {{ item.customTitle || formatMenuTitle(item.title) }}
+              </span>
             </span>
-          </span>
-          <ArtIconButton
-            v-if="list.length > 1 && !item.fixedTab"
-            class="relative ml-0.5 size-5! text-[10px]!"
-            icon="ri:close-large-fill"
-            :label="`关闭${item.customTitle || formatMenuTitle(item.title)}`"
-            @click.stop="closeWorktab('current', item.path)"
-          />
-          <div
-            v-if="tabStyle === 'tab-google'"
-            class="line absolute top-0 bottom-0 left-0 w-px h-4 my-auto bg-g-400 transition-opacity duration-150"
-          />
-        </li>
-      </ul>
+            <ArtIconButton
+              v-if="list.length > 1 && !item.fixedTab"
+              class="relative ml-0.5 size-5! shrink-0 text-[10px]!"
+              icon="ri:close-large-fill"
+              :label="`关闭${item.customTitle || formatMenuTitle(item.title)}`"
+              @click.stop="handleCloseButton($event, item.path)"
+            />
+            <div
+              v-if="tabStyle === 'tab-google'"
+              class="line absolute top-0 bottom-0 left-0 w-px h-4 my-auto bg-g-400 transition-opacity duration-150"
+            />
+          </li>
+        </ul>
+      </div>
+
+      <button
+        v-show="hasOverflow"
+        type="button"
+        class="art-work-tab__scroll-button art-card-xs"
+        :disabled="!canScrollRight"
+        aria-label="向右滚动已打开页面"
+        @click="scrollTabs('right')"
+      >
+        <ArtSvgIcon icon="ri:arrow-right-s-line" />
+      </button>
     </div>
 
-    <button
-      v-show="hasOverflow"
-      type="button"
-      class="art-work-tab__scroll-button art-card-xs"
-      :disabled="!canScrollRight"
-      aria-label="向右滚动已打开页面"
-      @click="scrollTabs('right')"
-    >
-      <ArtSvgIcon icon="ri:arrow-right-s-line" />
-    </button>
-
-    <div class="flex">
+    <div class="flex shrink-0">
       <button
         type="button"
         aria-label="管理已打开页面"
@@ -113,33 +111,22 @@
 
 <script setup lang="ts">
   import { clamp } from 'lodash-es'
-  import { computed, onMounted, ref, watch, nextTick } from 'vue'
-  import { LocationQueryRaw, useRoute, useRouter } from 'vue-router'
+  import { computed, nextTick, ref, watch } from 'vue'
+  import { type LocationQueryRaw, useRouter } from 'vue-router'
   import { useI18n } from 'vue-i18n'
   import { storeToRefs } from 'pinia'
-  import { useEventListener, useRafFn, useResizeObserver, useTimeoutFn } from '@vueuse/core'
+  import { useElementSize, useEventListener } from '@vueuse/core'
 
   import { useWorktabStore } from '@/store/modules/worktab'
   import { useUserStore } from '@/store/modules/user'
   import { formatMenuTitle } from '@/utils/router'
   import { useSettingStore } from '@/store/modules/setting'
-  import { MenuItemType } from '../../others/art-menu-right/index.vue'
+  import ArtMenuRight, { type MenuItemType } from '../../others/art-menu-right/index.vue'
   import { useCommon } from '@/hooks/core/useCommon'
-  import { WorkTab } from '@/types'
+  import type { WorkTab } from '@/types'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
 
   defineOptions({ name: 'ArtWorkTab' })
-
-  // 类型定义
-  interface ScrollState {
-    translateX: number
-    transition: string
-  }
-
-  interface TouchState {
-    startX: number
-    currentX: number
-  }
 
   type TabCloseType = 'current' | 'left' | 'right' | 'other' | 'all'
 
@@ -147,46 +134,27 @@
   const { t } = useI18n()
   const store = useWorktabStore()
   const userStore = useUserStore()
-  const route = useRoute()
   const router = useRouter()
   const { currentRoute } = router
   const settingStore = useSettingStore()
   const { tabStyle, showWorkTab } = storeToRefs(settingStore)
 
   // DOM 引用
+  const scrollAreaRef = ref<HTMLElement | null>(null)
   const scrollRef = ref<HTMLElement | null>(null)
   const tabsRef = ref<HTMLElement | null>(null)
-  const menuRef = ref()
-
-  // 状态管理
-  const scrollState = ref<ScrollState>({
-    translateX: 0,
-    transition: ''
-  })
-
-  const touchState = ref<TouchState>({
-    startX: 0,
-    currentX: 0
-  })
+  const menuRef = ref<InstanceType<typeof ArtMenuRight> | null>(null)
+  const scrollOffset = ref(0)
+  const isArrowScroll = ref(false)
+  const { width: scrollAreaWidth } = useElementSize(scrollAreaRef)
+  const { width: viewportWidth } = useElementSize(scrollRef, undefined, { box: 'border-box' })
+  const { width: trackWidth } = useElementSize(tabsRef, undefined, { box: 'border-box' })
+  const minOffset = computed(() => Math.min(viewportWidth.value - trackWidth.value, 0))
+  const hasOverflow = computed(() => trackWidth.value > scrollAreaWidth.value + 1)
+  const canScrollLeft = computed(() => scrollOffset.value < -1)
+  const canScrollRight = computed(() => scrollOffset.value > minOffset.value + 1)
 
   const clickedPath = ref('')
-  const hasOverflow = ref(false)
-  const canScrollLeft = ref(false)
-  const canScrollRight = ref(false)
-
-  const updateScrollAffordances = (): void => {
-    if (!scrollRef.value || !tabsRef.value) return
-
-    const viewportWidth = scrollRef.value.offsetWidth
-    const tabsWidth = tabsRef.value.offsetWidth
-    const minTranslate = Math.min(viewportWidth - tabsWidth, 0)
-    const translateX = clamp(scrollState.value.translateX, minTranslate, 0)
-
-    scrollState.value.translateX = translateX
-    hasOverflow.value = tabsWidth > viewportWidth + 1
-    canScrollLeft.value = translateX < -1
-    canScrollRight.value = translateX > minTranslate + 1
-  }
 
   // 计算属性
   const list = computed(() => store.opened)
@@ -271,152 +239,67 @@
     return { menuItems }
   }
 
-  // 滚动逻辑
-  const useScrolling = () => {
-    let pendingPositionUpdate: (() => void) | undefined
-    const { resume: resumePositionUpdate } = useRafFn(
-      () => {
-        const update = pendingPositionUpdate
-        pendingPositionUpdate = undefined
-        update?.()
-      },
-      { immediate: false, once: true }
-    )
-    const schedulePositionUpdate = (update: () => void) => {
-      pendingPositionUpdate = update
-      resumePositionUpdate()
-    }
-    const { start: clearTransitionLater } = useTimeoutFn(
-      () => {
-        scrollState.value.transition = ''
-      },
-      250,
-      { immediate: false }
-    )
-    const setTransition = () => {
-      scrollState.value.transition = 'transform 0.5s cubic-bezier(0.15, 0, 0.15, 1)'
-      clearTransitionLater()
-    }
+  const getTabElement = (index: number) =>
+    tabsRef.value?.querySelectorAll<HTMLElement>('[role="tab"]').item(index)
 
-    const getCurrentTabElement = (): HTMLElement | null => {
-      return document.getElementById(`scroll-li-${activeTabIndex.value}`)
-    }
-
-    const calculateScrollPosition = () => {
-      if (!scrollRef.value || !tabsRef.value) return
-
-      const scrollWidth = scrollRef.value.offsetWidth
-      const ulWidth = tabsRef.value.offsetWidth
-      const curTabEl = getCurrentTabElement()
-
-      if (!curTabEl) return
-
-      const { offsetLeft, clientWidth } = curTabEl
-      const curTabRight = offsetLeft + clientWidth
-      const targetLeft = scrollWidth - curTabRight
-
-      return {
-        scrollWidth,
-        ulWidth,
-        offsetLeft,
-        clientWidth,
-        curTabRight,
-        targetLeft
-      }
-    }
-
-    const autoPositionTab = () =>
-      schedulePositionUpdate(() => {
-        const positions = calculateScrollPosition()
-        if (!positions) return
-
-        const { scrollWidth, ulWidth, offsetLeft, curTabRight, targetLeft } = positions
-
-        if (
-          (offsetLeft > Math.abs(scrollState.value.translateX) && curTabRight <= scrollWidth) ||
-          (scrollState.value.translateX < targetLeft && targetLeft < 0)
-        ) {
-          return
-        }
-
-        if (curTabRight > scrollWidth) {
-          scrollState.value.translateX = Math.max(targetLeft - 6, scrollWidth - ulWidth)
-        } else if (offsetLeft < Math.abs(scrollState.value.translateX)) {
-          scrollState.value.translateX = -offsetLeft
-        }
-      })
-
-    const adjustPositionAfterClose = () =>
-      schedulePositionUpdate(() => {
-        const positions = calculateScrollPosition()
-        if (!positions) return
-
-        const { scrollWidth, ulWidth, offsetLeft, clientWidth } = positions
-        const curTabLeft = offsetLeft + clientWidth
-
-        scrollState.value.translateX =
-          curTabLeft > scrollWidth ? Math.min(scrollWidth - ulWidth, 0) : 0
-      })
-
-    return {
-      setTransition,
-      autoPositionTab,
-      adjustPositionAfterClose
-    }
+  const setScrollOffset = (offset: number, animate = false): void => {
+    isArrowScroll.value = animate
+    scrollOffset.value = clamp(offset, minOffset.value, 0)
   }
 
-  // 事件处理逻辑
-  const useEventHandlers = (setTransition: () => void) => {
-    const handleWheelScroll = (event: WheelEvent) => {
-      if (!scrollRef.value || !tabsRef.value) return
+  const revealTab = (index: number): void => {
+    const tab = getTabElement(index)
+    if (!tab || !viewportWidth.value) return
+
+    const left = tab.offsetLeft
+    const right = left + tab.offsetWidth
+    if (left < -scrollOffset.value) setScrollOffset(-left)
+    else if (right > viewportWidth.value - scrollOffset.value)
+      setScrollOffset(viewportWidth.value - right)
+  }
+
+  useEventListener(
+    tabsRef,
+    'wheel',
+    (event) => {
+      if (event.ctrlKey || !hasOverflow.value) return
+
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+      const offset = clamp(scrollOffset.value - delta, minOffset.value, 0)
+      if (offset === scrollOffset.value) return
 
       event.preventDefault()
+      setScrollOffset(offset)
+    },
+    { passive: false }
+  )
 
-      if (tabsRef.value.offsetWidth <= scrollRef.value.offsetWidth) return
-
-      const xMax = 0
-      const xMin = scrollRef.value.offsetWidth - tabsRef.value.offsetWidth
-      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
-
-      scrollState.value.translateX = Math.min(
-        Math.max(scrollState.value.translateX - delta, xMin),
-        xMax
-      )
-    }
-
-    const handleTouchStart = (event: TouchEvent) => {
-      touchState.value.startX = event.touches[0].clientX
-    }
-
-    const handleTouchMove = (event: TouchEvent) => {
-      if (!scrollRef.value || !tabsRef.value) return
-
-      touchState.value.currentX = event.touches[0].clientX
-      const deltaX = touchState.value.currentX - touchState.value.startX
-      const xMin = scrollRef.value.offsetWidth - tabsRef.value.offsetWidth
-
-      scrollState.value.translateX = Math.min(
-        Math.max(scrollState.value.translateX + deltaX, xMin),
-        0
-      )
-      touchState.value.startX = touchState.value.currentX
-    }
-
-    const handleTouchEnd = () => {
-      setTransition()
-    }
-
-    useEventListener(tabsRef, 'wheel', handleWheelScroll, { passive: false })
-    useEventListener(tabsRef, 'touchstart', handleTouchStart, { passive: true })
-    useEventListener(tabsRef, 'touchmove', handleTouchMove, { passive: true })
-    useEventListener(tabsRef, 'touchend', handleTouchEnd, { passive: true })
-  }
+  let touchX: number | undefined
+  useEventListener(
+    tabsRef,
+    'touchstart',
+    (event) => {
+      touchX = event.touches[0]?.clientX
+    },
+    { passive: true }
+  )
+  useEventListener(
+    tabsRef,
+    'touchmove',
+    (event) => {
+      const x = event.touches[0]?.clientX
+      if (x === undefined || touchX === undefined) return
+      setScrollOffset(scrollOffset.value + x - touchX)
+      touchX = x
+    },
+    { passive: true }
+  )
+  useEventListener(tabsRef, ['touchend', 'touchcancel'], () => {
+    touchX = undefined
+  })
 
   // 标签页操作逻辑
-  const useTabOperations = (adjustPositionAfterClose: () => void) => {
-    const { start: adjustAfterCloseLater } = useTimeoutFn(adjustPositionAfterClose, 100, {
-      immediate: false
-    })
+  const useTabOperations = () => {
     const clickTab = (item: WorkTab): void => {
       void router.push({
         path: item.path,
@@ -424,9 +307,7 @@
       })
     }
 
-    const closeWorktab = (type: TabCloseType, tabPath: string) => {
-      const path = typeof tabPath === 'string' ? tabPath : route.path
-
+    const closeWorktab = (type: TabCloseType, path: string) => {
       const closeActions = {
         current: () => store.removeTab(path),
         left: () => store.removeLeft(path),
@@ -436,8 +317,6 @@
       }
 
       closeActions[type]?.()
-
-      adjustAfterCloseLater()
     }
 
     const showMenu = (e: MouseEvent, path?: string) => {
@@ -456,7 +335,7 @@
       }
 
       if (key === 'fixed') {
-        useWorktabStore().toggleFixedTab(clickedPath.value)
+        store.toggleFixedTab(clickedPath.value)
         return
       }
 
@@ -486,23 +365,38 @@
     }
   }
 
-  // 组合所有逻辑
   const { menuItems } = useContextMenu()
-  const { setTransition, autoPositionTab, adjustPositionAfterClose } = useScrolling()
-  useEventHandlers(setTransition)
-  const { clickTab, closeWorktab, showMenu, handleSelect } =
-    useTabOperations(adjustPositionAfterClose)
+  const { clickTab, closeWorktab, showMenu, handleSelect } = useTabOperations()
+
+  const handleCloseButton = (event: MouseEvent, path: string): void => {
+    closeWorktab('current', path)
+    if (event.detail !== 0) return
+
+    const index = list.value.findIndex((tab) => tab.path === store.current.path)
+    void nextTick(() => {
+      revealTab(index)
+      getTabElement(index)?.focus({ preventScroll: true })
+    })
+  }
 
   const focusTabAt = (index: number): void => {
-    const targetTab = list.value[index]
+    const target = list.value[index]
+    if (!target) return
 
-    if (!targetTab) return
-
-    clickTab(targetTab)
-    void nextTick(() => document.getElementById(`scroll-li-${index}`)?.focus())
+    revealTab(index)
+    getTabElement(index)?.focus({ preventScroll: true })
+    clickTab(target)
   }
 
   const handleTabKeydown = (event: KeyboardEvent, index: number): void => {
+    if (event.target !== event.currentTarget) return
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      clickTab(list.value[index])
+      return
+    }
+
     const lastIndex = list.value.length - 1
     const targetIndexByKey: Partial<Record<string, number>> = {
       ArrowLeft: index > 0 ? index - 1 : lastIndex,
@@ -511,7 +405,6 @@
       End: lastIndex
     }
     const targetIndex = targetIndexByKey[event.key]
-
     if (targetIndex === undefined) return
 
     event.preventDefault()
@@ -519,58 +412,29 @@
   }
 
   const scrollTabs = (direction: 'left' | 'right'): void => {
-    if (!scrollRef.value || !tabsRef.value) return
-
-    const minTranslate = Math.min(scrollRef.value.offsetWidth - tabsRef.value.offsetWidth, 0)
-    const step = Math.max(180, Math.round(scrollRef.value.offsetWidth * 0.45))
-    const nextTranslate =
-      direction === 'left'
-        ? scrollState.value.translateX + step
-        : scrollState.value.translateX - step
-
-    setTransition()
-    scrollState.value.translateX = clamp(nextTranslate, minTranslate, 0)
+    const step = Math.max(180, Math.round(viewportWidth.value * 0.45))
+    setScrollOffset(scrollOffset.value + (direction === 'left' ? step : -step), true)
   }
 
-  // 生命周期
-  onMounted(() => {
-    autoPositionTab()
-    nextTick(updateScrollAffordances)
-  })
-
-  // 监听器
   watch(
-    () => currentRoute.value,
+    minOffset,
+    (limit) => {
+      if (scrollOffset.value < limit) setScrollOffset(limit)
+    },
+    { flush: 'post' }
+  )
+
+  watch(
+    [viewportWidth, activeTab, () => userStore.language],
     () => {
-      setTransition()
-      autoPositionTab()
-      nextTick(updateScrollAffordances)
-    }
+      revealTab(activeTabIndex.value)
+    },
+    { flush: 'post' }
   )
-
-  watch(
-    () => scrollState.value.translateX,
-    () => updateScrollAffordances()
-  )
-
-  watch(
-    () => userStore.language,
-    () => {
-      scrollState.value.translateX = 0
-      nextTick(() => {
-        autoPositionTab()
-        updateScrollAffordances()
-      })
-    }
-  )
-
-  useResizeObserver(scrollRef, updateScrollAffordances)
-  useResizeObserver(tabsRef, updateScrollAffordances)
 </script>
 
 <style scoped lang="scss">
   .art-work-tab {
-    gap: 6px;
     min-height: var(--art-work-tab-height);
     padding: 6px var(--art-page-inline-padding);
     margin: 0;
@@ -637,6 +501,10 @@
       overflow: clip visible;
     }
 
+    &__track--stepping {
+      transition: transform var(--art-motion-duration-fast) var(--art-motion-ease-out);
+    }
+
     li[role='tab'] {
       min-width: 0;
       max-width: 156px;
@@ -649,8 +517,8 @@
         opacity 0.18s ease;
 
       &:focus-visible {
-        outline: none;
-        box-shadow: var(--art-themed-action-focus-shadow) !important;
+        outline: 2px solid var(--theme-color);
+        outline-offset: -2px;
       }
 
       > button {

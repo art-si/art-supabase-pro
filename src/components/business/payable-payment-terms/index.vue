@@ -44,6 +44,7 @@
             name: [{ required: true, message: '请填写名称' }]
           }"
           :span="12"
+          :disabled="saving"
           label-position="top"
         />
       </ArtDialog>
@@ -90,6 +91,7 @@
   const { hasAuth } = useAuth()
   const captureOperation = useTenantOperationGuard(props.permissions.View)
   const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
+  const saving = ref(false)
   const form = ref<Partial<PaymentTerm>>({})
   const items: FormItem[] = [
     { key: 'code', label: '编号', type: 'input', props: { maxlength: 40 } },
@@ -163,34 +165,42 @@
       successMessage: '付款条件已删除'
     })
   }
+  function resetSession(): void {
+    session.invalidate()
+    saving.value = false
+  }
   async function open(row?: PaymentTerm): Promise<void> {
     const permission = row ? props.permissions.Edit : props.permissions.Add
     if (!hasAuth(permission)) return
     const scopeCurrent = captureOperation()
-    const version = session.invalidate()
+    resetSession()
+    const version = session.version.value
     const isCurrent = () => scopeCurrent() && session.isCurrent(version) && hasAuth(permission)
     form.value = row ? { ...row } : { code: '', name: '', days: 0, enabled: true, remark: '' }
     await dialogRef.value?.handleOpen(undefined, {
       title: row ? '编辑付款条件' : '新增付款条件',
-      onClose: () => {
-        session.invalidate()
-      },
+      onClose: resetSession,
+      onReset: resetSession,
       onConfirm: async () => {
+        if (saving.value) return false
         if (!isCurrent()) {
           ElMessage.warning('操作范围或权限已变化，请重新打开付款条件')
           return false
         }
         if (!(await validateArtFormForSubmit(formRef.value))) return false
-        if (!isCurrent()) return false
+        if (saving.value || !isCurrent()) return false
+        saving.value = true
         try {
           await savePaymentTerm(form.value)
           if (!isCurrent()) return false
           ElMessage.success('付款条件已保存')
           await tableRef.value?.refreshData()
-          return true
+          return isCurrent()
         } catch (error) {
           if (isCurrent()) notifyFriendlyError(error, '付款条件未保存，请重试')
           return false
+        } finally {
+          if (version === session.version.value) saving.value = false
         }
       }
     })

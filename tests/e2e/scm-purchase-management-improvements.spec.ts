@@ -1,12 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { prepareIsolatedSession } from './support/isolated-session'
-import { mockApplicationMenus } from './support/menu-rpc'
 import {
   expectCompactDocumentForm,
   expectUnifiedDocumentDetail
 } from './support/scm-document-layout'
-import { installDictionaryOptions } from './support/dictionary-options'
 import { prepareAppearance } from './support/appearance'
+import { prepareScmDocumentSession } from './support/scm-document-session'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(180_000)
@@ -18,13 +16,6 @@ test.beforeEach(async ({ page }, info) => {
 })
 
 test('采购申请明细选择、引用重试、复制提交及打印', async ({ page }, testInfo) => {
-  const tenant = await prepareIsolatedSession(page)
-  await installDictionaryOptions(page, {
-    commonDocumentDisplayMode: [
-      { value: 'document', label: '按单据' },
-      { value: 'line', label: '按明细' }
-    ]
-  })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   const path = '/scm/purchase-management/purchase-request'
@@ -46,42 +37,37 @@ test('采购申请明细选择、引用重试、复制提交及打印', async ({
     component: '/scm/purchase-management/purchase-contract',
     meta: { ...menu.meta, title: '采购合同' }
   }
-  await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
-    route.fulfill({ json: [{ code: 'scm', name: '测试供应链', baseUrl: '/scm/' }] })
-  )
-  await mockApplicationMenus(page, {
-    scm: [
-      menu,
-      contractMenu,
-      ...['View', 'Add', 'Edit', 'Delete'].map((action) => ({
-        ...contractMenu,
-        id: `contract-${action}`,
-        parentId: contractMenu.id,
-        name: `ScmPurchaseContract:${action}`,
-        path: '',
-        component: '',
-        type: 'button'
-      })),
-      ...['View', 'Add', 'Edit', 'Delete', 'Copy', 'Submit', 'Print', 'Push'].map((action) => ({
-        ...menu,
-        id: `request-${action}`,
-        parentId: menu.id,
-        name: `ScmPurchaseRequest:${action}`,
-        path: '',
-        component: '',
-        type: 'button'
-      })),
-      {
-        ...menu,
-        id: 'order-add',
-        parentId: menu.id,
-        name: 'ScmPurchaseOrder:Add',
-        path: '',
-        component: '',
-        type: 'button'
-      }
-    ]
-  })
+  const tenant = await prepareScmDocumentSession(page, [
+    menu,
+    contractMenu,
+    ...['View', 'Add', 'Edit', 'Delete'].map((action) => ({
+      ...contractMenu,
+      id: `contract-${action}`,
+      parentId: contractMenu.id,
+      name: `ScmPurchaseContract:${action}`,
+      path: '',
+      component: '',
+      type: 'button'
+    })),
+    ...['View', 'Add', 'Edit', 'Delete', 'Copy', 'Submit', 'Print', 'Push'].map((action) => ({
+      ...menu,
+      id: `request-${action}`,
+      parentId: menu.id,
+      name: `ScmPurchaseRequest:${action}`,
+      path: '',
+      component: '',
+      type: 'button'
+    })),
+    {
+      ...menu,
+      id: 'order-add',
+      parentId: menu.id,
+      name: 'ScmPurchaseOrder:Add',
+      path: '',
+      component: '',
+      type: 'button'
+    }
+  ])
   const request = {
     id: 'request-1',
     tenant_id: tenant.id,
@@ -217,6 +203,10 @@ test('采购申请明细选择、引用重试、复制提交及打印', async ({
   }
   await rows.nth(1).getByRole('checkbox').locator('..').click()
   await expect(page.getByRole('button', { name: '批量复制', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '取消选择', exact: true }).press('Enter')
+  await expect(page.getByRole('checkbox', { name: '选择当前页全部行', exact: true })).toBeFocused()
+  await expect(rows.nth(1).getByRole('checkbox')).not.toBeChecked()
+  await rows.nth(1).getByRole('checkbox').locator('..').click()
   await page.screenshot({
     path: testInfo.outputPath('request-selected-details.png'),
     animations: 'disabled'

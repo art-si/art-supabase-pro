@@ -45,12 +45,15 @@
           >
             <template #default="{ data: statement }">
               <button
+                :ref="(element) => registerNode(statement.startOffset, element)"
                 type="button"
                 class="sql-statement-item"
                 :class="{ 'is-active': activeKey === statement.startOffset }"
                 :aria-label="`定位第 ${statement.order} 条语句`"
                 :aria-current="activeKey === statement.startOffset ? 'true' : undefined"
-                :data-statement-key="statement.startOffset"
+                :data-virtual-tree-key="statement.startOffset"
+                :tabindex="tabStopKey === statement.startOffset ? 0 : -1"
+                @focus="setFocusedKey(statement.startOffset)"
                 @keydown="navigate($event, statement.startOffset)"
                 @click.stop="emit('locate', statement)"
               >
@@ -74,6 +77,8 @@
   import { ElTreeV2 } from 'element-plus'
   import { ElAutoResizer } from 'element-plus/es/components/table-v2/index.mjs'
   import { sortedIndex, sortedLastIndex } from 'lodash-es'
+  import { useVirtualTreeTabStop } from '@/hooks/core/useVirtualTreeTabStop'
+  import { focusVirtualTreeNode } from '@/utils/ui/virtual-tree-focus'
   import type { SqlStatementRef } from '@/utils/sql-workbench'
   const props = withDefaults(
     defineProps<{ statements: SqlStatementRef[]; activeOffset: number; showHeading?: boolean }>(),
@@ -93,6 +98,7 @@
     )
   )
   const offsets = computed(() => filtered.value.map((statement) => statement.startOffset))
+  const { tabStopKey, registerNode, setFocusedKey } = useVirtualTreeTabStop(() => offsets.value)
   const activeKey = computed(() => {
     const statement = filtered.value[sortedLastIndex(offsets.value, props.activeOffset) - 1]
     return statement && props.activeOffset < statement.endOffset ? statement.startOffset : undefined
@@ -105,6 +111,15 @@
   }
   watch([activeKey, filtered], scrollActive, { immediate: true, flush: 'post' })
   const navigate = async (event: KeyboardEvent, key: number) => {
+    if (
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey
+    )
+      return
     const index = sortedIndex(offsets.value, key)
     const destinations: Record<string, number> = {
       ArrowDown: Math.min(filtered.value.length - 1, index + 1),
@@ -118,11 +133,11 @@
     event.stopPropagation()
     const target = filtered.value[destination]
     if (!target) return
-    treeRef.value?.scrollToNode(target.startOffset, 'auto')
-    await nextTick()
-    viewport.value
-      ?.querySelector<HTMLButtonElement>(`button[data-statement-key="${target.startOffset}"]`)
-      ?.focus()
+    await focusVirtualTreeNode({
+      tree: treeRef.value,
+      viewport: viewport.value,
+      key: target.startOffset
+    })
   }
 </script>
 <style scoped lang="scss">

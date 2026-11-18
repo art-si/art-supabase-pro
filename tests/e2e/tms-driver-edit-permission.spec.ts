@@ -1,8 +1,76 @@
 import { expect, test } from '@playwright/test'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const driverId = '33333333-3333-4333-8333-333333333333'
+
+test('司机档案在窄屏可核对关联车辆刷新失败并用键盘重试', async ({ page }, info) => {
+  test.setTimeout(120_000)
+  const carrierId = '11111111-1111-4111-8111-111111111502'
+  const reads: Record<string, unknown>[] = []
+  const writes: string[] = []
+  await page.route('**/rest/v1/**', (route) => {
+    const request = route.request()
+    const endpoint = new URL(request.url()).pathname.split('/').at(-1)
+    switch (endpoint) {
+      case 'tms_get_driver_secure':
+        return route.fulfill({
+          json: {
+            id: driverId,
+            tenantId,
+            carrierId,
+            driverName: '验收承运商司机',
+            phone: '13800000001',
+            driverType: 'primary',
+            enabled: true,
+            assignedVehicles: [{ plateNo: '测A·旧001' }],
+            fieldAccess: {}
+          }
+        })
+      case 'tms_get_driver_profile_secure':
+        return route.fulfill({ json: { driverOwnership: 'carrier' } })
+      case 'tms_get_driver_certification_secure':
+        return route.fulfill({ json: { required: false } })
+      case 'tms_list_carrier_options_secure':
+        return route.fulfill({ json: [{ id: carrierId, companyName: '验收承运商', tenantId }] })
+      case 'vms_list_driver_assigned_vehicles_secure':
+        reads.push(request.postDataJSON())
+        return reads.length === 1
+          ? route.fulfill({ status: 503, json: { message: '验收模拟暂不可用' } })
+          : route.fulfill({ json: [{ plateNo: '测A·新002' }] })
+      case 'tms_update_driver_secure':
+        writes.push(endpoint)
+        return route.fulfill({ json: { id: driverId } })
+      default:
+        return route.fulfill({ json: [] })
+    }
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/tests/e2e/fixtures/tms-cargo-driver-service.html?kind=driver-review', {
+    waitUntil: 'domcontentloaded'
+  })
+  const dialog = page.getByRole('dialog', { name: '编辑司机', exact: true })
+  const vehicles = dialog.locator('[data-art-form-item-key="carrierVehiclePlates"]')
+  const oldPlate = vehicles.getByText('测A·旧001', { exact: true })
+  await expect(oldPlate).toBeVisible({ timeout: 60_000 })
+  await expect.poll(() => reads.length).toBe(1)
+  await vehicles.scrollIntoViewIfNeeded()
+  await dialog.screenshot({ path: info.outputPath('assigned-vehicles-unavailable-390.png') })
+  await expect(vehicles.getByText('关联车辆加载失败', { exact: true })).toBeVisible()
+  const retry = vehicles.getByRole('button', { name: '重新读取关联车辆', exact: true })
+  await expect(retry).toBeInViewport()
+  await retry.press('Enter')
+  await expect(vehicles.getByText('测A·新002', { exact: true })).toBeVisible()
+  await expect(oldPlate).toHaveCount(0)
+  await expect(vehicles.getByText('关联车辆加载失败', { exact: true })).toHaveCount(0)
+  await expect(retry).toBeFocused()
+  expect(reads).toEqual(
+    Array.from({ length: 2 }, () => ({ p_driver_id: driverId, p_carrier_id: carrierId }))
+  )
+  expect(writes).toEqual([])
+  await dialog.screenshot({ path: info.outputPath('assigned-vehicles-recovered-390.png') })
+})
 
 for (const documentAccess of ['edit', 'read', 'hidden']) {
   test('个人司机编辑驾照可保存且不回写受控资料：证件权限 ' + documentAccess, async ({ page }) => {
@@ -162,19 +230,17 @@ for (const documentAccess of ['edit', 'read', 'hidden']) {
     await expect(dialog).toBeVisible({ timeout: 120_000 })
     await expect(dialog.getByRole('tab', { name: '财务信息', exact: true })).toHaveCount(0)
     await dialog.getByRole('tab', { name: '驾驶证信息', exact: true }).click()
-    const expiry = dialog
-      .locator('.el-form-item')
-      .filter({ has: page.getByText('驾照有效期', { exact: true }) })
-      .getByRole('textbox')
+    const license = await expectOverlayTabPanel(dialog, '驾驶证信息')
+    const expiry = license.getByRole('combobox', { name: /驾照有效期$/ })
+    await expect(expiry).toBeEditable()
     await expiry.fill('2031-11-30')
     await expiry.press('Tab')
     if (documentAccess === 'read')
-      await expect(
-        dialog
-          .locator('.el-form-item')
-          .filter({ has: page.getByText('档案编号', { exact: true }) })
-          .getByRole('textbox')
-      ).toBeDisabled()
+      await expect(license.getByRole('textbox', { name: '档案编号', exact: true })).toBeDisabled()
+    await dialog.getByRole('tab', { name: '基本信息', exact: true }).click()
+    await expectOverlayTabPanel(dialog, '基本信息')
+    await dialog.getByRole('tab', { name: '驾驶证信息', exact: true }).click()
+    await expect(expiry).toHaveValue('2031-11-30')
     await page.screenshot({
       path: '.artifacts/driver-edit-permission-' + documentAccess + '.png',
       fullPage: true

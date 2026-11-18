@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
+import { expectInputTextUnclipped } from './support/input-text-width'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
+import { installQueryDateClock } from './support/query-date-range'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
@@ -36,6 +38,7 @@ for (const scenario of [
   }, testInfo) => {
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installQueryDateClock(page)
     const tenant = await prepareIsolatedSession(page)
     await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
     const path = `/smis/qualification-training/training-management/${scenario.path}`
@@ -203,6 +206,21 @@ for (const scenario of [
     await expect(page.getByText('过期主题-0', { exact: true })).toHaveCount(0)
     const expand = page.getByRole('button', { name: '展开', exact: true })
     if (await expand.isVisible()) await expand.click()
+    if (!scenario.autoCreate) {
+      const range = page.locator('.art-search-bar .el-date-editor--datetimerange')
+      const start = range.getByPlaceholder('开始时间')
+      const end = range.getByPlaceholder('结束时间')
+      await start.click()
+      const picker = page.locator('.el-date-range-picker.has-time:visible')
+      const dates = picker.locator('.el-date-range-picker__content').first().locator('td.available')
+      await dates.filter({ hasText: /^7$/ }).click()
+      await dates.filter({ hasText: /^10$/ }).click()
+      await picker.getByRole('button', { name: /^(确定|OK)$/ }).click()
+      await expect(start).toHaveValue(/^2026-11-07 \d{2}:\d{2}:\d{2}$/)
+      await expect(end).toHaveValue(/^2026-11-10 \d{2}:\d{2}:\d{2}$/)
+      await expectInputTextUnclipped(range.locator('input.el-range-input'))
+      await range.screenshot({ path: testInfo.outputPath(`${scenario.path}-time-range.png`) })
+    }
     await page.getByRole('combobox', { name: '组织单位', exact: true }).click()
     await expect(page.getByRole('treeitem').filter({ hasText: '最新组织' })).toBeVisible()
     await expect(page.getByRole('treeitem').filter({ hasText: '过期组织' })).toHaveCount(0)

@@ -3,7 +3,7 @@
     <p class="rounded-lg bg-g-100 px-4 py-3 text-sm leading-6 text-g-700">
       以下内容仅为格式示例，不是实时接口响应；实际结果以调用区显示的请求编号和版本为准。
     </p>
-    <ElTabs v-model="activeFormat" class="min-w-0">
+    <ElTabs v-model="activeFormat" class="art-card-xs art-overlay-tab-card">
       <ElTabPane label="Java 服务" name="java">
         <p class="mb-3 text-sm text-g-700">按业务码判定成功，再从 data 提取记录和总数。</p>
         <PlanCodePreview title="Java 服务响应示例" :code="examples.java" language="json" expanded />

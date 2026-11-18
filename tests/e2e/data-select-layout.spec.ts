@@ -94,7 +94,7 @@ test('table and tree selectors keep usable content and footer at low heights', a
     await expect(dialog).toBeHidden()
     await field.getByRole('textbox').click()
     await expect(dialog).toBeVisible()
-    await dialog.getByRole('button', { name: '关闭此对话框' }).click()
+    await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
     await expect(dialog).toBeHidden()
     await field.getByRole('textbox').click()
     await expect(dialog).toBeVisible()

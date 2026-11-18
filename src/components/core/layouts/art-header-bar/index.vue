@@ -1,6 +1,12 @@
 <!-- 顶部栏 -->
 <template>
-  <div class="art-header-bar w-full" :class="{ 'art-header-bar--header-left': isHeaderLeftMenu }">
+  <div
+    class="art-header-bar w-full"
+    :class="{
+      'art-header-bar--header-left': isHeaderLeftMenu,
+      'art-header-bar--mixed-menu': isTopLeftMenu
+    }"
+  >
     <div
       class="art-header-bar__main relative box-border flex-b select-none"
       :class="[
@@ -9,12 +15,12 @@
           : ''
       ]"
     >
-      <div class="flex-c flex-1 min-w-0 leading-15" style="display: flex">
+      <div class="art-header-bar__leading flex-c flex-1 min-w-0 leading-15" style="display: flex">
         <!-- 系统信息  -->
         <button
           v-if="isTopMenu || isHeaderLeftMenu"
           type="button"
-          class="art-header-bar__brand flex-c c-p border-0 bg-transparent"
+          class="art-header-bar__brand flex-c shrink-0 c-p border-0 bg-transparent"
           aria-label="返回首页"
           @click="toHome"
         >
@@ -87,10 +93,15 @@
 
         <!-- 顶部菜单 -->
         <ArtHorizontalMenu v-if="isTopMenu" :list="menuList" />
-
-        <!-- 混合菜单-顶部 -->
-        <ArtMixedMenu v-if="isTopLeftMenu" :list="menuList" />
       </div>
+
+      <ArtMixedMenu
+        v-if="isTopLeftMenu && menuList.length"
+        class="art-header-bar__mixed-menu"
+        role="navigation"
+        aria-label="业务分组"
+        :list="menuList"
+      />
 
       <div class="art-header-bar__actions flex-c">
         <PlatformTenantScopeSwitcher v-if="!externalAccount" />
@@ -156,10 +167,14 @@
           class="notice-badge"
         >
           <ArtIconButton
+            ref="notificationTrigger"
             icon="ri:notification-2-line"
             :label="notificationButtonLabel"
+            :aria-expanded="showNotice"
+            :aria-controls="notificationPanelId"
             class="notice-button"
             @click="visibleNotice"
+            @keydown.esc="dismissNotice($event)"
           />
         </ElBadge>
 
@@ -224,7 +239,10 @@
     <!-- 通知 -->
     <ArtNotification
       v-if="!externalAccount"
+      :id="notificationPanelId"
       v-model:value="showNotice"
+      :focus-on-open="focusNoticeOnOpen"
+      @dismiss-keyboard="dismissNotice()"
       @unread-change="handleUnreadChange"
     />
   </div>
@@ -233,7 +251,9 @@
 <script setup lang="ts">
   import { useI18n } from 'vue-i18n'
   import { useRouter } from 'vue-router'
+  import { useId, useTemplateRef, type ComponentPublicInstance } from 'vue'
   import { useEventListener, useFullscreen, useTimeoutFn, useWindowSize } from '@vueuse/core'
+  import { getFocusedKeyboardButton } from '@/utils/ui/button-focus'
   import { LanguageEnum, MenuTypeEnum } from '@/enums/app-enum'
   import { useSettingStore } from '@/store/modules/setting'
   import { useUserStore } from '@/store/modules/user'
@@ -302,6 +322,9 @@
   const { confirm } = useArtFeedback()
 
   const showNotice = ref(false)
+  const focusNoticeOnOpen = ref(false)
+  const notificationPanelId = useId()
+  const notificationTrigger = useTemplateRef<ComponentPublicInstance>('notificationTrigger')
   const notificationUnreadCount = ref(0)
   const notificationButtonLabel = computed(() =>
     notificationUnreadCount.value > 0
@@ -469,8 +492,20 @@
   /**
    * 切换通知面板显示状态
    */
-  const visibleNotice = (): void => {
+  const visibleNotice = (event: MouseEvent): void => {
+    focusNoticeOnOpen.value = !showNotice.value && Boolean(getFocusedKeyboardButton(event))
     showNotice.value = !showNotice.value
+  }
+
+  const dismissNotice = (event?: KeyboardEvent): void => {
+    if (event) {
+      if (!showNotice.value) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    showNotice.value = false
+    const trigger: unknown = notificationTrigger.value?.$el
+    if (trigger instanceof HTMLButtonElement) trigger.focus({ preventScroll: true })
   }
 
   const handleUnreadChange = (count: number): void => {
@@ -486,6 +521,39 @@
 </script>
 
 <style lang="scss" scoped>
+  @mixin compact-header-search {
+    display: grid;
+    flex: none;
+    place-items: center;
+    inline-size: 34px;
+    padding: 0;
+
+    > div:last-child,
+    > div:first-child > span {
+      display: none;
+    }
+  }
+
+  @mixin compact-header-actions {
+    gap: 4px;
+    padding-inline-end: var(--art-space-2);
+
+    :deep(.application-switcher),
+    :deep(.tenant-scope-switcher),
+    :deep(.art-header-user-trigger) {
+      margin-inline-end: 0;
+    }
+
+    :deep(.art-icon-button) {
+      inline-size: var(--art-header-action-width, 34px);
+    }
+
+    :deep(.application-switcher),
+    :deep(.tenant-scope-switcher) {
+      inline-size: var(--art-header-action-width, 36px);
+    }
+  }
+
   .art-header-bar {
     background: transparent;
 
@@ -513,10 +581,148 @@
       }
     }
 
+    &__leading > :deep(.art-icon-button),
+    &__leading > :deep(.art-fast-enter-trigger),
+    &__actions > * {
+      flex-shrink: 0;
+    }
+
     &__actions {
       flex: 0 0 auto;
       gap: 6px;
       padding-right: var(--art-page-padding);
+    }
+
+    &--mixed-menu {
+      .art-header-bar__main {
+        flex-wrap: wrap;
+        container: art-header / inline-size;
+      }
+
+      .art-header-bar__leading {
+        flex: 0 0 auto;
+      }
+
+      // 混合导航在顶栏空间不足时单独占一行，避免被工具按钮挤掉。
+      @container art-header (width < 940px) {
+        .art-header-bar__search {
+          @include compact-header-search;
+        }
+
+        .art-header-bar__mixed-menu {
+          --art-mixed-menu-height: 40px;
+
+          flex-basis: 100%;
+          order: 1;
+          padding-inline: var(--art-space-2);
+          border-block-start: 1px solid var(--art-layout-divider);
+        }
+      }
+    }
+
+    @media (768px <= width <= 1024px) {
+      &__main {
+        container: art-header / inline-size;
+      }
+
+      &__actions {
+        gap: var(--art-space-1);
+      }
+
+      &__search {
+        inline-size: 8rem;
+      }
+
+      @container art-header (width < 800px) {
+        &__search {
+          @include compact-header-search;
+        }
+      }
+
+      @container art-header (width < 840px) {
+        &__leading > :deep(.art-icon-button),
+        &__leading > :deep(.page-design-reference) {
+          margin-inline-start: var(--art-space-1);
+        }
+
+        &__actions :deep(.full-screen-btn),
+        &__actions :deep(.exit-full-screen-btn) {
+          margin-inline-start: 0;
+        }
+      }
+
+      @container art-header (width < 660px) {
+        &__actions {
+          @include compact-header-actions;
+
+          --art-header-action-width: 30px;
+
+          :deep(.application-switcher) {
+            justify-content: center;
+            padding: 0;
+          }
+
+          :deep(.application-switcher > span),
+          :deep(.application-switcher__arrow) {
+            display: none;
+          }
+        }
+      }
+    }
+
+    @media (width <= 440px) {
+      &__actions {
+        @include compact-header-actions;
+      }
+
+      &:has(.page-design-reference) {
+        --art-header-action-width: 28px;
+
+        :deep(.page-design-reference) {
+          margin-inline-start: var(--art-space-1);
+        }
+      }
+    }
+
+    // 含设计参考时，左右两组按原按钮和间距共需 486px。
+    @media (440px < width < 486px) {
+      &:has(.page-design-reference) .art-header-bar__actions {
+        @include compact-header-actions;
+      }
+    }
+
+    @media (width <= 360px) {
+      &__leading > :deep(.art-icon-button) {
+        margin-inline-start: var(--art-space-1);
+      }
+
+      &__actions {
+        --art-header-action-width: 28px;
+
+        gap: 2px;
+      }
+    }
+
+    // 保住侧边菜单的标准按钮宽度，两个左侧次级动作仅在空间不足时收紧。
+    @media (width < 378px) {
+      &:has(.page-design-reference) {
+        .art-header-bar__leading {
+          > :deep(.art-icon-button),
+          > :deep(.page-design-reference) {
+            margin-inline-start: 1px;
+          }
+
+          > :deep(.global-focus-button),
+          > :deep(.page-design-reference .art-icon-button) {
+            inline-size: 26px;
+          }
+        }
+
+        .art-header-bar__actions {
+          gap: 1px;
+          padding-inline-end: 2px;
+        }
+      }
     }
 
     &__search {

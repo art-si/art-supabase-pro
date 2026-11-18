@@ -5,6 +5,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
+import { useMenuStore } from '@/store/modules/menu'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useSettingStore } from '@/store/modules/setting'
 import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
@@ -22,6 +23,8 @@ import {
   planOptions,
   riskOptions,
   riskPoint,
+  secondSafetyRiskPoint,
+  readonlyAttachmentUrls,
   supplier,
   tenantId
 } from './form-standard-smis-data'
@@ -56,6 +59,8 @@ import {
   hazardGovernance,
   hazardLedger,
   hiddenTask,
+  longHazardSource,
+  longRiskMeasure,
   rectification,
   riskInformation,
   riskTask,
@@ -205,7 +210,7 @@ const entries: Record<string, Entry> = {
     load: () =>
       import('@smis/views/dual-control-system/risk-control/safety-risk-list/modules/safety-risk-dialog.vue'),
     data: {
-      options: { riskPoints: [{ ...riskPoint, siteName: '验收装配区' }], hazardCategories: [] }
+      options: { riskPoints: [riskPoint, secondSafetyRiskPoint], hazardCategories: [] }
     }
   },
   'inspection-plan-page': {
@@ -260,7 +265,16 @@ const entries: Record<string, Entry> = {
     load: () =>
       import('@smis/views/qualification-training/training-management/safety-training-record/modules/training-record-dialog.vue'),
     data: {
-      row: { ...trainingRecord, status: 'submitted' },
+      row: {
+        ...trainingRecord,
+        status: 'submitted',
+        ...(params.get('attachments') === 'long'
+          ? {
+              attachmentUrls: [readonlyAttachmentUrls[0]],
+              signInAttachmentUrls: [readonlyAttachmentUrls[1]]
+            }
+          : {})
+      },
       planOptions: [trainingPlan],
       readonly: true
     }
@@ -296,12 +310,29 @@ const entries: Record<string, Entry> = {
   'hazard-ledger-detail': {
     load: () =>
       import('@smis/views/dual-control-system/dual-control-checklist/hidden-hazard-governance-ledger/modules/hazard-ledger-detail-drawer.vue'),
-    data: { row: hazardLedger }
+    data: {
+      row: {
+        ...hazardLedger,
+        ...(params.get('longValues') === '1' ? longHazardSource : {})
+      }
+    }
   },
   'risk-information-detail': {
     load: () =>
       import('@smis/views/dual-control-system/dual-control-checklist/risk-control-information-checklist/modules/risk-control-detail-drawer.vue'),
-    data: { row: riskInformation }
+    data: {
+      row: {
+        ...riskInformation,
+        ...(params.get('longValues') === '1'
+          ? {
+              measures: riskInformation.measures?.map((measure) => ({
+                ...measure,
+                ...longRiskMeasure
+              }))
+            }
+          : {})
+      }
+    }
   },
   'hazard-governance-detail': {
     load: () =>
@@ -537,8 +568,22 @@ user.setUserInfo({
   userId: 'form-standard-test',
   userName: '验收管理员',
   tenantId,
-  platformSuper: true
+  platformSuper: !params.has('ordinary')
 } as Api.Auth.UserInfo)
+if (params.has('ordinary'))
+  useMenuStore(store).setButtonList(
+    [
+      'SmisDualControlHiddenHazardInspectionPlan:View',
+      'SmisDualControlHiddenHazardInspectionTask:View',
+      'SmisDualControlRiskInspectionTask:View',
+      'SmisSafetyTrainingRecord:View'
+    ].map((name) => ({
+      name,
+      path: '',
+      type: 'button',
+      meta: { title: name }
+    }))
+  )
 const scope = useTenantScopeStore(store)
 scope.tenantOptions = [{ id: tenantId, tenantCode: 'TEST', tenantName: '验收租户' }]
 scope.scopeOwnerUserId = 'form-standard-test'
@@ -549,6 +594,7 @@ const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThem
 settings.setGlobalTheme(theme, theme)
 initializeTheme()
 useTheme().switchThemeStyles(theme)
+document.documentElement.dataset.uiScope = 'workspace'
 document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
 await router.push('/')
 await router.isReady()

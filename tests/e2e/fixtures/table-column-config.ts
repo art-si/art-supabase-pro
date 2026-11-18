@@ -67,6 +67,22 @@ const runtimePage = defineComponent({
       h('div', { class: 'h-full flex flex-col gap-4' }, [
         h('div', { class: 'flex gap-4' }, [
           h(ElButton, { onClick: invalidateTableColumnConfig }, () => '重新读取配置'),
+          ...(parameters.has('switch-tenant')
+            ? [
+                h(
+                  ElButton,
+                  {
+                    onClick: async () => {
+                      const scope = useTenantScopeStore()
+                      await scope.loadTenantOptions()
+                      const target = scope.tenantOptions[0]
+                      if (target) scope.setTenantScope(target.id)
+                    }
+                  },
+                  () => '切换到指定租户'
+                )
+              ]
+            : []),
           h(
             ElButton,
             {

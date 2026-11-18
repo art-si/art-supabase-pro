@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test'
+import type { FuelCardEntry } from '../../src/api/fuel-card'
+import { fuelEntry } from './support/energy-card-data'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(180_000)
@@ -6,45 +8,33 @@ test.setTimeout(180_000)
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const occurredAt = '2026-10-20T08:00:00+08:00'
 const ledgerEntry = {
-  id: 'entry-1',
+  ...fuelEntry,
   tenantId,
-  cardId: 'card-1',
   cardNo: 'QA-CARD-001',
-  vehicleId: 'vehicle-1',
-  plateNo: '测A·10001',
   companyName: null,
+  vehicleOwnership: null,
+  carrierName: null,
+  vehicleDriverName: null,
+  vehicleDriverPhone: null,
   cardStatus: 'active',
-  driverId: null,
   driverName: null,
   stationName: '测试加油站',
   liters: 20,
   unitPrice: 6,
   paymentMethod: 'fuel_card',
   voucherPaths: ['fuel/receipt-1.png'],
-  sourceCostId: null,
   sourceCostNo: null,
   cardBalance: 880,
-  rechargeChannel: '',
-  invoiceNo: '',
-  rechargerEmployeeId: null,
-  rechargerEmployeeName: null,
-  waybillId: null,
   waybillNo: null,
   occurredAt,
-  expenseLocation: '',
-  odometerKm: null,
-  tripFuelPer100Km: null,
   entryType: 'consume',
   amount: 120,
   signedAmount: -120,
   balanceAfter: 880,
   occurredOn: '2026-10-20',
   referenceNo: 'QA-CM-001',
-  remark: '',
-  reversesEntryId: null,
-  isReversed: false,
   createTime: occurredAt
-}
+} satisfies FuelCardEntry
 const batch = {
   id: 'batch-1',
   tenantId,
@@ -55,6 +45,14 @@ const batch = {
   matched: 0,
   difference: 1,
   unmatched: 1
+}
+const otherBatch = {
+  ...batch,
+  id: 'batch-2',
+  fileName: '第二站点账单.csv',
+  fileSha256: 'cd'.repeat(32),
+  rowCount: 1,
+  unmatched: 0
 }
 const statementRows = [
   {
@@ -108,6 +106,7 @@ for (const variant of [
     page.on('pageerror', (error) => errors.push(error.message))
     await page.setViewportSize({ width: variant.width, height: 900 })
     let rowState: 'success' | 'empty' | 'error' = 'success'
+    let failOtherBatch = true
     let holdFirstRows = true
     let releaseFirstRows: (() => void) | undefined
     await page.route('**/rest/v1/**', async (route) => {
@@ -117,8 +116,25 @@ for (const variant of [
       if (endpoint === 'vms_list_fuel_cards_secure')
         return route.fulfill({ json: { records: [], total: 0 } })
       if (endpoint === 'vms_list_fuel_statement_batches_secure')
-        return route.fulfill({ json: [batch] })
+        return route.fulfill({ json: [batch, otherBatch] })
       if (endpoint === 'vms_list_fuel_statement_rows_secure') {
+        if (route.request().postDataJSON().p_batch_id === otherBatch.id) {
+          if (failOtherBatch)
+            return route.fulfill({
+              status: 503,
+              json: { code: 'XX000', message: 'temporary error' }
+            })
+          return route.fulfill({
+            json: [
+              {
+                ...statementRows[0],
+                id: 'statement-row-other-batch',
+                batchId: otherBatch.id,
+                cardNo: 'QA-CARD-BATCH-2'
+              }
+            ]
+          })
+        }
         if (holdFirstRows) {
           holdFirstRows = false
           await new Promise<void>((resolve) => {
@@ -162,6 +178,20 @@ for (const variant of [
     await expect(difference).toContainText('¥2.00')
     await expect(drawer.locator('.fuel-statement-unmatched-row')).toContainText('未匹配')
     await drawer.screenshot({ path: info.outputPath('success.png'), animations: 'disabled' })
+
+    const batchPicker = drawer.getByRole('combobox', { name: '对账批次' })
+    await batchPicker.click()
+    await page.getByRole('option', { name: /第二站点账单/ }).click()
+    await expect(drawer.getByText(/原始文件校验码：cdcdcdcdcdcd/)).toBeVisible()
+    await expect(drawer.getByText('对账明细加载失败，请重试。')).toBeVisible()
+    await expect(drawer.getByText('QA-CARD-001', { exact: true })).toHaveCount(0)
+    await expect(drawer.getByText('该批次明细暂不可用', { exact: true })).toBeVisible()
+    failOtherBatch = false
+    await drawer.getByRole('button', { name: '重试', exact: true }).click()
+    await expect(difference).toContainText('QA-CARD-BATCH-2')
+    await batchPicker.click()
+    await page.getByRole('option', { name: /测试站点账单/ }).click()
+    await expect(difference).toContainText('QA-CARD-001')
 
     await drawer.locator('input[type="file"]').setInputFiles({
       name: 'invalid-statement.csv',

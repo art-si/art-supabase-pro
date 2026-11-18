@@ -48,7 +48,7 @@
     {
       loading: false,
       text: '',
-      description: '正在获取最新数据，请稍候',
+      description: '请稍候，完成后即可继续操作',
       minHeight: 'clamp(320px, 54dvh, 580px)',
       background: '',
       customClass: '',

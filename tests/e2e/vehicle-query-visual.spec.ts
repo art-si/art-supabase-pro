@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Request } from '@playwright/test'
+import { expect, test, type Locator, type Page, type Request } from '@playwright/test'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 import { electricEntry, fuelEntry } from './support/energy-card-data'
 import { expectPaginationControlsInView } from './support/pagination-layout'
 
@@ -8,6 +9,16 @@ test.setTimeout(900_000)
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const vehicleId = '11111111-1111-4111-8111-111111111101'
 const carrierId = '11111111-1111-4111-8111-111111111501'
+const headerDisplaySample = {
+  driverName: '阿不都热依木·买买提艾力·艾山',
+  phone: '13800138000',
+  vehicleTypeLabel: '重型半挂牵引车（国六柴油）'
+}
+const headerAppearances = [
+  { width: 1440, height: 900, theme: 'light', boxBorderMode: true },
+  { width: 390, height: 844, theme: 'dark', boxBorderMode: false },
+  { width: 320, height: 844, theme: 'light', boxBorderMode: true }
+] as const
 const qaCertificateImage = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="560" height="320"><rect width="560" height="320" fill="#eef2ff"/><rect x="24" y="24" width="512" height="272" rx="14" fill="#ffffff" stroke="#a5b4fc"/><text x="48" y="100" font-size="28" fill="#3730a3">QA 车辆证件</text><text x="48" y="152" font-size="18" fill="#64748b">仅用于界面验收</text></svg>'
 )}`
@@ -77,7 +88,7 @@ const transportRecord = {
   completedAt: null
 }
 
-const mockVehicleApis = async (page: Page): Promise<void> => {
+const mockVehicleApis = async (page: Page, vehicleTypeLabel = '重型货车'): Promise<void> => {
   await page.route('**/rest/v1/**', (route) => {
     const endpoint = new URL(route.request().url()).pathname.split('/').at(-1)
     if (endpoint === 'get_table_column_runtime') {
@@ -151,7 +162,7 @@ const mockVehicleApis = async (page: Page): Promise<void> => {
           ['idle', '待命']
         ],
         vehicleType: [
-          ['heavy_truck', '重型货车'],
+          ['heavy_truck', vehicleTypeLabel],
           ['medium_truck', '中型货车']
         ],
         vehicleOwnership: [
@@ -181,6 +192,91 @@ const mockVehicleApis = async (page: Page): Promise<void> => {
     }
     return route.fulfill({ json: [] })
   })
+}
+
+async function setVehicleAppearance(
+  page: Page,
+  appearance: Parameters<typeof prepareAppearance>[1]
+): Promise<void> {
+  await page.emulateMedia({ colorScheme: appearance.theme })
+  await page.evaluate(async (appearance) => {
+    const { useTheme }: typeof import('../../src/hooks/core/useTheme') = await import(
+      new URL('/src/hooks/core/useTheme.ts', location.origin).href
+    )
+    const { SystemThemeEnum }: typeof import('../../src/enums/app-enum') = await import(
+      new URL('/src/enums/app-enum.ts', location.origin).href
+    )
+    const { useSettingStore }: typeof import('../../src/store/modules/setting') = await import(
+      new URL('/src/store/modules/setting.ts', location.origin).href
+    )
+    useTheme().switchThemeStyles(
+      appearance.theme === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+    )
+    useSettingStore().boxBorderMode = appearance.boxBorderMode
+    document.documentElement.dataset.boxMode = appearance.boxBorderMode
+      ? 'border-mode'
+      : 'shadow-mode'
+    await document.fonts.ready
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    )
+  }, appearance)
+  await assertAppearance(page, appearance)
+}
+
+async function expectHeaderDefinitions(root: Locator): Promise<void> {
+  const metrics = await root.evaluate((element) => {
+    return [...element.querySelectorAll('dl > div')].map((item) => {
+      const label = item.querySelector('dt')!
+      const value = item.querySelector('dd')!
+      const bounds = item.getBoundingClientRect()
+      const outer = item.closest('dl')!.getBoundingClientRect()
+      const valueBounds = value.getBoundingClientRect()
+      const labelRange = document.createRange()
+      labelRange.selectNodeContents(label)
+      const lines = [...labelRange.getClientRects()].filter((rect) => rect.width && rect.height)
+      const values: { left: number; right: number; top: number; bottom: number }[] = []
+      const walker = document.createTreeWalker(value, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        if (!walker.currentNode.textContent?.trim()) continue
+        const range = document.createRange()
+        range.selectNodeContents(walker.currentNode)
+        values.push(
+          ...[...range.getClientRects()].map(({ left, right, top, bottom }) => ({
+            left,
+            right,
+            top,
+            bottom
+          }))
+        )
+      }
+      return {
+        label: label.textContent?.trim(),
+        value: value.textContent?.trim(),
+        lineCount: lines.length,
+        itemInside: bounds.left >= outer.left - 1 && bounds.right <= outer.right + 1,
+        valueInside: valueBounds.left >= bounds.left - 1 && valueBounds.right <= bounds.right + 1,
+        textInside: values.every(
+          (rect) =>
+            rect.left >= valueBounds.left - 1 &&
+            rect.right <= valueBounds.right + 1 &&
+            rect.top >= valueBounds.top - 1 &&
+            rect.bottom <= valueBounds.bottom + 1
+        )
+      }
+    })
+  })
+  await test.info().attach(`header-definition-geometry-${root.page().viewportSize()?.width}`, {
+    body: JSON.stringify(metrics, null, 2),
+    contentType: 'application/json'
+  })
+  expect(metrics).toHaveLength(7)
+  for (const metric of metrics) {
+    expect.soft(metric.lineCount, `${metric.label} 标签单行`).toBe(1)
+    expect.soft(metric.itemInside, `${metric.label} 条目在摘要内`).toBe(true)
+    expect.soft(metric.valueInside, `${metric.label} 值容器在条目内`).toBe(true)
+    expect.soft(metric.textInside, `${metric.label} 值文本完整显示`).toBe(true)
+  }
 }
 
 const expandedListHeaders = [
@@ -249,13 +345,28 @@ test('车辆归属主体随自营、承运商和第三方物流正确展示', as
   test.setTimeout(240_000)
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await mockVehicleApis(page)
-  let vehicle = { ...vehicles[0] }
+  await prepareAppearance(page, headerAppearances[0])
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockVehicleApis(page, headerDisplaySample.vehicleTypeLabel)
+  const headerVehicle = {
+    ...vehicles[0],
+    primaryDriver: { driverName: headerDisplaySample.driverName, phone: headerDisplaySample.phone }
+  }
+  let vehicle = { ...headerVehicle }
+  let hideDriverPhone = false
   await page.route('**/rest/v1/rpc/vms_get_vehicle_archive_secure', (route) =>
-    route.fulfill({ json: vehicle })
+    route.fulfill({
+      json: {
+        ...vehicle,
+        primaryDriver: {
+          ...vehicle.primaryDriver,
+          fieldAccess: { contactPhone: hideDriverPhone ? 'hidden' : 'read' }
+        }
+      }
+    })
   )
   for (const ownership of ['self_operated', 'carrier', 'third_party']) {
-    vehicle = { ...vehicles[0], vehicleOwnership: ownership }
+    vehicle = { ...headerVehicle, vehicleOwnership: ownership }
     await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=detail', {
       waitUntil: 'commit'
     })
@@ -281,6 +392,33 @@ test('车辆归属主体随自营、承运商和第三方物流正确展示', as
     await expect(overview.getByText(name, { exact: true })).toBeVisible()
     if (ownership !== 'self_operated')
       await expect(overview.getByText('验收物流一部', { exact: true })).toHaveCount(0)
+    if (ownership === 'self_operated') {
+      for (const appearance of headerAppearances) {
+        await page.setViewportSize({ width: appearance.width, height: appearance.height })
+        await setVehicleAppearance(page, appearance)
+        await expect(
+          summary
+            .locator('dt')
+            .filter({ hasText: '主司机/电话' })
+            .locator('xpath=following-sibling::dd[1]')
+        ).toHaveText(`${headerDisplaySample.driverName} / ${headerDisplaySample.phone}`)
+        await expect(
+          summary.getByText(headerDisplaySample.vehicleTypeLabel, { exact: true })
+        ).toBeVisible()
+        await page.screenshot({
+          path: info.outputPath(
+            `vehicle-summary-labels-${appearance.width}-${appearance.theme}.png`
+          ),
+          fullPage: true
+        })
+        await expectHeaderDefinitions(summary)
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+        ).toBeLessThanOrEqual(1)
+      }
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await setVehicleAppearance(page, headerAppearances[0])
+    }
     if (ownership === 'carrier') {
       await page.setViewportSize({ width: 1280, height: 800 })
       for (const theme of ['light', 'dark']) {
@@ -298,12 +436,167 @@ test('车辆归属主体随自营、承运商和第三方物流正确展示', as
       }
     }
   }
-  vehicle = { ...vehicles[0], vehicleOwnership: 'carrier', carrier: { companyName: '' } }
+  vehicle = { ...headerVehicle, vehicleOwnership: 'carrier', carrier: { companyName: '' } }
+  hideDriverPhone = true
   await page.reload({ waitUntil: 'commit' })
   await expect(page.locator('.vehicle-query-summary')).toBeVisible({ timeout: 120_000 })
   await expect(page.locator('.vehicle-query-summary')).toContainText('所属承运商：未设置')
   await expect(page.locator('.vehicle-query-summary')).not.toContainText('验收物流一部')
+  await expect(
+    page
+      .locator('.vehicle-query-summary dt')
+      .filter({ hasText: '主司机/电话' })
+      .locator('xpath=following-sibling::dd[1]')
+  ).toHaveText(headerDisplaySample.driverName)
+  await expect(page.locator('.vehicle-query-summary')).not.toContainText(headerDisplaySample.phone)
   expect(errors).toEqual([])
+})
+
+test('车辆综合查询在窄屏可区分同名承运商并重置筛选', async ({ page }, info) => {
+  const companyName = '验收国际多式联运区域运营中心华东干线重载运输服务有限公司临港分部'
+  const codes = ['VMS-QA-001', 'VMS-QA-006']
+  const selectedCarrierId = '11111111-1111-4111-8111-111111111506'
+  const requests: unknown[] = []
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockVehicleApis(page)
+  await page.route('**/rest/v1/rpc/tms_list_carrier_options_secure', (route) =>
+    route.fulfill({
+      json: [
+        { id: carrierId, carrierCode: codes[0], companyName },
+        { id: selectedCarrierId, carrierCode: codes[1], companyName },
+        {
+          id: '11111111-1111-4111-8111-111111111507',
+          carrierCode: '  ',
+          companyName: '暂无编号承运商'
+        }
+      ].map((carrier) => ({ ...carrier, tenantId, enabled: true }))
+    })
+  )
+  await page.route('**/rest/v1/rpc/vms_list_vehicle_archives_secure', (route) => {
+    requests.push(route.request().postDataJSON()?.p_carrier_id)
+    return route.fallback()
+  })
+  await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html', { waitUntil: 'commit' })
+  const search = page.locator('.vehicle-query-page .art-search-bar')
+  const field = search.locator('[data-art-form-item-key="carrierId"]')
+  const combo = field.getByRole('combobox')
+  const reset = search.getByRole('button', { name: '重置', exact: true })
+  const query = search.getByRole('button', { name: '查询', exact: true })
+  await expect(combo).toBeVisible({ timeout: 60_000 })
+  await combo.press('ArrowDown')
+  const options = page.getByRole('option').filter({ hasText: companyName })
+  await expect(options).toHaveCount(2)
+  await expect(page.getByRole('option', { name: '暂无编号承运商', exact: true })).toBeVisible()
+  const visibleCodes = await options.evaluateAll(
+    (items, codes) =>
+      items.map((item, index) => {
+        const label = item.querySelector('span')?.firstChild
+        if (!(label instanceof Text)) return false
+        const offset = label.data.indexOf(codes[index])
+        if (offset < 0) return false
+        const range = new Range()
+        range.setStart(label, offset)
+        range.setEnd(label, offset + codes[index].length)
+        const optionRight =
+          item.getBoundingClientRect().right -
+          Number.parseFloat(getComputedStyle(item).paddingRight)
+        return range.getBoundingClientRect().right <= Math.min(optionRight, innerWidth)
+      }),
+    codes
+  )
+  expect(visibleCodes).toEqual([true, true])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await page.screenshot({ path: info.outputPath('carrier-options-390.png') })
+
+  await combo.fill(codes[1])
+  await expect(options).toHaveCount(1)
+  await combo.press('ArrowDown')
+  await combo.press('Enter')
+  await expect(combo).toHaveAttribute('aria-expanded', 'false')
+  await expect(field.locator('.el-select__placeholder:not(.is-transparent) span')).toHaveAttribute(
+    'title',
+    `${codes[1]} · ${companyName}`
+  )
+  await query.press('Enter')
+  await expect.poll(() => requests.at(-1)).toBe(selectedCarrierId)
+  await field.hover()
+  await field.locator('.el-select__clear').click()
+  await expect(combo).toBeFocused()
+  await expect(field.getByText('请选择承运商')).toBeVisible()
+  await query.press('Enter')
+  await expect.poll(() => requests.at(-1)).toBeNull()
+
+  await combo.press('ArrowDown')
+  await options.last().click()
+  await query.press('Enter')
+  await expect.poll(() => requests.at(-1)).toBe(selectedCarrierId)
+  await reset.press('Enter')
+  await expect.poll(() => requests.at(-1)).toBeNull()
+  await expect(reset).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(query).toBeFocused()
+})
+
+async function mockVehicleClassification(page: Page) {
+  const sameOwner = {
+    ...vehicles[1],
+    id: '11111111-1111-4111-8111-111111111103',
+    plateNo: '测A·10003',
+    vehicleOwnership: vehicles[0].vehicleOwnership
+  }
+  const archives = [...vehicles, sameOwner]
+  const reads: Array<string[] | null> = []
+  await mockVehicleApis(page)
+  await page.route('**/rest/v1/rpc/vms_list_vehicle_archive_navigation_secure', (route) =>
+    route.fulfill({
+      json: archives.map(({ id, vehicleOwnership, vehicleType }) => ({
+        id,
+        vehicleOwnership,
+        vehicleType
+      }))
+    })
+  )
+  await page.route('**/rest/v1/rpc/vms_list_vehicle_archives_secure', (route) => {
+    const { p_ids: ids } = route.request().postDataJSON() as { p_ids: string[] | null }
+    reads.push(ids)
+    const rows = ids ? archives.filter((vehicle) => ids.includes(vehicle.id)) : archives
+    return route.fulfill({ json: { records: rows, total: rows.length, fieldAccess: {} } })
+  })
+  return { reads, sameOwner }
+}
+
+test('车辆综合查询方向键浏览分类，确认才提交归属和车型', async ({ page }) => {
+  const { reads, sameOwner } = await mockVehicleClassification(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html', { waitUntil: 'commit' })
+  const query = page.locator('.vehicle-query-page')
+  const navigation = query.locator('.vehicle-query-page__navigation')
+  const selfOperated = navigation.getByRole('treeitem', { name: /^自营车辆/ })
+  const heavyTruck = navigation.getByRole('treeitem', { name: /^重型货车/ })
+  const otherVehicle = query.getByText(vehicles[1].plateNo, { exact: true })
+  const otherType = query.getByText(sameOwner.plateNo, { exact: true })
+  await expect(otherVehicle).toBeVisible({ timeout: 60_000 })
+  await expect(selfOperated).toHaveAttribute('aria-expanded', 'true')
+  const beforeBrowsing = reads.length
+  await selfOperated.press('ArrowRight')
+  await expect(heavyTruck).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(selfOperated).toBeFocused()
+  expect(reads).toHaveLength(beforeBrowsing)
+  await page.keyboard.press('Enter')
+  await expect.poll(() => reads.at(-1)).toEqual([vehicles[0].id, sameOwner.id])
+  await expect(otherVehicle).toHaveCount(0)
+  await expect(otherType).toBeVisible()
+
+  await selfOperated.press('ArrowRight')
+  await expect(heavyTruck).toBeFocused()
+  await page.keyboard.press('Space')
+  await expect.poll(() => reads.at(-1)).toEqual([vehicles[0].id])
+  await expect(otherType).toHaveCount(0)
+  await expect(heavyTruck).toBeFocused()
+  await navigation.getByRole('button', { name: /全部车辆/ }).click()
+  await expect(otherVehicle).toBeVisible()
+  expect(reads.at(-1)).toBeNull()
 })
 
 test('车辆综合查询两条记录在明暗主题和窄桌面完整呈现', async ({ page }, info) => {
@@ -656,14 +949,117 @@ test('车辆详情切换车辆后忽略此前尚未完成的承运响应', async
   }
 })
 
+test('车辆档案窄屏分类回焦并保留关联挂车的只读权限', async ({ page }, info) => {
+  const { reads, sameOwner } = await mockVehicleClassification(page)
+  const trailerReads: string[] = []
+  const trailerPlate = '测挂A·001'
+  await page.route('**/rest/v1/rpc/vms_list_vehicle_trailers_secure', (route) => {
+    trailerReads.push(route.request().postDataJSON().p_vehicle_id)
+    return route.fulfill({
+      json: [
+        {
+          id: '11111111-1111-4111-8111-111111111701',
+          tenantId,
+          plateNo: trailerPlate,
+          trailerType: '半挂车',
+          ownership: 'self_operated',
+          status: 'active'
+        }
+      ]
+    })
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=archive&archive-readonly', {
+    waitUntil: 'commit'
+  })
+  const archives = page.locator('.vehicle-archive-manage')
+  const navigation = archives.locator('.vehicle-archive-manage__navigation')
+  const toggle = navigation.getByRole('button', { name: '展开或收起车辆分类', exact: true })
+  const selfOperated = navigation.getByRole('treeitem', { name: /^自营车辆/ })
+  const heavyTruck = navigation.getByRole('treeitem', { name: /^重型货车/ })
+  const otherOwner = archives.getByText(vehicles[1].plateNo, { exact: true })
+  const otherType = archives.getByText(sameOwner.plateNo, { exact: true })
+  await expect(otherOwner).toBeVisible({ timeout: 60_000 })
+  const panelHeight = () => navigation.evaluate((element) => element.getBoundingClientRect().height)
+  await expect.poll(panelHeight).toBeLessThan(112)
+  await expect(navigation.getByRole('button', { name: /全部(展开|收起)车辆分类/ })).toHaveCount(0)
+  await navigation.screenshot({ path: info.outputPath('archive-classification-collapsed.png') })
+  await toggle.press('Enter')
+  await expect(selfOperated).toBeVisible({ timeout: 60_000 })
+  await expect.poll(panelHeight).toBeGreaterThan(300)
+  const beforeBrowsing = reads.length
+  await selfOperated.press('ArrowRight')
+  await expect(heavyTruck).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(selfOperated).toBeFocused()
+  expect(reads).toHaveLength(beforeBrowsing)
+  await page.keyboard.press('Enter')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(toggle).toBeFocused()
+  await expect.poll(panelHeight).toBeLessThan(112)
+  await expect.poll(() => reads.at(-1)).toEqual([vehicles[0].id, sameOwner.id])
+  await expect(otherOwner).toHaveCount(0)
+  await expect(otherType).toBeVisible()
+
+  await toggle.press('Enter')
+  await navigation.getByRole('button', { name: /全部车辆/ }).press('Space')
+  await expect(toggle).toBeFocused()
+  await expect(otherOwner).toBeVisible()
+  expect(reads.at(-1)).toBeNull()
+
+  await toggle.press('Enter')
+  await selfOperated.press('ArrowRight')
+  await expect(heavyTruck).toBeFocused()
+  await page.keyboard.press('Space')
+  await expect(toggle).toBeFocused()
+  await expect.poll(() => reads.at(-1)).toEqual([vehicles[0].id])
+  await expect(otherType).toHaveCount(0)
+  const row = archives.getByRole('row').filter({ hasText: vehicles[0].plateNo })
+  await expect(row.getByRole('cell', { name: trailerPlate, exact: true })).toBeAttached()
+  await expect(row.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0)
+  await row.getByRole('button', { name: '更多操作', exact: true }).press('Enter')
+  await expect(page.getByRole('menuitem', { name: '删除', exact: true })).toHaveCount(0)
+  await page.getByRole('menuitem', { name: '查看', exact: true }).press('Enter')
+
+  const trailers = page.getByRole('tab', { name: '挂车管理', exact: true })
+  await expect(trailers).toBeVisible({ timeout: 60_000 })
+  await trailers.click()
+  const panel = page.getByRole('region', { name: '关联挂车', exact: true })
+  await expect(panel.getByRole('cell', { name: trailerPlate, exact: true })).toBeVisible()
+  await expect(panel.getByRole('button', { name: '添加挂车', exact: true })).toHaveCount(0)
+  await expect(panel.getByRole('columnheader', { name: '操作', exact: true })).toHaveCount(0)
+  expect(trailerReads).toEqual([vehicles[0].id])
+  await page.screenshot({ path: info.outputPath('archive-classification-trailer-readonly.png') })
+})
+
 test('车辆档案管理字段、分类收缩和专注模式保持可用', async ({ page }, info) => {
-  await mockVehicleApis(page)
+  await prepareAppearance(page, headerAppearances[0])
+  await mockVehicleApis(page, headerDisplaySample.vehicleTypeLabel)
+  let hideDriverPhone = false
+  await page.route('**/rest/v1/rpc/vms_get_vehicle_archive_secure', (route) =>
+    route.fulfill({
+      json: {
+        ...vehicles[0],
+        primaryDriver: {
+          driverName: headerDisplaySample.driverName,
+          phone: headerDisplaySample.phone,
+          fieldAccess: { contactPhone: hideDriverPhone ? 'hidden' : 'read' }
+        }
+      }
+    })
+  )
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/tests/e2e/fixtures/vehicle-query-visual.html?page=archive')
   await expect(page).toHaveURL(/page=archive/)
   const workspace = page.locator('.vehicle-archive-manage')
   await expect(workspace).toBeVisible()
   await expect(workspace.getByText('测挂A·001')).toBeVisible()
+  await expect(
+    workspace
+      .getByRole('row')
+      .filter({ hasText: vehicles[0].plateNo })
+      .getByRole('button', { name: '编辑', exact: true })
+  ).toBeVisible()
   await expect(workspace.getByText('黄牌')).toBeVisible()
   for (const label of expandedListHeaders) {
     await expect(workspace.getByRole('columnheader', { name: label })).toBeVisible()
@@ -707,6 +1103,113 @@ test('车辆档案管理字段、分类收缩和专注模式保持可用', async
   await expect(workspace.locator('.business-workspace-header')).toBeHidden()
   await page.keyboard.press('Escape')
   await expect(workspace.locator('.business-workspace-header')).toBeVisible()
+  const row = workspace.getByRole('row').filter({ hasText: vehicles[0].plateNo })
+  await row.getByRole('button', { name: '更多操作', exact: true }).click()
+  await page.getByRole('menuitem', { name: '查看', exact: true }).click()
+  const detail = page.locator('.vehicle-archive-detail')
+  const identity = detail.locator('.vehicle-archive-detail__identity-copy')
+  await expect(detail).toBeVisible()
+  await expect(identity.locator('h1')).toHaveText(vehicles[0].plateNo)
+  await expect(identity.locator('input, textarea, select, [contenteditable="true"]')).toHaveCount(0)
+  for (const appearance of headerAppearances) {
+    await page.setViewportSize({ width: appearance.width, height: appearance.height })
+    await setVehicleAppearance(page, appearance)
+    await expect(
+      identity
+        .locator('dt')
+        .filter({ hasText: '主司机/电话' })
+        .locator('xpath=following-sibling::dd[1]')
+    ).toHaveText(`${headerDisplaySample.driverName} / ${headerDisplaySample.phone}`)
+    await expect(
+      identity.getByText(headerDisplaySample.vehicleTypeLabel, { exact: true })
+    ).toBeVisible()
+    await page.screenshot({
+      path: info.outputPath(`archive-summary-labels-${appearance.width}-${appearance.theme}.png`),
+      fullPage: true
+    })
+    const readability = await identity.evaluate((element, phone) => {
+      const title = element.querySelector('h1')!
+      const titleBounds = title.getBoundingClientRect()
+      const titleRange = document.createRange()
+      titleRange.selectNodeContents(title)
+      const titleRects = [...titleRange.getClientRects()].filter(
+        (rect) => rect.width && rect.height
+      )
+      const driverValue = [...element.querySelectorAll('dl > div')]
+        .find((item) => item.querySelector('dt')?.textContent === '主司机/电话')!
+        .querySelector('dd')!
+      const phoneBounds = driverValue.getBoundingClientRect()
+      const phoneRange = document.createRange()
+      const walker = document.createTreeWalker(driverValue, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        const index = walker.currentNode.textContent?.indexOf(phone) ?? -1
+        if (index < 0) continue
+        phoneRange.setStart(walker.currentNode, index)
+        phoneRange.setEnd(walker.currentNode, index + phone.length)
+        break
+      }
+      const phoneRects = [...phoneRange.getClientRects()].filter(
+        (rect) => rect.width && rect.height
+      )
+      return {
+        title: titleRange.toString(),
+        titleInside:
+          titleRects.length > 0 &&
+          titleRects.every(
+            (rect) =>
+              rect.left >= titleBounds.left - 1 &&
+              rect.right <= titleBounds.right + 1 &&
+              rect.top >= titleBounds.top - 1 &&
+              rect.bottom <= titleBounds.bottom + 1
+          ),
+        phone: phoneRange.toString(),
+        phoneLineCount: phoneRects.length,
+        phoneInside:
+          phoneRects.length > 0 &&
+          phoneRects.every(
+            (rect) =>
+              rect.left >= phoneBounds.left - 1 &&
+              rect.right <= phoneBounds.right + 1 &&
+              rect.top >= phoneBounds.top - 1 &&
+              rect.bottom <= phoneBounds.bottom + 1
+          )
+      }
+    }, headerDisplaySample.phone)
+    await info.attach(`archive-header-readability-${appearance.width}`, {
+      body: JSON.stringify(readability, null, 2),
+      contentType: 'application/json'
+    })
+    expect.soft(readability.titleInside, '车牌文字在标题内完整显示').toBe(true)
+    expect.soft(readability.phone).toBe(headerDisplaySample.phone)
+    expect.soft(readability.phoneLineCount, '11 位电话号码保持单行可读').toBe(1)
+    expect.soft(readability.phoneInside, '电话号码完整显示在值容器内').toBe(true)
+    await expectHeaderDefinitions(identity)
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+    ).toBeLessThanOrEqual(1)
+  }
+  hideDriverPhone = true
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const reloadedList = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith('/rpc/vms_list_vehicle_archives_secure')
+  )
+  await page.reload()
+  await (await reloadedList).finished()
+  await expect(workspace).toBeVisible()
+  await expect(row.getByText('黄牌', { exact: true })).toBeVisible()
+  await expect(workspace.locator('[aria-busy="true"]')).toHaveCount(0)
+  const more = row.getByRole('button', { name: '更多操作', exact: true })
+  await more.hover()
+  const menu = page.locator(`#${await more.getAttribute('aria-controls')}`)
+  await expect(menu).toBeVisible()
+  await menu.getByRole('menuitem', { name: '查看', exact: true }).click()
+  await expect(
+    identity
+      .locator('dt')
+      .filter({ hasText: '主司机/电话' })
+      .locator('xpath=following-sibling::dd[1]')
+  ).toHaveText(headerDisplaySample.driverName)
+  await expect(identity).not.toContainText(headerDisplaySample.phone)
 })
 
 test('车辆列表可选择所属承运商并筛选结果', async ({ page }) => {

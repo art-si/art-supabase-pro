@@ -69,12 +69,10 @@ test('关闭重开报价后旧读取不能覆盖当前备注', async ({ page }, 
   await page.screenshot({ path: info.outputPath('quote-payment-390-dark.png') })
 })
 
-test('报价保存失败只提示一次，重试请求冻结原内容', async ({ page }) => {
+test('报价保存失败只提示一次，键盘重试冻结原请求内容', async ({ page }, info) => {
   let fail = true
-  let releaseWrite: (() => void) | undefined
-  const held = new Promise<void>((resolve) => {
-    releaseWrite = resolve
-  })
+  const firstWrite = Promise.withResolvers<void>()
+  const retryWrite = Promise.withResolvers<void>()
   const writes: Array<{ p_payload: { remark: string } }> = []
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
   await page.route('**/rpc/tms_get_order_quote_secure', (route) =>
@@ -82,9 +80,11 @@ test('报价保存失败只提示一次，重试请求冻结原内容', async ({
   )
   await page.route('**/rpc/tms_save_order_quote_secure', async (route) => {
     writes.push(route.request().postDataJSON())
-    if (fail)
+    if (fail) {
+      await firstWrite.promise
       return route.fulfill({ status: 400, json: { code: 'P0001', message: '测试报价保存失败' } })
-    await held
+    }
+    await retryWrite.promise
     return route.fulfill({ json: {} })
   })
   await page.goto('/tests/e2e/fixtures/order-quote-state.html')
@@ -92,18 +92,34 @@ test('报价保存失败只提示一次，重试请求冻结原内容', async ({
   const dialog = page.getByRole('dialog')
   await dialog.getByRole('tab', { name: '付款与附件' }).click()
   const remark = dialog.getByRole('textbox', { name: /备注/ })
+  const save = dialog.getByRole('button', { name: '保存报价', exact: true })
   await remark.fill('首次报价备注')
-  await dialog.getByRole('button', { name: '保存报价', exact: true }).click()
+  await expect(save).toBeEnabled()
+  try {
+    await save.focus()
+    await expect(save).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => writes.length).toBe(1)
+    await expect(save).toBeDisabled()
+  } finally {
+    firstWrite.resolve()
+  }
   await expect(
     page.locator('.el-message__content').getByText('测试报价保存失败', { exact: true })
   ).toHaveCount(1)
   await expect(remark).toHaveValue('首次报价备注')
+  await expect(save).toBeEnabled()
+  await expect(save).toBeFocused()
+  await dialog.screenshot({ path: info.outputPath('quote-save-retry-focus.png') })
   await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 15_000 })
   fail = false
-  await dialog.getByRole('button', { name: '保存报价', exact: true }).click()
-  await expect.poll(() => writes.length).toBe(2)
-  await remark.fill('请求发出后的新备注')
-  releaseWrite?.()
+  try {
+    await page.keyboard.press('Enter')
+    await expect.poll(() => writes.length).toBe(2)
+    await remark.fill('请求发出后的新备注')
+  } finally {
+    retryWrite.resolve()
+  }
   await expect(
     page.getByText('本次报价已保存，后续修改尚未保存，请检查后再次保存', { exact: true })
   ).toBeVisible()

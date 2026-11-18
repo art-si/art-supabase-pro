@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  createDocumentGroupSpan,
   documentGroupSpan,
   expandDocumentLines,
   groupDocumentLines,
@@ -77,6 +78,34 @@ test('repeated document cells merge while detail cells stay separate', () => {
   assert.deepEqual(documentGroupSpan(rows, 1, 'documentNo', lineProperties), [0, 0])
   assert.deepEqual(documentGroupSpan(rows, 1, 'materialCode', lineProperties), [1, 1])
   assert.deepEqual(documentGroupSpan(rows, 2, 'documentNo', lineProperties), [1, 1])
+})
+
+test('table spans follow the active mode and currently visible page', () => {
+  let mode: 'document' | 'line' = 'document'
+  let rows: readonly { id: string; applicationId: string }[] | undefined
+  const span = createDocumentGroupSpan(
+    () => mode,
+    () => rows,
+    new Set(['amount']),
+    (row) => row.applicationId
+  )
+  const documentNo = { rowIndex: 0, column: { property: 'documentNo' } }
+  rows = [
+    { id: 'first-expense', applicationId: 'travel-one' },
+    { id: 'second-expense', applicationId: 'travel-one' }
+  ]
+
+  assert.deepEqual(span(documentNo), [1, 1])
+  mode = 'line'
+  assert.deepEqual(span(documentNo), [2, 1])
+  assert.deepEqual(span({ ...documentNo, rowIndex: 1 }), [0, 0])
+  assert.deepEqual(span({ rowIndex: 0, column: { property: 'amount' } }), [1, 1])
+  assert.deepEqual(span({ rowIndex: 0, column: {} }), [1, 1])
+
+  rows = [{ id: 'third-expense', applicationId: 'travel-two' }]
+  assert.deepEqual(span(documentNo), [1, 1])
+  rows = undefined
+  assert.deepEqual(span(documentNo), [1, 1])
 })
 
 test('both pagination formats keep reading full pages when the total is absent', async () => {

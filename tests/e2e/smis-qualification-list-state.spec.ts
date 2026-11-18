@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
 
@@ -53,39 +53,133 @@ const scenarios = [
   }
 ] as const
 
+async function mockQualificationView(page: Page, scenario: (typeof scenarios)[number]) {
+  const tenant = await prepareIsolatedSession(page, { platformSuper: false })
+  const menu = {
+    id: scenario.name,
+    parentId: null,
+    name: scenario.name,
+    path: scenario.path,
+    component: scenario.path,
+    type: 'menu',
+    sort: 1,
+    meta: { title: scenario.title, is_enable: true, is_hide: false, roles: [] }
+  }
+  await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
+    route.fulfill({ json: [{ code: 'smis', name: '测试安全管理', baseUrl: '/smis/' }] })
+  )
+  await mockApplicationMenus(page, {
+    smis: [
+      menu,
+      {
+        ...menu,
+        id: `${menu.id}-View`,
+        parentId: menu.id,
+        name: `${menu.name}:View`,
+        type: 'button',
+        path: '',
+        component: ''
+      }
+    ]
+  })
+  return tenant
+}
+
+for (const scenario of [scenarios[0], scenarios[3]]) {
+  test(`${scenario.title}键盘确认分类并保留停用历史`, async ({ page }, info) => {
+    const tenant = await mockQualificationView(page, scenario)
+    const isQuestion = scenario.kind === 'question'
+    await page.setViewportSize({ width: isQuestion ? 760 : 1440, height: 900 })
+    const routeName = isQuestion
+      ? 'smis_list_question_bank_secure'
+      : 'smis_list_qualification_catalog_secure'
+    const enabled = { tenantId: tenant.id, status: 'enabled', sort: 1 }
+    const historical = { ...enabled, id: 'historical', status: 'disabled', sort: 2 }
+    const scopes: Array<Record<string, string | null>> = []
+    const writes: string[] = []
+    page.on('request', (request) => {
+      const { pathname } = new URL(request.url())
+      if (/\/rpc\/smis_(save|delete)_(question|qualification)/.test(pathname)) writes.push(pathname)
+    })
+    await page.route(`**/rest/v1/rpc/${routeName}`, (route) => {
+      const body = route.request().postDataJSON()
+      scopes.push(
+        isQuestion
+          ? { category: body.p_category_id }
+          : { workCategory: body.p_work_category_id, ancestor: body.p_ancestor_id }
+      )
+      const scope = body.p_category_id ?? body.p_ancestor_id ?? body.p_work_category_id
+      const label = `验收记录-${scope ?? 'all'}`
+      return route.fulfill({
+        json: {
+          total: 1,
+          records: isQuestion
+            ? [{ ...enabled, id: 'question-1', stem: label, questionType: 'single', options: [] }]
+            : [{ ...enabled, id: 'item-1', itemName: label, itemCode: 'ROW' }],
+          categories: [
+            { ...enabled, id: 'parent', categoryName: '当前主题', questionCount: 2 },
+            { ...historical, parentId: 'parent', categoryName: '历史主题', questionCount: 1 }
+          ],
+          tree: [
+            { ...historical, workCategoryId: 'parent', itemName: '历史项目', itemCode: 'OLD' }
+          ],
+          workCategories: [{ ...enabled, id: 'parent', itemName: '当前类别', itemCode: 'NEW' }]
+        }
+      })
+    })
+    await page.goto(`#${scenario.path}`, { waitUntil: 'domcontentloaded' })
+    const tree = page.locator(
+      isQuestion ? '.question-category-navigator' : '.qualification-catalog-navigator'
+    )
+    const parent = tree.locator('[role="treeitem"][data-key="parent"]')
+    const child = tree.locator('[role="treeitem"][data-key="historical"]')
+    const table = page.locator('.art-table-query')
+    await expect(child).toContainText('已停用', { timeout: 60_000 })
+    await expect(table.getByText('验收记录-all', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^新增/ })).toHaveCount(0)
+    scopes.length = 0
+    await parent.press('ArrowLeft')
+    await expect(child).toBeHidden()
+    await page.keyboard.press('ArrowRight')
+    await expect(child).toBeVisible()
+    await page.keyboard.press('ArrowRight')
+    await expect(child).toBeFocused()
+    expect(scopes).toEqual([])
+
+    await page.keyboard.press('Enter')
+    await expect(table.getByText('验收记录-historical', { exact: true })).toBeVisible()
+    await expect(child).toBeFocused()
+    await page.keyboard.press('ArrowLeft')
+    await expect(parent).toBeFocused()
+    expect(scopes).toHaveLength(1)
+    await page.keyboard.press('Space')
+    await expect(table.getByText('验收记录-parent', { exact: true })).toBeVisible()
+    const all = tree.getByRole('button', {
+      name: isQuestion ? /^全部题目/ : /^全部作业类别与准操项目/
+    })
+    await expect(all).toHaveAttribute('aria-pressed', 'false')
+    await all.press('Enter')
+    await expect(table.getByText('验收记录-all', { exact: true })).toBeVisible()
+    await expect(all).toHaveAttribute('aria-pressed', 'true')
+    expect(scopes).toEqual(
+      isQuestion
+        ? [{ category: 'historical' }, { category: 'parent' }, { category: null }]
+        : [
+            { workCategory: null, ancestor: 'historical' },
+            { workCategory: 'parent', ancestor: null },
+            { workCategory: null, ancestor: null }
+          ]
+    )
+    expect(writes).toEqual([])
+    await tree.screenshot({ path: info.outputPath('qualification-keyboard.png') })
+  })
+}
+
 for (const scenario of scenarios) {
   test(`${scenario.title}失败保留与旧请求隔离`, async ({ page }, testInfo) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
-    const tenant = await prepareIsolatedSession(page)
-    await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
-    const menu = {
-      id: scenario.name,
-      parentId: null,
-      name: scenario.name,
-      path: scenario.path,
-      component: scenario.path,
-      type: 'menu',
-      sort: 1,
-      meta: { title: scenario.title, is_enable: true, is_hide: false, roles: [] }
-    }
-    await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
-      route.fulfill({ json: [{ code: 'smis', name: '测试安全管理', baseUrl: '/smis/' }] })
-    )
-    await mockApplicationMenus(page, {
-      smis: [
-        menu,
-        {
-          ...menu,
-          id: `${menu.id}-View`,
-          parentId: menu.id,
-          name: `${menu.name}:View`,
-          type: 'button',
-          path: '',
-          component: ''
-        }
-      ]
-    })
+    const tenant = await mockQualificationView(page, scenario)
     const rpc =
       scenario.kind === 'question'
         ? 'smis_list_question_bank_secure'

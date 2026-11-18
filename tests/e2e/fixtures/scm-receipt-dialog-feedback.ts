@@ -1,10 +1,14 @@
 import { createApp, defineComponent, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { setupGlobDirectives } from '@/directives'
 import language from '@/locales'
 import { store } from '@/store'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useUserStore } from '@/store/modules/user'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import type { ScmReceiptTargetLine } from '@/api/scm-receipt-target'
 import ReceiptSerialDialog from '@/components/business/scm-receipt-target-workspace/modules/receipt-serial-dialog.vue'
 import ReceiptBinDialog from '@/components/business/scm-receipt-target-workspace/modules/receipt-bin-dialog.vue'
@@ -59,7 +63,7 @@ const Preview = defineComponent({
   }
 })
 
-const app = createApp(Preview)
+const app = createApp({ render: () => h(ElConfigProvider, { locale: zhCn }, () => h(Preview)) })
 app.use(store)
 app.use(
   createRouter({
@@ -77,5 +81,10 @@ useUserStore(store).setUserInfo({
   platformSuper: false
 })
 useTenantScopeStore(store).selectedTenantId = tenantId
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 
 app.mount('#scm-receipt-dialog-feedback-preview')

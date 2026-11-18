@@ -3,6 +3,54 @@ import { expect, test } from '@playwright/test'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
+test('定位关联 BOM 时清除已应用的旧关键字', async ({ page }) => {
+  const bomId = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
+  const tenantId = '11111111-1111-4111-8111-111111111111'
+  const previousKeyword = 'OTHER-BOM'
+  const reads: URLSearchParams[] = []
+  await page.route('**/rest/v1/**', (route) => {
+    const url = new URL(route.request().url())
+    const isBomList = url.pathname.endsWith('/mdm_bom')
+    if (isBomList) reads.push(url.searchParams)
+    const located =
+      isBomList && url.searchParams.get('id') === `eq.${bomId}` && !url.searchParams.has('or')
+    return route.fulfill({
+      headers: {
+        'content-range': located ? '0-0/1' : '*/0',
+        'access-control-expose-headers': 'content-range'
+      },
+      json: located
+        ? [
+            {
+              id: bomId,
+              tenant_id: tenantId,
+              bom_code: 'BOM-REFERENCE',
+              version: '1',
+              purpose: 'production',
+              status: 'design',
+              base_quantity: 1,
+              items: []
+            }
+          ]
+        : []
+    })
+  })
+  await page.goto(`/tests/e2e/fixtures/bom-workspace-scope.html?scope=ordinary&locateBom=${bomId}`)
+  const query = page.locator('.bom-maintenance-page .art-table-query')
+  const keyword = query.getByRole('textbox', { name: '关键字', exact: true })
+  await keyword.fill(previousKeyword)
+  await query.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => reads.at(-1)?.get('or')).toContain(previousKeyword)
+
+  await page.getByRole('button', { name: '定位关联 BOM', exact: true }).click()
+  await expect(keyword).toHaveValue('')
+  await expect.poll(() => reads.at(-1)?.get('id')).toBe(`eq.${bomId}`)
+  const locatedRead = reads.at(-1)
+  expect(locatedRead?.get('or')).toBeNull()
+  expect(locatedRead?.get('tenant_id')).toBe(`eq.${tenantId}`)
+  await expect(query.getByText('BOM-REFERENCE', { exact: true })).toBeVisible()
+})
+
 for (const failed of [false, true]) {
   test(`BOM 分组离开页面后忽略旧保存${failed ? '失败' : '成功'}`, async ({ page }) => {
     let release: () => void = () => {}

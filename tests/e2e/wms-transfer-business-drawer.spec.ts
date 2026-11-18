@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import ExcelJS from 'exceljs'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
+import { expectWarehouseCodeVisible } from './support/warehouse-option'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -50,9 +52,19 @@ test('直接调拨缺少 MDM 标准类型时显示配置指引并禁止保存', 
   await expect(drawer.getByRole('button', { name: '重新加载', exact: true })).toBeVisible()
 })
 
-for (const kind of ['直接', '分步'] as const) {
-  test(`${kind}调拨单可多选库存并编辑明细`, async ({ page }, testInfo) => {
+for (const [kind, sameNameWarehouses] of [
+  ['直接', false],
+  ['分步', false],
+  ['直接', true]
+] as const) {
+  test(`${kind}调拨单${sameNameWarehouses ? '窄屏区分同名目标仓库并按 ID 保存' : '可多选库存并编辑明细'}`, async ({
+    page
+  }, testInfo) => {
     test.setTimeout(90_000)
+    const targetWarehouseName = sameNameWarehouses
+      ? '华东地区精密零部件生产配套及成品包装配送综合周转仓储服务中心'
+      : '目标仓库'
+    if (sameNameWarehouses) await page.setViewportSize({ width: 390, height: 844 })
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
@@ -97,9 +109,21 @@ for (const kind of ['直接', '分步'] as const) {
             tenant_id: 'tenant-test',
             organization_id: 'organization-one',
             warehouse_code: 'WH-02',
-            warehouse_name: '目标仓库',
+            warehouse_name: targetWarehouseName,
             status: 'enabled'
           },
+          ...(sameNameWarehouses
+            ? [
+                {
+                  id: 'warehouse-three',
+                  tenant_id: 'tenant-test',
+                  organization_id: 'organization-one',
+                  warehouse_code: 'WH-03',
+                  warehouse_name: targetWarehouseName,
+                  status: 'enabled'
+                }
+              ]
+            : []),
           {
             id: 'warehouse-other',
             tenant_id: 'tenant-test',
@@ -244,6 +268,47 @@ for (const kind of ['直接', '分步'] as const) {
       .locator('.el-select')
       .click()
     await expect(page.getByRole('option', { name: /异组织仓库/ })).toHaveCount(0)
+    if (sameNameWarehouses) {
+      const popup = page.locator('.el-select__popper.art-form-picker-popper:visible')
+      for (const code of ['WH-02', 'WH-03']) {
+        const option = popup.getByRole('option', { name: new RegExp(code) })
+        await expectWarehouseCodeVisible(option, code)
+        await expect(option).toHaveAttribute('title', `${code} · ${targetWarehouseName}`)
+      }
+      const bounds = (await popup.boundingBox())!
+      expect(bounds.x).toBeGreaterThanOrEqual(0)
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(391)
+      await page.screenshot({
+        path: testInfo.outputPath('transfer-target-warehouse-390.png'),
+        animations: 'disabled'
+      })
+      const label = `WH-03 · ${targetWarehouseName}`
+      await popup.getByRole('option', { name: label, exact: true }).click()
+      await expect(lineDialog.getByText(label, { exact: true })).toHaveAttribute('title', label)
+      await lineDialog.getByRole('button', { name: '确定', exact: true }).click()
+      await expect(lineDialog).toBeHidden()
+      const writes: unknown[] = []
+      await page.route('**/rpc/wms_save_transfer_business_secure', (route) => {
+        writes.push(route.request().postDataJSON())
+        return route.fulfill({ json: 'transfer-success' })
+      })
+      await drawer.getByRole('button', { name: '保存', exact: true }).click()
+      await expect(drawer).toBeHidden()
+      expect(writes).toMatchObject([
+        {
+          p_payload: {
+            lines: [
+              {
+                source_batch_id: 'batch-one',
+                source_warehouse_id: 'warehouse-one',
+                target_warehouse_id: 'warehouse-three'
+              }
+            ]
+          }
+        }
+      ])
+      return
+    }
     await page.getByRole('option', { name: /目标仓库/ }).click()
     await lineDialog.getByRole('button', { name: '确定', exact: true }).click()
     await expect(lineDialog).toBeHidden()
@@ -388,6 +453,11 @@ test('直接调拨选单带入来源批次并锁定申请数量和单位', async
   await drawer.getByRole('button', { name: '选单', exact: true }).click()
   const picker = page.getByRole('dialog', { name: '选单', exact: true })
   await expect(picker.getByText('DBSQ202610-001', { exact: true })).toBeVisible()
+  await picker.locator('.el-table__body tr').first().scrollIntoViewIfNeeded()
+  await picker.screenshot({
+    path: testInfo.outputPath('request-line-picker.png'),
+    animations: 'disabled'
+  })
   await picker.locator('.el-table__body tr').first().locator('.el-checkbox').click()
   await picker.getByRole('button', { name: '带入调拨明细', exact: true }).click()
   await expect(picker).toBeHidden()
@@ -484,15 +554,18 @@ for (const kind of ['直接', '分步'] as const) {
     })
     await page.getByRole('button', { name: `测试${kind}调拨单查看`, exact: true }).click()
     const drawer = page.getByRole('dialog', { name: `查看${kind}调拨单`, exact: true })
-    await expect(drawer.locator('.art-descriptions')).toBeVisible()
+    const documentHeader = await expectOverlayTabPanel(drawer, '单据信息')
+    await expect(documentHeader.locator('.art-descriptions')).toBeVisible()
     await expect(drawer.locator('.el-form')).toHaveCount(0)
     await drawer.getByRole('tab', { name: '调拨明细', exact: true }).click()
-    await drawer.getByRole('button', { name: '查看', exact: true }).click()
+    const documentLines = await expectOverlayTabPanel(drawer, '调拨明细')
+    await documentLines.getByRole('button', { name: '查看', exact: true }).click()
     const line = page.getByRole('dialog', { name: '查看调拨明细', exact: true })
     await line.getByRole('tab', { name: '仓储与归属', exact: true }).click()
-    await expect(line.locator('.art-descriptions:visible')).toBeVisible()
+    const warehouse = await expectOverlayTabPanel(line, '仓储与归属')
+    await expect(warehouse.locator('.art-descriptions')).toBeVisible()
     await expect(line.locator('.el-form')).toHaveCount(0)
-    await expect(line.getByText('受托加工', { exact: true })).toBeVisible()
+    await expect(warehouse.getByText('受托加工', { exact: true })).toBeVisible()
     await expect(line.getByText('entrusted_processing', { exact: true })).toHaveCount(0)
     await page.screenshot({
       path: testInfo.outputPath(`${kind}-transfer-description-view.png`),

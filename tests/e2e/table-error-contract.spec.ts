@@ -72,9 +72,42 @@ for (const { theme, boxMode } of [
     await page.keyboard.press('Enter')
     await expect(page.getByText('恢复后的记录')).toBeVisible()
     await expect(errorRegion).toHaveCount(0)
+    const tableHost = page.getByRole('group', { name: '查询结果', exact: true })
+    await expect(tableHost).toBeFocused()
+    await page.screenshot({ path: testInfo.outputPath('bounded-error-after-retry.png') })
     expect(pageErrors).toEqual([])
   })
 }
+
+test('窄屏键盘重试再次失败可继续重试，并尊重用户转移的焦点', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 400 })
+  await page.goto(fixture('retry-keyboard'), { waitUntil: 'commit' })
+  const retry = page.getByRole('button', { name: '重新加载', exact: true })
+  const finish = page.getByRole('button', { name: '完成测试请求', exact: true })
+  await expect(retry).toBeVisible({ timeout: 45_000 })
+  await retry.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('body')).toHaveAttribute('data-list-attempts', '2')
+  await expect(retry).toBeHidden()
+  await finish.evaluate((button: HTMLButtonElement) => button.click())
+  await expect(retry).toBeVisible()
+  await expect(retry).toBeFocused()
+  await expect
+    .poll(() =>
+      retry.evaluate((button) => {
+        const { left, top, width, height } = button.getBoundingClientRect()
+        return button.contains(document.elementFromPoint(left + width / 2, top + height / 2))
+      })
+    )
+    .toBe(true)
+
+  await page.keyboard.press('Space')
+  await expect(page.locator('body')).toHaveAttribute('data-list-attempts', '3')
+  await finish.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByText('恢复后的记录')).toBeVisible()
+  await expect(finish).toBeFocused()
+})
 
 for (const mode of ['mask', 'adapted', 'nested']) {
   test(`${mode} 错误不能进入成功状态`, async ({ page }) => {

@@ -5,10 +5,15 @@ import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
 import { setupGlobDirectives } from '@/directives'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import { initializeTheme } from '@/hooks/core/useTheme'
+import { useSettingStore } from '@/store/modules/setting'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 const query = new URLSearchParams(location.search)
+const archiveReadOnly = query.has('archive-readonly')
 const user = useUserStore(store)
 
 user.setUserInfo({
@@ -32,10 +37,13 @@ useMenuStore(store).setButtonList(
     'ElectricCardArchive:View',
     'ElectricCardLedger:View',
     'TmsOrderQuery:View',
-    'TmsDriverQuery:View'
+    'TmsDriverQuery:View',
+    ...(archiveReadOnly ? ['VehicleArchive:TabTrailers', 'TrailerManage:View'] : [])
   ]
     .filter(
-      (name) => name !== 'VehicleInspection:View' || query.get('inspection-view') !== 'denied'
+      (name) =>
+        (name !== 'VehicleInspection:View' || query.get('inspection-view') !== 'denied') &&
+        (name !== 'VehicleArchive:Edit' || !archiveReadOnly)
     )
     .map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
 )
@@ -64,6 +72,11 @@ const router = createRouter({
       component: () => import('@vms/views/vehicle-archive-manage/index.vue')
     },
     {
+      path: '/vms/vehicle-archive-detail/:id',
+      name: 'VehicleArchiveDetail',
+      component: () => import('@vms/views/vehicle-archive-detail/index.vue')
+    },
+    {
       path: '/vms/vehicle-query/detail/:id',
       name: 'VehicleQueryDetail',
       component: () => import('@vms/views/vehicle-query/detail/index.vue')
@@ -73,30 +86,37 @@ const router = createRouter({
 
 const app = createApp({
   render: () =>
-    h(
-      'main',
-      {
-        class: 'art-page-view min-h-screen p-4',
-        style: {
-          background: 'var(--el-bg-color-page)',
-          '--art-full-height': 'calc(100dvh - 2rem)'
-        }
-      },
-      [
-        query.has('switch-vehicle')
-          ? h(
-              RouterLink,
-              { to: '/vms/vehicle-query/detail/11111111-1111-4111-8111-111111111102' },
-              () => '查看另一辆测试车辆'
-            )
-          : null,
-        h(RouterView)
-      ]
+    h(ElConfigProvider, { locale: zhCn }, () =>
+      h(
+        'main',
+        {
+          class: 'art-page-view min-h-screen p-4',
+          style: {
+            background: 'var(--el-bg-color-page)',
+            '--art-full-height': 'calc(100dvh - 2rem)'
+          }
+        },
+        [
+          query.has('switch-vehicle')
+            ? h(
+                RouterLink,
+                { to: '/vms/vehicle-query/detail/11111111-1111-4111-8111-111111111102' },
+                () => '查看另一辆测试车辆'
+              )
+            : null,
+          h(RouterView)
+        ]
+      )
     )
 })
 app.use(store)
 app.use(router)
 app.use(language)
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 setupGlobDirectives(app)
 await router.push(
   query.get('page') === 'inspection'

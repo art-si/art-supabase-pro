@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { installDictionaryOptions } from './support/dictionary-options'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(45_000)
@@ -22,6 +23,12 @@ async function setup(page: Page) {
     return route.fulfill({ status: 400, json: { message: 'unexpected request' } })
   })
   await page.route('**/rest/v1/sys_document_number_rule?*', (route) => route.fulfill({ json: [] }))
+  await installDictionaryOptions(page, {
+    vmsMaintenanceReminderMode: [
+      { value: 'time', label: '按时间（3 个月）' },
+      { value: 'mileage', label: '按里程（10,000 公里）' }
+    ]
+  })
   await page.route('**/rest/v1/rpc/get_table_column_runtime', (route) =>
     route.fulfill({ json: { enabled: false, profiles: [] } })
   )
@@ -40,6 +47,65 @@ async function setup(page: Page) {
   )
   return unexpected
 }
+
+test('维修厂参选在窄屏可键盘重试并翻到下一批维修厂', async ({ page }, info) => {
+  const unexpected = await setup(page)
+  const longName = '验收国际物流车辆应急救援与新能源底盘综合维修服务中心临港分厂'
+  const workshops = Array.from({ length: 12 }, (_, index) => {
+    const number = String(index + 1).padStart(2, '0')
+    return {
+      id: `44444444-4444-4444-8444-4444444444${number}`,
+      supplierCode: `WX-${number}`,
+      supplierName: index >= 10 ? longName : `验收维修厂 ${number}`
+    }
+  })
+  let attempts = 0
+  await page.route('**/rest/v1/rpc/vms_list_maintenance_workshops_secure', (route) => {
+    attempts++
+    return attempts === 1
+      ? route.fulfill({ status: 503, json: { message: '验收模拟暂不可用' } })
+      : route.fulfill({ json: { records: workshops } })
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixture, { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: '编辑历史维保' }).click()
+  const form = page.getByRole('dialog', { name: '编辑维修保养记录' })
+  await form.getByRole('tab', { name: '费用与票据', exact: true }).click()
+  const trigger = form.getByPlaceholder('选择维修厂（选填）')
+  await trigger.press('Enter')
+  const picker = page.getByRole('dialog', { name: '选择维修厂', exact: true })
+  const confirm = picker.getByRole('button', { name: '确定', exact: true })
+  await expect(picker.getByText('可选数据加载失败', { exact: true })).toBeVisible()
+  await expect(confirm).toBeDisabled()
+  const retry = picker.getByRole('button', { name: '重新加载', exact: true })
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 })
+    await expect(retry).toBeInViewport()
+    await expect(confirm).toBeInViewport()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width
+    )
+    await picker.screenshot({ path: info.outputPath(`workshop-retry-${width}.png`) })
+  }
+
+  await retry.press('Enter')
+  const first = picker.getByRole('row').filter({ hasText: 'WX-01' })
+  const eleventh = picker.getByRole('row').filter({ hasText: 'WX-11' })
+  await expect(first).toBeVisible()
+  await picker.locator('.btn-next').press('Enter')
+  await expect(picker.getByText('共 12 条 · 第 2 页', { exact: true })).toBeVisible()
+  await expect(eleventh).toBeVisible()
+  await expect(first).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await eleventh.getByText('WX-11', { exact: true }).click()
+  await confirm.press('Enter')
+  await expect(trigger).toBeFocused()
+  await expect(trigger).toHaveValue(longName)
+  await expect(trigger).toHaveAttribute('title', longName)
+  expect(attempts).toBeGreaterThanOrEqual(3)
+  expect(unexpected).toEqual([])
+  await form.screenshot({ path: info.outputPath('workshop-selected-390.png') })
+})
 
 test('维保新建默认、必填字段和提醒规则在真实对话框中生效', async ({ page }, testInfo) => {
   const unexpected = await setup(page)

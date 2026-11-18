@@ -2,6 +2,8 @@ import { expect, test, type Page } from '@playwright/test'
 import ExcelJS from 'exceljs'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { assertTableFocusContract } from './support/table-focus'
+import { expectInputTextUnclipped } from './support/input-text-width'
+import { expectQueryLabelLayout } from './support/query-label-layout'
 import {
   installActionFeedbackHistory,
   readActionFeedbackHistory
@@ -324,6 +326,34 @@ test('旧项目引用请求 500 不提示旧上下文错误，也不提交单据
     release?.()
   }
 })
+
+for (const width of [320, 390]) {
+  test(`采购申请组合查询在 ${width}px 保持占位清晰与标签对齐`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 })
+    const capture = await mount(page)
+    await page.evaluate(
+      (dark) => document.documentElement.classList.toggle('dark', dark),
+      width === 390
+    )
+    const search = page.locator('.art-table-query .art-search-bar')
+    await expect(search.getByText('按单据', { exact: true })).toBeVisible()
+    const field = search.locator('[data-art-form-item-key="keyword"]')
+    const keyword = field.getByRole('textbox', { name: '组合查询', exact: true })
+    if (!(await keyword.isVisible())) await search.getByRole('button', { name: /^展开/ }).click()
+    await expect(keyword).toBeVisible()
+    await expect(keyword).toBeEmpty()
+    await expect(keyword).toHaveAttribute('placeholder', /单号.*项目.*供应商.*人员/)
+    await page.evaluate(() => document.fonts.ready.then(() => undefined))
+    await search.screenshot({ path: info.outputPath(`purchase-request-keyword-${width}.png`) })
+    await expectInputTextUnclipped(keyword, 'placeholder')
+    await expectQueryLabelLayout(field)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width + 1
+    )
+    expect(capture.writes).toEqual([])
+    expect(capture.pageErrors).toEqual([])
+  })
+}
 
 test('采购导入工作区浅色桌面与深色窄屏可读并完整退出专注模式', async ({ page }, info) => {
   const capture = await mount(page)

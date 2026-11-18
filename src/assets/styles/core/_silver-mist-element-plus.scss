@@ -1,0 +1,576 @@
+// Element Plus 2.14 presentation layer. Include only inside the Silver Mist workspace scope.
+@mixin appearance {
+  --el-fill-color: var(--silver-mist-control);
+  --el-fill-color-dark: var(--silver-mist-divider);
+  --el-fill-color-darker: var(--art-gray-400);
+  --el-fill-color-extra-light: var(--silver-mist-panel);
+  --el-border-color-hover: var(--silver-mist-control-border);
+  --el-border-color-dark: var(--art-gray-400);
+  --el-border-color-darker: var(--silver-mist-control-border);
+  --el-disabled-bg-color: var(--silver-mist-panel);
+  --el-disabled-text-color: var(--el-text-color-disabled);
+  --el-disabled-border-color: var(--silver-mist-divider);
+
+  :is(.el-scrollbar, .el-virtual-scrollbar) {
+    --el-scrollbar-bg-color: var(--silver-mist-control-border);
+    --el-scrollbar-hover-bg-color: var(--silver-mist-muted);
+  }
+
+  // Editors and pickers: the input surround stays neutral, while focus and selection use the accent.
+  .el-input-tag {
+    &:not(.is-disabled) {
+      --el-fill-color-blank: var(--silver-mist-control);
+
+      box-shadow: var(--art-control-shadow);
+
+      &.is-hovering:not(.is-focused) {
+        box-shadow: var(--art-control-hover-shadow);
+      }
+
+      &.is-focused {
+        box-shadow: var(--art-control-focus-shadow);
+      }
+    }
+  }
+
+  .el-form-item.is-error .el-input-tag:not(.is-disabled) {
+    box-shadow: var(--art-control-error-shadow);
+  }
+
+  .el-input-otp {
+    --el-border-color: var(--silver-mist-control-border);
+    --el-color-primary-light-5: var(--silver-mist-muted);
+
+    &.is-disabled {
+      --el-border-color: var(--silver-mist-divider);
+    }
+
+    .el-input-otp__input-field {
+      border-radius: var(--art-control-radius);
+    }
+  }
+
+  .el-input-otp--outlined:not(.is-disabled) .el-input-otp__input-field {
+    background-color: var(--silver-mist-control);
+  }
+
+  .el-checkbox-button {
+    --el-checkbox-button-checked-bg-color: var(--silver-mist-action);
+    --el-checkbox-button-checked-border-color: var(--silver-mist-action);
+  }
+
+  :is(.el-input-number__increase, .el-input-number__decrease) {
+    color: var(--silver-mist-muted);
+    background-color: var(--silver-mist-panel);
+    border-color: var(--silver-mist-divider);
+
+    &:hover:not(.is-disabled) {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-selected);
+    }
+  }
+
+  .el-form-item__error {
+    color: var(--silver-mist-danger-ink);
+  }
+
+  .el-mention-dropdown {
+    --el-mention-bg-color: var(--default-box-color);
+    --el-mention-border: 1px solid var(--silver-mist-divider);
+    --el-mention-shadow: var(--art-floating-shadow);
+    --el-mention-option-color: var(--silver-mist-text);
+    --el-mention-option-hover-background: var(--silver-mist-control);
+    --el-mention-option-selected-color: var(--silver-mist-ink);
+  }
+
+  :is(.el-autocomplete-suggestion, .el-cascader__suggestion-panel) li:not(.is-disabled) {
+    &:is(:hover, .highlighted, .is-active) {
+      background-color: var(--silver-mist-control);
+    }
+
+    &.is-checked {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-selected);
+    }
+  }
+
+  :is(.el-input-tag, .el-cascader__tags) .el-tag--info.el-tag--light {
+    --el-tag-text-color: var(--silver-mist-text);
+    --el-tag-bg-color: var(--default-box-color);
+    --el-tag-border-color: var(--silver-mist-divider);
+  }
+
+  .el-transfer {
+    --el-transfer-border-color: var(--silver-mist-divider);
+    --el-transfer-panel-header-bg-color: var(--silver-mist-panel);
+    --el-transfer-border-radius: var(--art-control-radius);
+
+    display: flex;
+    gap: var(--art-space-3);
+    align-items: center;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  .el-transfer-panel {
+    flex: 0 1 var(--el-transfer-panel-width);
+    min-inline-size: 0;
+    background-color: var(--default-box-color);
+  }
+
+  .el-transfer__buttons {
+    display: inline-flex;
+    flex: none;
+    gap: var(--art-space-2);
+    padding-inline: 0;
+
+    .el-button + .el-button {
+      margin-inline-start: 0;
+    }
+
+    .el-transfer__button.is-disabled {
+      --el-button-disabled-bg-color: var(--silver-mist-control);
+      --el-button-disabled-border-color: var(--silver-mist-divider);
+      --el-button-disabled-text-color: var(--silver-mist-muted);
+    }
+  }
+
+  @media (width < 630px) {
+    .el-transfer__buttons {
+      flex-direction: column;
+
+      .el-transfer__button {
+        padding-inline: var(--art-space-2);
+      }
+    }
+
+    .el-transfer-panel {
+      .el-transfer-panel__header {
+        padding-inline-start: var(--art-space-2);
+      }
+
+      .el-transfer-panel__header-title {
+        font-size: var(--el-font-size-base);
+      }
+
+      .el-transfer-panel__header-count {
+        margin-inline: var(--art-space-1) var(--art-space-2);
+      }
+
+      .el-transfer-panel__filter {
+        padding-inline: var(--art-space-2);
+      }
+    }
+  }
+
+  // The standalone picker has no popper to bound it inside an embedded column.
+  .el-date-picker:not(.el-popper .el-date-picker, .has-sidebar, .has-time) {
+    max-inline-size: 100%;
+
+    .el-picker-panel__content {
+      max-inline-size: calc(100% - 2 * var(--art-space-4));
+    }
+  }
+
+  .el-slider {
+    --el-slider-main-bg-color: var(--silver-mist-ink);
+    --el-slider-runway-bg-color: var(--art-gray-400);
+    --el-slider-stop-bg-color: var(--default-box-color);
+    --el-slider-disabled-color: var(--art-gray-500);
+  }
+
+  .el-slider__button {
+    background-color: var(--silver-mist-control);
+  }
+
+  .el-slider__button-wrapper:focus-visible .el-slider__button {
+    outline: 2px solid var(--silver-mist-ink);
+    outline-offset: 2px;
+  }
+
+  .el-rate {
+    --el-rate-void-color: var(--art-gray-500);
+    --el-rate-disabled-void-color: var(--art-gray-400);
+    --el-rate-outline-color: var(--silver-mist-ink);
+  }
+
+  :is(.el-color-dropdown, .el-color-picker-panel) {
+    --el-colorpicker-bg-color: var(--default-box-color);
+  }
+
+  .el-color-picker__trigger {
+    background-color: var(--silver-mist-control);
+    border-color: var(--silver-mist-control-border);
+  }
+
+  .el-color-picker__trigger:focus-visible {
+    outline: 2px solid var(--silver-mist-ink);
+    outline-offset: 2px;
+  }
+
+  :is(.el-time-panel, .el-time-range-picker) {
+    color: var(--silver-mist-text);
+    background-color: var(--default-box-color);
+    border-color: var(--silver-mist-divider);
+  }
+
+  .el-time-spinner__item:not(.is-disabled) {
+    &:hover {
+      background-color: var(--silver-mist-control);
+    }
+
+    &.is-active {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-selected);
+    }
+  }
+
+  .el-upload-dragger,
+  .el-upload--picture-card {
+    color: var(--silver-mist-text);
+    background-color: var(--silver-mist-panel);
+    border-color: var(--silver-mist-control-border);
+  }
+
+  .el-upload:not(.is-disabled) :is(.el-upload-dragger:hover, .el-upload-dragger.is-dragover),
+  .el-upload--picture-card:not(.is-disabled):hover {
+    background-color: var(--silver-mist-selected);
+    border-color: var(--silver-mist-ink);
+  }
+
+  .el-upload-list__item:hover {
+    background-color: var(--silver-mist-control);
+  }
+
+  // Display surfaces: use the same solid layers for information, dividers and subordinate labels.
+  .el-card {
+    --el-card-bg-color: var(--default-box-color);
+    --el-card-border-color: var(--silver-mist-divider);
+  }
+
+  .el-collapse {
+    --el-collapse-border-color: var(--silver-mist-divider);
+    --el-collapse-header-bg-color: var(--silver-mist-panel);
+    --el-collapse-header-text-color: var(--silver-mist-text);
+    --el-collapse-content-bg-color: var(--default-box-color);
+    --el-collapse-content-text-color: var(--silver-mist-text);
+  }
+
+  .el-descriptions {
+    --el-descriptions-table-border: 1px solid var(--silver-mist-divider);
+    --el-descriptions-item-bordered-label-background: var(--silver-mist-panel);
+
+    .el-descriptions__label {
+      color: var(--silver-mist-muted);
+    }
+  }
+
+  .el-divider__text {
+    color: var(--silver-mist-muted);
+  }
+
+  .el-calendar {
+    --el-calendar-border: 1px solid var(--silver-mist-divider);
+    --el-calendar-header-border-bottom: var(--el-calendar-border);
+    --el-calendar-selected-bg-color: var(--silver-mist-selected);
+
+    .el-calendar-day:hover {
+      background: var(--silver-mist-control);
+    }
+
+    :is(.is-today, .is-selected) {
+      color: var(--silver-mist-ink);
+    }
+  }
+
+  .el-tree {
+    --el-tree-node-hover-bg-color: var(--silver-mist-control);
+    --el-tree-text-color: var(--silver-mist-text);
+    --el-tree-expand-icon-color: var(--silver-mist-muted);
+  }
+
+  .el-tree--highlight-current:not(.el-tree-select__popper .el-tree)
+    .el-tree-node.is-current
+    > .el-tree-node__content {
+    color: var(--silver-mist-ink);
+    background-color: var(--silver-mist-selected) !important;
+  }
+
+  .el-avatar {
+    --el-avatar-text-color: var(--silver-mist-muted);
+    --el-avatar-bg-color: var(--silver-mist-control);
+  }
+
+  .el-badge__content.el-badge__content--primary {
+    --el-badge-bg-color: var(--silver-mist-action);
+  }
+
+  .el-badge__content {
+    border-color: var(--default-box-color);
+  }
+
+  .el-check-tag {
+    color: var(--silver-mist-text);
+    background-color: var(--silver-mist-control);
+  }
+
+  .el-check-tag--primary.is-checked {
+    &:not(.is-disabled) {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-selected);
+    }
+
+    &.is-disabled {
+      color: var(--silver-mist-muted);
+      background-color: var(--silver-mist-control);
+      box-shadow: inset 0 0 0 1px var(--silver-mist-divider);
+    }
+  }
+
+  .el-segmented {
+    --el-segmented-item-selected-disabled-bg-color: var(--silver-mist-panel);
+
+    .el-segmented__item.is-selected.is-disabled {
+      color: var(--silver-mist-muted);
+    }
+  }
+
+  .el-tag--info.el-tag--light {
+    --el-tag-text-color: var(--silver-mist-muted);
+    --el-tag-bg-color: var(--silver-mist-control);
+    --el-tag-border-color: var(--silver-mist-divider);
+  }
+
+  .el-skeleton {
+    --el-skeleton-color: var(--silver-mist-control);
+    --el-skeleton-to-color: var(--silver-mist-divider);
+  }
+
+  .el-empty {
+    --el-empty-fill-color-0: var(--default-box-color);
+    --el-empty-fill-color-1: var(--silver-mist-control);
+    --el-empty-fill-color-2: var(--silver-mist-panel);
+    --el-empty-fill-color-3: var(--silver-mist-divider);
+    --el-empty-fill-color-4: var(--art-gray-400);
+    --el-empty-fill-color-5: var(--silver-mist-control);
+    --el-empty-fill-color-6: var(--silver-mist-divider);
+    --el-empty-fill-color-7: var(--art-gray-400);
+    --el-empty-fill-color-8: var(--silver-mist-control);
+    --el-empty-fill-color-9: var(--silver-mist-panel);
+  }
+
+  :is(.el-empty__description, .el-result__subtitle) p {
+    color: var(--silver-mist-muted);
+  }
+
+  :is(.el-image__placeholder, .el-image__error, .el-image__loading, .el-progress-bar__outer) {
+    background-color: var(--silver-mist-control);
+  }
+
+  .el-progress:not(.is-success, .is-warning, .is-exception) {
+    --el-color-primary: var(--silver-mist-ink);
+
+    &.el-progress--text-inside {
+      // Percentage labels inside a bar use white text in both appearances.
+      --el-color-primary: var(--silver-mist-action);
+    }
+  }
+
+  .el-progress-circle__track {
+    stroke: var(--silver-mist-control);
+  }
+
+  // Element Plus renders SVG colors as attributes. Match its built-ins so other color props still work.
+  .el-progress:not(.is-success, .is-warning, .is-exception)
+    .el-progress-circle__path[stroke='#20a0ff'] {
+    stroke: var(--el-color-primary);
+  }
+
+  .el-progress.is-success .el-progress-circle__path[stroke='#13ce66'] {
+    stroke: var(--el-color-success);
+  }
+
+  .el-progress.is-warning .el-progress-circle__path[stroke='#e6a23c'] {
+    stroke: var(--el-color-warning);
+  }
+
+  .el-progress.is-exception .el-progress-circle__path[stroke='#ff4949'] {
+    stroke: var(--el-color-danger);
+  }
+
+  .el-carousel__arrow {
+    // Media controls need their own contrast over arbitrary images.
+    --el-carousel-arrow-background: rgb(18 18 23 / 68%);
+    --el-carousel-arrow-hover-background: rgb(18 18 23 / 88%);
+
+    color: #fff;
+  }
+
+  .el-carousel__indicators--outside .el-carousel__button {
+    background-color: var(--silver-mist-control-border);
+  }
+
+  .el-timeline-item__tail {
+    border-color: var(--silver-mist-divider);
+  }
+
+  // Navigation: siblings sit on a quiet surface; active items have a visible accent.
+  .el-menu {
+    --el-menu-bg-color: var(--default-box-color);
+    --el-menu-text-color: var(--silver-mist-text);
+    --el-menu-active-color: var(--silver-mist-ink);
+    --el-menu-hover-text-color: var(--silver-mist-ink);
+    --el-menu-hover-bg-color: var(--silver-mist-control);
+    --el-menu-border-color: var(--silver-mist-divider);
+  }
+
+  .el-menu-item.is-active:not(.menu-left .el-menu-item) {
+    background-color: var(--silver-mist-selected);
+  }
+
+  .el-tabs--border-card {
+    background-color: var(--default-box-color);
+    border-color: var(--silver-mist-divider);
+
+    > .el-tabs__header {
+      background-color: var(--silver-mist-panel);
+    }
+  }
+
+  .el-anchor {
+    --el-anchor-bg-color: transparent;
+    --el-anchor-color: var(--silver-mist-muted);
+    --el-anchor-hover-color: var(--silver-mist-ink);
+    --el-anchor-active-color: var(--silver-mist-ink);
+    --el-anchor-marker-bg-color: var(--silver-mist-action);
+  }
+
+  .el-breadcrumb__separator {
+    color: var(--silver-mist-muted);
+  }
+
+  :is(.el-step__head, .el-step__title).is-process {
+    color: var(--silver-mist-ink);
+    border-color: var(--silver-mist-ink);
+  }
+
+  .el-pagination:not(.is-background) {
+    :is(.el-pager li, .btn-prev, .btn-next) {
+      border-radius: var(--art-control-radius);
+    }
+
+    .el-pager li.is-active {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-selected);
+    }
+  }
+
+  :is(.el-link.el-link--default, .el-link.el-link--primary) {
+    --el-link-hover-text-color: var(--silver-mist-ink);
+  }
+
+  .el-backtop {
+    --el-backtop-bg-color: var(--silver-mist-panel);
+    --el-backtop-hover-bg-color: var(--silver-mist-selected);
+    --el-backtop-text-color: var(--silver-mist-ink);
+
+    border: 1px solid var(--silver-mist-divider);
+    box-shadow: var(--art-floating-shadow);
+  }
+
+  .el-splitter-bar__dragger:not(.is-disabled) {
+    &:is(:hover, :focus-visible, .el-splitter-bar__dragger-active) {
+      &::before,
+      &::after {
+        background-color: var(--silver-mist-ink);
+      }
+    }
+  }
+
+  // Feedback layers stay opaque and readable. Inline status icons keep their semantic colors.
+  .el-popper.is-dark {
+    --silver-mist-tooltip-surface: #343437;
+    --silver-mist-tooltip-ink: #f0f0f2;
+    --silver-mist-tooltip-divider: #56565d;
+    --el-popper-bg-color-dark: var(--silver-mist-tooltip-surface);
+
+    color: var(--silver-mist-tooltip-ink);
+    border-color: var(--silver-mist-tooltip-divider);
+
+    > .el-popper__arrow::before {
+      border-color: var(--silver-mist-tooltip-divider);
+    }
+  }
+
+  .el-popper.el-popover {
+    --el-popover-bg-color: var(--default-box-color);
+    --el-popover-border-color: var(--silver-mist-divider);
+    --el-popover-title-text-color: var(--silver-mist-text);
+
+    box-shadow: var(--art-floating-shadow);
+
+    &.is-dark {
+      --el-popover-bg-color: var(--silver-mist-tooltip-surface);
+      --el-popover-border-color: var(--silver-mist-tooltip-divider);
+      --el-popover-title-text-color: var(--silver-mist-tooltip-ink);
+
+      color: var(--silver-mist-tooltip-ink);
+    }
+  }
+
+  .el-popconfirm__main {
+    color: var(--silver-mist-text);
+  }
+
+  .el-alert.is-light {
+    --el-alert-bg-color: var(--silver-mist-panel);
+
+    border: 1px solid var(--silver-mist-divider);
+
+    :is(.el-alert__title, .el-alert__description) {
+      color: var(--silver-mist-text);
+    }
+  }
+
+  .el-tour {
+    --el-tour-bg-color: var(--default-box-color);
+    --el-tour-title-text-color: var(--silver-mist-text);
+    --el-tour-text-color: var(--silver-mist-text);
+    --el-tour-close-color: var(--silver-mist-muted);
+    --el-tour-border-radius: var(--art-floating-radius);
+  }
+
+  .el-notification {
+    --el-notification-border-color: var(--silver-mist-divider);
+    --el-notification-title-color: var(--silver-mist-text);
+    --el-notification-content-color: var(--silver-mist-muted);
+    --el-notification-close-color: var(--silver-mist-muted);
+    --el-notification-close-hover-color: var(--silver-mist-ink);
+    --el-notification-shadow: var(--art-floating-shadow);
+  }
+
+  .el-message {
+    --el-message-bg-color: var(--default-box-color);
+    --el-message-border-color: var(--silver-mist-divider);
+    --el-message-close-icon-color: var(--silver-mist-muted);
+    --el-message-close-hover-color: var(--silver-mist-ink);
+
+    .el-message__content {
+      color: var(--silver-mist-text);
+    }
+  }
+
+  .el-loading-mask:not(.is-fullscreen) {
+    --el-mask-color: color-mix(in srgb, var(--default-box-color) 90%, transparent);
+  }
+
+  .el-loading-spinner {
+    .path {
+      stroke: var(--silver-mist-ink);
+    }
+
+    .el-loading-text {
+      color: var(--silver-mist-ink);
+    }
+  }
+}

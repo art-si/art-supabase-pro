@@ -8,7 +8,7 @@
 <script setup lang="ts">
   import { graphic, type EChartsOption, type LineSeriesOption } from '@/plugins/echarts'
   import { getCssVar, hexToRgba } from '@/utils/ui'
-  import { useChartOps, useChartComponent } from '@/hooks/core/useChart'
+  import { isNamedChartSeries, useChartOps, useChartComponent } from '@/hooks/core/useChart'
   import type { LineChartProps, LineDataItem } from '@/types/component/chart'
   import ArtChartLoading from '@/components/core/charts/art-chart-loading/index.vue'
 
@@ -53,15 +53,7 @@
     animationTimers.value = []
   }
 
-  // 判断是否为多数据（使用 VueUse 的 computedEager 优化）
-  const isMultipleData = computed(() => {
-    return (
-      Array.isArray(props.data) &&
-      props.data.length > 0 &&
-      typeof props.data[0] === 'object' &&
-      'name' in props.data[0]
-    )
-  })
+  const isMultipleData = computed(() => isNamedChartSeries(props.data))
 
   // 缓存计算的最大值，避免重复计算
   const maxValue = computed(() => {

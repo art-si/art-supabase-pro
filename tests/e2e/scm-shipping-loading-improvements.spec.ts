@@ -3,6 +3,7 @@ import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
 import { prepareAppearance } from './support/appearance'
 import { expectCompactDocumentForm } from './support/scm-document-layout'
+import { installDictionaryOptions } from './support/dictionary-options'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(180_000)
@@ -14,7 +15,9 @@ test.beforeEach(async ({ page }, info) => {
 })
 
 test('发货通知明细下推、联系信息和单位带入、装车逐行删除', async ({ page }, testInfo) => {
-  const tenant = await prepareIsolatedSession(page)
+  const tenant = await prepareIsolatedSession(page, {
+    tenantId: '11111111-1111-4111-8111-111111111111'
+  })
   await page.route('**/rest/v1/sys_dictionary?*', (route) =>
     route.fulfill({
       json: [
@@ -258,20 +261,25 @@ test('发货通知明细下推、联系信息和单位带入、装车逐行删�
       ]
     })
   )
-  await page.route('**/rest/v1/sys_menu?**', (route) =>
-    route.fulfill({ json: { id: 'contract', name: 'ScmShippingNotice' } })
-  )
+  let documentTypeConfigured = false
+  await page.route('**/rest/v1/sys_menu?**', (route) => {
+    const name = new URL(route.request().url()).searchParams.get('name')
+    const menu = menus.find((item) => name === `eq.${item.name}`)
+    return menu ? route.fulfill({ json: { id: menu.id, name: menu.name } }) : route.fallback()
+  })
   await page.route('**/rest/v1/mdm_document_type?**', (route) =>
     route.fulfill({
-      json: [
-        {
-          id: 'framework',
-          tenant_id: tenant.id,
-          document_type_name: '框架销售合同',
-          document_type_code: 'FRAME',
-          is_default: true
-        }
-      ]
+      json: documentTypeConfigured
+        ? [
+            {
+              id: 'order-type',
+              tenant_id: tenant.id,
+              document_type_name: '标准发货装车',
+              document_type_code: 'FRAME',
+              is_default: true
+            }
+          ]
+        : []
     })
   )
   await page.route('**/rest/v1/mdm_project?**', (route) =>
@@ -349,12 +357,17 @@ test('发货通知明细下推、联系信息和单位带入、装车逐行删�
   holdMaterials = true
   await page.getByRole('button', { name: '下推发货装车', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '新增发货装车', exact: true })
+  const documentNo = dialog.getByRole('textbox', { name: '装车单号', exact: true })
+  const type = dialog.locator('[data-art-form-item-key="header.documentTypeId"]')
+  const missingTypeHelp = '在 MDM 启用单据类型，并关联「发货装车」。'
+  const help = type.getByText(missingTypeHelp, { exact: true })
   await expectCompactDocumentForm(dialog, '装车单号', '承运单位')
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'true')
   await expect(dialog.locator('.art-dialog__viewport > .art-overlay-loading')).toBeVisible()
   await expect(dialog.locator('.el-skeleton')).toHaveCount(0)
   await expect(dialog.getByRole('button', { name: '创建单据', exact: true })).toBeDisabled()
+  await expect(help).toHaveCount(0)
   await dialog.screenshot({
     path: testInfo.outputPath('public-dialog-loading.png'),
     animations: 'disabled'
@@ -371,11 +384,25 @@ test('发货通知明细下推、联系信息和单位带入、装车逐行删�
     )
   )
   await expect(dialog.getByText('单据选项加载失败', { exact: true })).toBeVisible()
+  await expect(help).toHaveCount(0)
   await dialog.getByLabel('终端客户', { exact: true }).fill('终端甲')
   failMaterials = false
   await dialog.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(dialog.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'false')
   await expect(dialog.getByText('单据选项加载失败', { exact: true })).toHaveCount(0)
+  await expect(documentNo).toBeDisabled()
+  await expect(documentNo).toHaveAttribute('placeholder', '保存后按月度编号规则自动生成')
+  await expect(type.getByText('暂无可用类型', { exact: true })).toBeVisible()
+  const originalViewport = page.viewportSize()
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await help.scrollIntoViewIfNeeded()
+  await expect(help).toBeInViewport({ ratio: 1 })
+  await expect(page.locator('.el-message')).toHaveCount(0)
+  await dialog.screenshot({
+    path: testInfo.outputPath('loading-missing-type-1024.png'),
+    animations: 'disabled'
+  })
+  if (originalViewport) await page.setViewportSize(originalViewport)
 
   await expect(dialog.getByRole('button', { name: '手工新增', exact: true })).toHaveCount(0)
   await expect(dialog.getByLabel('终端客户', { exact: true })).toHaveValue('终端甲')
@@ -436,8 +463,15 @@ test('发货通知明细下推、联系信息和单位带入、装车逐行删�
   await page.getByRole('button', { name: '确认删除', exact: true }).click()
   await expect.poll(() => operations.length).toBe(2)
   expect(operations[1]).toEqual({ p_selections: [{ document_id: order.id, line_ids: ['line-1'] }] })
+  documentTypeConfigured = true
   await page.getByRole('button', { name: '编辑', exact: true }).first().click()
   const edit = page.getByRole('dialog', { name: '编辑发货装车 · QA-LOADING', exact: true })
+  await expect(
+    edit
+      .locator('[data-art-form-item-key="header.documentTypeId"]')
+      .getByText('标准发货装车', { exact: true })
+  ).toBeVisible()
+  await expect(edit.getByText(missingTypeHelp, { exact: true })).toHaveCount(0)
   await edit.getByRole('button', { name: '选单', exact: true }).click()
   const picker = page.getByRole('dialog', { name: '选单 · 待发货通知单明细', exact: true })
   await expect(picker.getByRole('columnheader', { name: '通知单数量', exact: true })).toBeVisible()
@@ -470,5 +504,285 @@ test('发货通知明细下推、联系信息和单位带入、装车逐行删�
   await page.getByRole('button', { name: /退出专注/ }).click()
   await expect(page.locator('.business-workspace-header')).toBeVisible()
 
+  expect(errors).toEqual([])
+})
+
+test('发货通知锁定来源订单后，余量失败可原地重试并带入剩余明细', async ({ page }, info) => {
+  const tenant = await prepareIsolatedSession(page, {
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    platformSuper: false
+  })
+  await installDictionaryOptions(page, {
+    commonDocumentDisplayMode: [
+      { value: 'document', label: '按单据' },
+      { value: 'line', label: '按明细' }
+    ]
+  })
+  const errors: string[] = []
+  const writes: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (
+      path.includes('/rest/v1/') &&
+      !['GET', 'HEAD', 'OPTIONS'].includes(request.method()) &&
+      (!path.includes('/rpc/') || /\/(save|create|update|delete|submit|batch|post)_/.test(path))
+    )
+      writes.push(`${request.method()} ${path}`)
+  })
+  const menu = {
+    id: 'retry-notice-menu',
+    parentId: null,
+    name: 'ScmShippingNotice',
+    path: '/scm/sales-management/shipping-notice',
+    component: '/scm/sales-management/shipping-notice',
+    type: 'menu',
+    sort: 1,
+    meta: { title: '发货通知单', is_enable: true, is_hide: false, roles: [] }
+  }
+  await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
+    route.fulfill({ json: [{ code: 'scm', name: '测试供应链', baseUrl: '/scm/' }] })
+  )
+  await mockApplicationMenus(page, {
+    scm: [
+      menu,
+      ...['View', 'Edit'].map((action) => ({
+        ...menu,
+        id: `${menu.id}-${action}`,
+        parentId: menu.id,
+        name: `${menu.name}:${action}`,
+        path: '',
+        component: '',
+        type: 'button'
+      }))
+    ]
+  })
+  const sourceLines = [10, 7].map((quantity, index) => ({
+    line_id: `source-line-${index + 1}`,
+    line_no: (index + 1) * 10,
+    material_id: `retry-material-${index + 1}`,
+    material_code: `RETRY-M${index + 1}`,
+    material_description: index ? '可补入物料' : '原有发货物料',
+    base_unit: '件',
+    quantity,
+    unit_price: 5,
+    tax_rate: 0
+  }))
+  const base = {
+    tenant_id: tenant.id,
+    project_id: 'retry-project',
+    customer_id: 'retry-customer',
+    document_type_id: 'notice-type',
+    document_date: '2026-10-09',
+    delivery_date: '2026-10-15',
+    currency: 'CNY',
+    fees: [],
+    payment_plans: [],
+    delivery_plans: [],
+    clauses: [],
+    details: {},
+    remark: '保留当前发货草稿',
+    subtotal: 10,
+    tax_amount: 0,
+    total_amount: 10
+  }
+  const source = {
+    ...base,
+    id: 'retry-source-order',
+    source_id: null,
+    kind: 'sales_order',
+    document_no: 'SO-RETRY-001',
+    status: 'approved',
+    lines: sourceLines
+  }
+  const notice = {
+    ...base,
+    id: 'retry-notice',
+    source_id: source.id,
+    kind: 'shipping_notice',
+    document_no: 'NOTICE-RETRY-001',
+    status: 'draft',
+    lines: [
+      {
+        ...sourceLines[0],
+        line_id: 'existing-notice-line',
+        source_line_id: sourceLines[0].line_id,
+        source_document_id: source.id,
+        source_document_no: source.document_no,
+        quantity: 2
+      }
+    ]
+  }
+  const remainingRequests: Array<{
+    source: string | null
+    tenant: string | null
+    kind: string | null
+  }> = []
+  const remainingAttempts: typeof remainingRequests = []
+  const heldRemaining: Route[] = []
+  let remainingPhase: 'initial' | 'failed' | 'recovered' | 'held' = 'initial'
+  const remainingRows = [
+    notice,
+    {
+      id: 'other-notice',
+      kind: 'shipping_notice',
+      status: 'submitted',
+      lines: [{ source_line_id: sourceLines[1].line_id, quantity: 3 }]
+    }
+  ]
+  await page.route('**/rest/v1/scm_sales_document?**', (route) => {
+    const query = new URL(route.request().url()).searchParams
+    if (query.get('select') === 'id,kind,status,lines') {
+      const context = {
+        source: query.get('source_id'),
+        tenant: query.get('tenant_id'),
+        kind: query.get('kind')
+      }
+      if (remainingPhase !== 'initial') {
+        remainingAttempts.push(context)
+        // The installed SDK retries 503 GETs; count explicit reads separately from transport retries.
+        if (!route.request().headers()['x-retry-count']) remainingRequests.push(context)
+      }
+      if (remainingPhase === 'failed')
+        return route.fulfill({
+          status: 503,
+          headers: { 'retry-after': '0', 'access-control-expose-headers': 'Retry-After' },
+          json: { code: 'XX000', message: 'synthetic remaining source read unavailable' }
+        })
+      if (remainingPhase === 'held') {
+        heldRemaining.push(route)
+        return
+      }
+      return route.fulfill({ json: remainingRows })
+    }
+    if (query.get('id') === `eq.${notice.id}`) return route.fulfill({ json: notice })
+    const rows = query.get('kind') === 'eq.sales_order' ? [source] : [notice]
+    return route.fulfill({
+      json: rows,
+      headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
+    })
+  })
+  await page.route('**/rest/v1/sys_menu?**', (route) => route.fulfill({ json: { id: menu.id } }))
+  await page.route('**/rest/v1/mdm_document_type?**', (route) =>
+    route.fulfill({
+      json: [{ id: 'notice-type', document_type_name: '标准发货通知', is_default: true }]
+    })
+  )
+  await page.route('**/rest/v1/mdm_project?**', (route) =>
+    route.fulfill({ json: [{ id: base.project_id, project_code: 'RP', project_name: '重试项目' }] })
+  )
+  await page.route('**/rest/v1/mdm_customer?**', (route) =>
+    route.fulfill({
+      json: [{ id: base.customer_id, customer_code: 'RC', customer_name: '重试客户' }]
+    })
+  )
+  await page.route('**/rest/v1/mdm_material?**', (route) =>
+    route.fulfill({
+      json: sourceLines.map((line) => ({
+        id: line.material_id,
+        tenant_id: tenant.id,
+        material_code: line.material_code,
+        material_name: line.material_description,
+        description: line.material_description,
+        basic_unit: line.base_unit,
+        material_source: 'purchase',
+        unit_conversions: []
+      }))
+    })
+  )
+  await page.goto(`#${menu.path}`)
+  await expect(page.getByRole('button', { name: notice.document_no, exact: true })).toBeVisible({
+    timeout: 120_000
+  })
+  const guide = page.getByText('知道了', { exact: true })
+  if (await guide.isVisible()) await guide.click()
+  await page.getByRole('button', { name: '编辑', exact: true }).first().click()
+  const editor = page.getByRole('dialog', {
+    name: `编辑发货通知单 · ${notice.document_no}`,
+    exact: true
+  })
+  await expect(editor.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'false')
+  await expect(editor.getByRole('spinbutton', { name: '数量', exact: true })).toHaveValue('2.000')
+  remainingPhase = 'failed'
+  await editor.getByRole('button', { name: '选单', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: '选单 · 销售订单明细', exact: true })
+  const sourceSelect = picker.getByRole('combobox', { name: '选择销售订单', exact: true })
+  await expect(sourceSelect).toBeDisabled()
+  await expect.poll(() => remainingRequests.length).toBe(1)
+  await expect(picker.getByText('订单剩余明细加载失败', { exact: true })).toBeVisible()
+  await expect(picker.getByRole('button', { name: '添加所选明细', exact: true })).toBeDisabled()
+  await picker.screenshot({
+    path: info.outputPath('locked-order-remaining-error.png'),
+    animations: 'disabled'
+  })
+  const retry = picker.getByRole('button', { name: '重新加载', exact: true })
+  remainingPhase = 'recovered'
+  await retry.focus()
+  await page.keyboard.press('Enter')
+  const row = picker.getByRole('row').filter({ hasText: 'RETRY-M2' })
+  await expect(row).toBeInViewport()
+  await expect(row).toContainText('4')
+  await expect(picker.getByText('RETRY-M1', { exact: true })).toHaveCount(0)
+  await expect(sourceSelect).toBeDisabled()
+  expect(remainingRequests).toEqual([
+    { source: `eq.${source.id}`, tenant: `eq.${tenant.id}`, kind: 'eq.shipping_notice' },
+    { source: `eq.${source.id}`, tenant: `eq.${tenant.id}`, kind: 'eq.shipping_notice' }
+  ])
+
+  await picker.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(picker).toBeHidden()
+  remainingPhase = 'held'
+  await editor.getByRole('button', { name: '选单', exact: true }).click()
+  await expect.poll(() => heldRemaining.length).toBe(1)
+  await expect(picker.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'true')
+  await page.keyboard.press('Escape')
+  await expect(picker).toBeHidden()
+  await editor.getByRole('button', { name: '选单', exact: true }).click()
+  await expect.poll(() => heldRemaining.length).toBe(2)
+  const oldResponse = page.waitForResponse(
+    (response) => response.request() === heldRemaining[0].request()
+  )
+  await heldRemaining[0].fulfill({ json: remainingRows })
+  await (await oldResponse).finished()
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  )
+  await expect(picker.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'true')
+  await expect(picker.getByRole('button', { name: '添加所选明细', exact: true })).toBeDisabled()
+  await heldRemaining[1].fulfill({ json: remainingRows })
+  await expect(picker.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'false')
+  await expect(row).toBeInViewport()
+  expect(remainingRequests).toEqual([
+    { source: `eq.${source.id}`, tenant: `eq.${tenant.id}`, kind: 'eq.shipping_notice' },
+    { source: `eq.${source.id}`, tenant: `eq.${tenant.id}`, kind: 'eq.shipping_notice' },
+    { source: `eq.${source.id}`, tenant: `eq.${tenant.id}`, kind: 'eq.shipping_notice' },
+    { source: `eq.${source.id}`, tenant: `eq.${tenant.id}`, kind: 'eq.shipping_notice' }
+  ])
+  for (const attempt of remainingAttempts)
+    expect(attempt).toEqual({
+      source: `eq.${source.id}`,
+      tenant: `eq.${tenant.id}`,
+      kind: 'eq.shipping_notice'
+    })
+  await row.locator('label.el-checkbox').click()
+  await expect(row.getByRole('checkbox')).toBeChecked()
+  await picker.getByRole('button', { name: '添加所选明细', exact: true }).click()
+  await expect(picker).toBeHidden()
+  const quantities = editor.getByRole('spinbutton', { name: '数量', exact: true })
+  await expect(quantities).toHaveCount(2)
+  await expect(quantities.nth(0)).toHaveValue('2.000')
+  await expect(quantities.nth(1)).toHaveValue('4.000')
+  const descriptions = editor.getByRole('textbox', { name: '物料描述', exact: true })
+  await expect(descriptions.nth(0)).toHaveValue('原有发货物料')
+  await expect(descriptions.nth(1)).toHaveValue('可补入物料')
+  await editor.screenshot({
+    path: info.outputPath('locked-order-remaining-recovered.png'),
+    animations: 'disabled'
+  })
+  await editor.getByRole('button', { name: '取消', exact: true }).click()
+  expect(writes).toEqual([])
   expect(errors).toEqual([])
 })

@@ -1,7 +1,27 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+import { assertAppearance, prepareAppearance } from './support/appearance'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
+
+async function setAppearance(page: Page, theme: 'light' | 'dark') {
+  await page.evaluate(async (theme) => {
+    const { useTheme }: typeof import('../../src/hooks/core/useTheme') = await import(
+      new URL('/src/hooks/core/useTheme.ts', location.origin).href
+    )
+    const { useSettingStore }: typeof import('../../src/store/modules/setting') = await import(
+      new URL('/src/store/modules/setting.ts', location.origin).href
+    )
+    const { SystemThemeEnum }: typeof import('../../src/enums/app-enum') = await import(
+      new URL('/src/enums/app-enum.ts', location.origin).href
+    )
+    useTheme().switchThemeStyles(theme === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT)
+    useSettingStore().boxBorderMode = theme === 'light'
+    document.documentElement.dataset.boxMode = theme === 'light' ? 'border-mode' : 'shadow-mode'
+  }, theme)
+  await assertAppearance(page, { theme, boxBorderMode: theme === 'light' })
+}
 
 const fees = {
   transportFee: 1200,
@@ -121,9 +141,12 @@ for (const mode of ['pending', 'loaded'] as const) {
   test(`${mode === 'pending' ? '待配载派车' : '运输运单'}列表在深浅主题和窄屏下可读`, async ({
     page
   }, info) => {
+    await prepareAppearance(page, { theme: 'light', boxBorderMode: true })
+    let supplementPhase: 'empty' | 'error' | 'rows' = 'empty'
+    let supplementGate: Promise<void> | undefined
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
-    await page.route('**/rest/v1/**', (route) => {
+    await page.route('**/rest/v1/**', async (route) => {
       const endpoint = new URL(route.request().url()).pathname.split('/').at(-1)
       if (endpoint === 'tms_list_dispatch_workbench_secure') {
         const request = route.request().postDataJSON() as {
@@ -149,10 +172,51 @@ for (const mode of ['pending', 'loaded'] as const) {
                 ...order,
                 tenantId: '11111111-1111-4111-8111-111111111111',
                 status: 'pending_order',
-                orderConfig: {},
+                orderConfig: { loadType: 'ltl' },
+                fieldAccess: { ...common.fieldAccess, proofAttachments: 'read' },
                 cargoItems: common.cargoItems
               }
             : null
+        })
+      }
+      if (endpoint === 'tms_get_order_execution_supplement_secure') {
+        await supplementGate
+        if (supplementPhase === 'error')
+          return route.fulfill({ status: 503, json: { code: 'PGRST000', message: 'unavailable' } })
+        return route.fulfill({
+          json: {
+            loading:
+              supplementPhase === 'rows'
+                ? [
+                    {
+                      id: '11111111-1111-4111-8111-111111111401',
+                      waybillId: loaded[0].id,
+                      waybillNo: loaded[0].waybillNo,
+                      operationType: 'loading',
+                      operationStatus: 'completed',
+                      completedAt: null,
+                      weightTon: 1,
+                      remark: '验收装货记录'
+                    }
+                  ]
+                : [],
+            unloading: [],
+            signatures: [],
+            carrierReconciliation:
+              supplementPhase === 'rows'
+                ? [
+                    {
+                      statementId: '11111111-1111-4111-8111-111111111402',
+                      statementNo: 'DZ-LAYOUT-001',
+                      waybillId: loaded[0].id,
+                      waybillNo: loaded[0].waybillNo,
+                      carrierName: '测试承运商',
+                      status: 'pending_review',
+                      lineAmount: 100
+                    }
+                  ]
+                : []
+          }
         })
       }
       if (endpoint === 'sys_dictionary') {
@@ -184,6 +248,7 @@ for (const mode of ['pending', 'loaded'] as const) {
     await page.goto(
       `${process.env.E2E_FIXTURE_PREFIX || ''}/tests/e2e/fixtures/tms-waybill-list-visual.html?mode=${mode}`
     )
+    await assertAppearance(page, { theme: 'light', boxBorderMode: true })
     await expect(
       page.getByRole('heading', { name: mode === 'pending' ? '待配载派车' : '运输运单' })
     ).toBeVisible()
@@ -247,9 +312,7 @@ for (const mode of ['pending', 'loaded'] as const) {
     }
     await expect(page.getByText('已使用前端默认列')).toBeHidden({ timeout: 15_000 })
     for (const theme of ['light', 'dark']) {
-      await page.evaluate((value) => {
-        document.documentElement.classList.toggle('dark', value === 'dark')
-      }, theme)
+      await setAppearance(page, theme as 'light' | 'dark')
       for (const viewport of [
         { width: 1440, height: 900 },
         { width: 1280, height: 800 },
@@ -282,7 +345,7 @@ for (const mode of ['pending', 'loaded'] as const) {
     await expect
       .poll(() => tableScroll.evaluate((element) => element.getBoundingClientRect().height))
       .toBeGreaterThan(100)
-    await expect(page.getByText(`Total ${mode === 'loaded' ? 3 : 2}`)).toBeVisible()
+    await expect(page.getByText(`共 ${mode === 'loaded' ? 3 : 2} 条`)).toBeVisible()
     await page.screenshot({
       path: info.outputPath(`${mode}-focus-1440-dark.png`),
       animations: 'disabled'
@@ -304,15 +367,81 @@ for (const mode of ['pending', 'loaded'] as const) {
     await sourceLink.click()
     const orderDrawer = page.locator('.art-drawer:visible')
     await expect(orderDrawer.getByText('运单详情 · DD-PENDING-001')).toBeVisible()
-    for (const tab of ['运单收发信息', '配置信息', '货物信息', '应收信息'])
-      await expect(orderDrawer.getByRole('tab', { name: tab })).toBeVisible()
-    await orderDrawer.getByRole('tab', { name: '货物信息' }).click()
-    await expect(orderDrawer.getByText('测试货物')).toBeVisible()
-    await page.screenshot({
-      path: info.outputPath(`${mode}-order-detail-drawer-1440-dark.png`),
-      animations: 'disabled'
-    })
+    for (const theme of ['light', 'dark'] as const) {
+      await setAppearance(page, theme)
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+        for (const tab of ['运单收发信息', '配置信息', '货物信息', '应收信息']) {
+          const item = orderDrawer.getByRole('tab', { name: tab })
+          await item.click()
+          await expect(item).toBeInViewport({ ratio: 0.95 })
+          const panel = await expectOverlayTabPanel(orderDrawer, tab)
+          await expect(panel.locator('.art-section-card')).toHaveCount(0)
+          if (tab === '货物信息') {
+            const cargo = panel.getByText('测试货物', { exact: true })
+            await cargo.scrollIntoViewIfNeeded()
+            await expect(cargo).toBeInViewport({ ratio: 0.95 })
+          }
+          if (tab === '配置信息')
+            await expect(panel.getByText('暂无装卸签收记录', { exact: true })).toBeVisible()
+          if (tab === '应收信息')
+            await expect(panel.getByText('暂无承运对账', { exact: true })).toBeVisible()
+          expect(
+            await page.evaluate(() => document.documentElement.scrollWidth)
+          ).toBeLessThanOrEqual(width + 1)
+          await page.screenshot({
+            path: info.outputPath(`${mode}-order-${tab}-${width}-${theme}.png`),
+            animations: 'disabled'
+          })
+        }
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await setAppearance(page, 'light')
+    await orderDrawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+    await expect(orderDrawer).toBeHidden()
+    const held = Promise.withResolvers<void>()
+    supplementGate = held.promise
+    supplementPhase = 'error'
+    await sourceLink.click()
+    await orderDrawer.getByRole('tab', { name: '配置信息', exact: true }).click()
+    const configuration = orderDrawer.getByRole('tabpanel', { name: '配置信息', exact: true })
+    await expect(configuration.locator('.art-async-state[aria-busy="true"]')).toBeVisible()
+    await expect(configuration.locator('.el-skeleton')).toBeVisible()
+    await page.screenshot({ path: info.outputPath(`${mode}-supplement-loading.png`) })
+    held.resolve()
+    supplementGate = undefined
+    await expect(
+      configuration.getByText('关联执行记录加载失败，请重试。', { exact: true })
+    ).toBeVisible()
+    await page.screenshot({ path: info.outputPath(`${mode}-supplement-error.png`) })
+    supplementPhase = 'rows'
+    await configuration.getByRole('button', { name: '重新加载', exact: true }).click()
+    await expect(configuration.getByText('验收装货记录', { exact: true })).toBeVisible()
+    await expect(
+      configuration.getByText('关联执行记录加载失败，请重试。', { exact: true })
+    ).toBeHidden()
+    await orderDrawer.getByRole('tab', { name: '应收信息', exact: true }).click()
+    const receivable = orderDrawer.getByRole('tabpanel', { name: '应收信息', exact: true })
+    await expect(receivable.getByRole('button', { name: '重新加载', exact: true })).toBeVisible()
+    await receivable.getByRole('button', { name: '重新加载', exact: true }).click()
+    const statement = receivable.getByText('DZ-LAYOUT-001', { exact: true })
+    await statement.scrollIntoViewIfNeeded()
+    await expect(statement).toBeInViewport({ ratio: 0.95 })
+    await page.screenshot({ path: info.outputPath(`${mode}-supplement-recovered.png`) })
     await expect(hero).toBeVisible()
+    await page.goto(`/tests/e2e/fixtures/tms-waybill-list-visual.html?orderId=${pending[0].id}`)
+    await expect(page.getByRole('heading', { name: pending[0].orderNo, exact: true })).toBeVisible()
+    const standalone = page.locator('.order-detail')
+    await expect(standalone.locator('.art-overlay-tab-card')).toHaveCount(0)
+    for (const tab of ['运单收发信息', '配置信息', '货物信息', '应收信息']) {
+      await standalone.getByRole('tab', { name: tab, exact: true }).click()
+      const panel = standalone.getByRole('tabpanel', { name: tab, exact: true })
+      await expect(panel.locator('.art-section-card').first()).toBeVisible()
+      if (tab === '应收信息')
+        await expect(panel.getByText('DZ-LAYOUT-001', { exact: true })).toBeVisible()
+    }
+    await page.screenshot({ path: info.outputPath(`${mode}-standalone-order-detail.png`) })
     expect(errors).toEqual([])
   })
 }

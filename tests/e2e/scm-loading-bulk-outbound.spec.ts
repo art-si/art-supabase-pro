@@ -1,49 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { prepareIsolatedSession } from './support/isolated-session'
-import { mockApplicationMenus } from './support/menu-rpc'
-import { installDictionaryOptions } from './support/dictionary-options'
+import {
+  prepareScmLoadingOutboundSession,
+  scmLoadingOutboundPath
+} from './support/scm-document-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 test('批量出库按装车行和库存批次分配、阻止共享库存超量并生成流水', async ({ page }, testInfo) => {
-  const tenant = await prepareIsolatedSession(page)
-  await installDictionaryOptions(page, {
-    commonDocumentDisplayMode: [
-      { value: 'document', label: '按单据' },
-      { value: 'line', label: '按明细' }
-    ]
-  })
-  await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
-  await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
-    route.fulfill({ json: [{ code: 'scm', name: '测试供应链', baseUrl: '/scm/' }] })
-  )
-  const path = '/scm/sales-management/loading-outbound'
-  const menu = {
-    id: 'outbound-retry',
-    parentId: null,
-    name: 'ScmLoadingOutbound',
-    path,
-    component: path,
-    type: 'menu',
-    sort: 1,
-    meta: { title: '装车出库', is_enable: true, is_hide: false, roles: [] }
-  }
-  await mockApplicationMenus(page, {
-    scm: [
-      menu,
-      ...['ScmLoadingOutbound:View', 'ScmLoadingOutbound:Issue', 'WmsStockOperation:Issue'].map(
-        (name, index) => ({
-          ...menu,
-          id: `outbound-${index}`,
-          parentId: menu.id,
-          name,
-          path: '',
-          component: '',
-          type: 'button'
-        })
-      )
-    ]
-  })
+  const tenant = await prepareScmLoadingOutboundSession(page, 'issue')
   await page.route('**/rest/v1/scm_sales_document?**', (route) =>
     route.fulfill({
       json: [
@@ -105,7 +69,7 @@ test('批量出库按装车行和库存批次分配、阻止共享库存超量�
   })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto(`#${path}`)
+  await page.goto(`#${scmLoadingOutboundPath}`)
   await expect(page.getByRole('heading', { name: '装车出库', exact: true })).toBeVisible({
     timeout: 90000
   })

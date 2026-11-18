@@ -27,6 +27,7 @@ let exportAttempts = 0
 let exportAdapterCalls = 0
 let successCalls = 0
 let errorCalls = 0
+let releaseRetry: (() => void) | undefined
 
 const setCounters = (): void => {
   document.body.dataset.listAttempts = String(listAttempts)
@@ -105,19 +106,27 @@ const app = createApp({
           {
             class: 'p-4',
             style:
-              mode === 'bounded-error'
+              mode === 'bounded-error' || mode === 'retry-keyboard'
                 ? { display: 'flex', flexDirection: 'column', height: '220px' }
                 : undefined
           },
           [
             h('h1', { class: 'mb-4 text-xl' }, '表格错误契约验收'),
+            mode === 'retry-keyboard'
+              ? h(ElButton, { onClick: () => releaseRetry?.() }, () => '完成测试请求')
+              : null,
             h(ArtTableQuery, {
               apiFn: async () => {
-                listAttempts += 1
+                const attempt = ++listAttempts
                 setCounters()
+                if (mode === 'retry-keyboard' && attempt > 1) {
+                  const pending = Promise.withResolvers<void>()
+                  releaseRetry = pending.resolve
+                  await pending.promise
+                }
                 if (mode === 'row')
                   return { data: [{ id: 3, name: '合法业务记录', error: '业务字段' }], total: 1 }
-                if (mode.startsWith('export-') || listAttempts > 1)
+                if (mode.startsWith('export-') || attempt > (mode === 'retry-keyboard' ? 2 : 1))
                   return { data: [goodRow], total: 1, error: null }
                 if (mode === 'nested')
                   return { data: { records: [forbiddenRow], total: 1, error: businessError } }

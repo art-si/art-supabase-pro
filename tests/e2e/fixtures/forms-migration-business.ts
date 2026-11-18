@@ -9,6 +9,8 @@ import { useSettingStore } from '@/store/modules/setting'
 import { initializeTheme } from '@/hooks/core/useTheme'
 import { SystemThemeEnum } from '@/enums/app-enum'
 import { setupGlobDirectives } from '@/directives'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -132,6 +134,9 @@ const loaders: Record<string, () => Promise<{ default: Component }>> = {
   'modules/art-supabase-fms/src/views/specialized-accounting/tax-management/modules/tax-detail-drawer.vue':
     () =>
       import('../../../modules/art-supabase-fms/src/views/specialized-accounting/tax-management/modules/tax-detail-drawer.vue'),
+  'modules/art-supabase-fms/src/views/specialized-accounting/tax-management/modules/tax-period-dialog.vue':
+    () =>
+      import('../../../modules/art-supabase-fms/src/views/specialized-accounting/tax-management/modules/tax-period-dialog.vue'),
   'modules/art-supabase-fms/src/views/everyone-expense/payee-information/modules/payee-information-dialog.vue':
     () =>
       import('../../../modules/art-supabase-fms/src/views/everyone-expense/payee-information/modules/payee-information-dialog.vue'),
@@ -155,6 +160,9 @@ const loaders: Record<string, () => Promise<{ default: Component }>> = {
   'modules/art-supabase-fms/src/views/specialized-accounting/payroll/modules/payroll-detail-drawer.vue':
     () =>
       import('../../../modules/art-supabase-fms/src/views/specialized-accounting/payroll/modules/payroll-detail-drawer.vue'),
+  'modules/art-supabase-fms/src/views/specialized-accounting/payroll/modules/payroll-run-dialog.vue':
+    () =>
+      import('../../../modules/art-supabase-fms/src/views/specialized-accounting/payroll/modules/payroll-run-dialog.vue'),
   'modules/art-supabase-fms/src/views/settlement/carrier-settlement/modules/carrier-statement-detail-drawer.vue':
     () =>
       import('../../../modules/art-supabase-fms/src/views/settlement/carrier-settlement/modules/carrier-statement-detail-drawer.vue'),
@@ -185,6 +193,9 @@ const loaders: Record<string, () => Promise<{ default: Component }>> = {
   'modules/art-supabase-fms/src/views/specialized-accounting/period-close/modules/period-close-detail-drawer.vue':
     () =>
       import('../../../modules/art-supabase-fms/src/views/specialized-accounting/period-close/modules/period-close-detail-drawer.vue'),
+  'modules/art-supabase-fms/src/views/specialized-accounting/period-close/modules/period-close-start-dialog.vue':
+    () =>
+      import('../../../modules/art-supabase-fms/src/views/specialized-accounting/period-close/modules/period-close-start-dialog.vue'),
   'modules/art-supabase-fms/src/views/settlement/cash-transaction/modules/customer-receipt-dialog.vue':
     () =>
       import('../../../modules/art-supabase-fms/src/views/settlement/cash-transaction/modules/customer-receipt-dialog.vue'),
@@ -218,12 +229,14 @@ const app = createApp({
     }
     onMounted(() => void open())
     return () =>
-      h('main', { class: 'min-h-screen min-w-0 p-4' }, [
-        h('button', { 'data-testid': 'open-entry', onClick: open }, '重新打开当前业务入口'),
-        h('output', { 'data-testid': 'successes' }, String(successes.value)),
-        h('output', { 'data-testid': 'open-error' }, error.value),
-        h(target, { ref: component, onSuccess: () => successes.value++ })
-      ])
+      h(ElConfigProvider, { locale: zhCn }, () =>
+        h('main', { class: 'min-h-screen min-w-0 p-4' }, [
+          h('button', { 'data-testid': 'open-entry', onClick: open }, '重新打开当前业务入口'),
+          h('output', { 'data-testid': 'successes' }, String(successes.value)),
+          h('output', { 'data-testid': 'open-error' }, error.value),
+          h(target, { ref: component, onSuccess: () => successes.value++ })
+        ])
+      )
   }
 })
 app.use(store)
@@ -243,7 +256,12 @@ user.setUserInfo({
 })
 useTenantScopeStore(store).selectedTenantId = tenantId
 useMenuStore(store).setButtonList(
-  (input.permissions || []).map((name) => ({ name, path: '', type: 'button' }))
+  (input.permissions || []).map((name) => ({
+    name,
+    path: '',
+    type: 'button',
+    meta: { title: name }
+  }))
 )
 const values = [
   'skill',
@@ -419,6 +437,8 @@ const setting = useSettingStore(store),
   theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
 setting.setGlobalTheme(theme, theme)
 initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = setting.boxBorderMode ? 'border-mode' : 'shadow-mode'
 await router.push('/')
 await router.isReady()
 app.mount('#forms-migration-preview')

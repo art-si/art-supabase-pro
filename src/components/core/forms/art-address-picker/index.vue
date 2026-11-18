@@ -8,8 +8,8 @@
           :label-width="labelWidth"
           :prop="regionPathProp"
         >
-          <ElCascader
-            v-model="regionPath"
+          <ArtCascader
+            v-model="pickerRegionPath"
             class="art-address-picker__control"
             :options="resolvedRegionOptions"
             :props="mergedCascaderProps"
@@ -23,7 +23,7 @@
             <template #empty>
               <ArtPickerEmpty :loading="regionLoading" title="暂无可选地区" />
             </template>
-          </ElCascader>
+          </ArtCascader>
           <ArtOverlayLoading
             v-if="regionLoading"
             loading
@@ -202,6 +202,7 @@
   import { Aim, Loading, Location, MapLocation } from '@element-plus/icons-vue'
   import { ElMessage } from 'element-plus'
   import { trim } from 'lodash-es'
+  import ArtCascader from '@/components/core/forms/art-cascader/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import ArtPickerEmpty from '@/components/core/feedback/art-picker-empty/index.vue'
   import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
@@ -212,7 +213,7 @@
   } from '@/hooks/core/useAmapGeolocation'
   import { artOverlayRequestScopeKey } from '@/hooks/core/useArtOverlay'
   import { useAmapInitialView } from '@/hooks/core/useAmapInitialView'
-  import { stripRegionPrefix } from './address'
+  import { resolveAddressPickerRegionPath, stripRegionPrefix } from './address'
   import ArtAddressMap from './modules/map.vue'
   import type {
     AddressCoordinateSource,
@@ -427,6 +428,19 @@
   const currentRegionPath = computed(() =>
     Array.isArray(regionPath.value) ? regionPath.value : []
   )
+
+  const pickerRegionPath = computed({
+    get: () =>
+      mergedCascaderProps.value.value === 'name' &&
+      mergedCascaderProps.value.children === 'children' &&
+      mergedCascaderProps.value.emitPath === true &&
+      mergedCascaderProps.value.multiple !== true
+        ? resolveAddressPickerRegionPath(currentRegionPath.value, resolvedRegionOptions.value)
+        : currentRegionPath.value,
+    set: (path: string[]) => {
+      regionPath.value = path
+    }
+  })
 
   const regionText = computed(() => currentRegionPath.value.filter(Boolean).join('/'))
 

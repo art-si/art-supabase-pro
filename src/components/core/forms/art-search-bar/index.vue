@@ -20,6 +20,7 @@
     :is-expand="isExpand"
     :default-expanded="defaultExpanded"
     :show-expand="showExpand"
+    :applied-search-values="appliedSearchValues"
     :reset-text="t('table.searchBar.reset')"
     :submit-text="t('table.searchBar.search')"
     v-bind="{ ...$attrs }"
@@ -43,6 +44,7 @@
 
   type SearchBarValue = Record<string, unknown>
   export type SearchFormItem = FormItem
+  const enterSearchInputTypes = ['text', 'search', 'email', 'tel', 'url', 'number']
 
   export interface SearchBarProps {
     items: SearchFormItem[]
@@ -61,6 +63,7 @@
     disabledSearch?: boolean
     enableEnterSearch?: boolean
     sanitizeOutput?: Record<string, boolean>
+    appliedSearchValues?: Readonly<SearchBarValue> | null
   }
 
   const props = withDefaults(defineProps<SearchBarProps>(), {
@@ -102,14 +105,21 @@
   )
 
   const handleEnterSearch = (event: KeyboardEvent) => {
-    if (!props.enableEnterSearch || props.disabledSearch || props.searchLoading) return
+    if (event.defaultPrevented || event.isComposing) return
 
-    const target = event.target as HTMLElement | null
-    const tagName = target?.tagName.toLowerCase()
-    if (tagName === 'textarea' || target?.isContentEditable) return
+    const { target } = event
+    // Buttons and composite pickers own their Enter key, including reset and expansion.
+    if (
+      !(target instanceof HTMLInputElement) ||
+      !enterSearchInputTypes.includes(target.type) ||
+      target.closest(
+        '[role="combobox"], .el-cascader, .el-date-editor, .el-time-panel, .el-input-number'
+      )
+    )
+      return
 
     event.preventDefault()
-    emit('search', searchBarRef.value?.getOutput() ?? modelValue.value)
+    if (props.enableEnterSearch) searchBarRef.value?.submit()
   }
 
   defineExpose({

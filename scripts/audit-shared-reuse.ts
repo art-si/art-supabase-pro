@@ -1,7 +1,8 @@
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import ts from 'typescript'
 import { parse as parseSfc, type SFCDescriptor } from '@vue/compiler-sfc'
+import { collectFrontendAuditFiles } from './lib/frontend-audit-files'
 
 interface HelperOccurrence {
   body: string
@@ -51,35 +52,6 @@ const canonicalDeclarations = new Map<string, string>([
   ['createDateTimeFormatter', 'src/utils/ui/format.ts'],
   ['createMenuPathResolver', 'src/utils/navigation/menu.ts']
 ])
-
-async function collectFiles(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true })
-  const nested = await Promise.all(
-    entries.map(async (entry) => {
-      const resolved = path.join(directory, entry.name)
-      if (entry.isDirectory()) return collectFiles(resolved)
-      return supportedExtensions.has(path.extname(entry.name)) ? [resolved] : []
-    })
-  )
-  return nested.flat()
-}
-
-async function collectFrontendFiles(): Promise<string[]> {
-  const files = await collectFiles(path.join(projectRoot, 'src'))
-  const moduleEntries = await readdir(path.join(projectRoot, 'modules'), { withFileTypes: true })
-  for (const entry of moduleEntries.filter((item) => item.isDirectory())) {
-    const sourceRoot = path.join(projectRoot, 'modules', entry.name, 'src')
-    try {
-      await stat(sourceRoot)
-    } catch (error) {
-      // Some optional repositories intentionally have no frontend source directory.
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') continue
-      throw error
-    }
-    files.push(...(await collectFiles(sourceRoot)))
-  }
-  return files
-}
 
 function relativeFile(file: string): string {
   return path.relative(projectRoot, file).replaceAll('\\', '/')
@@ -514,14 +486,17 @@ function collectScriptHelpers(
   }
 }
 
-const files = await collectFrontendFiles()
+const { hostFiles, moduleFiles, moduleDirectories } = await collectFrontendAuditFiles(
+  projectRoot,
+  supportedExtensions
+)
+const files = [...hostFiles, ...moduleFiles]
 const findings: Finding[] = []
 const helpers: HelperOccurrence[] = []
 const foundCanonicalDeclarations = new Set<string>()
-const moduleEntries = await readdir(path.join(projectRoot, 'modules'), { withFileTypes: true })
 
-for (const entry of moduleEntries.filter((item) => item.isDirectory())) {
-  const configFile = path.join(projectRoot, 'modules', entry.name, 'tsconfig.json')
+for (const directory of moduleDirectories) {
+  const configFile = path.join(directory, 'tsconfig.json')
   try {
     const config = JSON.parse(await readFile(configFile, 'utf8')) as {
       compilerOptions?: { paths?: Record<string, string[]> }

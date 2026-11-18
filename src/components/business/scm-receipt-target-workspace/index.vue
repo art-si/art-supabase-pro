@@ -179,7 +179,7 @@
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import {
     getDocumentDetailRowKey,
-    documentGroupSpan,
+    createDocumentGroupSpan,
     expandDocumentLines,
     loadAllDocumentPages,
     paginateDetailRows
@@ -189,6 +189,7 @@
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { toTenantSelectOptions } from '@/utils/tenant-display'
   import { useUserStore } from '@/store/modules/user'
   import {
     fetchScmReceiptTargets,
@@ -262,22 +263,11 @@
     'detailBatchNo',
     'detailAmount'
   ])
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return displayMode.value === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as ReceiptTargetListRow[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => displayMode.value,
+    () => tableRef.value?.dataState.rows.value as readonly ReceiptTargetListRow[] | undefined,
+    lineProperties
+  )
   const detailRef = ref<ArtDrawerExpose<ScmReceiptTargetDocument>>()
   const serialDialogRef = ref<InstanceType<typeof ReceiptSerialDialog>>()
   const binDialogRef = ref<InstanceType<typeof ReceiptBinDialog>>()
@@ -348,10 +338,7 @@
                 search.value.projectId = undefined
                 search.value.constructionNo = undefined
               },
-              options: tenantOptions.value.map((item) => ({
-                label: `${item.tenantName}（${item.tenantCode}）`,
-                value: item.id
-              }))
+              options: toTenantSelectOptions(tenantOptions.value)
             }
           }
         ]

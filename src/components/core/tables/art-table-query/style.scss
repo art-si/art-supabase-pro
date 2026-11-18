@@ -1,3 +1,5 @@
+$flow-table-viewport-height: clamp(320px, 60vh, 480px);
+
 .art-table-query {
   display: flex;
   // 普通文档流中保留表格内容高度；全高弹性容器仍可按可用空间收缩。
@@ -71,6 +73,26 @@
   min-height: 0 !important;
 }
 
+// 导航与查询纵向排列时，沿用外层页面滚动，不把整组内容压入单屏。
+:global(
+  .art-table-focus-page:has(.art-workspace-splitter.is-stacked .art-table-query.is-focus-mode)
+) {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+:global(.art-workspace-splitter.is-stacked .art-table-query.is-focus-mode) {
+  height: auto;
+  min-height: inherit;
+}
+
+:global(
+  .art-workspace-splitter.is-stacked .art-table-query.is-focus-mode .art-table-query__table-host
+) {
+  flex: none;
+  height: $flow-table-viewport-height;
+}
+
 :deep(.art-table-card) {
   display: flex;
   // 卡片必须与外层使用相同基准，否则表格会被压成 0 高度。
@@ -88,6 +110,25 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
+}
+
+// The table viewport can extend below the visible card in short workspaces.
+:deep(.art-table-card.has-retry-focus) {
+  position: relative;
+
+  &::after {
+    position: absolute;
+    inset: 0;
+    z-index: 11;
+    pointer-events: none;
+    content: '';
+    border: 2px solid var(--theme-color, var(--el-color-primary));
+    border-radius: inherit;
+  }
+
+  .art-table-query__table-host:focus {
+    outline: none;
+  }
 }
 
 :deep(.art-table-card.is-table-only > .el-card__body) {
@@ -342,12 +383,12 @@
   }
 }
 
-// Narrow business pages use document scrolling. Give their table a bounded
-// viewport instead of resolving percentage heights against an auto-height page.
+// Keep a bounded viewport in document flow, but let a fixed-height card reserve
+// enough space for its header and multiline pagination.
 @media (width <= 768px) {
   .art-table-query:not(.is-focus-mode) .art-table-query__table-host {
-    flex: none;
-    height: clamp(320px, 60vh, 480px);
+    flex: 0 1 auto;
+    height: $flow-table-viewport-height;
   }
 }
 

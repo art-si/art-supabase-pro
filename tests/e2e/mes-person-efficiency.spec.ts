@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { expect, test, type Locator, type Page, type Route, type TestInfo } from '@playwright/test'
 import dayjs from 'dayjs'
+import { expectInputTextUnclipped } from './support/input-text-width'
 import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
@@ -396,32 +397,7 @@ for (const { width, mode } of [
     await expect(dates).toHaveCount(2)
     await expect(dates.nth(0)).toHaveValue(dayjs(workDate).subtract(6, 'day').format('YYYY-MM-DD'))
     await expect(dates.nth(1)).toHaveValue(workDate)
-    const textFit = await dates.evaluateAll((inputs) =>
-      inputs.map((element) => {
-        const input = element as HTMLInputElement
-        const style = getComputedStyle(input)
-        const canvas = document.createElement('canvas')
-        const context = canvas.getContext('2d')
-        if (!context) throw new Error('Canvas text measurement unavailable')
-        context.font = style.font
-        const textWidth = context.measureText(input.value).width
-        const availableWidth =
-          input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
-        const bounds = input.getBoundingClientRect()
-        const editor = input.closest('.el-date-editor')?.getBoundingClientRect()
-        return {
-          value: input.value,
-          textWidth,
-          availableWidth,
-          insideEditor: !!editor && bounds.left >= editor.left && bounds.right <= editor.right
-        }
-      })
-    )
-    for (const input of textFit) {
-      expect(input.value).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-      expect(input.availableWidth).toBeGreaterThanOrEqual(input.textWidth)
-      expect(input.insideEditor).toBe(true)
-    }
+    await expectInputTextUnclipped(dates)
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
     expect(unknownWrites).toEqual([])
     expect(pageErrors).toEqual([])

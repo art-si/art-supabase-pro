@@ -23,6 +23,7 @@ for (const { mode, systemDraft, saveAndPost = false, missingPermission } of case
     page.on('pageerror', (error) => errors.push(error.message))
     let fixed = false
     let rejected = false
+    const rejectionResponse = Promise.withResolvers<void>()
     const writes: Array<{
       post_immediately?: boolean
       lines: Array<{
@@ -32,7 +33,7 @@ for (const { mode, systemDraft, saveAndPost = false, missingPermission } of case
         batch_no: string | null
       }>
     }> = []
-    await page.route('**/rest/v1/**', (route) => {
+    await page.route('**/rest/v1/**', async (route) => {
       const url = new URL(route.request().url())
       const name = url.pathname.split('/').at(-1) || ''
       const material = {
@@ -161,6 +162,7 @@ for (const { mode, systemDraft, saveAndPost = false, missingPermission } of case
       if (name === 'wms_save_production_material_secure') {
         if (saveAndPost && !rejected) {
           rejected = true
+          await rejectionResponse.promise
           return route.fulfill({
             status: 400,
             json: { code: '23514', message: '仓位容量不足，请调整仓位后重试' }
@@ -206,6 +208,7 @@ for (const { mode, systemDraft, saveAndPost = false, missingPermission } of case
       await packMode.focus()
       await packMode.press('Space')
       await expect(packMode).toBeChecked()
+      await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
       await expect(drawer.getByRole('button', { name: '选生产工单', exact: true })).toHaveCount(0)
       await drawer.getByRole('button', { name: '选排包单', exact: true }).click()
       const picker = page.getByRole('dialog', { name: '参选排包未入库明细', exact: true })
@@ -225,6 +228,7 @@ for (const { mode, systemDraft, saveAndPost = false, missingPermission } of case
       await expect(row.getByRole('spinbutton')).toHaveCount(0)
       await expect(drawer.getByRole('button', { name: '导入明细', exact: true })).toHaveCount(0)
     } else {
+      await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
       await expect(drawer.getByRole('button', { name: '选排包单', exact: true })).toHaveCount(0)
       await drawer.getByRole('button', { name: '选生产工单', exact: true }).click()
       const picker = page.getByRole('dialog', { name: '参选生产工单', exact: true })
@@ -241,15 +245,21 @@ for (const { mode, systemDraft, saveAndPost = false, missingPermission } of case
     const fastSave = drawer.getByRole('button', { name: '保存并入库', exact: true })
     if (!saveAndPost) await expect(fastSave).toHaveCount(0)
     if (saveAndPost) {
-      await fastSave.click()
+      await fastSave.focus()
+      await page.keyboard.press('Enter')
+      try {
+        await expect.poll(() => rejected).toBe(true)
+        await expect(fastSave).toBeDisabled()
+      } finally {
+        rejectionResponse.resolve()
+      }
       await expect(page.locator('.el-message--error')).toContainText('仓位容量不足')
       await expect(drawer).toBeVisible()
       await expect(fastSave).toBeEnabled()
+      await expect(fastSave).toBeFocused()
       await drawer.screenshot({ path: testInfo.outputPath('save-and-post-retry.png') })
-    }
-    await (
-      saveAndPost ? fastSave : drawer.getByRole('button', { name: '保存', exact: true })
-    ).click()
+      await page.keyboard.press('Enter')
+    } else await drawer.getByRole('button', { name: '保存', exact: true }).click()
     await expect.poll(() => writes.length).toBe(1)
     expect(writes[0].lines[0].pack_id).toBe(mode === 'pack' ? 'pack-test' : null)
     expect(writes[0].lines[0].actual_quantity).toBe(mode === 'pack' ? 42 : 10)

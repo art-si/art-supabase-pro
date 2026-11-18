@@ -30,6 +30,31 @@ for (const kind of ['弹窗', '抽屉']) {
     await expect(page.getByTestId('callback-api-valid')).toHaveText('true')
     expect(errors).toEqual([])
   })
+
+  test(`${kind}异步确认失败后保留键盘操作位置`, async ({ page }) => {
+    await page.goto('/tests/e2e/fixtures/overlay-close-guard.html?callback-contract&defer-confirm')
+    await page.getByRole('button', { name: `打开${kind}`, exact: true }).click()
+    const overlay = page.getByRole('dialog', { name: `关闭检查${kind}`, exact: true })
+    const confirm = overlay.getByRole('button', { name: '确定', exact: true })
+    const complete = overlay.getByRole('button', { name: '返回确认失败', exact: true })
+    await confirm.focus()
+    await page.keyboard.press('Enter')
+    await expect(confirm).toBeDisabled()
+    await expect(confirm).not.toBeFocused()
+    await complete.evaluate((button: HTMLButtonElement) => button.click())
+    await expect(confirm).toBeEnabled()
+    await expect(confirm).toBeFocused()
+
+    await page.keyboard.press('Enter')
+    await expect(confirm).toBeDisabled()
+    await complete.focus()
+    await page.keyboard.press('Space')
+    await expect(confirm).toBeEnabled()
+    await expect(complete).toBeFocused()
+    await expect(page.getByTestId('callback-counts')).toHaveText(
+      '{"open":1,"confirm":2,"close":0,"reset":0}'
+    )
+  })
 }
 
 test('含回调的嵌套表单编辑与重置保持原始记录隔离', async ({ page }) => {

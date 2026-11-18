@@ -105,6 +105,8 @@ const items: FormItem[] = [
 - 普通切换通过 Element Plus 页签保留非活动面板的挂载状态，字段值、插槽、异步选项与校验保持有效。`validate()` 校验所有未被 `hidden` 隐藏的页签，包括非当前页签；失败后按字段元数据顺序切至首个错误、滚动并聚焦控件。`validateField()` 同样定位并聚焦首个错误。`scrollToField()` 揭示对应页签与折叠分区后滚动，`focusField()` 还会聚焦字段内第一个可用控件。普通失焦校验不会抢焦点或滚动页面。
 - 异步选项在非活动页签中仍按 `immediate` 加载；加载中或失败的字段会按原协议阻止提交，并切到所在页签给出反馈。隐藏页签不触发选项请求。
 - `tab` 是布局标记，不是业务字段，不请求输入控件、不参与空值归一化。复杂内容使用所属页签内的普通字段插槽，无需嵌套 `ElForm` 或 `ArtForm`。
+- 弹窗或抽屉中的页签导航与页签内容共用一张卡片。上方有独立摘要或上下文卡片时，保留 16px 分区间距：平铺的 `ArtEntitySummary` 使用 `spaced`，已有父容器 `gap` 或外边距时由该容器负责，避免重复叠加。专注模式隐藏摘要后，其间距也应一同消失。
+- 弹层页签表单不在根节点裁剪卡片阴影或长内容，由外层 `ElScrollbar` 承接滚动；全高关联表格保留自身的高度与内部滚动约束。
 - 页签使用横向导航，窄容器由 Element Plus 提供导航滚动。页签模式展示各面板内完整字段，`enableExpand` 的单行查询折叠仅适用于无页签的查询表单；`customLayout` 模式继续由默认插槽接管布局。
 
 确认保存时调用公开 `validate()`，一次校验所有未隐藏页签，无需逐个切换；Promise 与 Element Plus 回调形式均可使用：
@@ -205,9 +207,12 @@ await formRef.value?.focusField('plannedEnd')
 - 两列短表单通常使用 `span="12"`，单列流程表单使用 `span="24"`；长文本、上传和分区标题应独占整行。
 - 手机断点（小于 768px）统一使用单列满宽，避免两列输入框被压缩；平板和桌面保留配置的响应式列宽。
 - 备注、说明、原因、意见等长文本使用 `type: 'textarea'`。该类型默认独占整行、初始 4 行高、限制 300 字并显示字数统计；业务上需要更长内容时只覆盖 `props.maxlength`，不要重复设置高度和统计开关。
-- `ArtSearchBar` 保持紧凑的左右标签布局，适合高频筛选和表格查询，不受 `ArtForm` 顶部标签默认值影响。
+- `ArtSearchBar` 默认使用右对齐的行内标签。日期范围、多选和选项组随实际容器宽度排版；控件换行时标签仍与控件整体垂直居中。业务可用 `span` 为长字段提供更宽的列，无需在页面单独覆盖标签或控件样式。
+- 收起高级查询只隐藏控件，已填的值仍可提交。受管 `ArtTableQuery` 会显示当前请求结果中隐藏的已应用条件数；独立查询栏只提示「已填」。空值、权限等元数据隐藏字段，以及选择项中的「全部」不计入，日期范围或多选按一个字段计数。
+- 普通选择和树选择保留单行选项；较长的名称可从完整文字提示核对。开启 `collapseTags` 后，`maxCollapseTags` 是宽栏上限；实际字段不足 320px 时最多展示一个标签，计数和所选值仍由选择器维护。
+- `cascader` 与地址选择器共用 `ArtCascader`：层级较多时下拉层只在内部横向滚动，打开子级会自动显示新列；保留原有的选项、键盘操作和选中值格式。
 - 只有空间高度明显受限的台账筛选、表格内编辑等高密度场景，才显式设置 `label-position="left"` 或 `label-position="right"`，并同时给出合适的 `label-width`。
-- 在 `ArtDialog` 的专注填单模式中，普通字段标签保持单行，超出标签宽度时省略；悬停标签可查看完整文字，帮助图标仍独立显示。
+- 在桌面专注填单模式中，普通录入字段标签保持单行，超出标签宽度时省略。悬停标签或用键盘聚焦该字段可查看全文。使用键盘时，Escape 先关闭已展开的选项，再关闭标签提示。提示不移动焦点，帮助图标仍独立显示。窄屏顶部标签和嵌入查询栏继续使用各自的布局。
 - 不要用 placeholder 代替标签；帮助说明和校验信息继续显示在对应控件下方。
 
 ## Events
@@ -222,9 +227,9 @@ await formRef.value?.focusField('plannedEnd')
 
 `ArtForm` 为每个 `FormItem.key` 自动开放同名插槽。
 
-| 插槽                   | 参数                   | 说明                                       |
-| ---------------------- | ---------------------- | ------------------------------------------ |
-| `[item.key]`           | `{ item, modelValue }` | 完全自定义当前字段内容                     |
+| 插槽 | 参数 | 说明 |
+| --- | --- | --- |
+| `[item.key]` | `{ item, modelValue, descriptionId }` | 完全自定义当前字段内容 |
 | `[divider.key]Actions` | `{ item, modelValue }` | 在分区标题右侧放置操作按钮；折叠时自动隐藏 |
 
 ```vue
@@ -234,6 +239,10 @@ await formRef.value?.focusField('plannedEnd')
   </template>
 </ArtForm>
 ```
+
+`description` 会自动关联注册到 `ArtForm` 的控件或控件组。自定义字段插槽中的原生控件可绑定 `:aria-describedby="descriptionId"`；未配置说明时该值为空。
+
+日期、日期时间、月份和时间范围的两个输入会分别关联可见字段名及起止文字。优先采用不同的起止占位文字，缺省时使用当前 Element Plus 语言的起止名称；保留显式设置的可访问名称。
 
 ## Ref API
 
@@ -265,6 +274,7 @@ await formRef.value?.focusField('plannedEnd')
 | `fetchOptions(item)` | `(item: FormItem) => Promise<Record<string, any>[]>` | 加载单个字段的异步选项 |
 | `reloadOptions(key?)` | `(key?: string) => Promise<unknown>` | 重新加载指定字段或全部异步选项 |
 | `readyToSubmit` | `boolean` | 控件与远程选项就绪且表单未禁用、未提交；外部弹窗保存按钮可据此禁用，不代表必填校验已通过 |
+| `submit()` | `() => void` | 使用与表单提交按钮相同的就绪检查，就绪后触发 `submit` 事件 |
 | `getOutput()` | `() => Record<string, any>` | 获取按 `sanitizeOutput` 清洗后的表单输出 |
 
 底层 `ElForm` 的其他方法可通过 `formRef.value?.ref.value` 访问，例如 `resetFields`、`fields`。
@@ -275,7 +285,7 @@ await formRef.value?.focusField('plannedEnd')
 | --- | --- | --- | --- |
 | `key` | `string` | 必填 | 字段路径，支持 `a.b`、`a.0.b` |
 | `label` | `string \| () => VNodeChild \| Component` | 必填 | 字段标签 |
-| `description` | `string \| () => VNodeChild \| Component` | `undefined` | 字段下方说明 |
+| `description` | `string \| () => VNodeChild \| Component` | `undefined` | 字段下方说明，与控件或控件组关联 |
 | `help` | `string \| () => VNodeChild \| Component` | `undefined` | 标签旁帮助提示 |
 | `labelWidth` | `string \| number` | `undefined` | 当前字段标签宽度 |
 | `formItemProps` | `Partial<FormItemProps>` | `undefined` | 字段原生校验/展示属性，如 `required`、`error`、`data-validation-key`；不覆盖配置的 key/label |

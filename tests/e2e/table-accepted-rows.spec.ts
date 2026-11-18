@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { mockApplicationMenus } from './support/menu-rpc'
 import { installDictionaryOptions } from './support/dictionary-options'
@@ -20,8 +20,7 @@ async function requestThroughTable(page: Page) {
   })
 }
 
-async function showKeyword(page: Page, placeholder: string) {
-  const keyword = page.getByPlaceholder(placeholder, { exact: true })
+async function showKeyword(page: Page, keyword: Locator) {
   if (!(await keyword.isVisible())) {
     await page.locator('.art-table-query').getByRole('button', { name: /展开/ }).first().click()
   }
@@ -130,7 +129,7 @@ test('WMS transfer spans follow the accepted table response after an older reque
   const table = page.locator('.art-table-query .el-table')
   await expect(table.getByText('NEW', { exact: true })).toHaveCount(1)
 
-  const keyword = await showKeyword(page, '单据编号')
+  const keyword = await showKeyword(page, page.getByPlaceholder('单据编号', { exact: true }))
   await keyword.fill('OLD')
   const olderRequest = requestThroughTable(page)
   await oldRequestStarted
@@ -179,7 +178,9 @@ test('WMS transfer spans follow the accepted table response after an older reque
 test('SCM purchase spans follow accepted rows after an older request resolves', async ({
   page
 }, testInfo) => {
-  const tenant = await prepareIsolatedSession(page)
+  const tenant = await prepareIsolatedSession(page, {
+    tenantId: '11111111-1111-4111-8111-111111111111'
+  })
   await installDictionaryOptions(page, {
     commonDocumentDisplayMode: [
       { value: 'document', label: '按单据' },
@@ -294,7 +295,10 @@ test('SCM purchase spans follow accepted rows after an older request resolves', 
   await page.locator('.el-radio-button').filter({ hasText: '按明细' }).click()
   const table = page.locator('.art-table-query .el-table')
   await expect(table.getByText('NEW', { exact: true })).toHaveCount(1)
-  const keyword = await showKeyword(page, '采购申请单号、项目、供应商或人员')
+  const keyword = await showKeyword(
+    page,
+    page.getByRole('textbox', { name: '组合查询', exact: true })
+  )
   await keyword.fill('OLD')
   const olderRequest = requestThroughTable(page)
   await oldRequestStarted

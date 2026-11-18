@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hostedModuleSharedDependencies } from './hosted-module-dependencies.mjs'
+import { gitSubmodulePathPattern, parseGitSubmodulePaths } from './lib/git-submodule-paths.mjs'
 
 type ModuleAction = 'pull' | 'update' | 'install' | 'check' | 'build' | 'setup' | 'status'
 type ModulePackageAction = 'install' | 'check' | 'build'
@@ -163,28 +164,16 @@ function ensurePathInside(parentPath: string, candidatePath: string, label: stri
 function readModuleDefinitions(): ModuleDefinition[] {
   const result = executeCommand(
     'git',
-    ['config', '--file', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'],
+    ['config', '--file', '.gitmodules', '--get-regexp', gitSubmodulePathPattern],
     projectRoot,
     false
   )
 
   if (result.status !== 0) throw new Error('读取 .gitmodules 失败，请确认当前目录是主工程根目录。')
 
-  const modules = result.output
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const separatorIndex = line.indexOf(' ')
-      const key = line.slice(0, separatorIndex)
-      const modulePath = line.slice(separatorIndex + 1).trim()
-      const name = key.slice('submodule.'.length, -'.path'.length)
-      const absoluteModulePath = resolve(projectRoot, modulePath)
-
-      ensurePathInside(projectRoot, absoluteModulePath, `子仓 ${name}`)
-      return { name, path: modulePath }
-    })
-
+  const modules = parseGitSubmodulePaths(result.output)
+  for (const { name, path: modulePath } of modules)
+    ensurePathInside(projectRoot, resolve(projectRoot, modulePath), `子仓 ${name}`)
   if (modules.length === 0) throw new Error('.gitmodules 中没有配置子仓。')
   return modules
 }

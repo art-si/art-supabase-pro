@@ -694,7 +694,7 @@ for (const list of materialLists)
     expect(errors).toEqual([])
   })
 
-test('计量单位窄屏读取失败保留前端列，恢复后重新应用配置', async ({ page }, info) => {
+test('计量单位窄屏读取失败静默保留前端列，恢复后重新应用配置', async ({ page }, info) => {
   test.setTimeout(120_000)
   await page.setViewportSize({ width: 1024, height: 768 })
   const state = await mockApi(page)
@@ -712,10 +712,20 @@ test('计量单位窄屏读取失败保留前端列，恢复后重新应用配�
     }
   ]
   state.runtimeFail = true
-  await page.goto('/tests/e2e/fixtures/table-column-config.html?real=unit')
-  await expect(page.getByText('已使用前端默认列', { exact: true })).toBeVisible({ timeout: 60_000 })
+  await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith('/rpc/get_table_column_runtime') &&
+        !response.ok(),
+      { timeout: 60_000 }
+    ),
+    page.goto('/tests/e2e/fixtures/table-column-config.html?real=unit', {
+      waitUntil: 'domcontentloaded'
+    })
+  ])
   await expect(page.getByRole('columnheader', { name: '计量单位', exact: true })).toBeVisible()
   await expect(page.getByText('测试计量单位', { exact: true })).toBeVisible()
+  await expect(page.getByText('已使用前端默认列', { exact: true })).toHaveCount(0)
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
   ).toBe(true)
@@ -732,8 +742,11 @@ test('计量单位窄屏读取失败保留前端列，恢复后重新应用配�
 })
 
 test('业务列表统一使用配置列或前端列，权限收紧始终生效', async ({ page }) => {
+  test.setTimeout(120_000)
   const state = await mockApi(page)
-  await page.goto('/tests/e2e/fixtures/table-column-config.html?runtime=1')
+  await page.goto('/tests/e2e/fixtures/table-column-config.html?runtime=1', {
+    waitUntil: 'domcontentloaded'
+  })
   const headers = page.locator('.el-table__header th .cell')
   await expect(headers).toHaveText(['名称', '编码', '金额'])
   await expect.poll(() => state.runtimeCalls).toBe(1)
@@ -748,6 +761,90 @@ test('业务列表统一使用配置列或前端列，权限收紧始终生效',
   state.profiles[0].revision++
   await page.getByRole('button', { name: '重新读取配置' }).click()
   await expect(headers).toHaveText(['名称', '编码'])
+})
+
+test('重新读取同一范围的列配置期间保留当前列，失败后静默回退', async ({ page }) => {
+  test.setTimeout(120_000)
+  const state = await mockApi(page)
+  state.profiles = [
+    profile([{ ...columns[1], label: '配置编码' }, { ...columns[0], visible: false }, columns[2]])
+  ]
+  await page.goto('/tests/e2e/fixtures/table-column-config.html?runtime=1', {
+    waitUntil: 'domcontentloaded'
+  })
+  const headers = page.locator('.el-table__header th .cell')
+  await expect(headers).toHaveText(['配置编码', '金额'])
+
+  const pending = Promise.withResolvers<void>()
+  const requested = Promise.withResolvers<void>()
+  await page.route('**/rest/v1/rpc/get_table_column_runtime', async (route) => {
+    requested.resolve()
+    await pending.promise
+    await route.fulfill({
+      status: 503,
+      json: { code: 'PGRST000', message: 'connection unavailable' }
+    })
+  })
+  try {
+    await page.getByRole('button', { name: '重新读取配置' }).click()
+    await requested.promise
+    await expect(headers).toHaveText(['配置编码', '金额'], { timeout: 3000 })
+    pending.resolve()
+    await expect(headers).toHaveText(['名称', '编码', '金额'])
+    await expect(page.getByText('已使用前端默认列', { exact: true })).toHaveCount(0)
+  } finally {
+    pending.resolve()
+  }
+
+  await page.unroute('**/rest/v1/rpc/get_table_column_runtime')
+  state.profiles = [
+    profile([{ ...columns[1], label: '恢复后编码' }, { ...columns[0], visible: false }, columns[2]])
+  ]
+  await page.getByRole('button', { name: '重新读取配置' }).click()
+  await expect(headers).toHaveText(['恢复后编码', '金额'])
+})
+
+test('切换租户时先使用本地列，等新租户配置返回后再应用', async ({ page }) => {
+  test.setTimeout(120_000)
+  const state = await mockApi(page)
+  state.profiles = [
+    profile([{ ...columns[1], label: '原范围编码' }, { ...columns[0], visible: false }, columns[2]])
+  ]
+  await page.goto('/tests/e2e/fixtures/table-column-config.html?runtime=1&switch-tenant', {
+    waitUntil: 'domcontentloaded'
+  })
+  const headers = page.locator('.el-table__header th .cell')
+  await expect(headers).toHaveText(['原范围编码', '金额'])
+
+  const pending = Promise.withResolvers<void>()
+  await page.route('**/rest/v1/rpc/get_table_column_runtime', async (route) => {
+    await pending.promise
+    await route.fulfill({
+      json: {
+        enabled: true,
+        catalog,
+        profiles: [
+          profile([
+            { ...columns[1], label: '新租户编码' },
+            { ...columns[0], visible: false },
+            columns[2]
+          ])
+        ]
+      }
+    })
+  })
+  try {
+    const [request] = await Promise.all([
+      page.waitForRequest('**/rest/v1/rpc/get_table_column_runtime', { timeout: 30_000 }),
+      page.getByRole('button', { name: '切换到指定租户', exact: true }).click()
+    ])
+    expect(request.headers()['x-art-tenant-scope']).toBe(tenantId)
+    await expect(headers).toHaveText(['名称', '编码', '金额'])
+    pending.resolve()
+    await expect(headers).toHaveText(['新租户编码', '金额'])
+  } finally {
+    pending.resolve()
+  }
 })
 
 test('清除登录用户后立即丢弃已加载的列方案', async ({ page }) => {

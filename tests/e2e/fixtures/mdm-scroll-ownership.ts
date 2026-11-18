@@ -5,6 +5,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
+import { useMenuStore } from '@/store/modules/menu'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useTheme } from '@/hooks/core/useTheme'
 import { SystemThemeEnum } from '@/enums/app-enum'
@@ -122,7 +123,18 @@ const router = createRouter({
 app.use(router)
 setupGlobDirectives(app)
 const user = useUserStore(store)
-user.setUserInfo({ userId: 'mdm-scroll-test', tenantId, platformSuper: true } as Api.Auth.UserInfo)
+user.setUserInfo({
+  userId: 'mdm-scroll-test',
+  tenantId,
+  platformSuper: !params.has('permissions')
+} as Api.Auth.UserInfo)
+if (params.has('permissions'))
+  useMenuStore(store).setButtonList(
+    (params.get('permissions') || '')
+      .split(',')
+      .filter(Boolean)
+      .map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
+  )
 const scope = useTenantScopeStore(store)
 scope.tenantOptions = [{ id: tenantId, tenantCode: 'TEST', tenantName: '验收租户' }]
 scope.scopeOwnerUserId = 'mdm-scroll-test'

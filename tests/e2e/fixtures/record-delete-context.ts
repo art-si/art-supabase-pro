@@ -1,9 +1,13 @@
 import { createApp, defineComponent, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
 import { useSupplierDelete } from '@/hooks/core/useSupplierDelete'
@@ -312,7 +316,16 @@ const app = createApp(
                       : params.get('target') === 'opening-balance'
                         ? h(OpeningBalancePage)
                         : params.get('target') === 'expense-item'
-                          ? h(ExpenseItemPage)
+                          ? h(ElConfigProvider, { locale: zhCn }, () =>
+                              h(
+                                'main',
+                                {
+                                  class: 'art-page-view p-4',
+                                  style: '--art-full-height: calc(100dvh - 32px)'
+                                },
+                                [h(ExpenseItemPage)]
+                              )
+                            )
                           : params.get('target') === 'accounting-auxiliary'
                             ? h(AccountingAuxiliaryPage)
                             : params.get('target') === 'waybill-expense'
@@ -406,4 +419,9 @@ if (new URLSearchParams(location.search).get('view') === 'denied') {
 }
 await router.push('/')
 await router.isReady()
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 app.mount('#record-delete-context')

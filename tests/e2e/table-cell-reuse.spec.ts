@@ -6,7 +6,8 @@ test.setTimeout(90_000)
 for (const feature of ['contingent', 'organization', 'policy', 'equipment', 'recruitment']) {
   test(`${feature} 复用单元格的实际样式和内容在窄屏保持正常`, async ({ page }, testInfo) => {
     await prepareIsolatedSession(page)
-    await page.clock.setFixedTime(new Date('2026-10-09T08:00:00+08:00'))
+    if (feature !== 'recruitment')
+      await page.clock.setFixedTime(new Date('2026-10-09T08:00:00+08:00'))
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.route('**/rest/v1/**', (route) => {
@@ -211,10 +212,16 @@ for (const feature of ['contingent', 'organization', 'policy', 'equipment', 'rec
       await expect(actions).toBeVisible()
       expect(await actions.evaluate((element) => getComputedStyle(element).gap)).toBe('8px')
       await expect(actions.locator('.art-button-table')).toHaveCount(1)
-      await actions.locator('.el-dropdown').click()
-      await expect(page.getByRole('menuitem', { name: '提交审批' })).toBeVisible()
-      await expect(page.getByRole('menuitem', { name: '删除招聘需求' })).toBeVisible()
-      await page.keyboard.press('Escape')
+      await actions.getByRole('button', { name: '更多操作', exact: true }).click()
+      const submit = page.getByRole('menuitem', { name: '提交审批', exact: true })
+      const remove = page.getByRole('menuitem', { name: '删除招聘需求', exact: true })
+      await expect(submit).toBeVisible()
+      await expect(remove).toBeVisible()
+      await submit.focus()
+      await expect(submit).toBeFocused()
+      await submit.press('Escape')
+      await expect(submit).toBeHidden()
+      await expect(remove).toBeHidden()
     } else {
       const image = rows
         .filter({ hasText: 'EQ-PHOTO' })

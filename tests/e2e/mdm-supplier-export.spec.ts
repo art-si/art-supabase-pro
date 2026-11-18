@@ -5,11 +5,15 @@ import { mockApplicationMenus } from './support/menu-rpc'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
-for (const incomplete of [false, true]) {
-  test(`供应商${incomplete ? '拒绝缺失导出页并恢复按钮' : '完整导出超过一万条'}`, async ({
-    page
-  }) => {
+for (const [scenario, title] of [
+  ['complete', '供应商完整导出超过一万条'],
+  ['incomplete', '供应商拒绝缺失导出页并恢复按钮'],
+  ['applied', '供应商导出沿用已应用的筛选']
+] as const) {
+  test(title, async ({ page }) => {
     test.setTimeout(180_000)
+    const incomplete = scenario === 'incomplete'
+    const verifyAppliedFilter = scenario === 'applied'
     const tenant = await prepareIsolatedSession(page)
     await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
     const menu = {
@@ -39,7 +43,7 @@ for (const incomplete of [false, true]) {
         }))
       ]
     })
-    const records = Array.from({ length: 10001 }, (_, index) => ({
+    const records = Array.from({ length: verifyAppliedFilter ? 2 : 10001 }, (_, index) => ({
       id: `supplier-${index}`,
       tenant_id: tenant.id,
       supplier_code: `SUP-${String(index).padStart(5, '0')}`,
@@ -61,12 +65,15 @@ for (const incomplete of [false, true]) {
       requests.push(url)
       const offset = Number(url.searchParams.get('offset') ?? 0)
       const limit = Number(url.searchParams.get('limit') ?? 20)
-      const rows = incomplete && offset >= 500 ? [] : records.slice(offset, offset + limit)
+      const matches = url.searchParams.get('or')?.includes('SUP-00000')
+        ? records.slice(0, 1)
+        : records
+      const rows = incomplete && offset >= 500 ? [] : matches.slice(offset, offset + limit)
       await route.fulfill({
         headers: {
           'content-range': rows.length
-            ? `${offset}-${offset + rows.length - 1}/${records.length}`
-            : `*/${records.length}`,
+            ? `${offset}-${offset + rows.length - 1}/${matches.length}`
+            : `*/${matches.length}`,
           'access-control-expose-headers': 'content-range'
         },
         json: rows
@@ -77,8 +84,48 @@ for (const incomplete of [false, true]) {
       timeout: 60_000
     })
     await expect(page.getByText('测试供应商-0', { exact: true })).toBeVisible()
-    requests.length = 0
     const button = page.getByRole('button', { name: '导出', exact: true })
+    if (verifyAppliedFilter) {
+      const otherSupplier = page.getByText('测试供应商-1', { exact: true })
+      await expect(otherSupplier).toBeVisible()
+      const keyword = page.getByPlaceholder('编码、名称、联系人或地址')
+      const query = page.getByRole('button', { name: '查询', exact: true })
+      await keyword.fill('SUP-00000')
+      await query.click()
+      await expect(otherSupplier).toHaveCount(0)
+      expect(requests.at(-1)?.searchParams.get('or')).toContain('SUP-00000')
+
+      await keyword.clear()
+      await expect(otherSupplier).toHaveCount(0)
+      requests.length = 0
+      const download = page.waitForEvent('download')
+      await button.click()
+      const path = await (await download).path()
+      if (!path) throw new Error('未生成供应商导出文件')
+      expect(requests).toHaveLength(1)
+      expect(requests[0].searchParams.get('tenant_id')).toBe(`eq.${tenant.id}`)
+      expect(requests[0].searchParams.get('or')).toContain('SUP-00000')
+      const workbook = new ExcelJS.Workbook()
+      await workbook.xlsx.readFile(path)
+      const sheet = workbook.worksheets[0]
+      expect(sheet.rowCount).toBe(2)
+      expect(sheet.getCell('A2').value).toBe('SUP-00000')
+      await expect(otherSupplier).toHaveCount(0)
+
+      await page.route(
+        '**/rest/v1/mdm_supplier?*',
+        (route) => route.fulfill({ status: 400, json: { message: 'isolated list error' } }),
+        { times: 1 }
+      )
+      await query.click()
+      await expect(page.getByText('数据加载失败', { exact: true })).toBeVisible()
+      await expect(button).toBeDisabled()
+      await page.getByRole('button', { name: '重新加载', exact: true }).click()
+      await expect(otherSupplier).toBeVisible()
+      await expect(button).toBeEnabled()
+      return
+    }
+    requests.length = 0
     if (incomplete) {
       const downloads: string[] = []
       page.on('download', (download) => downloads.push(download.suggestedFilename()))

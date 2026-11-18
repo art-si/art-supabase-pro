@@ -280,35 +280,33 @@ const formWorkspace = defineComponent({
 const appointmentWorkspace = defineComponent({
   setup() {
     const drawer = ref<InstanceType<typeof AppointmentDrawer>>()
-    const kind =
-      new URLSearchParams(window.location.search).get('kind') === 'delivery' ? 'delivery' : 'pickup'
+    const query = new URLSearchParams(window.location.search)
+    const kind = query.get('kind') === 'delivery' ? 'delivery' : 'pickup'
+    const openAppointment = (suffix: string) =>
+      drawer.value?.handleOpen({
+        id: `00000000-0000-4000-a000-000000000${suffix}`,
+        waybillNo: query.get('waybillNo') || `YD-TEST-${suffix}`,
+        waybillStatus: 'accepted',
+        orderNo: `DD-TEST-${suffix}`,
+        originStation: '',
+        destinationStation: '',
+        deliveryMethod: '',
+        paymentMethod: '',
+        shippingContactName: '',
+        shippingContactPhone: '',
+        shippingAddressDetail: '',
+        receivingContactName: '',
+        receivingContactPhone: '',
+        receivingAddressDetail: '',
+        appointments: [],
+        appointmentStatus: 'confirming'
+      })
     return () =>
       h('main', {}, [
-        h(
-          'button',
-          {
-            onClick: () =>
-              drawer.value?.handleOpen({
-                id: '00000000-0000-4000-a000-000000000003',
-                waybillNo: 'YD-TEST-003',
-                waybillStatus: 'accepted',
-                orderNo: 'DD-TEST-003',
-                originStation: '',
-                destinationStation: '',
-                deliveryMethod: '',
-                paymentMethod: '',
-                shippingContactName: '',
-                shippingContactPhone: '',
-                shippingAddressDetail: '',
-                receivingContactName: '',
-                receivingContactPhone: '',
-                receivingAddressDetail: '',
-                appointments: [],
-                appointmentStatus: 'confirming'
-              })
-          },
-          '打开预约'
-        ),
+        h('button', { onClick: () => openAppointment('003') }, '打开预约'),
+        query.has('compare')
+          ? h('button', { onClick: () => openAppointment('005') }, '打开另一单预约')
+          : null,
         h(AppointmentDrawer, {
           ref: drawer,
           kind,

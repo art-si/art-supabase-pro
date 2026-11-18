@@ -5,6 +5,7 @@ import { mockApplicationMenus } from './support/menu-rpc'
 import { prepareAppearance } from './support/appearance'
 import { collectAppRuntimeErrors } from './support/runtime-errors'
 import { captureBusinessEvidence } from './support/capture-business-evidence'
+import { expectTreeChoiceReadable } from './support/tree-select-assertions'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 const platformSourceRoot = process.env.E2E_PLATFORM_SOURCE_ROOT || '/src'
@@ -302,10 +303,13 @@ test('盘点表双单据列表与明细可读', async ({ page }, testInfo) => {
 })
 
 for (const appearance of [
-  { theme: 'light', boxBorderMode: true, width: 1440 },
+  { theme: 'light', boxBorderMode: true, width: 390 },
   { theme: 'dark', boxBorderMode: false, width: 1024 }
 ] as const) {
   test(`盘点表库存组织保留层级、搜索和选中回显 ${appearance.theme}`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000)
+    const organizationName = '华东重工工业园综合储运运营中心仓储管理部'
+    const organizationLabel = `${organizationName} · WMS-01`
     const viewport = page.viewportSize()
     await page.setViewportSize({
       width: Math.min(viewport?.width ?? appearance.width, appearance.width),
@@ -337,7 +341,7 @@ for (const appearance of [
             tenant_id: tenantId,
             parent_id: 'count-root',
             organization_code: 'WMS-01',
-            organization_name: '测试仓储部门',
+            organization_name: organizationName,
             organization_type: 'department',
             status: '1'
           }
@@ -356,26 +360,49 @@ for (const appearance of [
       .filter({ has: page.getByText('库存组织', { exact: true }) })
       .first()
     const input = field.getByRole('combobox')
-    await input.click()
+    await input.press('ArrowDown')
+    await expect(input).toHaveAttribute('aria-expanded', 'true')
     const tree = page.locator('.el-select-dropdown:visible .el-tree')
     await expect(tree).toBeVisible()
     const root = tree.locator(':scope > .el-tree-node').first()
     if ((await root.getAttribute('aria-expanded')) !== 'true') {
       await root.locator(':scope > .el-tree-node__content .el-tree-node__expand-icon').click()
     }
-    await expect(root.getByText('测试仓储部门 · WMS-01', { exact: true })).toBeVisible()
+    await expectTreeChoiceReadable(root.getByText(organizationLabel, { exact: true }))
     await captureBusinessEvidence(page, {
       path: testInfo.outputPath(`organization-tree-${appearance.theme}.png`)
     })
     await input.fill('WMS-01')
-    await expect(tree.getByText('测试仓储部门 · WMS-01', { exact: true })).toBeVisible()
-    await tree.getByText('测试仓储部门 · WMS-01', { exact: true }).click()
-    await expect(
-      field.locator('.el-select__selected-item').filter({ hasText: '测试仓储部门 · WMS-01' })
-    ).toBeVisible()
+    const selectedOrganization = tree.getByText(organizationLabel, { exact: true })
+    await expectTreeChoiceReadable(selectedOrganization)
+    if (appearance.theme === 'dark') {
+      const option = selectedOrganization.locator('xpath=ancestor::*[@role="treeitem"][1]')
+      await input.press('ArrowDown')
+      await expect
+        .poll(() => page.evaluate(() => document.activeElement?.getAttribute('role')))
+        .toBe('treeitem')
+      if (!(await option.evaluate((node) => node === document.activeElement))) {
+        await page.keyboard.press('ArrowDown')
+      }
+      await expect(option).toBeFocused()
+      await page.keyboard.press('Enter')
+      await expect(input).toBeFocused()
+    } else {
+      await selectedOrganization.click()
+    }
+    const selectedValue = field.locator('.el-select__selected-item').getByText(organizationLabel)
+    await expect(selectedValue).toHaveAttribute('title', organizationLabel)
+    await field.screenshot({
+      path: testInfo.outputPath(`organization-selected-${appearance.theme}.png`)
+    })
     await page.getByRole('button', { name: '查询', exact: true }).click()
     await expect.poll(() => organizationFilters.at(-1)).toBe('eq.count-org')
     await input.click()
+    await expect(input).toHaveAttribute('aria-expanded', 'true')
+    if ((await root.getAttribute('aria-expanded')) !== 'true') {
+      await root.locator(':scope > .el-tree-node__content .el-tree-node__expand-icon').click()
+    }
+    await expectTreeChoiceReadable(tree.getByText(organizationLabel, { exact: true }))
     await input.fill('不存在的组织')
     await expect(page.locator('.el-select-dropdown:visible .art-picker-empty')).toBeVisible()
     await page.keyboard.press('Escape')
@@ -384,8 +411,17 @@ for (const appearance of [
     await expect(page.locator('.el-select-dropdown:visible')).toHaveCount(0)
     await page.getByRole('button', { name: '重置', exact: true }).click()
     await expect(field.getByText('全部库存组织', { exact: true })).toBeVisible()
-    await input.click()
-    await tree.getByText('测试集团 · ROOT', { exact: true }).click()
+    if (appearance.theme === 'dark') {
+      await input.press('ArrowDown')
+      await expect(input).toHaveAttribute('aria-expanded', 'true')
+      await input.press('ArrowDown')
+      await expect(root).toBeFocused()
+      await page.keyboard.press('Space')
+      await expect(input).toBeFocused()
+    } else {
+      await input.click()
+      await tree.getByText('测试集团 · ROOT', { exact: true }).click()
+    }
     await expect(
       field.locator('.el-select__selected-item').filter({ hasText: '测试集团 · ROOT' })
     ).toBeVisible()

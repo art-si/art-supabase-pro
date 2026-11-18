@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(120_000)
@@ -189,10 +190,27 @@ for (const profile of [
       const dialog = page.locator('.el-dialog:visible'),
         field = dialog.getByRole('spinbutton', { name: /^费用金额/ })
       await expect(dialog.getByRole('tab')).toHaveCount(2)
+      const samplePanel = await expectOverlayTabPanel(dialog, '业务样例')
+      await expect(samplePanel.locator('.art-card, .art-card-sm, .art-card-xs')).toHaveCount(0)
+      const footer = dialog.locator('.el-dialog__footer')
+      const reset = footer.getByRole('button', { name: '清空样例', exact: true })
+      const generate = footer.getByRole('button', { name: '生成命中样例', exact: true })
+      const finish = footer.getByRole('button', { name: '完成试跑', exact: true })
+      const [resetBox, generateBox, finishBox] = await Promise.all([
+        reset.boundingBox(),
+        generate.boundingBox(),
+        finish.boundingBox()
+      ])
+      if (!resetBox || !generateBox || !finishBox) throw new Error('试跑底部操作不可见')
+      expect(Math.abs(resetBox.y - finishBox.y)).toBeLessThanOrEqual(1)
+      expect(Math.abs(generateBox.y - finishBox.y)).toBeLessThanOrEqual(1)
       await field.fill('321')
       await field.press('Tab')
       await field.evaluate((element) => element.setAttribute('data-sample-control', 'retained'))
       await dialog.getByRole('tab', { name: '模拟路径与体检', exact: true }).click()
+      const pathPanel = await expectOverlayTabPanel(dialog, '模拟路径与体检')
+      await expect(pathPanel.locator('.art-card, .art-card-sm, .art-card-xs')).toHaveCount(0)
+      await expect(pathPanel.getByText('配置体检', { exact: true })).toBeVisible()
       await expect(field).toBeHidden()
       await expect(page.locator('[data-sample-control]')).toHaveCount(1)
       await expect(dialog.locator('.workflow-simulator__trace-list')).toContainText(
@@ -212,7 +230,15 @@ for (const profile of [
         path: info.outputPath('simulation-sample.png'),
         animations: 'disabled'
       })
-      await dialog.getByRole('button', { name: '完成试跑', exact: true }).click()
+      if (profile.width === 390) {
+        await page.setViewportSize({ width: 320, height: 640 })
+        for (const action of [reset, generate, finish]) {
+          await expect(action).toBeInViewport({ ratio: 1 })
+        }
+        await noOverflow(page)
+        await footer.screenshot({ path: info.outputPath('simulation-footer-320.png') })
+      }
+      await finish.click()
       await expect(dialog).toBeHidden()
     })
     test('短模拟与无字段通用模拟保持单页', async ({ page }, info) => {
@@ -226,6 +252,8 @@ for (const profile of [
         })
         const dialog = page.locator('.el-dialog:visible')
         await expect(dialog.getByRole('tab')).toHaveCount(0)
+        await expect(dialog.locator('.art-overlay-tab-card')).toHaveCount(0)
+        await expect(dialog.locator('.workflow-simulator__section.art-section-card')).toHaveCount(3)
         if (businessType === 'generic')
           await expect(dialog.getByText('当前业务没有可模拟字段', { exact: true })).toBeVisible()
         else await expect(dialog.getByRole('spinbutton', { name: /^费用金额/ })).toBeVisible()
@@ -247,13 +275,29 @@ for (const profile of [
       const dialog = page.locator('.el-dialog:visible'),
         navigation = dialog.getByRole('complementary', { name: '流程版本列表', exact: true })
       await expect(dialog.getByRole('tab')).toHaveCount(2)
+      const changesPanel = await expectOverlayTabPanel(dialog, '版本差异')
+      await expect(changesPanel.locator('.art-card, .art-card-sm, .art-card-xs')).toHaveCount(0)
       await dialog.getByRole('tab', { name: '节点快照', exact: true }).click()
+      const nodesPanel = await expectOverlayTabPanel(dialog, '节点快照')
+      await expect(nodesPanel.locator('.art-card, .art-card-sm, .art-card-xs')).toHaveCount(0)
       await expect(dialog.locator('.workflow-version__node-list article')).toHaveCount(4)
       await expect(dialog.locator('.workflow-version__changes article')).toHaveCount(4)
       await noOverflow(page)
       await page.screenshot({ path: info.outputPath('version-nodes.png'), animations: 'disabled' })
+      await nodesPanel
+        .locator('.workflow-version__node-list article')
+        .last()
+        .scrollIntoViewIfNeeded()
+      await noOverflow(page)
+      await page.screenshot({
+        path: info.outputPath('version-nodes-bottom.png'),
+        animations: 'disabled'
+      })
       await navigation.getByRole('button', { name: /V3/ }).click()
       await expect(dialog.getByRole('tab')).toHaveCount(0)
+      await expect(dialog.locator('.art-overlay-tab-card')).toHaveCount(0)
+      await expect(dialog.locator('.workflow-version__diff.art-section-card')).toHaveCount(1)
+      await expect(dialog.locator('.workflow-version__nodes.art-section-card')).toHaveCount(1)
       await expect(dialog.getByText('未发现配置变化', { exact: true })).toBeVisible()
       await navigation.getByRole('button', { name: /V4/ }).click()
       await expect(dialog.getByRole('tab')).toHaveCount(0)
@@ -265,8 +309,18 @@ for (const profile of [
         'aria-selected',
         'true'
       )
+      await expectOverlayTabPanel(dialog, '版本差异')
       await page.screenshot({
         path: info.outputPath('version-changes.png'),
+        animations: 'disabled'
+      })
+      await changesPanel
+        .locator('.workflow-version__changes article')
+        .last()
+        .scrollIntoViewIfNeeded()
+      await noOverflow(page)
+      await page.screenshot({
+        path: info.outputPath('version-changes-bottom.png'),
         animations: 'disabled'
       })
       await dialog.getByRole('button', { name: '恢复为草稿', exact: true }).click()

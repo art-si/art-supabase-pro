@@ -4,6 +4,31 @@ import { prepareIsolatedSession } from './support/isolated-session'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
+test('smis-material 劳保物料分类只在 Enter 或空格后提交查询范围', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await prepareIsolatedSession(page)
+  const writeRequests: string[] = []
+  await page.route('**/rest/v1/**', (route) => {
+    const url = route.request().url()
+    if (/\/rpc\/smis_(save|create|update|delete)_/.test(url)) writeRequests.push(url)
+    return route.fulfill({ json: [] })
+  })
+  await page.goto('/tests/e2e/fixtures/section-card-navigation.html?feature=smis-material&readonly')
+  const card = page.locator('.art-section-card')
+  const selected = page.getByLabel('选中分组')
+  const first = card.getByRole('treeitem').filter({ hasText: '测试分组 01' })
+  const second = card.getByRole('treeitem').filter({ hasText: '测试分组 02' })
+  await expect(selected).toHaveText('all')
+  await first.press('ArrowRight')
+  await first.press('ArrowLeft')
+  await expect(selected).toHaveText('all')
+  await first.press('Enter')
+  await expect(selected).toHaveText('group-1')
+  await second.press('Space')
+  await expect(selected).toHaveText('group-2')
+  expect(writeRequests).toEqual([])
+})
+
 for (const item of [
   { feature: 'master', search: '搜索分组', all: '全部分组' },
   { feature: 'warehouse', search: '搜索仓库分组', all: '全部仓库' },

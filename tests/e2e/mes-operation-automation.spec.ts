@@ -9,6 +9,8 @@ test('首道开工、后道直接报工，任务双击和工单链接查看同�
   let starts = 0
   let reports = 0
   let ruleReads = 0
+  let holdingFirstAttendance = false
+  const releaseFirstAttendance = Promise.withResolvers<void>()
   const steps = [
     {
       id: 'first-step',
@@ -124,6 +126,23 @@ test('首道开工、后道直接报工，任务双击和工单链接查看同�
           json: { code: 'XX000', message: 'simulated rule read failure' }
         })
     }
+    if (name === 'mes_execution_attendance') {
+      const first = url.searchParams.get('task_id') === 'eq.task-0'
+      if (first && !holdingFirstAttendance) {
+        holdingFirstAttendance = true
+        await releaseFirstAttendance.promise
+      }
+      return route.fulfill({
+        json: [
+          {
+            id: first ? 'attendance-first' : 'attendance-later',
+            personnel_id: first ? 'person-first' : 'person-later',
+            clock_in_at: '2026-10-27T01:00:00Z',
+            person: { name: first ? '首道出勤人员' : '后道出勤人员' }
+          }
+        ]
+      })
+    }
     if (name === 'mes_start_execution') {
       starts++
       expect(route.request().postDataJSON().p_task_id).toBe('task-0')
@@ -200,6 +219,33 @@ test('首道开工、后道直接报工，任务双击和工单链接查看同�
     .first()
     .click()
   await expect(cards).toHaveCount(2, { timeout: 120_000 })
+  const attendancePanel = page.locator('.production-workspace__attendance')
+  try {
+    await expect.poll(() => holdingFirstAttendance).toBe(true)
+    await cards.nth(1).click()
+    await expect(attendancePanel.getByText('后道出勤人员', { exact: true })).toBeVisible()
+    const lateFirstResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url())
+      return (
+        url.pathname.endsWith('/mes_execution_attendance') &&
+        url.searchParams.get('task_id') === 'eq.task-0'
+      )
+    })
+    releaseFirstAttendance.resolve()
+    await (await lateFirstResponse).finished()
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+    )
+    await expect(attendancePanel.getByText('后道出勤人员', { exact: true })).toBeVisible()
+    await expect(attendancePanel.getByText('首道出勤人员', { exact: true })).toHaveCount(0)
+    await cards.first().click()
+    await expect(attendancePanel.getByText('首道出勤人员', { exact: true })).toBeVisible()
+  } finally {
+    releaseFirstAttendance.resolve()
+  }
   const start = page.getByRole('button', { name: '开始加工', exact: true })
   await expect(start).toBeVisible()
   await expect(page.getByRole('button', { name: '工序报工', exact: true })).toBeDisabled()

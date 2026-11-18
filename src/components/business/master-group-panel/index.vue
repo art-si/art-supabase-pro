@@ -66,6 +66,7 @@
     </template>
     <ElTree
       ref="treeRef"
+      aria-label="业务分组树"
       :data="treeData"
       node-key="id"
       :props="{ label: 'name', children: 'children' }"
@@ -75,6 +76,7 @@
       highlight-current
       :expand-on-click-node="false"
       @node-click="$emit('select', $event.id)"
+      @keydown.capture="handleSelectableTreeKeydown"
     >
       <template #default="{ data }">
         <div class="master-group-panel__node">
@@ -107,6 +109,7 @@
 <script setup lang="ts">
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import type { ElTree } from 'element-plus'
+  import { handleSelectableTreeKeydown } from '@/utils/ui/selection-tree-keyboard'
   import { useMediaQuery } from '@vueuse/core'
   import TreeUtils from '@/utils/tree'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
@@ -174,7 +177,14 @@
       .toLowerCase()
       .includes(value.toLowerCase())
 
-  watch(keyword, (value) => treeRef.value?.filter(value))
+  // 状态卡重建树或替换节点后，仍需应用搜索框里的关键词。
+  watch(
+    [treeRef, treeData, keyword],
+    ([tree, , value], [, , previousValue]) => {
+      if (value || previousValue) tree?.filter(value)
+    },
+    { flush: 'post' }
+  )
   watch(
     () => props.selectedId,
     async (id) => {

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { installFixtures, meta, tenantId } from './support/inventory-fixtures'
 import { mockApplicationMenus } from './support/menu-rpc'
+import { expectQueryLabelLayout } from './support/query-label-layout'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 for (const manage of [false, true]) {
@@ -172,6 +173,28 @@ for (const manage of [false, true]) {
     if (!manage) {
       await expect(create).toHaveCount(0)
       await expect(page.getByRole('button', { name: '维护', exact: true })).toHaveCount(0)
+      const search = page.locator('.art-search-bar')
+      const keyword = search.locator('[data-art-form-item-key="keyword"]')
+      const keywordInput = keyword.getByRole('textbox', { name: '施工号 / 名称', exact: true })
+      await page.evaluate(() => document.fonts.ready.then(() => undefined))
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+        await expect(keywordInput).toBeVisible()
+        await keyword.scrollIntoViewIfNeeded()
+        await expectQueryLabelLayout(keyword)
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)
+        ).toBe(true)
+        await search.screenshot({
+          path: testInfo.outputPath(`section-query-${width}.png`),
+          animations: 'disabled'
+        })
+      }
+      await keywordInput.fill('SECTION-EXISTING')
+      await keywordInput.press('Enter')
+      await expect
+        .poll(() => new URL(sectionQueries.at(-1) ?? page.url()).searchParams.get('or'))
+        .toMatch(/construction_no\.ilike.*SECTION-EXISTING.*section_name\.ilike/)
       for (const query of sectionQueries)
         expect(new URL(query).searchParams.get('tenant_id')).toBe(`eq.${tenantId}`)
       return

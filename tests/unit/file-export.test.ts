@@ -33,6 +33,26 @@ test('Excel row mapping ignores inherited columns and preserves explicit special
   )
 })
 
+test('Excel row validation checks the final mapped fields and preserves accepted row order', () => {
+  const rows = [
+    { 客户: null, name: ' 客户甲 ', 金额: 0 },
+    { 客户: '金额为空', 金额: ' ', amount: 1 },
+    { 客户: '客户乙', 客户简称: ' 客户乙简称 ', 金额: false },
+    { 客户: '客户丙', 客户简称: ' ', 金额: 3 },
+    { 客户: '客户丁' }
+  ]
+  const columns = [
+    { key: 'name', title: '客户', required: true },
+    { key: 'name', title: '客户简称' },
+    { key: 'amount', title: '金额', required: true }
+  ]
+
+  assert.deepEqual(mapExcelRowsToRecords(rows, columns), [
+    { name: '客户甲', amount: 0 },
+    { name: '客户乙简称', amount: false }
+  ])
+})
+
 test('spreadsheet imports preserve UTF-8 CSV headers and binary Excel files', async () => {
   const expected = [
     { 客户: '测试甲', 金额: 12 },

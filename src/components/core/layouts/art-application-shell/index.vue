@@ -36,6 +36,7 @@
 
 <script setup lang="ts">
   import { MenuTypeEnum } from '@/enums/app-enum'
+  import { useWorkspaceMenuLayout } from '@/hooks/core/useWorkspaceMenuLayout'
   import { useSettingStore } from '@/store/modules/setting'
 
   defineOptions({ name: 'ArtApplicationShell' })
@@ -49,6 +50,7 @@
   )
 
   const { menuType, showWorkTab: configuredWorkTab } = storeToRefs(useSettingStore())
+  useWorkspaceMenuLayout()
   const showWorkTab = computed(() => props.showWorkTab ?? configuredWorkTab.value)
   const isHeaderLeftMenu = computed(() => menuType.value === MenuTypeEnum.HEADER_LEFT)
 </script>

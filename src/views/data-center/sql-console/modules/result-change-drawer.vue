@@ -25,7 +25,7 @@
         :title="validationMessage"
         show-icon
       />
-      <ElTabs v-model="activeTab">
+      <ElTabs v-model="activeTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane label="字段差异" name="changes">
           <ArtTable
             :data="differences"

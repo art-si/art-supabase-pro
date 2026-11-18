@@ -62,6 +62,124 @@ for (const scenario of scenarios) {
   })
 }
 
+test('保险到期风险概览与列表只使用成功应用的筛选', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  await page.clock.install()
+  await page.setViewportSize({ width: 390, height: 844 })
+  const plate = '测A12345'
+  const otherPlate = '测B67890'
+  const plateFilter = `ilike.%${plate}%`
+  const overviewFilters: Array<string | null> = []
+  const listFilters: Array<{ plate: string | null; expired: string | null }> = []
+  const filteredListGate = Promise.withResolvers<void>()
+  let failNextList = false
+  await page.route('**/rest/v1/vehicle_reminder_insurance_expiry?*', async (route) => {
+    const request = route.request()
+    const params = new URL(request.url()).searchParams
+    const queryPlate = params.get('plate_no')
+    const expired = params.get('expired')
+    const filtered = queryPlate === plateFilter
+    const responseHeaders = { 'access-control-expose-headers': 'content-range' }
+    if (request.method() === 'HEAD') {
+      overviewFilters.push(queryPlate)
+      const count = expired === 'eq.true' ? 1 : expired === 'eq.false' ? 0 : filtered ? 1 : 2
+      return route.fulfill({ headers: { ...responseHeaders, 'content-range': `*/${count}` } })
+    }
+
+    listFilters.push({ plate: queryPlate, expired })
+    if (failNextList) {
+      failNextList = false
+      return route.fulfill({
+        status: 400,
+        json: { message: '列表加载失败' }
+      })
+    }
+    if (filtered && expired !== 'eq.true') await filteredListGate.promise
+    const records = [
+      { id: 'risk-a', plate_no: plate, expired: true, remaining_days: -1 },
+      { id: 'risk-b', plate_no: otherPlate, expired: false, remaining_days: 60 }
+    ].filter(
+      (row) => (!filtered || row.plate_no === plate) && (expired !== 'eq.true' || row.expired)
+    )
+    return route.fulfill({
+      json: records,
+      headers: { ...responseHeaders, 'content-range': `0-${records.length - 1}/${records.length}` }
+    })
+  })
+  await page.goto('/tests/e2e/fixtures/vehicle-reminder-controls.html?mode=insurance')
+  const header = page.locator('.business-workspace-header')
+  const total = header.locator('.business-workspace-header__metric').filter({ hasText: '全部提醒' })
+  const rows = page.locator('.el-table__body-wrapper tbody tr')
+  await expect(total.getByText('2', { exact: true })).toBeVisible({ timeout: 45_000 })
+  await expect(rows).toHaveCount(2)
+  expect(overviewFilters).toEqual([null, null, null, null])
+  const initialListCount = listFilters.length
+
+  await header
+    .getByRole('switch', { name: '显示表格右侧工具栏', exact: true })
+    .locator('..')
+    .click()
+  await page.getByRole('button', { name: '展开搜索条件', exact: true }).click()
+  const filter = page.getByRole('textbox', { name: '车牌号', exact: true })
+  await filter.fill(plate)
+  expect(await total.getAttribute('aria-busy')).toBeNull()
+  await page.clock.runFor(300)
+  expect(overviewFilters).toHaveLength(4)
+  expect(listFilters).toHaveLength(initialListCount)
+  await expect(total.getByText('2', { exact: true })).toBeVisible()
+  await expect(rows).toHaveCount(2)
+
+  try {
+    await page.getByRole('button', { name: '查询', exact: true }).click()
+    await expect.poll(() => listFilters.at(-1)?.plate).toBe(plateFilter)
+    await page.clock.runFor(300)
+    expect(overviewFilters).toHaveLength(4)
+    expect(await total.getAttribute('aria-busy')).toBeNull()
+  } finally {
+    filteredListGate.resolve()
+  }
+  await expect(rows).toHaveCount(1)
+  await expect(rows).toContainText(plate)
+  await expect(total.getByText('1', { exact: true })).toBeVisible()
+  expect(overviewFilters.slice(4)).toEqual([plateFilter, plateFilter, plateFilter, plateFilter])
+
+  const overdue = header.getByRole('button', { name: /已逾期/ })
+  await overdue.click()
+  await expect.poll(() => listFilters.at(-1)).toEqual({ plate: plateFilter, expired: 'eq.true' })
+  await expect(overdue).toHaveAttribute('aria-pressed', 'true')
+  await page.clock.runFor(300)
+  expect(overviewFilters).toHaveLength(8)
+  expect(listFilters).toHaveLength(initialListCount + 2)
+  await page.screenshot({ path: info.outputPath('reminder-accepted-risk-scope-390.png') })
+
+  await page.evaluate(() => {
+    const observer = new MutationObserver(() => {
+      const notices = document.querySelectorAll('.el-message--error, .el-notification')
+      if (!Array.from(notices).some((notice) => notice.textContent?.includes('列表加载失败')))
+        return
+      document.documentElement.dataset.reminderListNoticeSeen = 'true'
+      observer.disconnect()
+    })
+    observer.observe(document.body, { childList: true, characterData: true, subtree: true })
+  })
+  failNextList = true
+  await page.getByRole('button', { name: '刷新表格', exact: true }).click()
+  const errorState = page.locator('.art-table-query__error-state')
+  const retry = errorState.getByRole('button', { name: '重新加载', exact: true })
+  await expect(retry).toBeVisible()
+  await expect(errorState.getByText('列表加载失败', { exact: true })).toBeVisible()
+  await expect(header.getByText('等待列表结果', { exact: true })).toBeVisible()
+  await expect(total.getByText('1', { exact: true })).toHaveCount(0)
+  expect(overviewFilters).toHaveLength(8)
+  await page.screenshot({ path: info.outputPath('reminder-awaiting-list-retry-390.png') })
+  expect(await page.locator('html').getAttribute('data-reminder-list-notice-seen')).toBeNull()
+
+  await retry.click()
+  await expect(rows).toContainText(plate)
+  await expect(total.getByText('1', { exact: true })).toBeVisible()
+  expect(overviewFilters.slice(8)).toEqual([plateFilter, plateFilter, plateFilter, plateFilter])
+})
+
 test('引用处理入口保留公共控制且不请求风险概览', async ({ page }, info) => {
   await prepareIsolatedSession(page)
   let statistics = 0

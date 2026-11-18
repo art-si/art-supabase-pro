@@ -17,6 +17,9 @@
       :metrics="workspaceMetrics"
     >
       <template #actions>
+        <ElButton v-auth="'System:User:ManageMobile'" @click="mobileAccountsRef?.handleOpen()">
+          移动端账号
+        </ElButton>
         <BusinessTableWorkspaceActions :table="tableQueryRef" />
       </template>
     </BusinessWorkspaceHeader>
@@ -67,6 +70,7 @@
     <UserDialog ref="userDialogRef" @success="handleSaveSuccess" />
     <UserDetailDrawer ref="userDetailRef" />
     <UserRoleDialog ref="userRoleRef" @success="tableQueryRef?.refreshUpdate()" />
+    <MobileAccountManager ref="mobileAccountsRef" />
     <ArtDrawer ref="organizationDrawerRef">
       <OrganizationScopeFilter
         class="user-page__drawer-filter"
@@ -95,7 +99,8 @@
   import UserDialog from './modules/user-dialog.vue'
   import UserDetailDrawer from './modules/user-detail-drawer.vue'
   import OrganizationScopeFilter from '../shared/organization-scope-filter.vue'
-  import { ElAvatar, ElMessage } from 'element-plus'
+  import { ElAvatar, ElButton, ElMessage } from 'element-plus'
+  import MobileAccountManager from './modules/mobile-account-manager.vue'
   import type { ColumnOption } from '@/types'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
@@ -172,6 +177,21 @@
   const userDialogRef = ref<UserDialogExpose>()
   const userDetailRef = ref<UserDetailDrawerExpose>()
   const userRoleRef = ref<UserRoleDialogExpose>()
+  const mobileAccountsRef = ref<InstanceType<typeof MobileAccountManager>>()
+  const openLinkedMobileAccount = () => {
+    const account = route.query.mobileAccount
+    const kind = route.query.mobileKind
+    if (
+      typeof account === 'string' &&
+      /^[0-9a-f-]{36}$/i.test(account) &&
+      (kind === 'driver' || kind === 'shipper') &&
+      hasAuth('System:User:ManageMobile')
+    ) {
+      void mobileAccountsRef.value?.handleAccount(account, kind)
+    }
+  }
+  onMounted(openLinkedMobileAccount)
+  watch(() => [route.query.mobileAccount, route.query.mobileKind], openLinkedMobileAccount)
   const organizationDrawerRef = ref<ArtDrawerExpose<Record<string, never>>>()
   const isDesktopOrganizationLayout = useMediaQuery('(min-width: 1201px)')
   const organizationTree = ref<OrganizationFilterItem[]>([])
@@ -581,6 +601,12 @@
     const selfExcludeButtonKeys = ['delete']
     const buttonList: ButtonMoreItem[] = [
       {
+        key: 'mobile',
+        label: '客户端关联',
+        icon: 'ri:smartphone-line',
+        auth: 'System:User:ManageMobile'
+      },
+      {
         key: 'reset',
         label: '初始化密码',
         icon: 'ri-user-received-line',
@@ -636,6 +662,15 @@
 
   const handleButtonMoreClick = (item: ButtonMoreItem, row: UserListItem) => {
     switch (item.key) {
+      case 'mobile':
+        if (row.tenantId && row.authUserId && row.id) {
+          void mobileAccountsRef.value?.handleUser({
+            tenantId: row.tenantId,
+            authUserId: row.authUserId,
+            userId: row.id
+          })
+        }
+        break
       case 'reset':
         void handleResetPassword(row)
         break

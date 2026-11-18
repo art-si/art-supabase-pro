@@ -1,10 +1,14 @@
 import { createApp, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import { mittBus } from '@/utils/sys'
 import type { AppRouteRecord } from '@/types/router'
@@ -48,51 +52,61 @@ const linkedDocuments = (params.get('routeDocumentIds') || '').split(',').filter
 document.documentElement.style.setProperty('--art-full-height', 'calc(100vh - 32px)')
 const app = createApp({
   render: () =>
-    h('main', { class: 'art-page-view', style: { padding: '16px' } }, [
-      ...(contextRace
-        ? [
-            h(
-              'button',
-              { type: 'button', onClick: () => tenantScope.setTenantScope(tenantB) },
-              '切换租户 B'
-            ),
-            h('output', { 'data-testid': 'bulk-context' }, tenantScope.effectiveTenantId ?? '')
-          ]
-        : []),
-      h('output', { 'data-testid': 'bulk-reference-events' }, String(referenceEvents.value)),
-      ...linkedDocuments.map((id, index) =>
-        h(
-          'button',
-          {
-            'data-testid': `open-linked-document-${index + 1}`,
-            onClick: () => router.replace({ name, query: { documentId: id } })
-          },
-          `承接新草稿 ${index + 1}`
-        )
-      ),
-      ['sales', 'sales-return', 'outbound', 'return', 'other'].includes(kind)
-        ? h(Sales, {
-            kind:
-              kind === 'sales'
-                ? 'initial_outbound'
-                : kind === 'sales-return'
-                  ? 'initial_return'
-                  : kind === 'other'
-                    ? 'other_outbound'
-                    : kind === 'return'
-                      ? 'return'
-                      : 'outbound'
-          })
-        : kind === 'request'
-          ? h(Request)
-          : kind === 'invoice'
-            ? h(Invoice)
-            : h(
-                kind === 'purchase' ? Purchase : kind === 'purchase-return' ? PurchaseReturn : Stock
-              )
-    ])
+    h(ElConfigProvider, { locale: zhCn }, () =>
+      h('main', { class: 'art-page-view', style: { padding: '16px' } }, [
+        ...(contextRace
+          ? [
+              h(
+                'button',
+                { type: 'button', onClick: () => tenantScope.setTenantScope(tenantB) },
+                '切换租户 B'
+              ),
+              h('output', { 'data-testid': 'bulk-context' }, tenantScope.effectiveTenantId ?? '')
+            ]
+          : []),
+        h('output', { 'data-testid': 'bulk-reference-events' }, String(referenceEvents.value)),
+        ...linkedDocuments.map((id, index) =>
+          h(
+            'button',
+            {
+              'data-testid': `open-linked-document-${index + 1}`,
+              onClick: () => router.replace({ name, query: { documentId: id } })
+            },
+            `承接新草稿 ${index + 1}`
+          )
+        ),
+        ['sales', 'sales-return', 'outbound', 'return', 'other'].includes(kind)
+          ? h(Sales, {
+              kind:
+                kind === 'sales'
+                  ? 'initial_outbound'
+                  : kind === 'sales-return'
+                    ? 'initial_return'
+                    : kind === 'other'
+                      ? 'other_outbound'
+                      : kind === 'return'
+                        ? 'return'
+                        : 'outbound'
+            })
+          : kind === 'request'
+            ? h(Request)
+            : kind === 'invoice'
+              ? h(Invoice)
+              : h(
+                  kind === 'purchase'
+                    ? Purchase
+                    : kind === 'purchase-return'
+                      ? PurchaseReturn
+                      : Stock
+                )
+      ])
+    )
 })
 app.use(store)
+initializeTheme()
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 app.use(language)
 app.use(router)
 setupGlobDirectives(app)

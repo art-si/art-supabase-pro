@@ -1,6 +1,5 @@
 import {
   ElAutocomplete,
-  ElCascader,
   ElCheckbox,
   ElCheckboxGroup,
   ElColorPicker,
@@ -20,6 +19,7 @@ import {
   ElTimeSelect,
   ElTreeSelect
 } from 'element-plus'
+import ArtCascader from '@/components/core/forms/art-cascader/index.vue'
 import ArtIconPicker from '@/components/core/forms/art-icon-picker/index.vue'
 import ArtTagStyleSelect from '@/components/core/forms/art-tag-style-select/index.vue'
 import ArtDataSelect from '@/components/core/forms/art-data-select/index.vue'
@@ -53,7 +53,7 @@ const componentMap = {
   monthrange: ElDatePicker,
   rate: ElRate,
   slider: ElSlider,
-  cascader: ElCascader,
+  cascader: ArtCascader,
   timePicker: ElTimePicker,
   timeSelect: ElTimeSelect,
   treeSelect: ElTreeSelect,

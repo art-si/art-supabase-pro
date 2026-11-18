@@ -1,11 +1,11 @@
 <!-- 表格头部，包含表格大小、刷新、全屏、列设置、其他设置 -->
 <template>
-  <div ref="rootRef" class="art-table-header flex-cb max-md:!block" id="art-table-header">
+  <div ref="rootRef" class="art-table-header flex-cb flex-wrap" id="art-table-header">
     <div class="art-table-header__left flex-wrap">
       <slot name="left"></slot>
     </div>
 
-    <div class="art-table-header__right flex-c flex-wrap gap-y-2 md:justify-end max-md:mt-3">
+    <div class="art-table-header__right flex-c flex-wrap gap-y-2 md:justify-end">
       <ArtIconButton
         v-if="showSearchBar != null"
         class="art-table-header__action"
@@ -35,19 +35,24 @@
         />
         <template #dropdown>
           <ElDropdownMenu>
-            <div
+            <ElDropdownItem
               v-for="item in tableSizeOptions"
               :key="item.value"
-              class="table-size-btn-item [&_.el-dropdown-menu__item]:!mb-[3px] last:[&_.el-dropdown-menu__item]:!mb-0"
+              :command="item.value"
+              :aria-current="tableSize === item.value ? 'true' : undefined"
+              class="art-table-header__density-option"
+              :class="{ '!bg-g-300/55': tableSize === item.value }"
             >
-              <ElDropdownItem
-                :key="item.value"
-                :command="item.value"
-                :class="tableSize === item.value ? '!bg-g-300/55' : ''"
-              >
-                {{ item.label }}
-              </ElDropdownItem>
-            </div>
+              <span class="art-icon-label art-table-header__density-label">
+                <span>{{ item.label }}</span>
+                <ArtSvgIcon
+                  icon="ri:check-line"
+                  aria-hidden="true"
+                  class="art-table-header__density-check"
+                  :class="{ invisible: tableSize !== item.value }"
+                />
+              </span>
+            </ElDropdownItem>
           </ElDropdownMenu>
         </template>
       </ElDropdown>
@@ -65,9 +70,11 @@
       <!-- 列设置 -->
       <ElPopover
         v-if="shouldShow('columns') && visibleColumnsModel.length"
-        v-model:visible="columnsPopoverVisible"
+        v-model:visible="toolbarPopoverOpen.columns"
         placement="bottom"
         trigger="click"
+        role="dialog"
+        :aria-label="toolbarPopoverLabels.columns"
         :width="232"
         :popper-options="{
           modifiers: [
@@ -77,17 +84,22 @@
             }
           ]
         }"
+        @after-enter="focusToolbarPopover('columns')"
       >
         <template #reference>
           <ArtIconButton
             class="art-table-header__action"
             :size="actionSize"
             icon="ri:align-right"
-            label="设置显示列"
-            @keydown="closeColumnsFromTrigger"
+            :label="toolbarPopoverLabels.columns"
+            data-art-toolbar-popover="columns"
+            aria-haspopup="dialog"
+            :aria-controls="columnsPopoverId"
+            :aria-expanded="toolbarPopoverOpen.columns"
+            @keydown.esc="closeToolbarPopoverFromTrigger($event, 'columns')"
           />
         </template>
-        <div @keydown.esc.prevent.stop="closeColumnsPopover">
+        <div :id="columnsPopoverId" @keydown.esc.prevent.stop="closeToolbarPopover('columns')">
           <div class="column-presets">
             <div class="flex items-center justify-between gap-2">
               <span class="column-presets__label">视图预设</span>
@@ -95,12 +107,14 @@
                 size="small"
                 icon="ri:close-line"
                 label="关闭列设置"
-                @click="closeColumnsPopover"
+                @click="closeToolbarPopover('columns')"
               />
             </div>
             <div class="column-presets__switch" role="group" aria-label="列显示预设">
               <button
+                ref="compactPresetRef"
                 type="button"
+                class="art-icon-label art-icon-label--compact"
                 :class="{ 'is-active': activeColumnPreset === 'compact' }"
                 :aria-pressed="activeColumnPreset === 'compact'"
                 title="保留关键业务列"
@@ -111,6 +125,7 @@
               </button>
               <button
                 type="button"
+                class="art-icon-label art-icon-label--compact"
                 :class="{ 'is-active': activeColumnPreset === 'all' }"
                 :aria-pressed="activeColumnPreset === 'all'"
                 title="显示全部可用列"
@@ -165,16 +180,33 @@
         </div>
       </ElPopover>
       <!-- 其他设置 -->
-      <ElPopover v-if="shouldShow('settings')" placement="bottom" trigger="click">
+      <ElPopover
+        v-if="shouldShow('settings')"
+        v-model:visible="toolbarPopoverOpen.settings"
+        placement="bottom"
+        trigger="click"
+        role="dialog"
+        :aria-label="toolbarPopoverLabels.settings"
+        @after-enter="focusToolbarPopover('settings')"
+      >
         <template #reference>
           <ArtIconButton
             class="art-table-header__action"
             :size="actionSize"
             icon="ri:settings-line"
-            label="表格显示设置"
+            :label="toolbarPopoverLabels.settings"
+            data-art-toolbar-popover="settings"
+            aria-haspopup="dialog"
+            :aria-controls="settingsPopoverId"
+            :aria-expanded="toolbarPopoverOpen.settings"
+            @keydown.esc="closeToolbarPopoverFromTrigger($event, 'settings')"
           />
         </template>
-        <div>
+        <div
+          :id="settingsPopoverId"
+          ref="settingsPopoverRef"
+          @keydown.esc.prevent.stop="closeToolbarPopover('settings')"
+        >
           <ElCheckbox v-if="showZebra" v-model="isZebra" :value="true">{{
             t('table.zebra')
           }}</ElCheckbox>
@@ -189,6 +221,7 @@
       <slot name="right"></slot>
       <button
         v-if="focusMode != null"
+        ref="focusButtonRef"
         type="button"
         class="focus-button art-icon-label art-icon-label--compact"
         :class="{ active: focusMode }"
@@ -204,7 +237,7 @@
 </template>
 
 <script lang="ts" setup>
-  import { computed, nextTick, ref, onUnmounted } from 'vue'
+  import { computed, nextTick, onUnmounted, reactive, ref, useId, watch } from 'vue'
   import { useEventListener } from '@vueuse/core'
   import { storeToRefs } from 'pinia'
   import { TableSizeEnum } from '@/enums/form-enum'
@@ -215,6 +248,7 @@
   import type { ColumnOption } from '@/types/component'
   import { ElScrollbar } from 'element-plus'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
+  import { getFocusedKeyboardButton, restoreButtonFocusIfLost } from '@/utils/ui/button-focus'
   import {
     filterTenantDimensionDescriptors,
     isTenantDimensionDescriptor
@@ -306,17 +340,41 @@
   }
 
   const columnMoveFeedback = ref('')
-  const columnsPopoverVisible = ref(false)
-  const closeColumnsPopover = async (): Promise<void> => {
-    columnsPopoverVisible.value = false
-    await nextTick()
-    rootRef.value?.querySelector<HTMLButtonElement>('[aria-label="设置显示列"]')?.focus()
+  const toolbarPopoverLabels = { columns: '设置显示列', settings: '表格显示设置' }
+  const toolbarPopoverOpen = reactive({ columns: false, settings: false })
+  type ToolbarPopover = keyof typeof toolbarPopoverOpen
+  const columnsPopoverId = useId()
+  const settingsPopoverId = useId()
+  const compactPresetRef = ref<HTMLButtonElement>()
+  const settingsPopoverRef = ref<HTMLElement>()
+
+  const getToolbarPopoverTrigger = (popover: ToolbarPopover) =>
+    rootRef.value?.querySelector<HTMLButtonElement>(`[data-art-toolbar-popover="${popover}"]`)
+
+  const focusToolbarPopover = (popover: ToolbarPopover): void => {
+    const trigger = getToolbarPopoverTrigger(popover)
+    if (!trigger || !toolbarPopoverOpen[popover]) return
+    const { activeElement, body } = trigger.ownerDocument
+    if (activeElement !== trigger && activeElement !== body) return
+    const firstControl =
+      popover === 'columns'
+        ? compactPresetRef.value
+        : settingsPopoverRef.value?.querySelector<HTMLInputElement>(
+            'input[type="checkbox"]:not(:disabled)'
+          )
+    firstControl?.focus({ preventScroll: true })
   }
-  const closeColumnsFromTrigger = (event: KeyboardEvent): void => {
-    if (event.key !== 'Escape' || !columnsPopoverVisible.value) return
+
+  const closeToolbarPopover = async (popover: ToolbarPopover): Promise<void> => {
+    toolbarPopoverOpen[popover] = false
+    await nextTick()
+    getToolbarPopoverTrigger(popover)?.focus({ preventScroll: true })
+  }
+  const closeToolbarPopoverFromTrigger = (event: KeyboardEvent, popover: ToolbarPopover): void => {
+    if (!toolbarPopoverOpen[popover]) return
     event.preventDefault()
     event.stopPropagation()
-    void closeColumnsPopover()
+    void closeToolbarPopover(popover)
   }
   const moveColumnWithKeyboard = async (
     event: KeyboardEvent,
@@ -437,13 +495,37 @@
     emit('search')
   }
 
-  /** 刷新事件处理 */
-  const refresh = () => {
+  const isManualRefresh = ref(false)
+  let keyboardRefreshButton: HTMLButtonElement | undefined
+
+  const finishManualRefresh = async (): Promise<void> => {
+    if (!isManualRefresh.value) return
+    isManualRefresh.value = false
+    const button = keyboardRefreshButton
+    keyboardRefreshButton = undefined
+    if (!button) return
+    await nextTick()
+    if (!isManualRefresh.value) restoreButtonFocusIfLost(button)
+  }
+
+  watch(
+    () => props.loading,
+    (loading) => {
+      if (!loading) void finishManualRefresh()
+    }
+  )
+
+  const refresh = async (event: MouseEvent): Promise<void> => {
+    if (props.loading || isManualRefresh.value) return
+    keyboardRefreshButton = getFocusedKeyboardButton(event)
     isManualRefresh.value = true
     emit('refresh')
+    await nextTick()
+    if (!props.loading) await finishManualRefresh()
   }
 
   /** 切换专注模式，仅负责工具栏交互，页面聚焦范围由 ArtTableQuery 管理。 */
+  const focusButtonRef = ref<HTMLButtonElement>()
   const toggleFocusMode = (): void => {
     emit('update:focusMode', !props.focusMode)
   }
@@ -455,9 +537,6 @@
   const handleTableSizeChange = (command: TableSizeEnum) => {
     useTableStore().setTableSize(command)
   }
-
-  /** 是否手动点击刷新 */
-  const isManualRefresh = ref(false)
 
   /** 加载中 */
   const isFullScreen = ref(false)
@@ -514,7 +593,8 @@
   })
 
   defineExpose({
-    rootRef
+    rootRef,
+    focusButtonRef
   })
 </script>
 
@@ -525,19 +605,41 @@
 
     &__left {
       display: flex;
-      flex: 1;
+      flex: 1 1 auto;
       align-items: center;
       min-width: 0;
+      max-width: 100%;
+    }
+
+    &__left:empty,
+    &__right:empty {
+      display: none;
     }
 
     &__right {
       flex: none;
       min-width: 0;
+      max-width: 100%;
+      margin-inline-start: auto;
     }
   }
 
   .art-table-header__action {
     margin-right: 6px;
+  }
+
+  .art-table-header__density-option + .art-table-header__density-option {
+    margin-block-start: 3px;
+  }
+
+  .art-table-header__density-label {
+    flex: 1;
+    justify-content: space-between;
+    line-height: inherit;
+  }
+
+  .art-table-header__density-check {
+    color: var(--theme-color);
   }
 
   .focus-button {
@@ -571,15 +673,15 @@
       box-shadow: var(--art-themed-action-active-shadow);
     }
 
-    &:focus-visible {
-      outline: none;
-      box-shadow: var(--art-themed-action-focus-shadow);
-    }
-
     &.active {
       color: var(--theme-color);
       background: color-mix(in srgb, var(--theme-color) 10%, var(--default-box-color));
       box-shadow: var(--art-themed-action-active-shadow);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--art-themed-action-focus-shadow);
     }
   }
 
@@ -607,16 +709,12 @@
       border-radius: var(--el-border-radius-base);
 
       button {
-        display: inline-flex;
-        gap: var(--art-control-icon-gap);
-        align-items: center;
-        justify-content: center;
         min-width: 0;
         min-height: 32px;
         padding: 0 8px;
         font: inherit;
         font-size: 12px;
-        color: var(--el-text-color-secondary);
+        color: var(--art-gray-700);
         white-space: nowrap;
         cursor: pointer;
         background: transparent;
@@ -638,22 +736,30 @@
           background: color-mix(in srgb, var(--theme-color) 6%, var(--default-box-color));
         }
 
-        &:focus-visible {
-          outline: none;
-          box-shadow: var(--art-themed-action-focus-shadow);
-        }
-
         &.is-active {
           font-weight: 600;
           color: var(--theme-color);
           background: color-mix(in srgb, var(--theme-color) 9%, var(--default-box-color));
           box-shadow: var(--art-themed-action-active-shadow);
         }
+
+        &:focus-visible {
+          outline: none;
+          box-shadow: var(--art-themed-action-focus-shadow);
+        }
       }
     }
   }
 
   @media (width <= 767px) {
+    .art-table-header__left {
+      flex-basis: 100%;
+    }
+
+    .art-table-header__right {
+      margin-inline-start: 0;
+    }
+
     .art-table-header__action {
       margin-right: 0;
       margin-left: 8px;

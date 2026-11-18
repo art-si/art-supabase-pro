@@ -50,6 +50,13 @@ const setup = async (page: Page, state: { fail?: boolean; empty?: boolean } = {}
     unexpected.push(route.request().url())
     return route.fulfill({ status: 400, json: { message: 'unexpected test request' } })
   })
+  await page.route('**/rest/v1/sys_param?*', (route) => {
+    const request = route.request()
+    return request.method() === 'GET' &&
+      new URL(request.url()).searchParams.get('param_key') === 'eq.ui.appearance.config'
+      ? route.fulfill({ json: [] })
+      : route.fallback()
+  })
   await installDictionaryOptions(page, {
     vehicleOwnership: [
       { value: 'carrier', label: '承运商' },
@@ -102,10 +109,28 @@ test('归属和车型级联、计数、司机电话与专注模式', async ({ pa
   await expect(page.getByText('验收司机 / 138****0001', { exact: true })).toBeVisible()
   const navigation = page.locator('.vehicle-classification-panel')
   await expect(navigation.getByText('2 辆车', { exact: true })).toBeVisible({ timeout: 60_000 })
-  await navigation.locator('.el-tree-node__content').filter({ hasText: '承运商' }).first().click()
+  const remainingRowSelection = page
+    .getByRole('row')
+    .filter({ hasText: '测A·10001' })
+    .getByRole('checkbox')
+  await remainingRowSelection.press('Space')
+  await expect(remainingRowSelection).toBeChecked()
+  const carrier = navigation.getByRole('treeitem', { name: /^承运商/ })
+  const semiTrailer = navigation.getByRole('treeitem', { name: /^半挂车/ })
+  const beforeBrowsing = requests.length
+  await carrier.press('ArrowLeft')
+  await expect(carrier).toHaveAttribute('aria-expanded', 'false')
+  await carrier.press('ArrowRight')
+  await expect(carrier).toHaveAttribute('aria-expanded', 'true')
+  await expect(remainingRowSelection).toBeChecked()
+  expect(requests).toHaveLength(beforeBrowsing)
+  await carrier.press('Enter')
   await expect.poll(() => requests.at(-1)?.p_vehicle_ownership).toBe('carrier')
+  await expect(remainingRowSelection).not.toBeChecked()
   await expect(page.getByText('测A·10002', { exact: true })).toHaveCount(0)
-  await navigation.getByText('半挂车', { exact: true }).click()
+  await carrier.press('ArrowRight')
+  await expect(semiTrailer).toBeFocused()
+  await page.keyboard.press('Space')
   await expect.poll(() => requests.at(-1)?.p_vehicle_type).toBe('semi_trailer')
   await navigation.getByRole('textbox', { name: '搜索车辆分类' }).fill('半挂车')
   await expect(navigation.getByText('半挂车', { exact: true })).toBeVisible()

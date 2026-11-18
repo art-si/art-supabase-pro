@@ -3,7 +3,10 @@
   <div class="layout-settings">
     <SettingDrawer v-model="showDrawer" @open="handleOpen" @close="handleClose">
       <SettingHeader @close="closeDrawer" />
-      <SmartLayoutPresets />
+      <SmartLayoutPresets
+        :selected-menu-layout="selectedMenuLayout"
+        @select-menu-layout="applyResponsiveMenuLayout"
+      />
 
       <section class="settings-manual">
         <button
@@ -33,7 +36,10 @@
           <BoxStyleSettings />
           <ContainerSettings />
           <BasicSettings />
-          <SettingActions />
+          <SettingActions
+            :selected-menu-layout="selectedMenuLayout"
+            @reset-menu-layout="applyResponsiveMenuLayout"
+          />
         </div>
       </section>
     </SettingDrawer>
@@ -67,7 +73,7 @@
 
   // 使用设置面板逻辑
   const settingsPanel = useSettingsPanel()
-  const { showDrawer } = settingsPanel
+  const { showDrawer, selectedMenuLayout, applyResponsiveMenuLayout } = settingsPanel
 
   // 获取各种处理器
   const { handleOpen, handleClose, closeDrawer } = settingsPanel.drawerControl

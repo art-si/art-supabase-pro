@@ -93,12 +93,16 @@ test('PMIS 明细部门树沿用 MES 卡片标题、操作与边缘滚动轨道'
   page.on('pageerror', (error) => errors.push(error.message))
   await prepareIsolatedSession(page)
   const reads: string[] = []
+  const taskScopes: Array<string | null> = []
   await page.route('**/rest/v1/**', (route) => {
     const request = route.request()
-    const resource = new URL(request.url()).pathname.split('/').at(-1)
+    const url = new URL(request.url())
+    const resource = url.pathname.split('/').at(-1)
     const tenant = request.headers()['x-art-tenant-scope'] || tenantA
     const rows = resource === 'mdm_production_department' ? departments(tenant) : []
     if (resource === 'mdm_production_department') reads.push(tenant)
+    if (resource === 'pmis_task')
+      taskScopes.push(url.searchParams.get('equipment.production_department_id'))
     return route.fulfill({
       json: rows,
       headers: {
@@ -153,6 +157,8 @@ test('PMIS 明细部门树沿用 MES 卡片标题、操作与边缘滚动轨道'
   }
 
   await appearance(page, 900, 'dark', 'shadow-mode')
+  await expect.poll(() => taskScopes.at(-1)).toBeNull()
+  const initialTasks = taskScopes.length
   expect((await card.boundingBox())!.height).toBeCloseTo(300, 0)
   const toolbar = card.locator(':scope > .art-section-card__toolbar')
   const toolbarOffset = (await toolbar.boundingBox())!.y - (await card.boundingBox())!.y
@@ -173,22 +179,48 @@ test('PMIS 明细部门树沿用 MES 卡片标题、操作与边缘滚动轨道'
     0
   )
   await page.keyboard.press('ArrowRight')
+  await expect(last).toBeFocused()
+  await expect(last).not.toHaveClass(/is-current/)
+  await expect(page.locator('.business-workspace-header__tags')).toContainText('全部产线')
+  expect(taskScopes).toHaveLength(initialTasks)
+  await page.keyboard.press('Enter')
   await expect(last).toHaveClass(/is-current/)
   await expect(page.locator('.business-workspace-header__tags')).toContainText('甲装配产线 35')
-  await card.getByRole('button', { name: '清除部门与产线筛选', exact: true }).click()
+  await expect.poll(() => taskScopes.slice(initialTasks)).toEqual(['in.(甲-line-35)'])
+  const all = card.getByRole('button', { name: /^全部产线/ })
+  expect(
+    await all.evaluate((element) => {
+      const icon = element.querySelector('.art-svg-icon')!
+      return icon.getBoundingClientRect().left - element.getBoundingClientRect().left
+    })
+  ).toBeLessThan(28)
+  await expect(all).toHaveAttribute('aria-pressed', 'false')
+  await all.press('Enter')
+  await expect(all).toHaveAttribute('aria-pressed', 'true')
   await expect(card.locator('.el-tree-node.is-current')).toHaveCount(0)
   await expect(page.locator('.business-workspace-header__tags')).toContainText('全部产线')
-  await card
-    .getByRole('treeitem', { name: '甲装配车间', exact: true })
-    .locator(':scope > .el-tree-node__content')
-    .click()
+  await expect.poll(() => taskScopes.slice(initialTasks)).toEqual(['in.(甲-line-35)', null])
+  const branch = card.getByRole('treeitem', { name: '甲装配车间', exact: true })
+  await branch.press('ArrowLeft')
+  await expect(first).toBeHidden()
+  await page.keyboard.press('ArrowRight')
+  await expect(first).toBeVisible()
+  expect(taskScopes.slice(initialTasks)).toEqual(['in.(甲-line-35)', null])
+  await page.keyboard.press('Space')
   await expect(page.locator('.business-workspace-header__tags')).toContainText('甲装配车间')
+  const branchIds = departments(tenantA)
+    .slice(1)
+    .map(({ id }) => id)
+  await expect
+    .poll(() => taskScopes.slice(initialTasks))
+    .toEqual(['in.(甲-line-35)', null, `in.(${branchIds.join(',')})`])
   await page.getByRole('button', { name: '切换租户 B', exact: true }).click()
   await expect(card.getByText('乙装配产线 01', { exact: true })).toBeVisible()
   await expect(card.getByText('甲装配产线 01', { exact: true })).toHaveCount(0)
   await expect(card.locator('.el-tree-node.is-current')).toHaveCount(0)
   await expect(card.getByRole('button', { name: '清除部门与产线筛选', exact: true })).toBeDisabled()
   await expect(page.locator('.business-workspace-header__tags')).toContainText('全部产线')
+  await expect.poll(() => taskScopes.at(-1)).toBeNull()
   expect(reads.slice(-2)).toEqual([tenantA, tenantB])
 
   await appearance(page, 1440, 'light', 'border-mode')

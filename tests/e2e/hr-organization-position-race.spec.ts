@@ -79,6 +79,35 @@ async function openDirectory(
   return { organizationCard, positionCard, employeeCard }
 }
 
+test('组织岗位导航键盘选择才刷新目录', async ({ page }) => {
+  const requests: Array<string | undefined> = []
+  const { organizationCard, positionCard, employeeCard } = await openDirectory(page, (route) => {
+    const id = requestedOrganization(route.request())
+    requests.push(id)
+    return route.fulfill({ json: directory(id === 'org-a' ? 'a' : 'b') })
+  })
+  const current = organizationCard.getByRole('treeitem').filter({ hasText: '组织 B' })
+  const next = organizationCard.getByRole('treeitem').filter({ hasText: '组织 A' })
+  const before = requests.length
+  await current.focus()
+  await page.keyboard.press('ArrowDown')
+  await expect(next).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(current).toHaveClass(/is-current/)
+  expect(requests).toHaveLength(before)
+
+  await page.keyboard.press('Enter')
+  await expect(positionCard.getByRole('button', { name: /A 岗位/ })).toBeVisible()
+  await expect(employeeCard.getByText('A 员工', { exact: true })).toBeVisible()
+  expect(requests.slice(before)).toEqual(['org-a'])
+
+  await page.keyboard.press('ArrowUp')
+  await expect(current).toBeFocused()
+  await page.keyboard.press('Space')
+  await expect(employeeCard.getByText('B 员工', { exact: true })).toBeVisible()
+  expect(requests.slice(before)).toEqual(['org-a', 'org-b'])
+})
+
 for (const lateOutcome of ['success', 'failure'] as const) {
   test(`组织 A 迟到${lateOutcome === 'success' ? '成功' : '失败'}不能覆盖已选组织 B`, async ({
     page

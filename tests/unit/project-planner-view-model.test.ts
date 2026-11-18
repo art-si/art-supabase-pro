@@ -168,6 +168,23 @@ test('batch view falls back to the newest available suggestions when the latest 
   assert.equal(all.scopedSuggestions.length, 3)
 })
 
+test('batch view prefers a populated reported batch and keeps stale selections empty', () => {
+  const reported = suggestion('reported', { batchId: 'batch-reported' })
+  const state = {
+    latestBatch: batch('batch-reported', '2026-08-01T00:00:00.000Z'),
+    suggestions: [
+      suggestion('newer', { batchId: 'batch-newer', createTime: '2026-08-02T00:00:00.000Z' }),
+      reported
+    ]
+  }
+
+  const latest = createProjectPlannerBatchView(state, LATEST_BATCH)
+  assert.equal(latest.latestBatchHasSuggestions, true)
+  assert.deepEqual(latest.scopedSuggestions, [reported])
+  assert.match(latest.batchOptions[0].label, /^最新批次/)
+  assert.deepEqual(createProjectPlannerBatchView(state, 'toString').scopedSuggestions, [])
+})
+
 test('planner summary counts the scoped statuses and selects the strongest active priority', () => {
   const suggestions = [
     suggestion('accepted', { status: 'accepted', impact: 5, rankScore: 100 }),

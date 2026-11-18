@@ -31,6 +31,37 @@ async function appearance(page: Page, theme: string, box: string) {
   )
 }
 
+test('组织树方向键只浏览，回车和空格才确认筛选范围', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(
+    '/tests/e2e/fixtures/shared-navigation-card-surfaces.html?theme=dark&box=shadow-mode'
+  )
+  const tree = page.locator('.navigation-card-panel > .user-organization-filter').getByRole('tree')
+  const company = tree.locator('[role="treeitem"][data-key="company-a"]')
+  const department = tree.locator('[role="treeitem"][data-key="eng"]')
+  const selection = page.getByLabel('已选组织键')
+  await company.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(selection).toHaveText('__all_organizations__')
+  await expect(company).toHaveAttribute('aria-expanded', 'false')
+  await page.keyboard.press('ArrowRight')
+  await expect(company).toHaveAttribute('aria-expanded', 'true')
+  await page.keyboard.press('ArrowRight')
+  await expect(department).toBeFocused()
+  await expect(selection).toHaveText('__all_organizations__')
+  await page.keyboard.press('Enter')
+  await expect(selection).toHaveText('eng')
+  await expect(department).toBeFocused()
+  await page.screenshot({ path: info.outputPath('organization-tree-keyboard-dark-390.png') })
+  await page.keyboard.press('ArrowLeft')
+  await expect(company).toBeFocused()
+  await expect(selection).toHaveText('eng')
+  await page.keyboard.press('Space')
+  await expect(selection).toHaveText('company-a')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
+})
+
 test('组织范围卡保留搜索、计数、下级范围、未归属及真实抽屉，并对齐MES滚动几何', async ({
   page
 }, info) => {

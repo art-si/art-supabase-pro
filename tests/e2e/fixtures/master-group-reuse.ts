@@ -133,6 +133,7 @@ const app = createApp({
 })
 app.use(store)
 initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
 document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
   ? 'border-mode'
   : 'shadow-mode'

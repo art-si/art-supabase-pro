@@ -65,10 +65,23 @@ const user = {
   remark: '外部业务协作验收账号',
   userGender: 'unknown',
   userType: '1',
-  status: '1',
+  status: params.has('userStatus') ? (params.get('userStatus') ?? '') : '1',
+  ...(params.has('employmentStatus')
+    ? {
+        hrEmployee: {
+          id: 'fixture-employee',
+          employeeNo: 'EMP-001',
+          employeeName: '验收关联员工',
+          jobTitle: '验收岗位',
+          employmentStatus: params.get('employmentStatus') ?? ''
+        }
+      }
+    : {}),
   password: '',
   confirmPassword: '',
-  userRoles: ['业务审核员']
+  userRoles: ['业务审核员'],
+  createTime: '2026-10-31T08:09:10',
+  updateTime: '2026-11-01T09:10:11'
 }
 const menu = {
   id: recordId,
@@ -79,7 +92,9 @@ const menu = {
   type: params.get('menuType') || 'menu',
   ...(menuMove ? { sort: 1 } : {}),
   meta: { title: '验收菜单', isEnable: true, sort: 1 },
-  children: []
+  children: [],
+  createTime: '2026-10-31T08:09:10',
+  updateTime: '2026-11-01T09:10:11'
 }
 const menuTree = menuMove
   ? [
@@ -228,6 +243,7 @@ function openArguments(): unknown[] {
         : {
             id: recordId,
             tenantId,
+            ...((params.get('kind') || 'scheme') === 'scheme' ? { version: 1 } : {}),
             code: 'QA-SCHEME',
             name: '验收核销方案',
             enabled: true,
@@ -346,6 +362,7 @@ const app = createApp(
 )
 app.use(store)
 initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
 if (params.has('theme'))
   useTheme().switchThemeStyles(
     params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
@@ -360,7 +377,11 @@ app.use(language)
 app.use(createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: {} }] }))
 setupGlobDirectives(app)
 const userStore = useUserStore(store)
-userStore.setUserInfo({ userId: 'form-standard-test', tenantId, platformSuper: true })
+userStore.setUserInfo({
+  userId: 'form-standard-test',
+  tenantId,
+  platformSuper: params.get('role') !== 'ordinary'
+})
 const tenantScope = useTenantScopeStore(store)
 tenantScope.selectedTenantId = tenantId
 await userStore.fetchDictList()

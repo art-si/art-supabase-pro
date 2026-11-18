@@ -9,32 +9,34 @@
       }
     ]"
   >
-    <button
-      v-if="showLabel && collapsible"
-      type="button"
-      class="art-section-title__toggle"
-      :aria-expanded="expanded"
-      :aria-label="`${expanded ? '收起' : '展开'}${accessibleLabel || '当前分区'}`"
-      @click="emit('toggle')"
-    >
-      <span class="art-section-title__content">
+    <div v-if="showLabel || showMarker" class="art-section-title__label">
+      <button
+        v-if="showLabel && collapsible"
+        type="button"
+        class="art-section-title__toggle"
+        :aria-expanded="expanded"
+        :aria-label="`${expanded ? '收起' : '展开'}${accessibleLabel || '当前分区'}`"
+        @click="emit('toggle')"
+      >
+        <span class="art-section-title__content">
+          <slot>
+            <component v-if="typeof title !== 'string'" :is="title" />
+            <span v-else>{{ title }}</span>
+          </slot>
+        </span>
+        <ArtSvgIcon
+          class="art-section-title__toggle-icon"
+          :icon="expanded ? 'ri:arrow-up-s-line' : 'ri:arrow-down-s-line'"
+          aria-hidden="true"
+        />
+      </button>
+      <template v-else-if="showLabel">
         <slot>
           <component v-if="typeof title !== 'string'" :is="title" />
           <span v-else>{{ title }}</span>
         </slot>
-      </span>
-      <ArtSvgIcon
-        class="art-section-title__toggle-icon"
-        :icon="expanded ? 'ri:arrow-up-s-line' : 'ri:arrow-down-s-line'"
-        aria-hidden="true"
-      />
-    </button>
-    <template v-else-if="showLabel">
-      <slot>
-        <component v-if="typeof title !== 'string'" :is="title" />
-        <span v-else>{{ title }}</span>
-      </slot>
-    </template>
+      </template>
+    </div>
     <div v-if="$slots.actions && (!collapsible || expanded)" class="art-section-title__actions">
       <slot name="actions" />
     </div>
@@ -85,10 +87,18 @@
     line-height: 24px;
     color: var(--el-text-color-primary);
 
-    &--with-marker::before {
+    &__label {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    &--with-marker > &__label::before {
+      flex: none;
       width: 3px;
       height: 14px;
-      margin-right: 8px;
+      margin-inline-end: var(--art-space-2);
       content: '';
       background: var(--el-color-primary);
       border-radius: 999px;

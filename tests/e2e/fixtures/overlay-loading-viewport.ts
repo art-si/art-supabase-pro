@@ -1,11 +1,15 @@
 import { createApp, defineComponent, h, ref } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import language from '@/locales'
 import { store } from '@/store'
 import { setupGlobDirectives } from '@/directives'
 import { useUserStore } from '@/store/modules/user'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import ScmDocumentDetailDrawer from '../../../modules/art-supabase-scm/src/views/sales-document/modules/scm-document-detail-drawer.vue'
 import type { ScmSalesDocument } from '@scm/api'
 import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -115,7 +119,8 @@ const Preview = defineComponent({
               history.value?.handleOpen({
                 businessType: 'expense',
                 businessId: 'test-business',
-                businessTitle: '测试审批历程'
+                businessTitle:
+                  new URLSearchParams(location.search).get('historyTitle') || '测试审批历程'
               })
           },
           '打开审批历程'
@@ -157,7 +162,7 @@ const Preview = defineComponent({
       ])
   }
 })
-const app = createApp(Preview)
+const app = createApp({ render: () => h(ElConfigProvider, { locale: zhCn }, () => h(Preview)) })
 app.use(store)
 useUserStore(store).setUserInfo({
   userId: '33333333-3333-4333-8333-333333333333',
@@ -167,6 +172,12 @@ useUserStore(store).setUserInfo({
 })
 useTenantScopeStore(store).selectedTenantId = tenantId
 app.use(language)
+initializeTheme()
+
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 app.use(
   createRouter({
     history: createMemoryHistory(),

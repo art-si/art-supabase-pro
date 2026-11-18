@@ -1,5 +1,9 @@
 import { expect, test, type Route } from '@playwright/test'
+import { installDictionaryOptions } from './support/dictionary-options'
 import { prepareIsolatedSession } from './support/isolated-session'
+
+const quotationTenant = '11111111-1111-4111-8111-111111111111'
+const quotationActionFixture = `/tests/e2e/fixtures/quotation-conversion.html?quotationTenant=${quotationTenant}`
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
@@ -53,20 +57,26 @@ test('项目报价单选项超时结束等待，重试保持表单且迟到请�
 test('报价列表按单据和明细选择均提供批量操作并支持专注恢复', async ({ page }, testInfo) => {
   test.setTimeout(180_000)
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+  await installDictionaryOptions(page, {
+    commonDocumentDisplayMode: [
+      { value: 'document', label: '按单据' },
+      { value: 'line', label: '按明细' }
+    ]
+  })
   const documents = ['a', 'b'].map((id) => ({
     id: `quote-${id}`,
-    tenant_id: 'tenant-a',
+    tenant_id: quotationTenant,
     kind: 'sales_quotation',
     document_no: `QUOTE-${id}`,
-    status: 'draft',
+    status: id === 'a' ? 'draft' : 'effective',
     document_date: '2026-10-08',
     currency: 'CNY',
     details: {},
     lines: [10, 20].map((lineNo) => ({
       line_id: `line-${lineNo}`,
       line_no: lineNo,
-      material_id: 'material-a',
-      material_code: 'MAT-A',
+      material_id: id === 'a' ? null : 'material-a',
+      material_code: id === 'a' ? '' : 'MAT-A',
       material_description: `物料${lineNo}`,
       quantity: 2,
       unit_price: 1,
@@ -92,7 +102,7 @@ test('报价列表按单据和明细选择均提供批量操作并支持专注�
       headers: { 'content-range': '0-1/2', 'access-control-expose-headers': 'content-range' }
     })
   )
-  await page.goto('/tests/e2e/fixtures/quotation-conversion.html')
+  await page.goto(quotationActionFixture)
   await page.getByRole('button', { name: '报价列表验证', exact: true }).click()
   const workspace = page.locator('.business-workspace-page')
   await expect(workspace).toBeVisible({ timeout: 120_000 })
@@ -102,6 +112,16 @@ test('报价列表按单据和明细选择均提供批量操作并支持专注�
   for (const name of ['生成物料编码', '批量删除', '转生产工单', '转报价BOM']) {
     await expect(workspace.getByRole('button', { name, exact: true })).toBeVisible()
   }
+  const generateMaterial = workspace.getByRole('button', { name: '生成物料编码', exact: true })
+  await expect(generateMaterial).toBeEnabled()
+  await generateMaterial.click()
+  const materialDialog = page.getByRole('dialog', { name: /生成物料编码/ })
+  await expect(materialDialog).toBeVisible()
+  await materialDialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
+  await workspace.locator('tbody .el-checkbox').first().uncheck()
+  await workspace.locator('tbody .el-checkbox').nth(1).check()
+  await expect(workspace.getByRole('button', { name: '转生产工单', exact: true })).toBeDisabled()
+  await expect(workspace.getByRole('button', { name: '转报价BOM', exact: true })).toBeDisabled()
   await workspace.getByText('按明细', { exact: true }).click()
   await expect(workspace.locator('tbody tr')).toHaveCount(4)
   await workspace.locator('tbody .el-checkbox').first().check()
@@ -118,6 +138,24 @@ test('报价列表按单据和明细选择均提供批量操作并支持专注�
   await workspace.getByRole('switch', { name: '进入专注模式', exact: true }).locator('..').click()
   await workspace.getByRole('button', { name: '退出专注模式', exact: true }).click()
   await expect(workspace.getByText('销售业务', { exact: true })).toBeVisible()
+})
+
+test('混合租户报价不打开物料、BOM 或工单弹窗，也不读取引用', async ({ page }) => {
+  const requests: string[] = []
+  await page.route('**/rest/v1/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1) ?? ''
+    if (name.startsWith('mdm_') || name === 'scm_batch_quotation_action') requests.push(name)
+    return route.fallback()
+  })
+  await page.goto(
+    quotationActionFixture + '&otherQuotationTenant=22222222-2222-4222-8222-222222222222'
+  )
+  for (const name of ['物料编码', '报价 BOM', '生产工单']) {
+    await page.getByRole('button', { name, exact: true }).click()
+    await expect(page.getByText('请按租户分别选择报价单', { exact: true }).last()).toBeVisible()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  }
+  expect(requests).toEqual([])
 })
 
 test('分批转单显示剩余数量并保留失败重试的幂等编号', async ({ page }, testInfo) => {
@@ -330,21 +368,23 @@ test('物料编码引用重试后恢复默认配置', async ({ page }, testInfo)
   )
   const references: Record<string, Record<string, string>[]> = {
     mdm_material_category: [
-      { id: 'category-a', tenant_id: 'tenant-a', category_code: 'CAT', category_name: '配件' }
+      { id: 'category-a', tenant_id: quotationTenant, category_code: 'CAT', category_name: '配件' }
     ],
     mdm_material_type: [
-      { id: 'type-a', tenant_id: 'tenant-a', type_code: 'TYPE', type_name: '半成品' }
+      { id: 'type-a', tenant_id: quotationTenant, type_code: 'TYPE', type_name: '半成品' }
     ],
     mdm_unit_of_measure: [
-      { id: 'unit-a', tenant_id: 'tenant-a', unit_code: 'UNIT', unit_name: '件' }
+      { id: 'unit-a', tenant_id: quotationTenant, unit_code: 'UNIT', unit_name: '件' }
     ],
     mdm_material_code_rule: [
-      { id: 'rule-a', tenant_id: 'tenant-a', rule_code: 'RULE', rule_name: '半成品编码' }
+      { id: 'rule-a', tenant_id: quotationTenant, rule_code: 'RULE', rule_name: '半成品编码' }
     ]
   }
   for (const [table, rows] of Object.entries(references))
     await page.route(`**/rest/v1/${table}?**`, (route) => {
-      expect(new URL(route.request().url()).searchParams.get('tenant_id')).toBe('eq.tenant-a')
+      expect(new URL(route.request().url()).searchParams.get('tenant_id')).toBe(
+        `eq.${quotationTenant}`
+      )
       return fail && table === 'mdm_material_type'
         ? route.fulfill({
             status: 500,
@@ -352,7 +392,7 @@ test('物料编码引用重试后恢复默认配置', async ({ page }, testInfo)
           })
         : route.fulfill({ json: rows })
     })
-  await page.goto('/tests/e2e/fixtures/quotation-conversion.html')
+  await page.goto(quotationActionFixture)
   await page.getByRole('button', { name: '物料编码', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('物料主数据加载失败，请重试', { exact: true })).toBeVisible()
@@ -373,14 +413,16 @@ test('工单类型失败重试后保留报价明细并恢复默认类型', async
     route.fulfill({ json: { id: 'work-menu' } })
   )
   await page.route('**/rest/v1/mdm_document_type?**', (route) => {
-    expect(new URL(route.request().url()).searchParams.get('tenant_id')).toBe('eq.tenant-a')
+    expect(new URL(route.request().url()).searchParams.get('tenant_id')).toBe(
+      `eq.${quotationTenant}`
+    )
     return fail
       ? route.fulfill({ status: 500, json: { code: 'XX000', message: 'technical type failure' } })
       : route.fulfill({
           json: [
             {
               id: 'work-type',
-              tenant_id: 'tenant-a',
+              tenant_id: quotationTenant,
               document_type_name: '标准生产工单',
               document_type_code: 'WO',
               is_default: true
@@ -388,7 +430,7 @@ test('工单类型失败重试后保留报价明细并恢复默认类型', async
           ]
         })
   })
-  await page.goto('/tests/e2e/fixtures/quotation-conversion.html')
+  await page.goto(quotationActionFixture)
   await page.getByRole('button', { name: '生产工单', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('工单类型加载失败，请重试', { exact: true })).toBeVisible()
@@ -421,7 +463,9 @@ test('报价 BOM 引用失败保留明细且可原地重试', async ({ page }, t
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.route('**/rest/v1/mdm_material?**', (route) => {
-    expect(new URL(route.request().url()).searchParams.get('tenant_id')).toBe('eq.tenant-a')
+    expect(new URL(route.request().url()).searchParams.get('tenant_id')).toBe(
+      `eq.${quotationTenant}`
+    )
     return fail
       ? route.fulfill({
           status: 500,
@@ -431,7 +475,7 @@ test('报价 BOM 引用失败保留明细且可原地重试', async ({ page }, t
           json: [
             {
               id: 'parent-a',
-              tenant_id: 'tenant-a',
+              tenant_id: quotationTenant,
               material_code: 'P1',
               material_name: '测试父件',
               description: '测试父件',
@@ -441,7 +485,7 @@ test('报价 BOM 引用失败保留明细且可原地重试', async ({ page }, t
           ]
         })
   })
-  await page.goto('/tests/e2e/fixtures/quotation-conversion.html')
+  await page.goto(quotationActionFixture)
   await page.getByRole('button', { name: '报价 BOM', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('父件物料加载失败，请重试', { exact: true })).toBeVisible()
@@ -462,7 +506,7 @@ test('报价 BOM 引用失败保留明细且可原地重试', async ({ page }, t
   await dialog.locator('thead .el-checkbox').check()
   await dialog.getByRole('button', { name: '执行生成', exact: true }).click()
   await expect.poll(() => Boolean(pendingSubmit)).toBe(true)
-  await dialog.getByRole('button', { name: 'Close this dialog', exact: true }).click()
+  await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
   await expect(dialog).not.toBeVisible()
   await page.getByRole('button', { name: '报价 BOM', exact: true }).click()
   await expect(dialog.getByRole('combobox')).toBeVisible()

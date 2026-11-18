@@ -6,7 +6,7 @@
 </template>
 
 <script setup lang="ts">
-  import { useChartOps, useChartComponent } from '@/hooks/core/useChart'
+  import { isNamedChartSeries, useChartOps, useChartComponent } from '@/hooks/core/useChart'
   import { getCssVar } from '@/utils/ui'
   import { graphic, type EChartsOption } from '@/plugins/echarts'
   import type { BarChartProps, BarDataItem } from '@/types/component/chart'
@@ -37,16 +37,6 @@
     showTooltip: true,
     showLegend: false,
     legendPosition: 'bottom'
-  })
-
-  // 判断是否为多数据
-  const isMultipleData = computed(() => {
-    return (
-      Array.isArray(props.data) &&
-      props.data.length > 0 &&
-      typeof props.data[0] === 'object' &&
-      'name' in props.data[0]
-    )
   })
 
   // 获取颜色配置
@@ -146,8 +136,10 @@
     },
     watchSources: [() => props.data, () => props.xAxisData, () => props.colors],
     generateOptions: (): EChartsOption => {
+      const data = props.data
+      const isMultipleData = isNamedChartSeries(data)
       const options: EChartsOption = {
-        grid: getGridWithLegend(props.showLegend && isMultipleData.value, props.legendPosition, {
+        grid: getGridWithLegend(props.showLegend && isMultipleData, props.legendPosition, {
           top: 15,
           right: 0,
           left: 0
@@ -174,14 +166,13 @@
       }
 
       // 添加图例配置
-      if (props.showLegend && isMultipleData.value) {
+      if (props.showLegend && isMultipleData) {
         options.legend = getLegendStyle(props.legendPosition)
       }
 
       // 生成系列数据
-      if (isMultipleData.value) {
-        const multiData = props.data as BarDataItem[]
-        options.series = multiData.map((item, index) => {
+      if (isMultipleData) {
+        options.series = data.map((item, index) => {
           const computedColor = getColor(props.colors[index], index)
 
           return createSeriesItem({
@@ -194,12 +185,11 @@
         })
       } else {
         // 单数据情况
-        const singleData = props.data as number[]
         const computedColor = getColor()
 
         options.series = [
           createSeriesItem({
-            data: singleData,
+            data,
             color: computedColor
           })
         ]

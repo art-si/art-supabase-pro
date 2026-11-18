@@ -73,7 +73,12 @@ for (const theme of ['light', 'dark']) {
         (theme === 'dark' ? 'shadow-mode' : 'border-mode'),
       { waitUntil: 'domcontentloaded' }
     )
-    await page.getByPlaceholder('请选择车辆', { exact: true }).click()
+    const vehicleInput = page.locator('[data-art-form-item-key="vehicleId"]').getByRole('textbox')
+    const driverInput = page.locator('[data-art-form-item-key="driverIds"]').getByRole('textbox')
+    await expect(vehicleInput).toHaveAccessibleName('车辆')
+    await expect(driverInput).toHaveAccessibleName('备用司机')
+    await expect(driverInput).toHaveAttribute('placeholder', '请选择备用司机')
+    await vehicleInput.click()
     const vehicles = page.getByRole('dialog', { name: '选择车辆', exact: true })
     await expect(vehicles.getByText('可选数据加载失败', { exact: true })).toBeVisible()
     await vehicles.getByRole('button', { name: '重新加载', exact: true }).click()
@@ -118,17 +123,24 @@ for (const theme of ['light', 'dark']) {
     await vehicles.getByText('测A00001', { exact: true }).click()
     await vehicles.getByRole('button', { name: '取消', exact: true }).click()
     await expect(page.getByTestId('selected')).not.toContainText('vehicle-driver-1')
-    await page.getByPlaceholder('请选择备用司机', { exact: true }).click()
+    await driverInput.click()
     const drivers = page.getByRole('dialog', { name: '选择司机', exact: true })
+    const selectCurrentPage = drivers.getByRole('checkbox', {
+      name: '选择当前页全部行',
+      exact: true
+    })
+    await expect(selectCurrentPage).toHaveCount(1)
     await drivers.getByText('验收司机1', { exact: true }).click()
     await drivers.locator('.el-pagination .btn-next').click()
     await expect(drivers.getByText('验收司机11', { exact: true })).toBeVisible()
+    await expect(selectCurrentPage).not.toBeChecked()
     await drivers.getByText('验收司机11', { exact: true }).click()
     await drivers.getByRole('button', { name: '确定', exact: true }).click()
     await expect(page.getByTestId('selected')).toContainText('driver-1')
     await expect(page.getByTestId('selected')).toContainText('driver-11')
     await expect(page.locator('.art-form').getByText('验收司机1', { exact: true })).toBeVisible()
     await expect(page.locator('.art-form').getByText('验收司机11', { exact: true })).toBeVisible()
+    await expect(driverInput).toHaveAccessibleName('备用司机')
     await expect(page.getByText('所选资料不可用', { exact: true })).toHaveCount(0)
     expect(requests.some((row) => row.p_source === 'archive_driver' && row.p_from === 10)).toBe(
       true

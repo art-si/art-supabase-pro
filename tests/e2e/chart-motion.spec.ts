@@ -140,7 +140,7 @@ for (const updateWhileHidden of [false, true]) {
   })
 }
 
-for (const kind of ['line', 'bar'] as const) {
+for (const kind of ['line', 'bar', 'h-bar'] as const) {
   for (const initialMotion of ['reduce', 'no-preference'] as const) {
     test(`${kind} 图表真实值与动画中断 ${initialMotion}`, async ({ page }, testInfo) => {
       const errors: string[] = []

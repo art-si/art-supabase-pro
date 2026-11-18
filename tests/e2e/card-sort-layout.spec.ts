@@ -167,9 +167,15 @@ test('生产组织树保持紧凑头部和手机说明隐藏', async ({ page }, 
   const subtitle = tree.locator('.art-section-card__subtitle')
   if ((page.viewportSize()?.width ?? 1440) <= 767) await expect(subtitle).toBeHidden()
   else await expect(subtitle).toBeVisible()
-  const header = (await tree.locator('.art-section-card__header').boundingBox())!
+  const header = tree.locator('.art-section-card__header')
+  const headerBox = (await header.boundingBox())!
+  const headerInset = await header.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).paddingInlineEnd)
+  )
   const actions = (await tree.locator('.art-section-card__actions').boundingBox())!
-  expect(Math.abs(header.x + header.width - actions.x - actions.width)).toBeLessThanOrEqual(2)
+  expect(
+    Math.abs(headerBox.x + headerBox.width - headerInset - actions.x - actions.width)
+  ).toBeLessThanOrEqual(2)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('production-tree-header.png') })
 })
@@ -179,9 +185,9 @@ test('窄卡片图标留在右上，带搜索框的操作整体换行', async ({
   await page.goto('/tests/e2e/fixtures/card-sort-layout.html?header-reflow=1')
 
   const cards = page.locator('.art-section-card')
-  await expect(cards).toHaveCount(2)
+  await expect(cards).toHaveCount(3)
   const iconCard = cards.first()
-  const searchCard = cards.last()
+  const searchCard = cards.nth(1)
   const iconTitle = (await iconCard.locator('.art-section-card__identity').boundingBox())!
   const iconActions = (await iconCard.locator('.art-section-card__actions').boundingBox())!
   expect(Math.abs(iconTitle.y - iconActions.y)).toBeLessThanOrEqual(2)
@@ -194,5 +200,27 @@ test('窄卡片图标留在右上，带搜索框的操作整体换行', async ({
   expect(searchHeading.height).toBeLessThanOrEqual(28)
   expect(searchActions.x + searchActions.width).toBeLessThanOrEqual(
     (await searchCard.boundingBox())!.x + (await searchCard.boundingBox())!.width
+  )
+
+  const tightCard = cards.last()
+  const tightActions = tightCard.locator('.art-section-card__actions')
+  const input = tightActions.getByRole('textbox', { name: '搜索岗位' })
+  await input.fill('安全员')
+  await expect(input).toHaveValue('安全员')
+  const actionsBox = (await tightActions.boundingBox())!
+  const [inputBox, filterBox, viewBox] = await Promise.all([
+    input.boundingBox(),
+    tightActions.getByRole('button', { name: '筛选岗位' }).boundingBox(),
+    tightActions.getByRole('button', { name: '查看全部' }).boundingBox()
+  ])
+  expect(inputBox!.width).toBeGreaterThanOrEqual(140)
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(filterBox!.y)
+  for (const box of [inputBox!, filterBox!, viewBox!]) {
+    expect(box.x).toBeGreaterThanOrEqual(actionsBox.x - 1)
+    expect(box.x + box.width).toBeLessThanOrEqual(actionsBox.x + actionsBox.width + 1)
+  }
+  await expect(tightCard.locator('.art-section-card__subtitle')).toHaveCSS(
+    'padding-inline-start',
+    '0px'
   )
 })

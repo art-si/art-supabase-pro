@@ -39,6 +39,7 @@
 
       <div
         v-if="menuList.length"
+        ref="treeViewportRef"
         class="role-permission-dialog__tree-viewport"
         :aria-busy="loadState.loading"
         :inert="permissionSaving || loadState.loading"
@@ -60,6 +61,8 @@
               <template #default="{ data }">
                 <div
                   class="role-permission-dialog__node"
+                  @focusin="setFocusedKey(data.id)"
+                  @keydown="handlePermissionTreeKeydown($event, data.id)"
                   :title="
                     data.type === 'button'
                       ? `${data.displayLabel} · ${data.name}`
@@ -67,10 +70,12 @@
                   "
                 >
                   <ElCheckbox
+                    :ref="(element) => registerPermissionCheckbox(data.id, element)"
                     :model-value="checkedKeySet.has(data.id)"
                     :indeterminate="halfCheckedKeySet.has(data.id)"
                     :disabled="!canEditPermissions"
                     :aria-label="`${data.displayLabel}权限`"
+                    :tabindex="tabStopKey === data.id ? 0 : -1"
                     @click.stop
                     @change="handleTreeCheckChange(data, $event === true)"
                   />
@@ -173,8 +178,11 @@
   import TreeUtils from '@utils/tree'
   import { omit, uniq } from 'lodash-es'
   import { useDebounceFn } from '@vueuse/core'
+  import type { ComponentPublicInstance } from 'vue'
   import type { AppRouteRecord } from '@/types'
   import { fetchMenuCatalog, getCurrentRoleMenus, saveRoleMenuList } from '@/api/system-manage'
+  import { useVirtualTreeTabStop } from '@/hooks/core/useVirtualTreeTabStop'
+  import { focusVirtualTreeNode } from '@/utils/ui/virtual-tree-focus'
 
   type RoleListItem = Api.SystemManage.RoleListItem
   type TreeKey = string | number
@@ -198,6 +206,7 @@
   const emit = defineEmits<Emits>()
   const dialogRef = ref<ArtDialogExpose<RoleListItem>>()
   const treeRef = ref<TreeV2Instance>()
+  const treeViewportRef = ref<HTMLElement>()
   const roleData = shallowRef<RoleListItem>()
   const menuList = ref<PermissionTreeNode[]>([])
   const loadState = reactive<PermissionLoadState>({ loading: false, error: false, ready: false })
@@ -206,10 +215,9 @@
   // load may publish data, checked keys, readiness, or scroll position.
   let loadSequence = 0
   const isExpandAll = ref(false)
-  const isSelectAll = ref(false)
   const isCascadeCheck = ref(false)
   const permissionKeyword = ref('')
-  const selectedCount = ref(0)
+  const appliedPermissionKeyword = ref('')
   const checkedKeys = ref<string[]>([])
   const permissionSnapshot = ref<{
     expectedMenuIds: string[]
@@ -234,17 +242,12 @@
     value: 'id'
   }
 
-  const flatMenuList = computed(() =>
-    treeUtils.treeToList(menuList.value, {
-      includeDepth: true,
-      includeParentChain: true
-    })
-  )
-  const getCheckedKeys = (): string[] => checkedKeys.value.slice()
+  const flatMenuList = computed(() => treeUtils.treeToList(menuList.value))
+  const menuById = computed(() => new Map(flatMenuList.value.map((item) => [item.id, item])))
   const checkedKeySet = computed(() => new Set(checkedKeys.value))
   const halfCheckedKeySet = computed(() => {
     const halfChecked = new Set<string>()
-    const nodes = new Map(flatMenuList.value.map((item) => [item.id, item]))
+    const nodes = menuById.value
     for (const key of checkedKeys.value) {
       let parentId = nodes.get(key)?.parentId
       while (parentId && nodes.has(parentId)) {
@@ -284,7 +287,11 @@
         .filter((parentId): parentId is string => typeof parentId === 'string')
     )
 
-  const permissionCount = computed(() => getAllMenuKeys().length)
+  const permissionCount = computed(() => flatMenuList.value.length)
+  const selectedCount = computed(() => checkedKeys.value.length)
+  const isSelectAll = computed(
+    () => permissionCount.value > 0 && selectedCount.value === permissionCount.value
+  )
   const canEditPermissions = computed(
     () =>
       loadState.ready &&
@@ -302,6 +309,116 @@
     () => Boolean(permissionKeyword.value.trim()) && matchedCount.value === 0
   )
 
+  const matchingPermissionKeys = computed(() => {
+    const keyword = appliedPermissionKeyword.value
+    if (!keyword) return undefined
+    const matches = new Set<string>()
+    const nodes = menuById.value
+    for (const row of nodes.values()) {
+      if (!filterMenuNode(keyword, row)) continue
+      let current: PermissionTreeNode | undefined = row
+      while (current && !matches.has(current.id)) {
+        matches.add(current.id)
+        current = current.parentId ? nodes.get(current.parentId) : undefined
+      }
+    }
+    return matches
+  })
+  const getVisiblePermissionKeys = (): string[] => {
+    const tree = treeRef.value
+    if (!tree) return []
+    const matches = matchingPermissionKeys.value
+    const keys: string[] = []
+    const visit = (nodes: PermissionTreeNode[]): void => {
+      for (const node of nodes) {
+        if (matches && !matches.has(node.id)) continue
+        keys.push(node.id)
+        if (node.children?.length && tree.getNode(node.id)?.expanded) visit(node.children)
+      }
+    }
+    visit(menuList.value)
+    return keys
+  }
+  const { tabStopKey, registerNode, setFocusedKey } =
+    useVirtualTreeTabStop(getVisiblePermissionKeys)
+  const registerPermissionCheckbox = (
+    key: string,
+    element: Element | ComponentPublicInstance | null
+  ): void => {
+    // ElCheckbox forwards tabindex to its input, while extra attributes land on the label.
+    const root = element instanceof Element ? element : element?.$el
+    const input =
+      root instanceof Element
+        ? root.querySelector<HTMLInputElement>('input[type="checkbox"]')
+        : null
+    if (input && input.dataset.virtualTreeKey !== key) input.dataset.virtualTreeKey = key
+    registerNode(key, input)
+  }
+  const handlePermissionTreeKeydown = async (event: KeyboardEvent, key: string): Promise<void> => {
+    const tree = treeRef.value
+    if (
+      !tree ||
+      !canEditPermissions.value ||
+      !(event.target instanceof HTMLInputElement) ||
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
+    )
+      return
+
+    event.preventDefault()
+    event.stopPropagation()
+    const node = tree.getNode(key)
+    const visible = getVisiblePermissionKeys()
+    const index = visible.indexOf(key)
+    if (!node || index === -1) return
+    const matches = matchingPermissionKeys.value
+    const child = node.children?.find((item) => !matches || matches.has(String(item.key)))
+    let targetKey: string | undefined
+    switch (event.key) {
+      case 'ArrowDown':
+        targetKey = visible[index + 1]
+        break
+      case 'ArrowUp':
+        targetKey = visible[index - 1]
+        break
+      case 'Home':
+        targetKey = visible[0]
+        break
+      case 'End':
+        targetKey = visible.at(-1)
+        break
+      case 'ArrowLeft':
+        if (child && node.expanded) tree.collapseNode(node)
+        else if (node.parent) targetKey = String(node.parent.key)
+        break
+      case 'ArrowRight':
+        if (child) {
+          if (node.expanded) targetKey = String(child.key)
+          else tree.expandNode(node)
+        }
+        break
+    }
+    if (!targetKey || targetKey === key) return
+
+    const sequence = loadSequence
+    const keyword = appliedPermissionKeyword.value
+    await focusVirtualTreeNode({
+      tree,
+      viewport: treeViewportRef.value,
+      key: targetKey,
+      isCurrent: () =>
+        tree === treeRef.value &&
+        sequence === loadSequence &&
+        keyword === appliedPermissionKeyword.value &&
+        canEditPermissions.value
+    })
+  }
+
   const invalidatePermissionLoad = (): void => {
     loadSequence += 1
     loadState.ready = false
@@ -316,10 +433,10 @@
     roleData.value = undefined
     menuList.value = []
     isExpandAll.value = false
-    isSelectAll.value = false
     isCascadeCheck.value = false
     permissionKeyword.value = ''
-    selectedCount.value = 0
+    appliedPermissionKeyword.value = ''
+    setFocusedKey('')
     initialExpandedKeys.value = []
     manualExpandedKeys.clear()
   }
@@ -343,15 +460,14 @@
         return
       }
 
-      const menus = menuResult.data ?? []
-      const roleMenus = roleMenuResult.data ?? []
+      const roleMenuIds = (roleMenuResult.data ?? []).map(({ menuId }) => menuId)
       permissionSnapshot.value = {
-        expectedMenuIds: roleMenus.map((item: { menuId: string }) => item.menuId),
+        expectedMenuIds: roleMenuIds,
         revision: roleMenuResult.revision,
         menuRevision: menuResult.revision ?? roleMenuResult.menuRevision,
         roleVersion: roleMenuResult.roleVersion ?? roleData.value?.version
       }
-      const permissionNodes = (menus ?? [])
+      const permissionNodes = (menuResult.data ?? [])
         .map(toPermissionNode)
         .filter((item): item is PermissionTreeNode => item !== null)
       menuList.value = treeUtils.listToTree(permissionNodes)
@@ -360,13 +476,10 @@
       initialExpandedKeys.value.forEach((key) => manualExpandedKeys.add(key))
       await nextTick()
       if (!isCurrentLoad()) return
-      const availableIds = new Set(getAllMenuKeys())
-      checkedKeys.value = roleMenus
-        .map((item: { menuId: string }) => item.menuId)
-        .filter((id) => availableIds.has(id))
+      const availableMenus = menuById.value
+      checkedKeys.value = roleMenuIds.filter((id) => availableMenus.has(id))
       await nextTick()
       if (!isCurrentLoad()) return
-      handleTreeCheck()
       loadState.ready = true
     } catch {
       if (isCurrentLoad()) {
@@ -390,7 +503,7 @@
     permissionSaving.value = true
 
     try {
-      const menuIds = uniq(getSelectedMenuIds())
+      const menuIds = uniq(checkedKeys.value)
       const { error } = await saveRoleMenuList({
         p_role_id: roleId,
         p_menu_ids: menuIds,
@@ -421,19 +534,10 @@
     tree.scrollTo(0)
   }
 
-  const toggleSelectAll = async (): Promise<void> => {
-    const tree = treeRef.value
-    if (!tree || !canEditPermissions.value) return
+  const toggleSelectAll = (): void => {
+    if (!treeRef.value || !canEditPermissions.value) return
 
     checkedKeys.value = isSelectAll.value ? [] : getAllMenuKeys()
-    await nextTick()
-    handleTreeCheck()
-  }
-
-  const handleTreeCheck = (): void => {
-    const allKeys = getAllMenuKeys()
-    isSelectAll.value = getCheckedKeys().length === allKeys.length && allKeys.length > 0
-    selectedCount.value = getSelectedMenuIds().length
   }
 
   const handleTreeCheckChange = (data: PermissionTreeNode, checked: boolean): void => {
@@ -443,7 +547,6 @@
     const next = new Set(checkedKeys.value)
     keys.forEach((key) => (checked ? next.add(key) : next.delete(key)))
     checkedKeys.value = [...next]
-    handleTreeCheck()
   }
 
   const filterMenuNode = (value: string, data: Record<string, unknown>): boolean => {
@@ -457,6 +560,7 @@
     if (!tree || sequence !== loadSequence || !canEditPermissions.value) return
 
     tree.filter(value)
+    appliedPermissionKeyword.value = value.trim()
     tree.scrollTo(0)
     if (!value.trim()) {
       tree.setExpandedKeys([...manualExpandedKeys])
@@ -486,8 +590,6 @@
     }
     isExpandAll.value = false
   }
-
-  const getSelectedMenuIds = (): string[] => getCheckedKeys()
 
   const handleOpen = async (data: RoleListItem): Promise<void> => {
     if (permissionSaving.value) return
@@ -635,6 +737,7 @@
       flex: 1;
       width: 100%;
       min-height: 0;
+      padding-top: 2px;
       overflow: hidden;
     }
 
@@ -644,11 +747,20 @@
 
     &__tree {
       width: 100%;
-      padding: 2px 6px 0;
+      padding-inline: 6px;
 
       :deep(.el-tree-node__content) {
         min-height: 40px;
         border-radius: var(--el-border-radius-base);
+      }
+
+      :deep(.el-tree-node__content:has(input[data-virtual-tree-key]:focus-visible)) {
+        outline: 2px solid var(--el-color-primary);
+        outline-offset: -2px;
+      }
+
+      :deep(input[data-virtual-tree-key]:focus-visible + .el-checkbox__inner) {
+        outline: none;
       }
     }
 
@@ -658,6 +770,7 @@
       gap: 7px;
       align-items: center;
       min-width: 0;
+      padding-right: 8px;
 
       > span {
         overflow: hidden;

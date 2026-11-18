@@ -10,7 +10,8 @@ for (const entry of ['detail', 'drawer']) {
     test(`设备检验记录 ${entry} ${empty ? 'empty' : 'pagination-and-retry'}`, async ({
       page
     }, testInfo) => {
-      const tenant = await prepareIsolatedSession(page)
+      const exerciseTree = entry === 'drawer' && !empty
+      const tenant = await prepareIsolatedSession(page, { platformSuper: !exerciseTree })
       const renderErrors: string[] = []
       page.on('pageerror', (error) => renderErrors.push(error.message))
       page.on('console', (message) => {
@@ -72,8 +73,14 @@ for (const entry of ['detail', 'drawer']) {
           }
         })
       )
-      await page.route('**/rest/v1/rpc/smis_list_equipment_ledger_secure', (route) =>
-        route.fulfill({
+      const treeQueries: Array<[unknown, unknown]> = []
+      await page.route('**/rest/v1/rpc/smis_list_equipment_category_profiles_secure', (route) =>
+        route.fulfill({ json: [] })
+      )
+      await page.route('**/rest/v1/rpc/smis_list_equipment_ledger_secure', (route) => {
+        const query = route.request().postDataJSON()
+        treeQueries.push([query.p_category_id, query.p_location_id])
+        return route.fulfill({
           json: {
             records: [
               {
@@ -91,11 +98,21 @@ for (const entry of ['detail', 'drawer']) {
               }
             ],
             total: 1,
-            categoryTree: [],
-            locationTree: []
+            categoryTree: [
+              { id: 'category-root', categoryName: '设备目录', categoryCode: 'CAT-ROOT' },
+              {
+                id: 'category-test',
+                parentId: 'category-root',
+                categoryName: '测试分类',
+                categoryCode: 'CAT-TEST'
+              }
+            ],
+            locationTree: [
+              { id: 'location-test', locationName: '测试位置', locationCode: 'LOC-TEST' }
+            ]
           }
         })
-      )
+      })
       const records = Array.from({ length: empty ? 0 : 1001 }, (_, index) => ({
         id: `inspection-${index}`,
         inspectionNo: `INSPECT-${index}`,
@@ -127,11 +144,65 @@ for (const entry of ['detail', 'drawer']) {
       await page.goto(
         entry === 'detail' ? `#${component}/equipment-test?tab=inspections` : `#${component}`
       )
+      if (exerciseTree) {
+        const navigator = page.locator('.equipment-dimension-navigator')
+        const branch = navigator.getByRole('treeitem', { name: /^设备目录/ })
+        const category = navigator.getByRole('treeitem', { name: /^测试分类/ })
+        const location = navigator.getByRole('treeitem', { name: /^测试位置/ })
+        const locationMode = navigator.getByRole('radio', { name: '存放位置', exact: true })
+        const all = navigator.getByRole('button', { name: /^全部设备/ })
+        await expect(category).toBeVisible({ timeout: 60_000 })
+        await branch.focus()
+        const initialRequests = treeQueries.length
+        await page.keyboard.press('ArrowRight')
+        await expect(category).toBeFocused()
+        expect(treeQueries).toHaveLength(initialRequests)
+        await page.keyboard.press('Enter')
+        await expect.poll(() => treeQueries.at(-1)).toEqual(['category-test', null])
+        await expect(category).toHaveClass(/\bis-current\b/)
+        await expect(category).toBeFocused()
+
+        await navigator.getByRole('radio', { name: '设备分类', exact: true }).focus()
+        await page.keyboard.press('ArrowRight')
+        await expect(locationMode).toBeChecked()
+        await expect.poll(() => treeQueries.at(-1)).toEqual([null, null])
+        await expect(location).toBeVisible()
+        await location.focus()
+        await page.keyboard.press('Space')
+        await expect.poll(() => treeQueries.at(-1)).toEqual([null, 'location-test'])
+        await expect(location).toHaveClass(/\bis-current\b/)
+        await expect(location).toBeFocused()
+
+        await all.focus()
+        await page.keyboard.press('Enter')
+        await expect.poll(() => treeQueries.at(-1)).toEqual([null, null])
+        await expect(all).toBeFocused()
+        await expect(
+          page.getByRole('button', { name: '查看设备', exact: true }).first()
+        ).toBeVisible()
+        await expect(page.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0)
+        await expect(page.getByRole('button', { name: '删除', exact: true })).toHaveCount(0)
+      }
       if (entry === 'drawer') {
         await page
           .getByRole('button', { name: `0 附件 · ${empty ? 0 : 1001} 检验`, exact: true })
           .first()
           .click({ timeout: 60_000 })
+        const title = page.locator('.equipment-ledger-page__drawer-title')
+        await expect(title).toBeVisible()
+        await expect
+          .poll(() =>
+            title.evaluate((element) => {
+              const tabs = element.nextElementSibling
+              if (!tabs?.matches('.art-overlay-tab-card')) return null
+              return tabs.getBoundingClientRect().top - element.getBoundingClientRect().bottom
+            })
+          )
+          .toBeCloseTo(16, 0)
+        await page
+          .getByRole('dialog')
+          .filter({ has: title })
+          .screenshot({ path: testInfo.outputPath('equipment-lifecycle-spacing.png') })
         await page.getByRole('tab', { name: '检验记录', exact: true }).click()
       }
       await expect(page.getByRole('tab', { name: '检验记录', exact: true })).toBeVisible({

@@ -1,9 +1,9 @@
-import { existsSync } from 'node:fs'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseSfc } from '@vue/compiler-sfc'
 import ts from 'typescript'
 import { findNonSchemaFormFields, shouldAuditFormSchema } from './lib/form-schema-audit'
+import { collectFrontendAuditFiles } from './lib/frontend-audit-files'
 
 interface Finding {
   file: string
@@ -13,44 +13,7 @@ interface Finding {
 }
 
 const projectRoot = process.cwd()
-const sourceRoot = path.join(projectRoot, 'src')
-const modulesRoot = path.join(projectRoot, 'modules')
 const supportedExtensions = new Set(['.vue', '.scss', '.css', '.ts', '.tsx'])
-
-async function collectFiles(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true })
-  const nested = await Promise.all(
-    entries.map(async (entry) => {
-      const resolved = path.join(directory, entry.name)
-      if (entry.isDirectory()) return collectFiles(resolved)
-      return supportedExtensions.has(path.extname(entry.name)) ? [resolved] : []
-    })
-  )
-
-  return nested.flat()
-}
-
-async function collectModuleUiFiles(): Promise<string[]> {
-  if (!existsSync(modulesRoot)) return []
-
-  const entries = await readdir(modulesRoot, { withFileTypes: true })
-  const nested = await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map(async (entry) => {
-        const moduleSourceRoot = path.join(modulesRoot, entry.name, 'src')
-        try {
-          await stat(moduleSourceRoot)
-        } catch (error) {
-          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return []
-          throw error
-        }
-        return await collectFiles(moduleSourceRoot)
-      })
-  )
-
-  return nested.flat()
-}
 
 function lineAt(content: string, offset: number): number {
   return content.slice(0, offset).split('\n').length
@@ -568,8 +531,11 @@ function scanFile(file: string, content: string, tooltipOnly = false): Finding[]
   return findings
 }
 
-const files = await collectFiles(sourceRoot)
-const moduleUiFiles = await collectModuleUiFiles()
+const { hostFiles: files, moduleFiles: moduleUiFiles } = await collectFrontendAuditFiles(
+  projectRoot,
+  supportedExtensions,
+  { allowMissingModules: true }
+)
 const componentNames = new Map<string, Finding>()
 function checkComponentFileName(file: string): Finding[] {
   if (!file.endsWith('.vue')) return []

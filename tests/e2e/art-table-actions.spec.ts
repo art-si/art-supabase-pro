@@ -52,3 +52,28 @@ for (const mode of ['success', 'failure', 'notified']) {
     await expect(action).toBeEnabled()
   })
 }
+
+test('普通表格操作完成后恢复键盘焦点，保留主动转移的焦点', async ({ page }) => {
+  await page.goto('/tests/e2e/fixtures/art-table-actions.html?mode=keyboard')
+  const body = page.locator('body')
+  const action = page.getByRole('button', { name: '执行测试操作', exact: true })
+  const release = page.getByRole('button', { name: '结束测试请求', exact: true })
+
+  await action.focus()
+  await page.keyboard.press('Enter')
+  await expect(body).toHaveAttribute('data-attempts', '1')
+  await expect(action).toBeDisabled()
+  await release.dispatchEvent('click')
+  await expect(body).toHaveAttribute('data-completed', '1')
+  await expect(action).toBeEnabled()
+  await expect(action).toBeFocused()
+
+  await page.keyboard.press('Space')
+  await expect(body).toHaveAttribute('data-attempts', '2')
+  await expect(action).toBeDisabled()
+  await release.focus()
+  await page.keyboard.press('Enter')
+  await expect(body).toHaveAttribute('data-completed', '2')
+  await expect(action).toBeEnabled()
+  await expect(release).toBeFocused()
+})

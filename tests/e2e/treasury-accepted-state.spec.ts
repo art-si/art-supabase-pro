@@ -2,6 +2,11 @@ import { writeFile } from 'node:fs/promises'
 import { expect, test, type Locator, type Page, type Route, type TestInfo } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { assertTableFocusContract } from './support/table-focus'
+import {
+  expectQueryDateRangeReadable,
+  installQueryDateClock,
+  selectQueryDateRange
+} from './support/query-date-range'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(240_000)
@@ -111,6 +116,65 @@ async function mockTreasury(page: Page, handleRpc: RpcHandler) {
   })
   return { unexpectedWrites, deniedExternal, pageErrors, failedRequests }
 }
+
+test('银行对账在窄屏用 Enter 确认清空日期，原焦点及关键字保留', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installQueryDateClock(page)
+  const requests: Payload[] = []
+  await mockTreasury(page, async (name, payload, route) => {
+    if (name !== 'fms_list_bank_reconciliations_secure') return false
+    requests.push(payload)
+    await route.fulfill({ json: records([]) })
+    return true
+  })
+  await page.goto(`${fixture}?mode=bank`, { waitUntil: 'domcontentloaded' })
+  const search = page.locator('.bank-reconciliation-page .art-search-bar')
+  const range = search.locator('[data-art-form-item-key="statementDateRange"]')
+  const start = range.getByPlaceholder('开始日期')
+  const end = range.getByPlaceholder('结束日期')
+  const keyword = search.getByRole('textbox', { name: '关键字' })
+  const query = search.getByRole('button', { name: '查询', exact: true })
+  await expect(start).toBeVisible({ timeout: 60_000 })
+  await keyword.fill('保留业务筛选')
+  await selectQueryDateRange(range)
+  await expectQueryDateRangeReadable(range)
+  await query.press('Enter')
+  await expect
+    .poll(() => requests.at(-1))
+    .toMatchObject({
+      p_keyword: '保留业务筛选',
+      p_statement_start_date: '2026-11-07',
+      p_statement_end_date: '2026-11-10'
+    })
+
+  await start.press('Control+A')
+  await start.press('Backspace')
+  await page.keyboard.press('Tab')
+  await expect(end).toBeFocused()
+  await end.press('Enter')
+  await expect(end).toHaveAttribute('aria-expanded', 'true')
+  await expect(end).toHaveValue('2026-11-10')
+  await end.press('Control+A')
+  await end.press('Backspace')
+  await expect(end).toHaveAttribute('aria-expanded', 'true')
+  const requestCount = requests.length
+  await end.press('Enter')
+  await expect(end).toHaveAttribute('aria-expanded', 'false')
+  await expect(end).toBeFocused()
+  await expect(start).toHaveValue('')
+  await expect(end).toHaveValue('')
+  await expect(keyword).toHaveValue('保留业务筛选')
+  expect(requests).toHaveLength(requestCount)
+
+  await query.press('Enter')
+  await expect
+    .poll(() => requests.at(-1))
+    .toMatchObject({
+      p_keyword: '保留业务筛选',
+      p_statement_start_date: null,
+      p_statement_end_date: null
+    })
+})
 
 async function assertUnclipped(locator: Locator, info: TestInfo, filename: string) {
   await expect(locator).toBeVisible()

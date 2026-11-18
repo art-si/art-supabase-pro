@@ -5,13 +5,18 @@ import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
-async function openFixture(page: Page, project: string, controls = false): Promise<void> {
+async function openFixture(
+  page: Page,
+  project: string,
+  controls = false,
+  editKeyboard = false
+): Promise<void> {
   await prepareIsolatedSession(page)
   await page.route('**/functions/v1/**', (route) => route.fulfill({ json: {} }))
   const theme = project.includes('dark') ? 'dark' : 'light'
   const box = project.includes('shadow') ? 'shadow-mode' : 'border-mode'
   await page.goto(
-    `/tests/e2e/fixtures/table-fixed-identity.html?theme=${theme}&box=${box}&controls=${controls ? '1' : '0'}`
+    `/tests/e2e/fixtures/table-fixed-identity.html?theme=${theme}&box=${box}&controls=${controls ? '1' : '0'}${editKeyboard ? '&edit-keyboard' : ''}`
   )
   await expect(page.locator('.art-table-v2')).toBeVisible()
 }
@@ -104,6 +109,40 @@ test('fixed panes preserve original column identity for callbacks, events and va
   await page.screenshot({ path: info.outputPath('fixed-column-validation.png') })
 })
 
+test('keyboard exposes an editable virtual cell between fixed panes', async ({ page }, info) => {
+  test.skip((page.viewportSize()?.width ?? 1440) < 860, '验收使用实际保留两侧固定列的布局')
+  await openFixture(page, info.project.name, false, true)
+  const table = page.getByRole('region', { name: '虚拟固定列', exact: true })
+  const first = table.getByRole('button', { name: '编辑第 1 行 首列', exact: true })
+  const middle = table.getByRole('button', { name: '编辑第 1 行 中间列', exact: true })
+  const edgesHit = (control: Locator) =>
+    control.evaluate((button) => {
+      const bounds = button.getBoundingClientRect()
+      const y = bounds.top + bounds.height / 2
+      return [bounds.left + 2, bounds.right - 2].map((x) =>
+        button.contains(document.elementFromPoint(x, y))
+      )
+    })
+
+  await first.focus()
+  await page.keyboard.press('Tab')
+  await expect(middle).toBeFocused()
+  await expect.poll(() => edgesHit(middle)).toEqual([true, true])
+  await page.keyboard.press('Shift+Tab')
+  await expect(first).toBeFocused()
+  await expect.poll(() => edgesHit(first)).toEqual([true, true])
+
+  await page.keyboard.press('Tab')
+  await expect(middle).toBeFocused()
+  await page.keyboard.press('F2')
+  const editor = table.locator('[data-art-edit-field="center"] input')
+  await expect(editor).toBeFocused()
+  await editor.fill('键盘录入')
+  await page.keyboard.press('Enter')
+  await expect(middle).toHaveText('键盘录入')
+  await table.screenshot({ path: info.outputPath('virtual-edit-focus.png') })
+})
+
 test('narrow containers release fixed panes and preserve all column identities', async ({
   page
 }, info) => {
@@ -181,7 +220,13 @@ test('header resize, selection and custom controls retain click propagation boun
   await expect
     .poll(() => rightHeader.evaluate((element) => element.getBoundingClientRect().width))
     .toBeGreaterThan(before)
-  const selection = table.getByRole('checkbox', { name: '选择当前页全部行', exact: true })
+  const unpagedSelectAll = '选择所有行'
+  await expect(
+    page
+      .getByRole('region', { name: '普通固定列', exact: true })
+      .getByRole('checkbox', { name: unpagedSelectAll, exact: true })
+  ).toHaveCount(1)
+  const selection = table.getByRole('checkbox', { name: unpagedSelectAll, exact: true })
   await selection.locator('..').click()
   await expect(selection).toBeChecked()
   await table.getByRole('button', { name: '表头子按钮', exact: true }).click()

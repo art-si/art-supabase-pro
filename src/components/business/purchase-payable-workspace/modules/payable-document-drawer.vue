@@ -53,7 +53,7 @@
           >重新加载币种</ElButton
         >
       </ElAlert>
-      <ElTabs v-model="activeTab" class="min-w-0">
+      <ElTabs v-model="activeTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane name="basic" label="基本信息" :lazy="false">
           <ArtSectionCard
             title="基本信息"
@@ -84,6 +84,7 @@
               ref="formRef"
               v-model="document"
               :items="headerItems"
+              root-class="px-0! pt-0!"
               :rules="headerRules"
               :span="8"
               :gutter="18"
@@ -105,7 +106,13 @@
                 ><ArtSvgIcon icon="ri:add-line" />选择物料</ElButton
               >
             </template>
-            <ArtForm v-if="editable" v-model="document" :items="entryItems" :span="6" />
+            <ArtForm
+              v-if="editable"
+              v-model="document"
+              :items="entryItems"
+              :span="6"
+              root-class="px-0! pt-0!"
+            />
             <p v-if="editable" class="mb-3 text-xs text-g-700">
               <span v-if="document.isCredit">红字明细按绝对值录入。</span>
               更换单位按当前数量更新基本数量，单价不会自动折算；基本数量可核对后手工校正。

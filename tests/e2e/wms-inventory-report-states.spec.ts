@@ -14,6 +14,74 @@ const scenarios = [
   ['receipt-issue', 'material-receipt-issue', 'WmsMaterialReceiptIssue', '物料收发明细表']
 ] as const
 
+test.describe('库存报表窄屏多选', () => {
+  test.use({ hasTouch: true, viewport: { width: 320, height: 900 } })
+
+  test('汇总值可读、可核对并能在触屏清除', async ({ page }, testInfo) => {
+    await installFixtures(page)
+    const dark = testInfo.project.name.includes('dark')
+    const shadow = testInfo.project.name.includes('shadow')
+    await prepareAppearance(page, { theme: dark ? 'dark' : 'light', boxBorderMode: !shadow })
+    let reportRequests = 0
+    await page.route('**/rest/v1/rpc/wms_inventory_report_secure', (route) => {
+      reportRequests++
+      return route.fulfill({ json: { data: [], total: 0, navigation: [] } })
+    })
+    await page.goto('/tests/e2e/fixtures/wms-inventory-report.html?kind=stock&authority=ordinary')
+    const search = page.locator('.art-search-bar')
+    const summary = search.locator('[data-art-form-item-key="summaryValues"]')
+    await search.getByRole('button', { name: '展开', exact: true }).tap()
+    await expect.poll(() => reportRequests).toBeGreaterThan(0)
+    const initialRequests = reportRequests
+    const combobox = summary.getByRole('combobox', { name: '汇总值', exact: true })
+    await combobox.press('ArrowDown')
+    await expect(page.getByRole('option', { selected: true })).toHaveText(['库存数量', '基本数量'])
+    for (const label of ['辅助数量', '辅助数量(2)']) {
+      await page.getByRole('option', { name: label, exact: true }).tap()
+    }
+    await expect(page.getByRole('option', { selected: true })).toHaveText([
+      '库存数量',
+      '基本数量',
+      '辅助数量',
+      '辅助数量(2)'
+    ])
+    await combobox.press('Escape')
+
+    const selectedLabel = summary.locator('.el-select__tags-text').filter({ hasText: /^库存数量$/ })
+    await expect(selectedLabel).toBeVisible()
+    await expect
+      .poll(() => selectedLabel.evaluate((element) => element.scrollWidth - element.clientWidth), {
+        message: '库存数量的选中标签应完整可读'
+      })
+      .toBeLessThanOrEqual(1)
+    await expect(summary.locator('.el-select__collapse-item')).toContainText(/\+\s*3/)
+
+    const label = summary.locator('.el-form-item__label')
+    const control = summary.locator('.el-select__wrapper')
+    await expect(label).toHaveCSS('justify-content', 'flex-end')
+    await expect
+      .poll(async () => {
+        const labelBounds = await label.boundingBox()
+        const controlBounds = await control.boundingBox()
+        if (!labelBounds || !controlBounds) return Infinity
+        return Math.abs(
+          labelBounds.y + labelBounds.height / 2 - controlBounds.y - controlBounds.height / 2
+        )
+      })
+      .toBeLessThanOrEqual(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0)
+    await summary.screenshot({ path: testInfo.outputPath('report-summary-narrow.png') })
+
+    await control.tap()
+    await summary.locator('.el-select__clear').tap()
+    await expect(summary.locator('.el-select__tags-text')).toHaveCount(0)
+    expect(reportRequests).toBe(initialRequests)
+    await search.getByRole('button', { name: '重置', exact: true }).tap()
+    await expect(selectedLabel).toBeVisible()
+    await expect(summary.locator('.el-select__collapse-item')).toContainText(/\+\s*1/)
+  })
+})
+
 for (const authority of ['super', 'ordinary'] as const) {
   for (const [kind, segment, name, title] of scenarios) {
     test(`${authority}${title}查询失败恢复、空态与专注模式`, async ({ page }, testInfo) => {
@@ -381,7 +449,20 @@ for (const authority of ['super', 'ordinary'] as const) {
       ]
       for (const [label, zoneId, binId] of steps) {
         const before = requests.length
-        await navigator.locator('strong').getByText(label!, { exact: true }).click()
+        const nodeLabel = navigator.locator('strong').getByText(label!, { exact: true })
+        if (kind === 'stock' && !zoneId) {
+          const warehouse = nodeLabel.locator('xpath=ancestor::*[@role="treeitem"][1]')
+          await warehouse.press('ArrowLeft')
+          await expect(warehouse).toHaveAttribute('aria-expanded', 'false')
+          await warehouse.press('ArrowRight')
+          await expect(warehouse).toHaveAttribute('aria-expanded', 'true')
+          expect(requests).toHaveLength(before)
+          await warehouse.press('Enter')
+        } else if (binId) {
+          const bin = nodeLabel.locator('xpath=ancestor::*[@role="treeitem"][1]')
+          await bin.press('Space')
+          await expect(bin).toBeFocused()
+        } else await nodeLabel.click()
         await expect.poll(() => requests.length).toBeGreaterThan(before)
         expect(requests.at(-1)).toMatchObject({
           p_warehouse_id: 'warehouse-test',
@@ -457,12 +538,13 @@ for (const authority of ['super', 'ordinary'] as const) {
         path: testInfo.outputPath('report-location-recovered.png'),
         animations: 'disabled'
       })
-      const summary = page
-        .locator('.el-form-item')
-        .filter({ has: page.locator('.el-form-item__label').getByText('汇总值', { exact: true }) })
-        .locator('.el-select')
+      const searchBar = table.locator('.art-search-bar')
+      const expandFilters = searchBar.getByRole('button', { name: '展开', exact: true })
+      if (await expandFilters.isVisible()) await expandFilters.click()
+      const summary = searchBar.locator('[data-art-form-item-key="summaryValues"] .el-select')
+      await expect(summary).toBeVisible()
       const beforeSummary = requests.length
-      await summary.click()
+      await summary.getByRole('combobox', { name: '汇总值', exact: true }).press('ArrowDown')
       for (const option of ['库存数量', '基本数量', '辅助数量', '辅助数量(2)']) {
         await page.getByRole('option', { name: option, exact: true }).click()
       }

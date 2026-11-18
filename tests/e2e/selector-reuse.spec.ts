@@ -103,27 +103,11 @@ for (const theme of ['light', 'dark']) {
         },
         { theme, box }
       )
-      await page.getByRole('textbox', { name: '请选择物料', exact: true }).click()
+      const trigger = page.getByRole('textbox', { name: '请选择物料', exact: true })
+      await trigger.click()
       const picker = page.getByRole('dialog', { name: '选择零号物料', exact: true })
       await expect(picker.getByRole('row').filter({ hasText: 'MAT-0' })).toBeVisible()
-      await expect(
-        picker.getByRole('textbox', { name: '搜索分类名称或编码', exact: true })
-      ).toHaveCount(0)
-      if (testInfo.project.name.includes('mobile')) {
-        const emptyCopy = picker.locator(
-          '.art-data-select-dialog__navigation .art-empty-state__copy'
-        )
-        await expect(emptyCopy).toBeInViewport({ ratio: 1 })
-        expect(
-          await emptyCopy.evaluate((element) => {
-            const viewport = element.closest('.el-scrollbar__wrap')
-            if (!viewport) return false
-            const content = element.getBoundingClientRect(),
-              bounds = viewport.getBoundingClientRect()
-            return content.top >= bounds.top - 1 && content.bottom <= bounds.bottom + 1
-          })
-        ).toBe(true)
-      }
+      await expect(picker.locator('.art-data-select-dialog__navigation')).toHaveCount(0)
       await page.screenshot({
         path: testInfo.outputPath('material-picker.png'),
         animations: 'disabled'
@@ -131,15 +115,14 @@ for (const theme of ['light', 'dark']) {
       await picker.getByRole('row').filter({ hasText: 'MAT-0' }).click()
       await picker.getByRole('button', { name: /确.*定/ }).click()
       await expect(page.getByTestId('material-key')).toHaveText('0')
-      await expect(page.getByRole('textbox', { name: '请选择物料', exact: true })).toHaveValue(
-        '零号物料'
-      )
+      await expect(trigger).toHaveValue('零号物料')
       await page.screenshot({
         path: testInfo.outputPath('material-zero.png'),
         animations: 'disabled'
       })
       await page.getByRole('button', { name: '清空', exact: true }).click()
       await expect(page.getByTestId('material-key')).toHaveText('未选择')
+      await expect(trigger).toBeEmpty()
     })
   }
 }

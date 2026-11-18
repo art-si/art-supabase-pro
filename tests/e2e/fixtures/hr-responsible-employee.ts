@@ -4,6 +4,8 @@ import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import type OrganizationComponent from '../../../modules/art-supabase-hr/src/views/personnel/organization-design/modules/organization-design-dialog.vue'
 import type ContingentComponent from '../../../modules/art-supabase-hr/src/views/operations/contingent-workforce/modules/contingent-workforce-dialog.vue'
@@ -117,6 +119,10 @@ app.use(store)
 app.use(language)
 app.use(createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: {} }] }))
 setupGlobDirectives(app)
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
+initializeTheme()
 useUserStore(store).setUserInfo({ userId: 'hr-owner-test', tenantId, platformSuper: otherScope })
 if (otherScope) useTenantScopeStore(store).selectedTenantId = '22222222-2222-4222-8222-222222222222'
 app.mount('#hr-responsible-employee')

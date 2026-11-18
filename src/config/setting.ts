@@ -24,6 +24,10 @@ import AppConfig from '@/config'
 import { SystemThemeEnum, MenuThemeEnum, MenuTypeEnum, ContainerWidthEnum } from '@/enums/app-enum'
 import type { BreadcrumbStyle, WorkTabStyle } from '@/types'
 
+export const SILVER_MIST_ACCENT = '#0088FF'
+export const SILVER_MIST_LEGACY_ACCENT = '#087BFF'
+export const WORKSPACE_MENU_BREAKPOINT = 1000
+
 /**
  * 系统设置默认值配置
  */

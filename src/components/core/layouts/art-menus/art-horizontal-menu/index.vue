@@ -1,6 +1,6 @@
 <!-- 水平菜单 -->
 <template>
-  <div class="art-horizontal-menu flex-1 overflow-hidden">
+  <div class="art-horizontal-menu min-w-0 flex-1 overflow-hidden">
     <ElMenu
       :ellipsis="true"
       mode="horizontal"

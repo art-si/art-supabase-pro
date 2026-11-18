@@ -16,15 +16,23 @@ const app = createApp({
     const loads = ref(0)
     let complete: (() => void) | undefined
     let fail: (() => void) | undefined
-    const navigationFixture = new URLSearchParams(location.search).has('navigation')
+    const scenario = new URLSearchParams(location.search)
+    const navigationFixture = scenario.has('navigation')
     if (navigationFixture) {
       const target = {
         path: '/search-preload-test',
         name: 'SearchPreloadTest',
         meta: { title: '预加载验收页面' }
       }
-      useMenuStore().setMenuList([target])
-      user.setSearchHistory([])
+      const menus = scenario.has('many')
+        ? Array.from({ length: 12 }, (_, index) => ({
+            path: `/search-result-${index + 1}`,
+            name: `SearchResult${index + 1}`,
+            meta: { title: `验收页面 ${String(index + 1).padStart(2, '0')} · 运输与仓储联查工作区` }
+          }))
+        : [target]
+      useMenuStore().setMenuList(menus)
+      user.setSearchHistory(scenario.has('history') ? [target] : [])
       router.addRoute({
         ...target,
         component: createCachedRouteLoader(() => {

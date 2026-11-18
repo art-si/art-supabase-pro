@@ -5,6 +5,11 @@ interface RecordReferenceMeta {
 }
 
 const recordReferences: Record<string, RecordReferenceMeta> = {
+  mobile_shipper_account: {
+    label: '货主端登录账号',
+    routeName: 'User',
+    statusDictCode: 'status'
+  },
   tms_order: {
     label: '运输订单',
     routeName: 'TmsOrderQueryDetail',

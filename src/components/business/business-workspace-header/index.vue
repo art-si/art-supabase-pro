@@ -158,6 +158,8 @@
   .business-workspace-header {
     flex: 0 0 auto;
     min-width: 0;
+    container-name: business-workspace-header;
+    container-type: inline-size;
     overflow: hidden;
 
     &__hero,
@@ -484,6 +486,43 @@
 
       &__metric {
         padding-inline: 16px;
+      }
+    }
+
+    @media (width > 640px) {
+      @container business-workspace-header (width <= 560px) {
+        &__hero,
+        &--compact .business-workspace-header__hero {
+          flex-wrap: wrap;
+          gap: 12px;
+          align-items: flex-start;
+        }
+
+        &__identity {
+          flex: 1 1 100%;
+        }
+
+        &__aside,
+        &--compact .business-workspace-header__aside {
+          flex-flow: row wrap;
+          gap: 8px 16px;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          max-width: none;
+          margin-left: 0;
+        }
+
+        &__tags {
+          justify-content: flex-start;
+          max-width: 100%;
+        }
+
+        &__actions {
+          flex: 1 1 auto;
+          width: auto;
+          max-width: 100%;
+        }
       }
     }
 

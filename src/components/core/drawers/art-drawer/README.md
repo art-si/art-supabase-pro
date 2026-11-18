@@ -57,6 +57,7 @@ onOpen: async (_data, api) => {
 - 内容区域默认使用 `ElScrollbar`，长表单和详情可在抽屉内滚动；`contentHeight` 可覆盖滚动区域高度
 - 支持自定义 Header、Footer 和动态内容组件
 - `headerIcon` 为默认标题增加业务图标并将副标题对齐到标题；自定义 `header` 插槽优先，未设置图标时保留普通标题。
+- 640px 及以下的标准头部将图标、标题与操作保留在首行，副标题独占下一行；自定义 `header` 插槽保持原布局。
 - 未封装的 `ElDrawer` API 可以直接透传
 
 ## 配置方式与优先级
@@ -196,7 +197,7 @@ drawerRef.value?.scrollTo({ top: 500, behavior: 'smooth' })
 
   <template #footer="{ loading, api }">
     <ElButton @click="api.handleClose()">取消</ElButton>
-    <ElButton type="primary" :loading="loading" @click="api.handleConfirm()">
+    <ElButton type="primary" :loading="loading" @click="api.handleConfirm">
       提交
     </ElButton>
   </template>
@@ -255,20 +256,20 @@ drawerRef.value?.handleOpen(order, {
 
 ## Ref 方法
 
-| 方法                          | 说明                            |
-| ----------------------------- | ------------------------------- |
-| `handleOpen(data?, options?)` | 打开并传入数据和配置            |
-| `handleClose(force?)`         | 关闭；`force=true` 跳过关闭拦截 |
-| `handleConfirm()`             | 主动执行确认流程                |
-| `handleReset()`               | 重置数据与 Loading              |
-| `setLoading(value)`           | 设置内容 Loading                |
-| `setConfirmLoading(value)`    | 设置确认按钮 Loading            |
-| `setOptions(options)`         | 增量更新配置                    |
-| `setData(data)`               | 替换当前数据                    |
-| `updateData(data)`            | 浅合并当前对象数据              |
-| `getData()`                   | 获取当前数据                    |
-| `getDrawerInstance()`         | 获取底层 `ElDrawer` 实例        |
-| `scrollTo(options)`           | 控制滚动位置                    |
+| 方法                          | 说明                                                       |
+| ----------------------------- | ---------------------------------------------------------- |
+| `handleOpen(data?, options?)` | 打开并传入数据和配置                                       |
+| `handleClose(force?)`         | 关闭；`force=true` 跳过关闭拦截                            |
+| `handleConfirm(event?)`       | 执行确认；自定义确认按钮传入点击事件，失败时可恢复键盘焦点 |
+| `handleReset()`               | 重置数据与 Loading                                         |
+| `setLoading(value)`           | 设置内容 Loading                                           |
+| `setConfirmLoading(value)`    | 设置确认按钮 Loading                                       |
+| `setOptions(options)`         | 增量更新配置                                               |
+| `setData(data)`               | 替换当前数据                                               |
+| `updateData(data)`            | 浅合并当前对象数据                                         |
+| `getData()`                   | 获取当前数据                                               |
+| `getDrawerInstance()`         | 获取底层 `ElDrawer` 实例                                   |
+| `scrollTo(options)`           | 控制滚动位置                                               |
 
 ## 事件
 

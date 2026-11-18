@@ -1,5 +1,10 @@
-import { createApp, h } from 'vue'
-import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
+import { cloneVNode, createApp, h, type VNode } from 'vue'
+import {
+  createMemoryHistory,
+  createRouter,
+  RouterView,
+  type RouteLocationNormalizedLoaded
+} from 'vue-router'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
@@ -52,7 +57,8 @@ useMenuStore(store).setButtonList(
   [
     'VehicleArchive:Add',
     'VehicleArchive:Copy',
-    'VehicleArchive:Edit',
+    ...(params.has('noEdit') ? [] : ['VehicleArchive:Edit']),
+    ...(params.has('submit') ? ['VehicleArchive:Submit'] : []),
     'VehicleArchive:TabBasic',
     'VehicleArchive:TabBody',
     'VehicleArchive:TabEngine',
@@ -75,7 +81,18 @@ const router = createRouter({
   ]
 })
 const app = createApp({
-  render: () => h('main', { class: 'art-page-view h-screen min-w-0 p-4' }, [h(RouterView)])
+  render: () =>
+    h('main', { class: 'art-page-view h-screen min-w-0 p-4' }, [
+      h(RouterView, null, {
+        default: ({
+          Component,
+          route
+        }: {
+          Component?: VNode
+          route: RouteLocationNormalizedLoaded
+        }) => (Component ? cloneVNode(Component, { key: route.path }) : null)
+      })
+    ])
 })
 app.use(store)
 app.use(router)

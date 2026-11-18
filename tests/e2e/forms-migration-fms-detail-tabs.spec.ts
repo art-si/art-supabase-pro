@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
@@ -79,9 +81,14 @@ const scenarios = [
 for (const [scenarioIndex, scenario] of scenarios.entries()) {
   test(`FMS ${scenario.name} 详情分组可切换且权限不泄漏`, async ({ page }, testInfo) => {
     await prepareIsolatedSession(page)
-    const narrow = scenarioIndex % 3 === 1
+    const isPayroll = scenario.name === '薪资批次'
+    const isTax = scenario.name === '税务期间'
+    const hasMobileIdentity = isPayroll || isTax
+    const narrow = !hasMobileIdentity && scenarioIndex % 3 === 1
     await page.setViewportSize({ width: narrow ? 570 : 1440, height: 900 })
+    if (hasMobileIdentity) await prepareAppearance(page, { theme: 'light', boxBorderMode: true })
     const errors: string[] = []
+    const writes: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     const fieldAccess = Object.fromEntries(
       [
@@ -92,6 +99,7 @@ for (const [scenarioIndex, scenario] of scenarios.entries()) {
         'billAmounts',
         'billReferences',
         'taxAmounts',
+        'taxSources',
         'taxReferences',
         'taxFiling',
         'employeeIdentity',
@@ -200,10 +208,75 @@ for (const [scenarioIndex, scenario] of scenarios.entries()) {
       cashFlowAllocations: [],
       fieldAccess
     }
+    const payrollLine = {
+      id: '66666666-6666-4666-8666-666666666666',
+      runId: row.id,
+      employeeId: '77777777-7777-4777-8777-777777777777',
+      employeeNameSnapshot: '阿依古丽·阿卜杜热合曼·买买提',
+      employeeNoSnapshot: 'EMP-EAST-OPS-2026-VERIFICATION',
+      grossAmount: 12345.67,
+      deductionAmount: 234.56,
+      employerCostAmount: 789.12,
+      netAmount: 12111.11,
+      createTime: row.createTime
+    } satisfies Api.Fms.PayrollLineRecord
+    const taxLine = {
+      id: '88888888-8888-4888-8888-888888888888',
+      taxPeriodId: row.id,
+      sourceType: 'manual',
+      sourceNo: 'TAX-CROSS-REGION-ENGINEERING-SERVICE-CENTER-RECONCILIATION-REFERENCE-FULL-END',
+      occurredOn: '2026-11-01',
+      direction: 'output',
+      taxableAmount: 23456.78,
+      taxRate: 0.06,
+      taxAmount: 1407.41,
+      isDeductible: false,
+      createTime: row.createTime
+    } satisfies Api.Fms.TaxLedgerLineRecord
+    const primaryIdentity = isPayroll ? payrollLine.employeeNameSnapshot : taxLine.sourceNo
+    const secondaryIdentity = isPayroll ? payrollLine.employeeNoSnapshot : '2026-11-01 · 手工录入'
+    const detailClass = isPayroll ? 'payroll-detail' : 'tax-detail'
+    const mobileIdentityClass = isPayroll
+      ? 'payroll-detail__employee'
+      : 'tax-detail__mobile-identity'
+    const detailTab = isPayroll ? '员工薪资' : '税务台账'
+    const overviewTab = isPayroll ? '批次信息' : '期间与申报'
+    const lineRpc = isPayroll ? 'fms_list_payroll_lines_secure' : 'fms_list_tax_ledger_lines_secure'
+    const writePermission = isPayroll
+      ? 'FinancePayroll:Calculate'
+      : 'FinanceTaxManagement:Calculate'
+    const mutationLabels = isPayroll
+      ? /同步 HR 薪酬|新增员工|编辑员工薪资|删除员工薪资/
+      : /新增明细|编辑税务明细|删除税务明细/
+    let sensitiveHidden = false
+    const effectiveAccess = () =>
+      hasMobileIdentity && sensitiveHidden
+        ? {
+            ...fieldAccess,
+            employeeIdentity: 'hidden',
+            salaryAmounts: 'hidden',
+            taxSources: 'hidden',
+            taxAmounts: 'hidden'
+          }
+        : fieldAccess
     await page.route('**/rest/v1/**', (route) => {
       const url = new URL(route.request().url()),
         rpc = url.pathname.split('/rpc/')[1]
-      if (rpc?.match(/^(fms|tms)_get_/)) return route.fulfill({ json: row })
+      if (
+        route.request().method() !== 'GET' &&
+        (!rpc || (/(^|_)(fms|tms)_/.test(rpc) && !/^(fms|tms)_(get|list)_/.test(rpc)))
+      )
+        writes.push(route.request().url())
+      if (rpc?.match(/^(fms|tms)_get_/))
+        return route.fulfill({ json: { ...row, fieldAccess: effectiveAccess() } })
+      if (hasMobileIdentity && rpc === lineRpc)
+        return route.fulfill({
+          json: {
+            records: [{ ...(isPayroll ? payrollLine : taxLine), fieldAccess: effectiveAccess() }],
+            fieldAccess: effectiveAccess(),
+            isRecordOwner: false
+          }
+        })
       if (
         rpc === 'fms_list_bank_statement_lines_secure' ||
         rpc === 'fms_list_payroll_lines_secure' ||
@@ -219,7 +292,7 @@ for (const [scenarioIndex, scenario] of scenarios.entries()) {
       (input) => {
         window.formsMigrationInput = input
       },
-      { args: [row] }
+      { args: [row], permissions: hasMobileIdentity ? [writePermission] : [] }
     )
     await page.goto(
       '/tests/e2e/fixtures/forms-migration-business.html?entry=' +
@@ -235,9 +308,10 @@ for (const [scenarioIndex, scenario] of scenarios.entries()) {
     const panes = drawer.locator('.el-tab-pane')
     await expect(panes).toHaveCount(scenario.tabs)
     for (let index = 0; index < scenario.tabs; index++) {
-      await tabs.nth(index).click()
-      await expect(panes.nth(index)).toBeVisible()
-      expect((await panes.nth(index).innerText()).trim().length).toBeGreaterThan(0)
+      const tab = tabs.nth(index)
+      await tab.click()
+      const panel = await expectOverlayTabPanel(drawer, (await tab.innerText()).trim())
+      expect((await panel.innerText()).trim().length).toBeGreaterThan(0)
       expect(await drawer.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
     }
     await page.screenshot({
@@ -248,13 +322,172 @@ for (const [scenarioIndex, scenario] of scenarios.entries()) {
       await tabs.first().click()
       await expect(panes.first()).toBeVisible()
     }
-    if (scenario.tabs === 0)
+    if (scenario.tabs === 0) {
+      await expect(drawer.locator('.art-overlay-tab-card')).toHaveCount(0)
       await expect(drawer.getByText('SOURCE-001', { exact: true })).toHaveCount(0)
+    }
+    if (hasMobileIdentity) {
+      for (const appearance of [
+        { width: 1440, theme: 'light', boxBorderMode: true },
+        { width: 390, theme: 'dark', boxBorderMode: false },
+        { width: 320, theme: 'light', boxBorderMode: true }
+      ] as const) {
+        if (appearance.width !== 1440) {
+          await prepareAppearance(page, appearance)
+          await page.setViewportSize({ width: appearance.width, height: 844 })
+          await page.goto(
+            '/tests/e2e/fixtures/forms-migration-business.html?entry=' +
+              encodeURIComponent(scenario.path) +
+              '&theme=' +
+              appearance.theme
+          )
+        }
+        await assertAppearance(page, appearance)
+        await expect(drawer).toBeVisible()
+        await expect(drawer.locator('.art-drawer__viewport')).toHaveAttribute('aria-busy', 'false')
+        await drawer.getByRole('tab', { name: detailTab, exact: true }).click()
+        const panel = await expectOverlayTabPanel(drawer, detailTab)
+        await expect(panel.getByRole('button', { name: mutationLabels })).toHaveCount(0)
+        const amounts = isPayroll
+          ? ['¥12,345.67', '¥234.56', '¥789.12', '¥12,111.11']
+          : ['¥23,456.78', '6.0000%', '¥1,407.41']
+        if (appearance.width === 1440) {
+          const identity = panel.locator(
+            isPayroll ? '.business-table-identity-cell' : '.tax-detail__source'
+          )
+          await expect(identity.locator('strong')).toHaveText(primaryIdentity)
+          await expect(identity.locator('strong')).toHaveAttribute('title', primaryIdentity)
+          if (isPayroll)
+            await expect(identity.locator('small')).toHaveAttribute('title', secondaryIdentity)
+          else await expect(identity.locator('small')).toHaveText('手工录入')
+          for (const amount of amounts)
+            await expect(panel.getByText(amount, { exact: true })).toBeVisible()
+          await page.screenshot({
+            path: testInfo.outputPath(`${detailClass}-identity-1440-light.png`),
+            animations: 'disabled'
+          })
+        } else {
+          const card = panel.locator(`.${detailClass}__mobile-item`)
+          const identity = card.locator(`.${mobileIdentityClass}`)
+          await expect(identity.locator('strong')).toHaveText(primaryIdentity)
+          await expect(identity.locator('small')).toHaveText(secondaryIdentity)
+          for (const amount of amounts)
+            await expect(card.getByText(amount, { exact: true })).toBeVisible()
+          await card.scrollIntoViewIfNeeded()
+          await page.evaluate(() => document.fonts.ready.then(() => undefined))
+          const geometry = await identity.evaluate((element) => {
+            const bounds = element.getBoundingClientRect()
+            const card = element.closest('article')!.getBoundingClientRect()
+            const scrollport = element
+              .closest('.art-drawer__scrollbar')!
+              .querySelector('.el-scrollbar__wrap')!
+              .getBoundingClientRect()
+            const fits = (line: DOMRect, container: DOMRect) =>
+              line.left >= container.left - 1 &&
+              line.right <= container.right + 1 &&
+              line.top >= container.top - 1 &&
+              line.bottom <= container.bottom + 1
+            return {
+              fields: Array.from(element.children).map((field) => {
+                const range = document.createRange()
+                range.selectNodeContents(field)
+                const lines = Array.from(range.getClientRects())
+                return {
+                  text: field.textContent,
+                  lineCount: lines.length,
+                  field: field.getBoundingClientRect().toJSON(),
+                  lines: lines.map((line) => line.toJSON()),
+                  fitsField: lines.every((line) => fits(line, field.getBoundingClientRect())),
+                  fitsIdentity: lines.every((line) => fits(line, bounds)),
+                  fitsCard: lines.every((line) => fits(line, card)),
+                  fitsScrollport: lines.every((line) => fits(line, scrollport)),
+                  fitsViewport: lines.every(
+                    (line) =>
+                      line.left >= -1 &&
+                      line.right <= innerWidth + 1 &&
+                      line.top >= -1 &&
+                      line.bottom <= innerHeight + 1
+                  )
+                }
+              }),
+              identity: bounds.toJSON(),
+              card: card.toJSON(),
+              scrollport: scrollport.toJSON(),
+              cardContainsIdentity: bounds.bottom <= card.bottom + 1,
+              horizontalOverflow: document.documentElement.scrollWidth - innerWidth
+            }
+          })
+          await testInfo.attach(`${detailClass}-identity-${appearance.width}-${appearance.theme}`, {
+            body: JSON.stringify(geometry, null, 2),
+            contentType: 'application/json'
+          })
+          await page.screenshot({
+            path: testInfo.outputPath(
+              `${detailClass}-identity-${appearance.width}-${appearance.theme}.png`
+            ),
+            animations: 'disabled'
+          })
+          for (const field of geometry.fields) {
+            expect.soft(field.lineCount).toBeGreaterThan(0)
+            expect.soft(field.fitsField, `${appearance.width}px ${field.text} field`).toBe(true)
+            expect.soft(field.fitsIdentity, `${appearance.width}px identity`).toBe(true)
+            expect.soft(field.fitsCard, `${appearance.width}px card`).toBe(true)
+            expect.soft(field.fitsScrollport, `${appearance.width}px scrollport`).toBe(true)
+            expect.soft(field.fitsViewport, `${appearance.width}px viewport`).toBe(true)
+          }
+          expect.soft(geometry.cardContainsIdentity).toBe(true)
+          expect.soft(geometry.horizontalOverflow).toBeLessThanOrEqual(1)
+        }
+        await drawer.getByRole('tab', { name: overviewTab, exact: true }).click()
+        await expectOverlayTabPanel(drawer, overviewTab)
+        await drawer.getByRole('tab', { name: detailTab, exact: true }).click()
+        await expect(panel.getByText(primaryIdentity, { exact: true })).toBeVisible()
+
+        await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+        await expect(drawer).toBeHidden()
+        sensitiveHidden = true
+        const hiddenLines = page.waitForResponse(
+          (response) => response.url().includes('/rpc/' + lineRpc) && response.status() === 200
+        )
+        await page.getByTestId('open-entry').click()
+        await hiddenLines
+        await expect(drawer).toBeVisible()
+        await expect(drawer.locator('.art-drawer__viewport')).toHaveAttribute('aria-busy', 'false')
+        await drawer.getByRole('tab', { name: detailTab, exact: true }).click()
+        await expect(
+          panel.getByText(isPayroll ? '暂无员工薪资明细' : '暂无税务台账明细', { exact: true })
+        ).toHaveCount(0)
+        if (appearance.width !== 1440)
+          await expect(
+            panel.locator(`.${detailClass}__mobile-item > .${detailClass}__mobile-heading strong`)
+          ).toHaveText(isPayroll ? '员工薪资' : '税务明细')
+        await expect(panel.getByText(primaryIdentity, { exact: true })).toHaveCount(0)
+        if (isPayroll)
+          await expect(panel.getByText(secondaryIdentity, { exact: true })).toHaveCount(0)
+        else await expect(panel.getByText('手工录入', { exact: false })).toHaveCount(0)
+        expect(
+          await drawer
+            .locator('[title]')
+            .evaluateAll(
+              (elements, values) =>
+                elements.some((element) => values.includes(element.getAttribute('title') || '')),
+              [primaryIdentity, secondaryIdentity]
+            )
+        ).toBe(false)
+        for (const amount of amounts)
+          await expect(drawer.getByText(amount, { exact: true })).toHaveCount(0)
+        await expect(panel.locator(`.${detailClass}__mobile-amounts`)).toHaveCount(0)
+        await expect(panel.getByRole('button', { name: mutationLabels })).toHaveCount(0)
+        await expect(page.getByTestId('successes')).toHaveText('0')
+        sensitiveHidden = false
+      }
+    }
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
       )
     ).toBe(true)
     expect(errors).toEqual([])
+    expect(writes).toEqual([])
   })
 }

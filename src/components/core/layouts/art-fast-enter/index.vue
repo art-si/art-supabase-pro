@@ -14,7 +14,7 @@
     }"
   >
     <template #reference>
-      <span ref="triggerRef" class="flex-c gap-2">
+      <span ref="triggerRef" class="art-fast-enter-trigger flex-c gap-2">
         <slot :on-trigger-click="focusFirstItem" />
       </span>
     </template>

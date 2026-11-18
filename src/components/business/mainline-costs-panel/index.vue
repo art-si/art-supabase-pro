@@ -42,6 +42,7 @@
   import BusinessRecordLink from '@/components/business/business-record-link/index.vue'
   import { getWaybillCostDetailPath } from '@/router/business-paths'
   import { formatSensitiveNumberWithAffix } from '@/utils/field-permission'
+  import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import type { ColumnOption } from '@/types'
   import { useAuth } from '@/hooks/core/useAuth'
 
@@ -161,11 +162,9 @@
     }
     state.loading = true
     try {
-      const from = (state.page - 1) * pageSize
       const result = await fetchMainlineCosts({
         [props.scope === 'vehicle' ? 'vehicleId' : 'driverId']: props.recordId,
-        from,
-        to: from + pageSize - 1
+        ...buildSupabasePageRange({ current: state.page, size: pageSize })
       })
       if (currentRequest !== requestId) return
       state.rows = result.data

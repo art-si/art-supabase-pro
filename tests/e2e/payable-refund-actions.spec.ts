@@ -80,7 +80,7 @@ test('两张退款凭证预览、待配置反馈、取消到账和作废原因�
     )
   )
   const selectAll = async () => {
-    if (!(await page.getByRole('checkbox', { name: '选择所有行', exact: true }).isChecked()))
+    if (!(await page.getByRole('checkbox', { name: '选择当前页全部行', exact: true }).isChecked()))
       await page.locator('.el-table__header-wrapper label.el-checkbox').first().click()
   }
   const openCancel = async () => {

@@ -171,6 +171,9 @@ userStore.setUserInfo({
   tenantId,
   platformSuper
 })
+useMenuStore(store).setButtonList([
+  { name: 'TmsCustomer:Edit', type: 'button', path: '', meta: { title: '编辑客户' } }
+])
 if (new URLSearchParams(location.search).has('carrierChildren')) {
   const dict = (items: Array<[string, string]>) =>
     items.map(([value, label]) => ({ name: label, code: value, value, label, status: '1' }))

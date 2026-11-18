@@ -1,0 +1,689 @@
+@use './silver-mist-element-plus' as element-plus;
+@use './silver-mist-motion' as motion;
+
+// Optional workspace skin. The html scope also covers Element Plus overlays teleported to body.
+html[data-ui-scope='workspace'][data-workspace-appearance='silver-mist'] {
+  --default-bg-color: #f5f5f7;
+  --default-box-color: #fff;
+  --silver-mist-chrome: #eeeef1;
+  --silver-mist-control: #f6f6f8;
+  --silver-mist-divider-base: #dedee3;
+  --silver-mist-divider: var(--silver-mist-divider-base);
+  --silver-mist-panel: color-mix(in srgb, var(--silver-mist-control) 65%, var(--default-box-color));
+  --silver-mist-control-border: #898990;
+  --silver-mist-text: #222225;
+  --silver-mist-muted: #56565d;
+  // The configured accent is the source; fill and ink serve different contrast needs.
+  --silver-mist-accent: var(--el-color-primary);
+  --silver-mist-action: color-mix(in srgb, var(--silver-mist-accent) 61%, #101014);
+  // Cap bright custom accents so white labels and tinted selections stay readable.
+  @supports (color: oklch(from white min(l, 0.49) c h)) {
+    --silver-mist-action: oklch(
+      from color-mix(in srgb, var(--silver-mist-accent) 73%, #101014) min(l, 0.49) c h
+    );
+  }
+
+  --silver-mist-ink: var(--silver-mist-action);
+  --silver-mist-danger-ink: var(--el-color-danger);
+  --silver-mist-selected: color-mix(
+    in srgb,
+    var(--silver-mist-accent) 12%,
+    var(--default-box-color)
+  );
+  --silver-mist-selected-hover: color-mix(
+    in srgb,
+    var(--silver-mist-selected) 95%,
+    var(--silver-mist-ink)
+  );
+  --silver-mist-row-alt: color-mix(
+    in srgb,
+    var(--silver-mist-control) 55%,
+    var(--default-box-color)
+  );
+  --silver-mist-scrim: rgb(18 18 23 / 28%);
+  --silver-mist-ambient-shadow: rgb(0 0 0 / 14%);
+  --theme-color: var(--silver-mist-ink);
+  --art-themed-action-solid-shadow: none;
+  --art-layout-header-bg: var(--silver-mist-chrome);
+  --art-layout-toolbar-bg: var(--silver-mist-chrome);
+  --art-layout-backdrop-filter: none;
+  --art-card-border: var(--silver-mist-divider);
+  --art-gray-100: var(--silver-mist-panel);
+  --art-gray-200: var(--silver-mist-control);
+  --art-gray-300: var(--silver-mist-divider);
+  --art-gray-400: color-mix(
+    in srgb,
+    var(--silver-mist-divider) 72%,
+    var(--silver-mist-control-border)
+  );
+  --art-gray-500: var(--silver-mist-control-border);
+  --art-gray-600: #65656e;
+  --art-gray-700: var(--silver-mist-muted);
+  --art-gray-800: #38383d;
+  --art-gray-900: var(--silver-mist-text);
+  --el-bg-color: var(--default-box-color);
+  --el-bg-color-page: var(--default-bg-color);
+  --el-bg-color-overlay: var(--default-box-color);
+  --el-fill-color-blank: var(--default-box-color);
+  --el-fill-color-light: var(--silver-mist-control);
+  --el-fill-color-lighter: var(--default-bg-color);
+  --el-border-color: var(--silver-mist-divider);
+  --el-border-color-light: var(--silver-mist-divider);
+  --el-border-color-lighter: var(--silver-mist-divider);
+  --el-text-color-primary: var(--silver-mist-text);
+  --el-text-color-regular: var(--silver-mist-text);
+  --el-text-color-secondary: var(--silver-mist-muted);
+  --el-text-color-placeholder: var(--art-gray-600);
+  --el-overlay-color-lighter: var(--silver-mist-scrim);
+
+  &.dark {
+    --default-bg-color: #202022;
+    --default-box-color: #2b2b2e;
+    --silver-mist-chrome: #262628;
+    --silver-mist-control: #343437;
+    --silver-mist-divider-base: #48484d;
+    --silver-mist-control-border: #88888f;
+    --silver-mist-text: #f0f0f2;
+    --silver-mist-muted: #b3b3ba;
+    --silver-mist-ink: color-mix(in srgb, var(--silver-mist-accent) 53%, white);
+    --silver-mist-danger-ink: color-mix(in srgb, var(--el-color-danger) 64%, white);
+    --silver-mist-selected: color-mix(
+      in srgb,
+      var(--silver-mist-accent) 24%,
+      var(--default-box-color)
+    );
+    --silver-mist-scrim: rgb(0 0 0 / 42%);
+    --silver-mist-ambient-shadow: rgb(0 0 0 / 38%);
+    --art-gray-600: #a5a5ad;
+    --art-gray-800: #d2d2d7;
+  }
+
+  // Element Plus writes the chosen primary to html inline; adapt its components only inside Silver Mist.
+  body {
+    --el-color-primary: var(--silver-mist-ink);
+    --el-color-primary-light-3: color-mix(
+      in srgb,
+      var(--silver-mist-action) 85%,
+      var(--default-box-color)
+    );
+    --el-color-primary-light-5: color-mix(
+      in srgb,
+      var(--silver-mist-ink) 62%,
+      var(--default-box-color)
+    );
+    --el-color-primary-light-7: color-mix(
+      in srgb,
+      var(--silver-mist-ink) 34%,
+      var(--default-box-color)
+    );
+    --el-color-primary-light-8: var(--silver-mist-selected-hover);
+    --el-color-primary-light-9: var(--silver-mist-selected);
+    --el-color-primary-dark-2: color-mix(in srgb, var(--silver-mist-action) 88%, black);
+  }
+
+  @include element-plus.appearance;
+
+  .app-layout {
+    background: var(--default-bg-color);
+  }
+
+  @supports (backdrop-filter: blur(8px)) {
+    #app-header {
+      --art-layout-header-bg: color-mix(in srgb, var(--silver-mist-chrome) 92%, transparent);
+      --art-layout-backdrop-filter: blur(8px);
+    }
+  }
+
+  .menu-left.menu-left-light,
+  &.dark .menu-left.menu-left-dark {
+    &,
+    > .header,
+    .el-menu {
+      background: var(--silver-mist-chrome) !important;
+    }
+
+    .el-menu-item.is-active {
+      color: var(--silver-mist-ink) !important;
+      background: var(--silver-mist-selected) !important;
+
+      &::before {
+        content: none;
+      }
+
+      .art-svg-icon {
+        color: inherit !important;
+      }
+    }
+
+    .el-sub-menu.is-active > .el-sub-menu__title {
+      color: var(--silver-mist-ink) !important;
+    }
+  }
+
+  .art-work-tab--card li[role='tab'].art-card-xs {
+    color: var(--silver-mist-muted) !important;
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+
+    &:hover:not(.activ-tab) {
+      color: var(--silver-mist-text) !important;
+      background: var(--silver-mist-control) !important;
+      border-color: transparent !important;
+      box-shadow: none !important;
+    }
+
+    &.activ-tab {
+      color: var(--silver-mist-ink) !important;
+      background: var(--default-box-color) !important;
+      border-color: var(--silver-mist-divider) !important;
+      box-shadow: none !important;
+
+      .art-svg-icon {
+        color: inherit;
+      }
+    }
+  }
+
+  // Keep the data and popup content opaque. Use the existing field state and focus rules.
+  .el-input,
+  .el-select,
+  .el-textarea,
+  .el-date-editor,
+  .el-cascader {
+    --el-input-bg-color: var(--silver-mist-control);
+    --el-input-border-color: var(--silver-mist-control-border);
+    --el-input-hover-border-color: var(--art-gray-700);
+    --el-input-focus-border-color: var(--silver-mist-ink);
+    --el-select-border-color-hover: var(--art-gray-700);
+    --el-select-input-focus-border-color: var(--silver-mist-ink);
+  }
+
+  .el-select__wrapper:not(.is-disabled) {
+    --el-fill-color-blank: var(--silver-mist-control);
+  }
+
+  &[data-box-mode='border-mode'] {
+    --art-control-focus-border: var(--silver-mist-ink);
+    --art-control-focus-shadow: inset 0 0 0 1px var(--silver-mist-ink);
+    --art-control-shadow: inset 0 0 0 1px var(--silver-mist-control-border);
+    --art-control-hover-shadow: inset 0 0 0 1px var(--art-gray-700);
+  }
+
+  &[data-box-mode='shadow-mode'] {
+    --art-control-elevation: 0 1px 2px var(--silver-mist-ambient-shadow);
+    --art-control-hover-elevation: 0 2px 4px var(--silver-mist-ambient-shadow);
+    --art-control-shadow: inset 0 0 0 1px var(--silver-mist-divider), var(--art-control-elevation);
+    --art-control-hover-shadow:
+      inset 0 0 0 1px var(--silver-mist-control-border), var(--art-control-hover-elevation);
+    --art-card-shadow-sm: 0 2px 8px var(--silver-mist-ambient-shadow);
+    --art-floating-elevation: 0 4px 12px var(--silver-mist-ambient-shadow);
+    --art-modal-elevation: 0 12px 30px var(--silver-mist-ambient-shadow);
+    --art-list-hover-shadow: none;
+    --art-list-active-shadow: none;
+  }
+
+  .el-button:where(
+    :not(
+      .el-button--primary,
+      .el-button--success,
+      .el-button--warning,
+      .el-button--danger,
+      .el-button--info,
+      .el-button--error,
+      .is-text,
+      .is-link
+    )
+  ) {
+    --el-button-text-color: var(--silver-mist-text);
+    --el-button-bg-color: var(--silver-mist-control);
+    --el-button-border-color: var(--silver-mist-divider);
+    --el-button-hover-bg-color: var(--silver-mist-selected);
+    --el-button-hover-text-color: var(--silver-mist-ink);
+    --el-button-hover-border-color: var(--silver-mist-control-border);
+    --el-button-active-bg-color: var(--silver-mist-selected);
+    --el-button-active-text-color: var(--silver-mist-ink);
+    --el-button-active-border-color: var(--silver-mist-control-border);
+  }
+
+  .el-button--primary:not(.is-plain, .is-text, .is-link) {
+    --el-button-bg-color: var(--silver-mist-action);
+    --el-button-border-color: var(--el-button-bg-color);
+    --el-button-hover-bg-color: color-mix(in srgb, var(--silver-mist-action) 92%, white);
+    --el-button-hover-border-color: var(--el-button-hover-bg-color);
+    --el-button-active-bg-color: color-mix(in srgb, var(--silver-mist-action) 88%, black);
+    --el-button-active-border-color: var(--el-button-active-bg-color);
+  }
+
+  .el-button--primary:is(.is-plain, .is-text, .is-link) {
+    --el-button-text-color: var(--silver-mist-ink);
+  }
+
+  .el-button--primary:is(.is-text, .is-link) {
+    --el-button-hover-text-color: var(--silver-mist-ink);
+    --el-button-active-text-color: var(--silver-mist-ink);
+  }
+
+  .el-button--primary.is-plain {
+    --el-button-bg-color: var(--silver-mist-selected);
+    --el-button-border-color: var(--silver-mist-divider);
+    --el-button-hover-bg-color: var(--silver-mist-action);
+    --el-button-hover-border-color: var(--silver-mist-action);
+  }
+
+  .art-table-header__action.art-icon-button--solid[aria-pressed='true'],
+  .art-icon-button[data-art-column-filter][aria-pressed='true'] {
+    color: var(--silver-mist-ink);
+    background-color: var(--silver-mist-selected);
+    box-shadow: none;
+
+    &:not(:disabled):is(:hover, :active) {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-selected-hover);
+    }
+
+    &:focus-visible {
+      box-shadow: 0 0 0 2px var(--silver-mist-ink);
+    }
+  }
+
+  .el-switch {
+    --el-switch-on-color: var(--silver-mist-action);
+    --el-switch-off-color: var(--silver-mist-control-border);
+  }
+
+  .el-segmented {
+    --el-segmented-bg-color: var(--silver-mist-control);
+    --el-segmented-item-selected-bg-color: var(--default-box-color);
+    --el-segmented-item-selected-color: var(--silver-mist-ink);
+  }
+
+  .el-checkbox {
+    --el-checkbox-input-border: 1px solid var(--silver-mist-control-border);
+    --el-checkbox-checked-bg-color: var(--silver-mist-action);
+    --el-checkbox-checked-input-border-color: var(--silver-mist-action);
+    --el-checkbox-checked-text-color: var(--silver-mist-ink);
+  }
+
+  .el-radio {
+    --el-radio-input-border: 1px solid var(--silver-mist-control-border);
+    --el-radio-input-border-color-hover: var(--silver-mist-ink);
+  }
+
+  .el-radio__input.is-checked:not(.is-disabled) .el-radio__inner {
+    background-color: var(--silver-mist-action);
+    border-color: var(--silver-mist-action);
+  }
+
+  .el-radio-button {
+    --el-radio-button-checked-bg-color: var(--silver-mist-action);
+    --el-radio-button-checked-border-color: var(--silver-mist-action);
+  }
+
+  .el-pagination.is-background .el-pager li.is-active {
+    color: var(--silver-mist-ink) !important;
+    background: var(--silver-mist-selected) !important;
+  }
+
+  .art-table-query__search-scrollbar {
+    background-color: var(--silver-mist-panel);
+  }
+
+  .art-table-query__search-scrollbar .art-search-bar {
+    background-color: transparent;
+  }
+
+  .business-workspace-header__hero,
+  .business-table-workspace-actions {
+    background: var(--silver-mist-panel);
+  }
+
+  .business-workspace-header__brand {
+    color: var(--silver-mist-ink);
+    background: var(--silver-mist-selected);
+    box-shadow: none;
+  }
+
+  .business-table-workspace-actions {
+    border-color: var(--silver-mist-divider);
+    box-shadow: none;
+  }
+
+  :is(.el-table, .el-table-v2) {
+    --art-gray-200: var(--silver-mist-control);
+    --el-fill-color-lighter: var(--silver-mist-row-alt);
+    --el-table-border-color: var(--silver-mist-divider);
+    --el-table-header-bg-color: var(--silver-mist-control);
+    --el-table-header-text-color: var(--silver-mist-text);
+    --el-table-row-hover-bg-color: var(--silver-mist-control);
+    --el-table-current-row-bg-color: var(--silver-mist-selected);
+    --el-table-fixed-left-column: inset 1px 0 var(--silver-mist-divider);
+    --el-table-fixed-right-column: inset -1px 0 var(--silver-mist-divider);
+  }
+
+  .el-table th.el-table__cell {
+    background: var(--silver-mist-control);
+  }
+
+  .art-table {
+    :is(
+      .el-table__body tr:is(:hover, .hover-row) > td.el-table__cell,
+      .el-table-v2__row:is(:hover, .is-hovered) > .el-table-v2__row-cell
+    ) {
+      background-color: var(--silver-mist-control);
+    }
+
+    :is(
+      .el-table__body tr.is-art-selected-row > td.el-table__cell,
+      .el-table-v2__row.is-art-selected-row > .el-table-v2__row-cell
+    ) {
+      background-color: var(--silver-mist-selected);
+    }
+
+    :is(
+      .el-table__body tr.is-art-selected-row:is(:hover, .hover-row) > td.el-table__cell,
+      .el-table-v2__row.is-art-selected-row:is(:hover, .is-hovered) > .el-table-v2__row-cell
+    ) {
+      background-color: var(--silver-mist-selected-hover);
+    }
+  }
+
+  .art-button-table:is(.is-view, .is-edit, .is-more) {
+    --art-table-button-semantic: var(--silver-mist-muted);
+    --art-table-button-rest-shadow: none;
+  }
+
+  .art-button-table:is(.is-view, .is-edit, .is-more):focus-visible {
+    --art-action-color: var(--silver-mist-ink);
+  }
+
+  .el-popper:is(.el-select__popper, .el-dropdown__popper, .el-picker__popper) {
+    --el-bg-color-overlay: var(--default-box-color);
+    --el-fill-color-light: var(--silver-mist-control);
+  }
+
+  .el-dropdown__popper .el-dropdown-menu__item:is(:hover, :focus):not(.is-disabled) {
+    background-color: var(--silver-mist-control) !important;
+  }
+
+  .el-select__popper:not(.el-tree-select__popper) .el-select-dropdown__item {
+    &:is(.is-hovering, :hover):not(.is-disabled) {
+      color: var(--silver-mist-text);
+      background-color: var(--silver-mist-control) !important;
+    }
+
+    &.is-selected:not(.is-disabled) {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-selected);
+    }
+
+    &.is-selected:is(.is-hovering, :hover):not(.is-disabled) {
+      background-color: var(--silver-mist-selected-hover) !important;
+    }
+  }
+
+  .el-select__popper:not(.el-tree-select__popper)
+    .el-select-dropdown.is-multiple
+    .el-select-dropdown__item.is-selected:not(.is-disabled, .is-hovering, :hover) {
+    background-color: var(--silver-mist-panel);
+  }
+
+  :is(.el-select__selected-item, .el-select__collapse-tags) .el-tag--info {
+    --el-tag-text-color: var(--silver-mist-text);
+    --el-tag-bg-color: var(--default-box-color);
+    --el-tag-border-color: var(--silver-mist-divider);
+
+    .el-tag__close:hover {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-selected);
+    }
+  }
+
+  .el-select__popper .el-select-dropdown:not(.is-multiple) .el-select-dropdown__item {
+    padding-inline-end: 32px;
+
+    &.is-selected:not(.is-disabled, .el-tree-node__content:has(> .el-checkbox) > *)::after {
+      position: absolute;
+      inset-block-start: 50%;
+      inset-inline-end: 14px;
+      width: 6px;
+      height: 10px;
+      content: '';
+      border: solid currentcolor;
+      border-width: 0 2px 2px 0;
+      transform: translateY(-65%) rotate(45deg);
+    }
+  }
+
+  .el-tree-select__popper {
+    .el-tree-node__content {
+      border-radius: var(--art-control-radius);
+
+      &:hover,
+      &:has(> .el-select-dropdown__item.is-hovering:not(.is-disabled)) {
+        background-color: var(--silver-mist-control) !important;
+      }
+
+      &:has(> .el-select-dropdown__item.is-selected:not(.is-disabled)) {
+        background-color: var(--silver-mist-selected) !important;
+      }
+
+      > .el-select-dropdown__item {
+        flex: 1;
+        background: transparent !important;
+
+        &.is-selected:not(.is-disabled) {
+          color: var(--silver-mist-ink);
+        }
+      }
+    }
+
+    .el-tree-node:focus-visible > .el-tree-node__content,
+    .el-tree-node__content:not(:hover):has(
+        > .el-select-dropdown__item.is-hovering:not(.is-disabled)
+      ) {
+      outline: 2px solid var(--silver-mist-ink);
+      outline-offset: -2px;
+    }
+  }
+
+  .el-cascader__dropdown .el-cascader-node:not(.is-disabled) {
+    .el-radio {
+      --el-radio-input-border: 1px solid var(--silver-mist-control-border);
+    }
+
+    &:is(:hover, :focus) {
+      background-color: var(--silver-mist-control) !important;
+    }
+
+    &.in-active-path:not(.is-active) {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-panel);
+    }
+
+    &.is-active {
+      color: var(--silver-mist-ink);
+      background-color: var(--silver-mist-selected) !important;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--silver-mist-ink);
+      outline-offset: -2px;
+    }
+  }
+
+  .el-picker-panel {
+    --el-datepicker-border-color: var(--silver-mist-divider);
+    --el-datepicker-inner-border-color: var(--silver-mist-divider);
+    --el-datepicker-icon-color: var(--silver-mist-muted);
+    --el-datepicker-header-text-color: var(--silver-mist-text);
+    --el-datepicker-text-color: var(--silver-mist-text);
+    --el-datepicker-off-text-color: var(--art-gray-600);
+    --el-datepicker-active-color: var(--silver-mist-action);
+    --el-datepicker-hover-text-color: var(--silver-mist-ink);
+    --el-datepicker-inrange-bg-color: var(--silver-mist-selected) !important;
+    --el-datepicker-inrange-hover-bg-color: var(--silver-mist-selected-hover);
+
+    .el-picker-panel__sidebar,
+    .el-picker-panel__footer {
+      background-color: var(--silver-mist-panel);
+    }
+
+    :is(.el-date-table, .el-month-table, .el-year-table)
+      td.today:not(.start-date, .end-date, .current)
+      :is(.el-date-table-cell__text, .cell) {
+      color: var(--silver-mist-ink);
+    }
+
+    :is(.el-picker-panel__icon-btn, .el-picker-panel__shortcut, td[tabindex]):focus-visible {
+      outline: 2px solid var(--silver-mist-ink);
+      outline-offset: -2px;
+    }
+  }
+
+  .el-tabs__active-bar {
+    background-color: var(--silver-mist-action);
+  }
+
+  .el-tabs__item.is-active {
+    color: var(--silver-mist-ink);
+  }
+
+  @media (prefers-contrast: more) {
+    --silver-mist-divider: var(--silver-mist-control-border);
+  }
+
+  @media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
+    #app-header {
+      --art-layout-header-bg: var(--silver-mist-chrome);
+      --art-layout-backdrop-filter: none;
+    }
+  }
+
+  :is(.el-dialog, .el-drawer, .el-message-box) {
+    --el-dialog-bg-color: var(--default-box-color);
+    --el-drawer-bg-color: var(--default-box-color);
+    --el-messagebox-bg-color: var(--default-box-color);
+  }
+
+  .el-dialog.art-dialog > :is(.el-dialog__header, .el-dialog__footer),
+  .el-drawer.art-drawer > :is(.el-drawer__header, .el-drawer__footer) {
+    background-color: var(--silver-mist-panel);
+    border-color: var(--silver-mist-divider);
+  }
+
+  .art-feedback-message-box .el-button--danger {
+    --art-themed-action-focus-shadow:
+      0 0 0 2px var(--default-box-color), 0 0 0 4px var(--silver-mist-danger-ink);
+  }
+
+  .art-entity-summary {
+    background-color: var(--silver-mist-panel);
+    border-color: var(--silver-mist-divider);
+  }
+
+  @include motion.appearance;
+
+  .setting-modal {
+    background: var(--silver-mist-scrim) !important;
+    backdrop-filter: none;
+
+    .el-drawer {
+      background: var(--default-bg-color) !important;
+      backdrop-filter: none;
+    }
+
+    .setting-header__mark {
+      color: var(--silver-mist-ink);
+      background: var(--silver-mist-selected);
+      box-shadow: none;
+    }
+
+    .setting-header__identity span:not(.setting-header__mark),
+    .setting-header__identity p,
+    .settings-manual__toggle small {
+      color: var(--art-gray-700);
+    }
+
+    .setting-section-title > span {
+      background: var(--theme-color);
+    }
+  }
+
+  .smart-layout-presets {
+    color: var(--art-gray-900);
+    background: var(--default-box-color);
+    border-color: var(--silver-mist-divider);
+    box-shadow: none;
+  }
+
+  .smart-layout-presets__intro :is(p, .smart-layout-presets__eyebrow),
+  .smart-layout-presets__notice,
+  .smart-preset-card__content small,
+  .smart-preset-card__tags em,
+  .smart-preset-card__arrow {
+    color: var(--art-gray-700);
+  }
+
+  .smart-layout-presets__signal,
+  .smart-preset-card__tags em {
+    color: var(--art-gray-800);
+    background: var(--silver-mist-control);
+    border-color: var(--silver-mist-divider);
+  }
+
+  .smart-preset-card {
+    color: var(--art-gray-900);
+    background: var(--default-box-color);
+    border-color: var(--silver-mist-divider);
+
+    &:hover {
+      background: var(--silver-mist-control);
+      border-color: var(--silver-mist-control-border);
+      transform: none;
+    }
+
+    &:focus-visible {
+      outline-color: var(--silver-mist-ink);
+    }
+
+    &.is-active {
+      background: var(--silver-mist-selected);
+      border-color: var(--silver-mist-ink);
+      box-shadow: inset 3px 0 0 var(--silver-mist-ink);
+    }
+  }
+
+  .smart-preset-card__check {
+    color: var(--silver-mist-ink);
+  }
+
+  .smart-preset-card__content small {
+    font-size: 11px;
+    white-space: normal;
+  }
+
+  .smart-preset-card__tags {
+    flex-wrap: wrap;
+
+    em {
+      font-size: 10px;
+    }
+  }
+}
+
+// The fourth preview shows its own neutral palette even before activation.
+.smart-preset-card[data-appearance-preview='silver-mist'] {
+  .smart-preset-card__preview {
+    background: #f2f3f5;
+  }
+
+  .smart-preset-card__sidebar {
+    background: #e1e5eb;
+  }
+
+  .smart-preset-card__panel {
+    background: #fff;
+    border: 1px solid #d8dce3;
+  }
+}

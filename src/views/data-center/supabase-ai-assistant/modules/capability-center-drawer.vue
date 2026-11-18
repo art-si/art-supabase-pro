@@ -43,7 +43,7 @@
         </div>
       </section>
 
-      <ElTabs v-model="activeTab" class="min-w-0">
+      <ElTabs v-model="activeTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane name="products" label="产品能力" :lazy="false">
           <section>
             <ArtSectionTitle :show-line="false">Supabase 产品能力</ArtSectionTitle>

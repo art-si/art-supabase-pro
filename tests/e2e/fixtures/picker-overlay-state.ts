@@ -14,7 +14,9 @@ import WorkflowCatalog from '@/views/workflow/definition/modules/workflow-busine
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
-const mode = new URLSearchParams(location.search).get('mode')
+const query = new URLSearchParams(location.search)
+const mode = query.get('mode')
+const canReadMenuFixtureResource = mode === 'resource' && query.has('menu-read')
 const app = createApp({
   setup() {
     const visible = ref(false)
@@ -106,6 +108,16 @@ const app = createApp({
                   })
                 : h(ArtResourcePicker, {
                     visible: visible.value,
+                    ...(canReadMenuFixtureResource
+                      ? {
+                          canView: true,
+                          canUpload: false,
+                          canRename: false,
+                          canDelete: false,
+                          resourceTenantId: 'test-tenant',
+                          defaultFileType: 'document'
+                        }
+                      : {}),
                     'onUpdate:visible': (value: boolean) => {
                       visible.value = value
                     }

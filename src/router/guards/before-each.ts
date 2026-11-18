@@ -253,6 +253,10 @@ async function handleRouteGuard(
     return loginRedirect
   }
 
+  // File preview is a public resource page, independent of business navigation.
+  // Cache URL/expiry validation and the resource server still govern file access.
+  if (to.name === 'FilePreview') return true
+
   // The consent page validates the Auth session and account access itself.
   // It must also work while business menus or hosted modules are unavailable.
   if (

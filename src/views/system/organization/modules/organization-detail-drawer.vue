@@ -95,7 +95,10 @@
         </div>
       </section>
 
-      <ElTabs v-model="activeTab" class="organization-detail__tabs">
+      <ElTabs
+        v-model="activeTab"
+        class="organization-detail__tabs art-card-xs art-overlay-tab-card"
+      >
         <ElTabPane name="members">
           <template #label>
             <span class="organization-detail__tab-label">

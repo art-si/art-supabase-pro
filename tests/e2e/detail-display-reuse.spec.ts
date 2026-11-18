@@ -115,12 +115,16 @@ for (const mode of ['profit', 'collection'] as const) {
               }
         let attempt = 0
         const verifyRetry = populated && !appearance.dark && !appearance.shadow
+        const verifyReopen = mode === 'profit' && !appearance.dark && !appearance.shadow
+        const releaseOldProfit = Promise.withResolvers<void>()
         await page.route(
           `**/functions/v1/${mode === 'profit' ? 'ai-waybill-profit-analyst' : 'ai-receivables-collection-advisor'}`,
-          (route) => {
-            attempt += 1
-            if (verifyRetry && attempt === 1)
+          async (route) => {
+            const request = ++attempt
+            if (verifyRetry && request === 1)
               return route.fulfill({ status: 503, json: { message: '测试分析暂时不可用' } })
+            const oldProfit = verifyReopen && request === 2
+            if (oldProfit) await releaseOldProfit.promise
             return route.fulfill({
               json: {
                 runId: 'display-test',
@@ -131,7 +135,7 @@ for (const mode of ['profit', 'collection'] as const) {
                   riskScore: 0,
                   confidence: 1,
                   recommendation: 'routine_monitoring',
-                  summary: '测试研判结论',
+                  summary: oldProfit ? '过时的旧诊断结论' : '测试研判结论',
                   signals: populated
                     ? [
                         {
@@ -179,7 +183,12 @@ for (const mode of ['profit', 'collection'] as const) {
                     : [],
                   recommendedActions: populated ? ['核对测试客户对账差异，再跟进到账计划。'] : [],
                   limitations: populated ? ['仅依据测试账期内的应收记录进行研判。'] : [],
-                  metrics
+                  metrics: verifyReopen
+                    ? {
+                        ...metrics,
+                        receivableAmount: oldProfit ? 98765.43 : request === 3 ? 3456.78 : 0
+                      }
+                    : metrics
                 }
               }
             })
@@ -190,12 +199,11 @@ for (const mode of ['profit', 'collection'] as const) {
           document.documentElement.classList.toggle('dark', dark)
           document.documentElement.dataset.boxMode = shadow ? 'shadow-mode' : 'border-mode'
         }, appearance)
-        await page
-          .getByRole('button', {
-            name: mode === 'profit' ? '打开利润日期验收' : '打开回款日期验收',
-            exact: true
-          })
-          .click()
+        const openDrawer = page.getByRole('button', {
+          name: mode === 'profit' ? '打开利润日期验收' : '打开回款日期验收',
+          exact: true
+        })
+        await openDrawer.click()
         const drawer = page.getByRole('dialog')
         if (verifyRetry) {
           await expect(drawer.getByText('回款风险分析失败', { exact: true })).toBeVisible()
@@ -203,6 +211,29 @@ for (const mode of ['profit', 'collection'] as const) {
           await drawer.getByRole('button', { name: '重新加载', exact: true }).click()
         }
         await expect(drawer.getByText('测试研判结论', { exact: true })).toBeVisible()
+        if (verifyReopen) {
+          try {
+            await drawer.getByRole('button', { name: '重新诊断', exact: true }).click()
+            await expect.poll(() => attempt).toBe(2)
+            await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+            await expect(drawer).toBeHidden()
+            await openDrawer.click()
+            await expect(drawer.getByText(/3,456\.78/)).toBeVisible()
+            const lateResponse = page.waitForResponse('**/functions/v1/ai-waybill-profit-analyst')
+            releaseOldProfit.resolve()
+            await (await lateResponse).finished()
+            await page.evaluate(
+              () =>
+                new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+                )
+            )
+            await expect(drawer.getByText(/3,456\.78/)).toBeVisible()
+            await expect(drawer.getByText('过时的旧诊断结论', { exact: true })).toHaveCount(0)
+          } finally {
+            releaseOldProfit.resolve()
+          }
+        }
         await page.screenshot({ path: info.outputPath('analysis-initial.png') })
         if (mode === 'collection') {
           if (populated) {

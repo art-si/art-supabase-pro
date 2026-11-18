@@ -295,6 +295,145 @@ test.beforeEach(async ({ page }) => {
   )
 })
 
+for (const scenario of [
+  {
+    kind: 'library',
+    name: 'SmisAllDocuments',
+    title: '全部文档',
+    path: 'all-documents',
+    workspace: '.document-center-page',
+    navigator: '.document-center-page__category-panel',
+    endpoint: 'smis_list_documents_secure',
+    context: ['p_scope', 'all']
+  },
+  {
+    kind: 'register',
+    name: 'SmisRequiredKnowledge',
+    title: '应知应会',
+    path: 'required-knowledge',
+    workspace: '.document-register-workspace',
+    navigator: '.document-category-navigator',
+    endpoint: 'smis_list_document_registers_secure',
+    context: ['p_kind', 'required_knowledge']
+  }
+]) {
+  test(`文档中心分类树键盘：${scenario.title}可查停用目录的历史记录`, async ({ page }, info) => {
+    test.setTimeout(120_000)
+    const library = scenario.kind === 'library'
+    if (!library) await page.setViewportSize({ width: 390, height: 844 })
+    await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: false }))
+    const viewMenu: MockMenu = {
+      ...pageMenu,
+      name: scenario.name,
+      path: scenario.path,
+      component: `/smis/safety-production/document-center/${scenario.path}`,
+      meta: { ...pageMenu.meta, title: scenario.title },
+      children: undefined
+    }
+    await mockApplicationMenus(page, {
+      smis: [
+        ...flatMenus.filter((menu) => menu.type === 'folder'),
+        viewMenu,
+        { ...buttons[0], name: `${scenario.name}:View` }
+      ]
+    })
+    const parentCategory = categories[0]
+    const archivedCategory = { ...categories[1], categoryName: '历史人事制度', status: 'disabled' }
+    await page.route('**/rest/v1/rpc/smis_list_document_categories_secure', (route) =>
+      route.fulfill({ headers: corsHeaders, json: [parentCategory, archivedCategory] })
+    )
+    const currentTitle = '现行工作制度'
+    const archivedTitle = '停用目录历史制度'
+    const availableRecords = [parentCategory, archivedCategory].map((category, index) => {
+      const categoryPath = index
+        ? `${parentCategory.categoryName} / ${category.categoryName}`
+        : category.categoryName
+      const title = index ? archivedTitle : currentTitle
+      const base = {
+        id: documents[index].id,
+        categoryId: category.id,
+        categoryName: category.categoryName,
+        categoryPath,
+        status: 'published'
+      }
+      return library
+        ? { ...documents[index], ...base, title }
+        : {
+            ...base,
+            documentKind: 'required_knowledge',
+            fileName: title,
+            documentCode: `TEST-DOC-${index + 1}`,
+            effectiveDate: '2026-08-01',
+            isSpecialEquipment: false,
+            evaluationCount: 0
+          }
+    })
+    const requests: Array<[string | null, string]> = []
+    await page.route(`**/rest/v1/rpc/${scenario.endpoint}`, (route) => {
+      const payload = route.request().postDataJSON()
+      requests.push([payload.p_category_id, payload[scenario.context[0]]])
+      const records =
+        payload.p_category_id === archivedCategory.id ? availableRecords.slice(1) : availableRecords
+      return route.fulfill({ headers: corsHeaders, json: { records, total: records.length } })
+    })
+    const writes: string[] = []
+    await page.route(/\/rpc\/smis_(save|delete|toggle|share)_documents?/, (route) => {
+      writes.push(route.request().url())
+      return route.abort()
+    })
+
+    await page.goto(`#/smis/safety-production/document-center/${scenario.path}`, {
+      waitUntil: 'domcontentloaded'
+    })
+    const workspace = page.locator(scenario.workspace)
+    const navigator = workspace.locator(scenario.navigator)
+    await expect(workspace.getByRole('heading', { name: scenario.title, exact: true })).toBeVisible(
+      { timeout: 60_000 }
+    )
+    await expect(workspace.getByText(currentTitle, { exact: true })).toBeVisible()
+    if (!library) {
+      const query = workspace.locator('.art-search-bar')
+      await expect(query.getByRole('textbox', { name: '文件名称', exact: true })).toBeEditable()
+      await expect(query.getByRole('textbox', { name: '文件编号', exact: true })).toBeEditable()
+      await expect(query.locator('.art-form__actions-column')).toHaveCount(0)
+      await query.screenshot({ path: info.outputPath('query-without-actions-390.png') })
+    }
+    await expect.poll(() => requests.at(-1)).toEqual([null, scenario.context[1]])
+    const node = (name: string) =>
+      navigator.getByText(name, { exact: true }).locator('xpath=ancestor::*[@role="treeitem"][1]')
+    const parent = node(parentCategory.categoryName)
+    const child = node(archivedCategory.categoryName)
+    await expect(child).toBeVisible()
+    if (!library) await expect(child).toContainText('已停用')
+
+    const initialRequests = requests.length
+    await parent.press('ArrowLeft')
+    await expect(parent).toHaveAttribute('aria-expanded', 'false')
+    await parent.press('ArrowRight')
+    await expect(child).toBeVisible()
+    await parent.press('ArrowRight')
+    await expect(child).toBeFocused()
+    await child.press('ArrowLeft')
+    await expect(parent).toBeFocused()
+    expect(requests).toHaveLength(initialRequests)
+
+    await child.press('Enter')
+    await expect.poll(() => requests.at(-1)).toEqual([archivedCategory.id, scenario.context[1]])
+    await expect(workspace.getByText(archivedTitle, { exact: true })).toBeVisible()
+    await expect(workspace.getByText(currentTitle, { exact: true })).toHaveCount(0)
+    await expect(child).toBeFocused()
+    await parent.press('Space')
+    await expect.poll(() => requests.at(-1)).toEqual([parentCategory.id, scenario.context[1]])
+    await expect(workspace.getByText(currentTitle, { exact: true })).toBeVisible()
+    await expect(parent).toBeFocused()
+    await expect(workspace.getByRole('button', { name: '新增文档分类', exact: true })).toHaveCount(
+      0
+    )
+    await expect(workspace.getByRole('button', { name: '新增', exact: true })).toHaveCount(0)
+    expect(writes).toEqual([])
+  })
+}
+
 for (const incomplete of [false, true]) {
   test(`文档导出${incomplete ? '拒绝缺失后续页并恢复按钮' : '完整读取超过一万条记录'}`, async ({
     page

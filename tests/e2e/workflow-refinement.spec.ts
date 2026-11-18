@@ -1,4 +1,5 @@
 import { expect, test, type Route } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(150_000)
@@ -124,6 +125,70 @@ test('慢摘要不阻断详情与进度，旧实例响应不会覆盖新实例',
   await drawer.getByRole('tab', { name: '业务与概览', exact: true }).click()
   await expect(drawer.getByText('NEW-B', { exact: true })).toBeVisible()
   expect(errors).toEqual([])
+})
+
+test('待办审批键盘提交失败后恢复确认按钮焦点并可重试', async ({ page }, info) => {
+  await prepareIsolatedSession(page, { tenantId: 'tenant-a', platformSuper: false })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/rest/v1/rpc/get_workflow_business_snapshot', (route) =>
+    route.fulfill({
+      json: {
+        instanceId: 'instance-a',
+        businessId: 'business-a',
+        businessType: 'scm_sales_contract',
+        title: '待办验收合同',
+        fields: [{ label: '合同编号', value: 'APPROVE-TEST-001' }],
+        metrics: [],
+        warnings: [],
+        attachments: []
+      }
+    })
+  )
+  const { promise: canFail, resolve: releaseFailure } = Promise.withResolvers<void>()
+  const attempts: unknown[] = []
+  const comment = '合同资料已核对'
+  await page.route('**/rest/v1/rpc/act_workflow_task', async (route) => {
+    attempts.push(route.request().postDataJSON())
+    if (attempts.length === 1) {
+      await canFail
+      return route.fulfill({
+        status: 409,
+        json: { code: 'P0001', message: '审批暂未提交，请重试' }
+      })
+    }
+    return route.fulfill({ json: 'instance-a' })
+  })
+
+  await page.goto('/tests/e2e/fixtures/workflow-refinement.html?mode=action')
+  const open = page.getByRole('button', { name: '打开待办审批', exact: true })
+  await open.press('Enter')
+  const dialog = page.getByRole('dialog', { name: '通过审批', exact: true })
+  await expect(dialog.getByText('APPROVE-TEST-001', { exact: true })).toBeVisible()
+  const input = dialog.getByRole('textbox', { name: '审批意见（选填）', exact: true })
+  await input.fill(comment)
+  const confirm = dialog.getByRole('button', { name: '确认通过', exact: true })
+  try {
+    await confirm.focus()
+    await expect(confirm).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => attempts.length).toBe(1)
+    await expect(confirm).toBeDisabled()
+  } finally {
+    releaseFailure()
+  }
+  await expect(page.getByText('审批暂未提交，请重试', { exact: true }).first()).toBeVisible()
+  await expect(confirm).toBeEnabled()
+  await expect(confirm).toBeFocused()
+  await expect(input).toHaveValue(comment)
+  await dialog.screenshot({ path: info.outputPath('workflow-approval-retry-focus-390.png') })
+
+  await page.keyboard.press('Enter')
+  await expect(dialog).toBeHidden()
+  await expect(open).toBeFocused()
+  expect(attempts).toHaveLength(2)
+  for (const payload of attempts) {
+    expect(payload).toMatchObject({ p_task_id: 'task-a', p_action: 'approve', p_comment: comment })
+  }
 })
 
 test('监控快捷范围在专注中可用，死信直达队列且故障状态可重试', async ({ page }) => {

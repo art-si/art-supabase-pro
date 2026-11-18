@@ -1,7 +1,7 @@
 <template>
   <ArtDialog ref="dialogRef" size="lg" @close="invalidateJsonEditor">
     <div class="system-param-dialog">
-      <ArtSectionCard class="system-param-dialog__form" preserve-content-structure>
+      <ArtSectionCard class="system-param-dialog__form p-0!" preserve-content-structure>
         <template #header>
           <div class="system-param-dialog__section-head">
             <div>
@@ -671,7 +671,7 @@
       gap: 12px;
       align-items: flex-start;
       justify-content: space-between;
-      padding: 16px 16px 12px;
+      padding: var(--art-space-4) var(--art-space-4) var(--art-space-3);
       border-bottom: 1px solid var(--el-border-color-lighter);
 
       :deep(.art-section-title) {
@@ -688,7 +688,7 @@
 
     &__form-body {
       :deep(.art-form) {
-        padding: 12px 16px 4px !important;
+        padding: var(--art-space-3) var(--art-space-4) var(--art-space-1) !important;
       }
 
       :deep(.el-form-item) {

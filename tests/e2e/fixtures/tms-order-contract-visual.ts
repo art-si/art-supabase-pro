@@ -1,9 +1,13 @@
 import { createApp, h } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import OrderQueryDetail from '@tms/views/order-query/detail/index.vue'
 import '@styles/core/tailwind.css'
@@ -55,13 +59,23 @@ const router = createRouter({
 })
 const app = createApp({
   render: () =>
-    h(
-      'main',
-      { class: 'art-page-view min-h-screen p-4', style: { background: 'var(--el-bg-color-page)' } },
-      [h(RouterView)]
+    h(ElConfigProvider, { locale: zhCn }, () =>
+      h(
+        'main',
+        {
+          class: 'art-page-view min-h-screen p-4',
+          style: { background: 'var(--el-bg-color-page)' }
+        },
+        [h(RouterView)]
+      )
     )
 })
 app.use(store)
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 app.use(router)
 app.use(language)
 setupGlobDirectives(app)

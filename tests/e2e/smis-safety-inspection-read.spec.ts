@@ -2,7 +2,13 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { assertAppearance, prepareAppearance } from './support/appearance'
+import { expectInputTextUnclipped } from './support/input-text-width'
 import { prepareIsolatedSession } from './support/isolated-session'
+import {
+  expectQueryDateRangeReadable,
+  installQueryDateClock,
+  selectQueryDateRange
+} from './support/query-date-range'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
@@ -109,14 +115,13 @@ for (const scenario of [
     await prepareAppearance(page, scenario.appearance)
     await mockOptions(page)
     let calls = 0
-    let notifyFirst: (() => void) | undefined
-    let releaseFirst: (() => void) | undefined
-    const firstRequested = new Promise<void>((resolve) => (notifyFirst = resolve))
+    const firstRequested = Promise.withResolvers<void>()
+    const releaseFirst = Promise.withResolvers<void>()
     await page.route('**/rest/v1/rpc/smis_list_safety_inspections_secure', async (route) => {
       calls++
       if (calls === 1) {
-        notifyFirst?.()
-        await new Promise<void>((resolve) => (releaseFirst = resolve))
+        firstRequested.resolve()
+        await releaseFirst.promise
         await route.fulfill({
           status: 500,
           json: { code: 'PGRST500', message: 'select * from private_inspections' }
@@ -127,9 +132,9 @@ for (const scenario of [
     })
     await page.goto(fixture, { waitUntil: 'domcontentloaded' })
     await assertAppearance(page, scenario.appearance)
-    await firstRequested
+    await firstRequested.promise
     await expectOverview(page, ['—', '—', '—', '—'])
-    releaseFirst?.()
+    releaseFirst.resolve()
     await expect(page.getByText('数据加载失败')).toBeVisible()
     await expectOverview(page, ['—', '—', '—', '—'])
     await expect(page.locator('.el-message--error')).toHaveCount(0)
@@ -150,6 +155,10 @@ for (const scenario of [
     await expect(page.locator('.art-search-bar')).toBeVisible()
     await expect(page.locator('.el-table')).toBeVisible()
     await expect(page.locator('.el-pagination')).toBeVisible()
+    const record = page.getByText('安全检查 1', { exact: true })
+    await record.scrollIntoViewIfNeeded()
+    await expect(record).toBeInViewport()
+    await capture(page, `safety-focus-${scenario.name}.png`)
     await page.getByRole('button', { name: '退出专注模式' }).click()
     await expect(page.locator('.safety-inspection-page .business-workspace-header')).toBeVisible()
     await focus.locator('..').click()
@@ -163,6 +172,145 @@ for (const scenario of [
     await capture(page, `safety-recovered-${scenario.name}.png`)
   })
 }
+
+test('安全检查在分栏和手机窄屏显示完整起止日期', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-1440')
+  await page.setViewportSize({ width: 1280, height: 840 })
+  await installQueryDateClock(page)
+  await prepareIsolatedSession(page)
+  await prepareAppearance(page, { theme: 'dark', boxBorderMode: false })
+  await mockOptions(page)
+  await page.route('**/rest/v1/rpc/smis_list_safety_inspections_secure', (route) =>
+    fulfillList(route, [inspection(1)], 25)
+  )
+  await page.goto(fixture, { waitUntil: 'domcontentloaded' })
+  const navigator = page.locator('.safety-inspection-navigator')
+  const search = page.locator('.art-search-bar')
+  const range = search.locator('[data-art-form-item-key="inspectionRange"]')
+  await expect(navigator).toBeVisible()
+  await expect(search.getByRole('button', { name: '查询', exact: true })).toBeEnabled()
+  await selectQueryDateRange(range)
+  await expectQueryDateRangeReadable(range)
+
+  const focus = page.getByRole('switch', { name: '进入专注模式' })
+  await focus.locator('..').click()
+  await expect(page.locator('.safety-inspection-page .business-workspace-header')).toBeHidden()
+  await expect(navigator).toBeVisible()
+  await expectQueryDateRangeReadable(range)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.safety-inspection-page .business-workspace-header')).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectQueryDateRangeReadable(range)
+  await expect(search.getByRole('button', { name: '查询', exact: true })).toBeVisible()
+  await expect(page.locator('.el-pagination')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+  await search.screenshot({ path: testInfo.outputPath('safety-inspection-date-range-390.png') })
+})
+
+test('安全检查查询分栏收窄后仍能读完并提交检查名称', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-1440')
+  await page.setViewportSize({ width: 1200, height: 900 })
+  await prepareIsolatedSession(page)
+  await prepareAppearance(page, { theme: 'dark', boxBorderMode: false })
+  await mockOptions(page)
+  const requests: unknown[] = []
+  await page.route('**/rest/v1/rpc/smis_list_safety_inspections_secure', (route) => {
+    requests.push(requestParams(route).p_inspection_name)
+    return fulfillList(route, [inspection(1)], 25)
+  })
+  await page.goto(fixture, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText('安全检查 1', { exact: true })).toBeVisible()
+
+  const search = page.locator('.art-search-bar')
+  const name = search.getByRole('textbox', { name: '检查名称' })
+  const grip = page.locator('.safety-inspection-page .el-splitter-bar__dragger')
+  await expect(grip).toBeVisible()
+  const initialWidth = await search.evaluate((element) => element.clientWidth)
+  const position = await grip.boundingBox()
+  if (!position) throw new Error('未找到查询工作区的分栏拖柄')
+  const x = position.x + position.width / 2
+  const y = position.y + position.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 180, y, { steps: 8 })
+  await page.mouse.up()
+  await expect
+    .poll(() => search.evaluate((element) => element.clientWidth))
+    .toBeLessThan(initialWidth - 40)
+
+  const keyword = '窄栏测试检查'
+  await name.fill(keyword)
+  await expect(name).toHaveValue(keyword)
+  await expectInputTextUnclipped(name)
+  await expect(search.locator('[data-art-form-item-key="inspectionName"] label')).toHaveCSS(
+    'justify-content',
+    'flex-end'
+  )
+  const visibleKeys = await search
+    .locator('[data-art-form-item-key]:visible')
+    .evaluateAll((fields) => fields.map((field) => field.getAttribute('data-art-form-item-key')))
+  expect(visibleKeys).toEqual([
+    'inspectionName',
+    'inspectionRange',
+    'inspectedOrganizationId',
+    'inspectorKeyword'
+  ])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1201)
+  await search.screenshot({ path: testInfo.outputPath('safety-inspection-query-resized-1200.png') })
+  await search.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => requests.at(-1)).toBe(keyword)
+  await search.getByRole('button', { name: '重置', exact: true }).click()
+  await expect(name).toHaveValue('')
+})
+
+test('安全检查组织树使用键盘导航和确认查询，不调用写接口', async ({ page }) => {
+  await prepareIsolatedSession(page)
+  const options = optionData()
+  const parent = options.organizations[0]
+  const child = {
+    ...parent,
+    id: 'org-a-child',
+    parentId: parent.id,
+    organizationName: '租户 A 子部门'
+  }
+  await page.route('**/rest/v1/rpc/smis_list_safety_inspection_options_secure', (route) =>
+    route.fulfill({ json: { ...options, organizations: [parent, child] } })
+  )
+  const requests: unknown[] = []
+  const writeRequests: string[] = []
+  await page.route(/\/rpc\/smis_(save|copy|delete)_safety_inspection/, (route) => {
+    writeRequests.push(route.request().url())
+    return route.abort()
+  })
+  await page.route('**/rest/v1/rpc/smis_list_safety_inspections_secure', (route) => {
+    requests.push(requestParams(route).p_inspected_organization_id)
+    return fulfillList(route, [inspection(1)])
+  })
+  await page.goto(fixture, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText('安全检查 1', { exact: true })).toBeVisible()
+  const navigator = page.locator('.safety-inspection-navigator')
+  await navigator.getByRole('tab', { name: '组织部门' }).click()
+  const organization = (name: string) =>
+    navigator.getByText(name, { exact: true }).locator('xpath=ancestor::*[@role="treeitem"][1]')
+  const parentNode = organization(parent.organizationName)
+  const childNode = organization(child.organizationName)
+  const initialRequests = requests.length
+  await parentNode.press('ArrowLeft')
+  await expect(parentNode).toHaveAttribute('aria-expanded', 'false')
+  await parentNode.press('ArrowRight')
+  await expect(childNode).toBeVisible()
+  await parentNode.press('ArrowRight')
+  await expect(childNode).toBeFocused()
+  await childNode.press('ArrowLeft')
+  await expect(parentNode).toBeFocused()
+  expect(requests).toHaveLength(initialRequests)
+  await childNode.press('Enter')
+  await expect.poll(() => requests.at(-1)).toBe(child.id)
+  await parentNode.press('Space')
+  await expect.poll(() => requests.at(-1)).toBe(parent.id)
+  expect(writeRequests).toEqual([])
+})
 
 test('安全检查分页、查询与类型导航采用服务端四项概览', async ({ page }) => {
   await prepareIsolatedSession(page)
@@ -416,29 +564,29 @@ test('导出失败单次提示无下载，恢复下载不污染概览', async ({
 
 test('租户 A 迟到列表和导航不能覆盖 B 当前范围', async ({ page }) => {
   await prepareIsolatedSession(page)
-  let notifyListA: (() => void) | undefined
-  let releaseListA: (() => void) | undefined
-  let notifyOptionsA: (() => void) | undefined
-  let releaseOptionsA: (() => void) | undefined
-  let finishListA: (() => void) | undefined
-  let finishOptionsA: (() => void) | undefined
-  const listARequested = new Promise<void>((resolve) => (notifyListA = resolve))
-  const optionsARequested = new Promise<void>((resolve) => (notifyOptionsA = resolve))
-  const listAFinished = new Promise<void>((resolve) => (finishListA = resolve))
-  const optionsAFinished = new Promise<void>((resolve) => (finishOptionsA = resolve))
+  const listA = {
+    requested: Promise.withResolvers<void>(),
+    release: Promise.withResolvers<void>(),
+    finished: Promise.withResolvers<void>()
+  }
+  const optionsA = {
+    requested: Promise.withResolvers<void>(),
+    release: Promise.withResolvers<void>(),
+    finished: Promise.withResolvers<void>()
+  }
   let listB = 0
   let optionsB = 0
   await page.route('**/rest/v1/rpc/smis_list_safety_inspections_secure', async (route) => {
     if (route.request().headers()['x-art-tenant-scope'] === tenantA) {
-      notifyListA?.()
-      await new Promise<void>((resolve) => (releaseListA = resolve))
+      listA.requested.resolve()
+      await listA.release.promise
       await fulfillList(route, [inspection(1)], 91, {
         total: 91,
         this_month: 51,
         organization_count: 31,
         inspector_count: 21
       }).catch(() => undefined)
-      finishListA?.()
+      listA.finished.resolve()
       return
     }
     listB++
@@ -446,23 +594,23 @@ test('租户 A 迟到列表和导航不能覆盖 B 当前范围', async ({ page 
   })
   await page.route('**/rest/v1/rpc/smis_list_safety_inspection_options_secure', async (route) => {
     if (route.request().headers()['x-art-tenant-scope'] === tenantA) {
-      notifyOptionsA?.()
-      await new Promise<void>((resolve) => (releaseOptionsA = resolve))
+      optionsA.requested.resolve()
+      await optionsA.release.promise
       await route.fulfill({ json: optionData(tenantA) }).catch(() => undefined)
-      finishOptionsA?.()
+      optionsA.finished.resolve()
       return
     }
     optionsB++
     await route.fulfill({ json: optionData(tenantB) })
   })
   await page.goto(fixture, { waitUntil: 'domcontentloaded' })
-  await Promise.all([listARequested, optionsARequested])
+  await Promise.all([listA.requested.promise, optionsA.requested.promise])
   await page.getByRole('button', { name: '切换租户 B' }).click()
   await expect(page.getByText('安全检查 2', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '专项排查' })).toBeVisible()
-  releaseListA?.()
-  releaseOptionsA?.()
-  await Promise.all([listAFinished, optionsAFinished])
+  listA.release.resolve()
+  optionsA.release.resolve()
+  await Promise.all([listA.finished.promise, optionsA.finished.promise])
   await expect.poll(() => [listB, optionsB]).toEqual([1, 1])
   await expect(page.getByText('安全检查 1', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '日常排查' })).toHaveCount(0)

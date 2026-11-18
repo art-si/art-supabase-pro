@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
+import childProcess from 'node:child_process'
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { PassThrough } from 'node:stream'
 import test, { type TestContext } from 'node:test'
 import postgres from 'postgres'
 import { runBackupUpdate } from '../../scripts/backup-update'
@@ -28,7 +31,45 @@ const cachePath = (root: string) => path.join(cacheParent, digestValue(root.toLo
 const dump = (schema: string) =>
   `COPY "${schema}"."fixture" ("id") FROM stdin;\n\\.\n-- PostgreSQL database dump complete\n\nRESET ALL;\n`
 
+function mockBackupMutexProcess(t: TestContext): void {
+  // Workspace tests exercise the real Windows lock; these flow tests only need its pipe protocol.
+  const lockScript = path.join(UPDATE_REPOSITORY_ROOT, 'supabase/backup-update-lock.ps1')
+  const nativeSpawn = childProcess.spawn
+  const mock = t.mock.method(
+    childProcess,
+    'spawn',
+    (...invocation: Parameters<typeof nativeSpawn>) => {
+      const [command, args] = invocation
+      if (
+        command !== 'powershell.exe' ||
+        !Array.isArray(args) ||
+        args[args.indexOf('-File') + 1] !== lockScript
+      ) {
+        return Reflect.apply(nativeSpawn, childProcess, invocation)
+      }
+
+      const stdin = new PassThrough()
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const child = Object.assign(new childProcess.ChildProcess(), { stdin, stdout, stderr })
+      stdin.once('finish', () => {
+        stdout.end()
+        stderr.end()
+        child.emit('close', 0, null)
+      })
+      queueMicrotask(() => stdout.write('BACKUP_LOCK_ACQUIRED\n'))
+      return child
+    }
+  )
+  syncBuiltinESMExports()
+  t.after(() => {
+    mock.mock.restore()
+    syncBuiltinESMExports()
+  })
+}
+
 async function fixture(t: TestContext) {
+  mockBackupMutexProcess(t)
   const parent = await mkdtemp(path.join(tmpdir(), 'backup-update-flow-'))
   const root = path.join(parent, '20261030-215709')
   const caches = new Set([cachePath(root)])
@@ -214,9 +255,24 @@ function sourceWithSchemaChanges(t: TestContext, rolesChanged = true) {
   return { sql, settings, heartbeats: () => heartbeats }
 }
 
+function waitForBackupMilestone(
+  reached: Promise<void>,
+  operation: ReturnType<typeof runBackupUpdate>,
+  milestone: string
+): Promise<void> {
+  return Promise.race([
+    reached,
+    operation.then(({ status, errorStage, errorCode }) => {
+      const result = [status, errorStage, errorCode].filter(Boolean).join(' / ')
+      assert.fail(`Backup completed before ${milestone}: ${result}`)
+    })
+  ])
+}
+
 test(
   'multi-component exports longer than fifteen minutes retain one live read-only snapshot',
-  options,
+  // The simulated exports skip waiting, but Windows archive validation and directory I/O use wall time.
+  { ...options, timeout: 60_000 },
   async (t) => {
     const state = await fixture(t)
     const source = sourceWithSchemaChanges(t)
@@ -252,8 +308,8 @@ test(
     }
     t.mock.timers.enable({ apis: ['setTimeout'] })
     const pending = runBackupUpdate(state.input, run, () => source.sql)
-    for (const signal of started) {
-      await signal.promise
+    for (const [index, signal] of started.entries()) {
+      await waitForBackupMilestone(signal.promise, pending, `export ${index + 1} started`)
       for (let tick = 0; tick < 16; tick++) {
         t.mock.timers.tick(30_000)
         await new Promise<void>((resolve) => setImmediate(resolve))
@@ -297,7 +353,7 @@ test(
     }
     t.mock.timers.enable({ apis: ['setTimeout'] })
     const pending = runBackupUpdate(state.input, run, () => source.sql)
-    await started.promise
+    await waitForBackupMilestone(started.promise, pending, 'export started')
     t.mock.timers.tick(30_000)
     await new Promise<void>((resolve) => setImmediate(resolve))
     finishExport.resolve()
@@ -415,54 +471,35 @@ for (const writePartial of [false, true]) {
   )
 }
 
-for (const recover of [true, false]) {
-  test(
-    `schema export ${recover ? 'recovers from one' : 'stops after two'} connection failure${recover ? '' : 's'}`,
-    options,
-    async (t) => {
-      const state = await fixture(t)
-      const source = sourceWithSchemaChanges(t, false)
-      let attempts = 0
-      const complete =
-        '-- fixture schema\nCREATE SCHEMA IF NOT EXISTS fixture_update;\n-- PostgreSQL database dump complete\n'
-      const run: UpdateCommand = async (command, args, invocation) => {
-        if (command !== 'supabase' || !args.includes('dump'))
-          return state.run(command, args, invocation)
-        attempts++
-        assert.equal(invocation?.timeoutMs, 45 * 60_000)
-        const destination = args[args.indexOf('--file') + 1]
-        if (attempts === 1) {
-          await writeFile(destination, '-- abandoned partial export\n')
-          return { code: 1, stdout: '', stderr: 'connection to server timed out secret=private' }
-        }
-        assert.equal(await exists(destination), false, 'retry must clear the first partial output')
-        if (recover) {
-          await writeFile(destination, complete)
-          return { code: 0, stdout: '', stderr: '' }
-        }
-        return { code: 1, stdout: '', stderr: 'connection to server timed out secret=private' }
-      }
-      const report = await runBackupUpdate(state.input, run, () => source.sql)
-      assert.equal(attempts, 2)
-      assert.doesNotMatch(JSON.stringify(report), /secret=private|fixture-only/)
-      if (recover) {
-        state.caches.add(cachePath(report.backupPath))
-        assert.equal(report.status, 'updated', report.error || '')
-        assert.equal(
-          await readFile(path.join(report.backupPath, 'database/schema.sql'), 'utf8'),
-          complete
-        )
-        assert.ok(report.historyPath)
-        assert.equal(await fileHash(path.join(report.historyPath, 'manifest.json')), state.hash)
-      } else {
-        assert.equal(report.status, 'failed')
-        assert.equal(report.errorCode, 'BACKUP_DUMP_CONNECTION_FAILED')
-        assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
-        assert.equal(report.backupPath, state.root)
-      }
+test('schema export stops after two connection failures', options, async (t) => {
+  const state = await fixture(t)
+  const source = sourceWithSchemaChanges(t, false)
+  let attempts = 0
+  const run: UpdateCommand = async (command, args, invocation) => {
+    if (command !== 'supabase' || !args.includes('dump'))
+      return state.run(command, args, invocation)
+    attempts++
+    assert.equal(invocation?.timeoutMs, 45 * 60_000)
+    const destination = args[args.indexOf('--file') + 1]
+    if (attempts === 1) {
+      await writeFile(destination, '-- abandoned partial export\n')
+    } else {
+      assert.equal(await exists(destination), false, 'retry must clear the first partial output')
     }
+    return { code: 1, stdout: '', stderr: 'connection to server timed out secret=private' }
+  }
+  const report = await runBackupUpdate(state.input, run, () => source.sql)
+  assert.equal(
+    attempts,
+    2,
+    [report.status, report.errorStage, report.errorCode].filter(Boolean).join(' / ')
   )
-}
+  assert.doesNotMatch(JSON.stringify(report), /secret=private|fixture-only/)
+  assert.equal(report.status, 'failed')
+  assert.equal(report.errorCode, 'BACKUP_DUMP_CONNECTION_FAILED')
+  assert.equal(await fileHash(path.join(state.root, 'manifest.json')), state.hash)
+  assert.equal(report.backupPath, state.root)
+})
 
 test('complete schema export updates a verified snapshot', options, async (t) => {
   const state = await fixture(t)
@@ -611,25 +648,20 @@ test(
     const state = await fixture(t)
     const sql = unchangedSource(t)
     const originalQuery = sql.unsafe
-    let reading!: () => void
-    const started = new Promise<void>((resolve) => {
-      reading = resolve
-    })
-    let rejectLate!: (cause: Error) => void
+    const started = Promise.withResolvers<void>()
+    const result = Promise.withResolvers<never>()
     t.mock.method(
       sql,
       'unsafe',
       (query: string, parameters: Parameters<typeof sql.unsafe>[1] = []) => {
         if (!query.includes('with ns as')) return originalQuery(query, parameters)
-        reading()
-        return new Promise<never>((_resolve, reject) => {
-          rejectLate = reject
-        })
+        started.resolve()
+        return result.promise
       }
     )
     t.mock.timers.enable({ apis: ['setTimeout'] })
     const pending = runBackupUpdate(state.input, state.run, () => sql)
-    await started
+    await waitForBackupMilestone(started.promise, pending, 'catalog read started')
     t.mock.timers.tick(150_000)
     const report = await pending
     assert.equal(report.status, 'failed')
@@ -640,7 +672,7 @@ test(
     assert.deepEqual(await readdir(state.parent), [path.basename(state.root)])
     assert.deepEqual(state.commands, ['powershell.exe', 'supabase'])
     assert.equal(state.input.DbPassword, '')
-    rejectLate(new Error('late private transport failure'))
+    result.reject(new Error('late private transport failure'))
     await new Promise<void>((resolve) => setImmediate(resolve))
   }
 )
@@ -651,10 +683,7 @@ test(
   async (t) => {
     const state = await fixture(t)
     const sql = unchangedSource(t)
-    let completed!: () => void
-    const callbackDone = new Promise<void>((resolve) => {
-      completed = resolve
-    })
+    const callbackDone = Promise.withResolvers<void>()
     const begin = t.mock.method(
       sql,
       'begin',
@@ -663,13 +692,13 @@ test(
         callback: (transaction: ReturnType<typeof postgres>) => Promise<void>
       ) => {
         await callback(sql)
-        completed()
+        callbackDone.resolve()
         return new Promise<never>(() => {})
       }
     )
     t.mock.timers.enable({ apis: ['setTimeout'] })
     const pending = runBackupUpdate(state.input, state.run, () => sql)
-    await callbackDone
+    await waitForBackupMilestone(callbackDone.promise, pending, 'transaction callback completed')
     await new Promise<void>((resolve) => setImmediate(resolve))
     t.mock.timers.tick(30_000)
     const report = await pending

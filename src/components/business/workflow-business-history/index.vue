@@ -368,6 +368,7 @@
       width: 100%;
       min-width: 0;
       padding-right: 12px;
+      line-height: 1.5;
 
       > span {
         min-width: 54px;
@@ -388,9 +389,8 @@
 
       strong,
       small {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
+        white-space: normal;
       }
 
       strong {
@@ -432,11 +432,10 @@
 
       dd {
         margin: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
         font-size: 12px;
         color: var(--el-text-color-primary);
-        white-space: nowrap;
+        overflow-wrap: anywhere;
+        white-space: normal;
       }
     }
 

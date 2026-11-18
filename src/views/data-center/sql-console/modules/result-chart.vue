@@ -42,7 +42,7 @@
         :closable="false"
         show-icon
       />
-      <ElTabs v-model="view">
+      <ElTabs v-model="view" class="art-card-xs art-overlay-tab-card">
         <ElTabPane label="图表" name="chart">
           <ArtEmptyState
             v-if="dataset.error"

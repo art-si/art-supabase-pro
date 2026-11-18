@@ -94,13 +94,18 @@ useMenuStore(store).setButtonList([
     type: 'button',
     meta: { title: action }
   })),
-  ...['View', 'Add', 'Edit', 'Delete', 'UploadDocument', 'Audit'].map((action) => ({
+  ...['View', 'Add', 'Edit', 'Delete', 'UploadDocument', 'Audit', 'Invite'].map((action) => ({
     name: `TmsDriver:${action}`,
     path: '',
     type: 'button',
     meta: { title: action }
   }))
 ])
+if (kind === 'driver-list') {
+  const pageHost = document.getElementById('tms-cargo-driver-service')
+  pageHost?.classList.add('art-page-view')
+  pageHost?.style.setProperty('--art-full-height', '100dvh')
+}
 const preview = app.mount('#tms-cargo-driver-service') as unknown as {
   handleOpen: (...args: unknown[]) => Promise<void>
 }

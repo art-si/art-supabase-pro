@@ -15,7 +15,9 @@
         v-model.trim="searchVal"
         :readonly="navigationPending"
         :placeholder="$t('search.placeholder')"
+        :aria-label="$t('search.placeholder')"
         @input="search"
+        @keydown="handleSearchInputKeydown"
         ref="searchInput"
         :prefix-icon="Search"
         class="art-global-search__input h-12"
@@ -33,8 +35,13 @@
         max-height="min(370px, calc(100dvh - 240px))"
         ref="searchResultScrollbar"
       >
-        <Transition name="search-state" mode="out-in">
-          <div v-if="searchVal && searchResult.length" key="results" class="search-panel">
+        <Transition name="search-state" mode="out-in" @after-enter="scrollToHighlightedItem">
+          <div
+            v-if="searchVal && searchResult.length"
+            key="results"
+            class="search-panel"
+            data-search-results
+          >
             <div class="search-panel__heading">
               <span>{{ $t('search.resultsTitle') }}</span>
               <span class="search-panel__count">
@@ -69,7 +76,12 @@
             </TransitionGroup>
           </div>
 
-          <div v-else-if="!searchVal && historyResult.length" key="history" class="search-panel">
+          <div
+            v-else-if="!searchVal && historyResult.length"
+            key="history"
+            class="search-panel"
+            data-search-history
+          >
             <div class="search-panel__heading">
               <span>{{ $t('search.historyTitle') }}</span>
               <span class="search-panel__hint">{{ $t('search.historyHint') }}</span>
@@ -104,7 +116,7 @@
                   tone="danger"
                   :disabled="navigationPending"
                   :label="`${$t('search.deleteHistory')}：${formatMenuTitle(item.meta.title)}`"
-                  @click.stop="deleteHistory(index)"
+                  @click.stop="deleteHistory(index, $event)"
                 />
                 <span v-if="isOpening(item)" class="search-item__progress" aria-hidden="true">
                   <ArtSvgIcon icon="ri:refresh-line" class="search-item__spinner" />
@@ -137,7 +149,7 @@
         </Transition>
       </ElScrollbar>
       <span class="sr-only" role="status" aria-live="polite">
-        {{ navigationPending ? `正在打开${navigationTargetTitle}` : '' }}
+        {{ navigationTarget ? `正在打开${navigationTarget.title}` : '' }}
       </span>
 
       <template #footer>
@@ -151,10 +163,12 @@
             <ArtSvgIcon icon="ri:arrow-down-wide-fill" class="keyboard" />
             <span class="mr-3.5 text-xs text-g-700">{{ $t('search.switchKeydown') }}</span>
           </div>
-          <div class="flex-c">
-            <i class="keyboard !w-8 flex-cc"><p class="text-[10px] font-medium">ESC</p></i>
-            <span class="mr-3.5 text-xs text-g-700">{{ $t('search.exitKeydown') }}</span>
-          </div>
+          <ElButton text class="h-8! px-1.5!" @click="showSearchDialog = false">
+            <span class="keyboard !w-8 flex-cc text-[10px] font-medium" aria-hidden="true"
+              >ESC</span
+            >
+            <span class="text-xs">{{ $t('search.exitKeydown') }}</span>
+          </ElButton>
         </div>
       </template>
     </ElDialog>
@@ -171,10 +185,11 @@
   import { handleMenuJump, preloadMenuRoute } from '@/utils/navigation'
   import { router } from '@/router'
   import { isNavigationFailure, NavigationFailureType } from 'vue-router'
-  import { ElMessage, type ScrollbarInstance } from 'element-plus'
+  import { ElMessage, type InputInstance, type ScrollbarInstance } from 'element-plus'
   import { useEventListener, useTimeoutFn } from '@vueuse/core'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import { useWorkspaceInteraction } from '@/hooks/core/useWorkspaceInteraction'
+  import { getFocusedKeyboardButton } from '@/utils/ui/button-focus'
 
   defineOptions({ name: 'ArtGlobalSearch' })
 
@@ -189,19 +204,13 @@
 
   const { searchHistory: historyResult } = storeToRefs(userStore)
 
-  const searchInput = ref<HTMLInputElement | null>(null)
+  const searchInput = ref<InputInstance>()
   const highlightedIndex = ref(0)
   const historyHIndex = ref(0)
   const searchResultScrollbar = ref<ScrollbarInstance>()
   const isKeyboardNavigating = ref(false) // 新增状态：是否正在使用键盘导航
-  const navigationPending = ref(false)
-  const navigationTargetKey = ref<string | null>(null)
-  const navigationTargetTitle = ref('')
-  const resetNavigation = (): void => {
-    navigationPending.value = false
-    navigationTargetKey.value = null
-    navigationTargetTitle.value = ''
-  }
+  const navigationTarget = shallowRef<{ key: string; title: string }>()
+  const navigationPending = computed(() => Boolean(navigationTarget.value))
   const { start: focusInput, stop: stopFocusInput } = useTimeoutFn(
     () => {
       if (showSearchDialog.value) searchInput.value?.focus()
@@ -216,22 +225,21 @@
     100,
     { immediate: false }
   )
-  watch(showSearchDialog, (open) => {
-    if (!open) {
+  watch(
+    showSearchDialog,
+    (open) => {
+      if (open) return
+      navigationTarget.value = undefined
       stopFocusInput()
       stopKeyboardNavigation()
       isKeyboardNavigating.value = false
-    }
-  })
+    },
+    { flush: 'sync' }
+  )
   watch(
     isLocked,
     (locked) => {
-      if (!locked) return
-      showSearchDialog.value = false
-      resetNavigation()
-      stopFocusInput()
-      stopKeyboardNavigation()
-      isKeyboardNavigating.value = false
+      if (locked) showSearchDialog.value = false
     },
     { flush: 'sync' }
   )
@@ -248,42 +256,42 @@
     mittBus.off('openSearchDialog', openSearchDialog)
   })
 
-  // 键盘快捷键处理
-  const handleKeydown = (event: KeyboardEvent) => {
-    if (isLocked.value) return
+  const handleGlobalShortcut = (event: KeyboardEvent) => {
+    if (isLocked.value || event.defaultPrevented || event.isComposing) return
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault()
-      showSearchDialog.value = true
-      focusInput()
+      openSearchDialog()
     }
+  }
 
-    // 当搜索对话框打开时，处理方向键和回车键
-    if (showSearchDialog.value) {
-      if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        highlightPrevious()
-      } else if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        highlightNext()
-      } else if (event.key === 'Enter') {
-        event.preventDefault()
-        selectHighlighted()
-      } else if (event.key === 'Escape') {
-        event.preventDefault()
-        showSearchDialog.value = false
-      }
+  const handleSearchInputKeydown = (event: Event) => {
+    if (!(event instanceof KeyboardEvent)) return
+    if (event.isComposing || searchInput.value?.isComposing) {
+      if (event.key === 'Escape') event.stopPropagation()
+      return
+    }
+    if (event.defaultPrevented || navigationPending.value) return
+    const { items, index } = getActiveSearchList()
+    if (!items.length) return
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      isKeyboardNavigating.value = true
+      const step = event.key === 'ArrowUp' ? -1 : 1
+      index.value = (index.value + step + items.length) % items.length
+      void nextTick(scrollToHighlightedItem)
+      finishKeyboardNavigation()
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      void searchGoPage(items[index.value])
     }
   }
 
   // 搜索逻辑
   const search = (val: string) => {
     highlightedIndex.value = 0
-
-    if (val) {
-      searchResult.value = flattenAndFilterMenuItems(menuList.value, val)
-    } else {
-      searchResult.value = []
-    }
+    const keyword = val.trim()
+    searchResult.value = keyword ? flattenAndFilterMenuItems(menuList.value, keyword) : []
+    searchResultScrollbar.value?.setScrollTop(0)
   }
 
   const flattenAndFilterMenuItems = (items: AppRouteRecord[], val: string): AppRouteRecord[] => {
@@ -312,110 +320,37 @@
     return result
   }
 
-  // 高亮控制并实现滚动条跟随
-  const highlightPrevious = () => {
-    if (navigationPending.value) return
-    isKeyboardNavigating.value = true
-    if (searchVal.value) {
-      if (!searchResult.value.length) return finishKeyboardNavigation()
-      highlightedIndex.value =
-        (highlightedIndex.value - 1 + searchResult.value.length) % searchResult.value.length
-      scrollToHighlightedItem()
-    } else {
-      if (!historyResult.value.length) return finishKeyboardNavigation()
-      historyHIndex.value =
-        (historyHIndex.value - 1 + historyResult.value.length) % historyResult.value.length
-      scrollToHighlightedHistoryItem()
-    }
-    finishKeyboardNavigation()
-  }
-
-  const highlightNext = () => {
-    if (navigationPending.value) return
-    isKeyboardNavigating.value = true
-    if (searchVal.value) {
-      if (!searchResult.value.length) return finishKeyboardNavigation()
-      highlightedIndex.value = (highlightedIndex.value + 1) % searchResult.value.length
-      scrollToHighlightedItem()
-    } else {
-      if (!historyResult.value.length) return finishKeyboardNavigation()
-      historyHIndex.value = (historyHIndex.value + 1) % historyResult.value.length
-      scrollToHighlightedHistoryItem()
-    }
-    finishKeyboardNavigation()
-  }
+  const getActiveSearchList = () =>
+    searchVal.value
+      ? { items: searchResult.value, index: highlightedIndex }
+      : { items: historyResult.value, index: historyHIndex }
 
   const scrollToHighlightedItem = () => {
-    nextTick(() => {
-      if (!searchResultScrollbar.value || !searchResult.value.length) return
-
-      const scrollWrapper = searchResultScrollbar.value.wrapRef
-      if (!scrollWrapper) return
-
-      const highlightedElements = scrollWrapper.querySelectorAll('.search-panel .search-item')
-      if (!highlightedElements[highlightedIndex.value]) return
-
-      const highlightedElement = highlightedElements[highlightedIndex.value] as HTMLElement
-      const itemHeight = highlightedElement.offsetHeight
-      const scrollTop = scrollWrapper.scrollTop
-      const containerHeight = scrollWrapper.clientHeight
-      const itemTop = highlightedElement.offsetTop
-      const itemBottom = itemTop + itemHeight
-
-      if (itemTop < scrollTop) {
-        searchResultScrollbar.value.setScrollTop(itemTop)
-      } else if (itemBottom > scrollTop + containerHeight) {
-        searchResultScrollbar.value.setScrollTop(itemBottom - containerHeight)
-      }
-    })
-  }
-
-  const scrollToHighlightedHistoryItem = () => {
-    nextTick(() => {
-      if (!searchResultScrollbar.value || !historyResult.value.length) return
-
-      const scrollWrapper = searchResultScrollbar.value.wrapRef
-      if (!scrollWrapper) return
-
-      const historyItems = scrollWrapper.querySelectorAll('.search-panel .search-item')
-      if (!historyItems[historyHIndex.value]) return
-
-      const highlightedElement = historyItems[historyHIndex.value] as HTMLElement
-      const itemHeight = highlightedElement.offsetHeight
-      const scrollTop = scrollWrapper.scrollTop
-      const containerHeight = scrollWrapper.clientHeight
-      const itemTop = highlightedElement.offsetTop
-      const itemBottom = itemTop + itemHeight
-
-      if (itemTop < scrollTop) {
-        searchResultScrollbar.value.setScrollTop(itemTop)
-      } else if (itemBottom > scrollTop + containerHeight) {
-        searchResultScrollbar.value.setScrollTop(itemBottom - containerHeight)
-      }
-    })
-  }
-
-  const selectHighlighted = () => {
-    if (searchVal.value && searchResult.value.length) {
-      searchGoPage(searchResult.value[highlightedIndex.value])
-    } else if (!searchVal.value && historyResult.value.length) {
-      searchGoPage(historyResult.value[historyHIndex.value])
-    }
+    const scrollbar = searchResultScrollbar.value
+    const viewport = scrollbar?.wrapRef
+    if (!viewport) return
+    const panel = searchVal.value ? '[data-search-results]' : '[data-search-history]'
+    const item = viewport.querySelector<HTMLElement>(`${panel} .search-item.is-highlighted`)
+    if (!item) return
+    const viewTop = viewport.getBoundingClientRect().top + viewport.clientTop
+    const viewBottom = viewTop + viewport.clientHeight
+    const { top, bottom } = item.getBoundingClientRect()
+    if (top < viewTop) scrollbar.setScrollTop(viewport.scrollTop + top - viewTop)
+    else if (bottom > viewBottom) scrollbar.setScrollTop(viewport.scrollTop + bottom - viewBottom)
   }
 
   const isHighlighted = (index: number) => {
     return highlightedIndex.value === index
   }
 
-  const isOpening = (item: AppRouteRecord) =>
-    navigationPending.value && navigationTargetKey.value === getItemKey(item)
+  const isOpening = (item: AppRouteRecord) => navigationTarget.value?.key === getItemKey(item)
 
   const searchGoPage = async (item: AppRouteRecord) => {
     if (isLocked.value || navigationPending.value) return
-    const isCurrentIntent = captureIntent()
-    navigationTargetKey.value = getItemKey(item)
-    navigationTargetTitle.value = formatMenuTitle(item.meta.title)
-    navigationPending.value = true
+    const validWorkspace = captureIntent()
+    const target = { key: getItemKey(item), title: formatMenuTitle(item.meta.title) }
+    const isCurrentIntent = () => navigationTarget.value === target && validWorkspace()
+    navigationTarget.value = target
     try {
       if (!(item.meta.link && !item.meta.isIframe)) {
         await preloadMenuRoute(item, false, true)
@@ -447,7 +382,7 @@
       console.error('[GlobalSearch] 页面导航失败:', error)
       ElMessage.error('页面打开失败，请重试或从左侧菜单进入')
     } finally {
-      if (isCurrentIntent()) resetNavigation()
+      if (isCurrentIntent()) navigationTarget.value = undefined
     }
   }
 
@@ -478,10 +413,21 @@
     updateHistory()
   }
 
-  const deleteHistory = (index: number) => {
+  const deleteHistory = async (index: number, event: MouseEvent) => {
+    const button = getFocusedKeyboardButton(event)
     historyResult.value.splice(index, 1)
     historyHIndex.value = Math.min(historyHIndex.value, Math.max(historyResult.value.length - 1, 0))
     updateHistory()
+    if (!button) return
+    await nextTick()
+    const { ownerDocument } = button
+    if (
+      showSearchDialog.value &&
+      ownerDocument.hasFocus() &&
+      (ownerDocument.activeElement === button || ownerDocument.activeElement === ownerDocument.body)
+    ) {
+      searchInput.value?.focus()
+    }
   }
 
   // 对话框控制
@@ -510,7 +456,7 @@
       historyHIndex.value = index
     }
   }
-  useEventListener(document, 'keydown', handleKeydown)
+  useEventListener(document, 'keydown', handleGlobalShortcut)
 </script>
 <style lang="scss">
   .search-modal {

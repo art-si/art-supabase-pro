@@ -59,7 +59,7 @@
   const settingStore = useSettingStore()
   const route = useRoute()
   const { language } = storeToRefs(userStore)
-  const { boxBorderMode } = storeToRefs(settingStore)
+  const { boxBorderMode, workspaceAppearance } = storeToRefs(settingStore)
   const { loadWebsiteConfig } = useWebsiteConfig()
 
   watch(
@@ -75,9 +75,15 @@
 
   // 放在 html 上，让传送到 body 的浮层继承工作区外观；认证页使用独立视觉。
   watch(
-    () => loggedIn.value && !route.path.startsWith('/auth/'),
-    (isWorkspace) => {
-      document.documentElement.dataset.uiScope = isWorkspace ? 'workspace' : 'public'
+    [() => loggedIn.value && !route.path.startsWith('/auth/'), workspaceAppearance],
+    ([isWorkspace, appearance]) => {
+      const { dataset } = document.documentElement
+      dataset.uiScope = isWorkspace ? 'workspace' : 'public'
+      if (isWorkspace && appearance === 'silver-mist') {
+        dataset.workspaceAppearance = appearance
+      } else {
+        delete dataset.workspaceAppearance
+      }
     },
     { immediate: true, flush: 'sync' }
   )

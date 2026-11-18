@@ -46,17 +46,31 @@ test('设备分类主列表及配置失败保留数据并可重试', async ({ pa
     tenantId: tenant.id,
     parentId: null,
     categoryName: '测试设备分类',
+    categoryCode: 'CAT-ROOT',
     status: 'enabled',
     sort: 1,
-    childCount: 0,
+    childCount: 1,
     inspectionCategories: [],
     profileType: 'boiler'
   }
+  const archived = {
+    ...record,
+    id: 'category-disabled',
+    parentId: record.id,
+    categoryName: '停用设备分类',
+    categoryCode: 'CAT-OLD',
+    status: 'disabled',
+    childCount: 0
+  }
+  const ancestors: Array<string | null> = []
   for (const [kind, rpc] of [
     ['list', 'smis_list_equipment_categories_secure'],
     ['profile', 'smis_list_equipment_category_profiles_secure']
   ] as const) {
     await page.route(`**/rest/v1/rpc/${rpc}`, (route) => {
+      const ancestor =
+        kind === 'list' ? (route.request().postDataJSON().p_ancestor_id as string | null) : null
+      if (kind === 'list') ancestors.push(ancestor)
       if (failure === kind)
         return route.fulfill({
           status: 503,
@@ -65,13 +79,17 @@ test('设备分类主列表及配置失败保留数据并可重试', async ({ pa
       return route.fulfill({
         json:
           kind === 'profile'
-            ? [{ id: record.id, tenantId: tenant.id, profileType: 'boiler' }]
+            ? [record, archived].map(({ id, tenantId, profileType }) => ({
+                id,
+                tenantId,
+                profileType
+              }))
             : {
-                records: [record],
-                tree: [record],
-                total: 1,
+                records: ancestor ? [archived] : [record, archived],
+                tree: [record, archived],
+                total: ancestor ? 1 : 2,
                 inspectionOptions: [],
-                overview: { total: 1, enabled: 1, rootCount: 1, linkedCount: 0 }
+                overview: { total: 2, enabled: 1, rootCount: 1, linkedCount: 0 }
               }
       })
     })
@@ -86,7 +104,7 @@ test('设备分类主列表及配置失败保留数据并可重试', async ({ pa
     failure = kind
     await page.getByRole('button', { name: '查询', exact: true }).click()
     await expect(table.getByText('数据加载失败', { exact: true })).toBeVisible()
-    await expect(metric).toHaveText('1')
+    await expect(metric).toHaveText('2')
     await expect(page.getByText('设备分类树加载失败，请稍后重试。', { exact: true })).toBeVisible()
     await expect(table.getByText('暂无设备分类', { exact: true })).toHaveCount(0)
     await expect(page.locator('.el-message--error')).toHaveCount(0)
@@ -101,5 +119,29 @@ test('设备分类主列表及配置失败保留数据并可重试', async ({ pa
     fullPage: true,
     animations: 'disabled'
   })
+
+  const navigator = page.locator('.equipment-category-navigator')
+  const branch = navigator.getByRole('treeitem', { name: /^测试设备分类/ })
+  const leaf = navigator.getByRole('treeitem', { name: /^停用设备分类/ })
+  const all = navigator.getByRole('button', { name: /^全部分类/ })
+  await expect(leaf).toContainText('已停用')
+  await branch.focus()
+  const initialRequests = ancestors.length
+  await page.keyboard.press('ArrowRight')
+  await expect(leaf).toBeFocused()
+  expect(ancestors).toHaveLength(initialRequests)
+
+  await page.keyboard.press('Enter')
+  await expect.poll(() => ancestors.at(-1)).toBe(archived.id)
+  await expect(table.getByText(record.categoryName, { exact: true })).toHaveCount(0)
+  await expect(table.getByText(archived.categoryName, { exact: true })).toBeVisible()
+  await expect(leaf).toBeFocused()
+  await expect(leaf).toHaveClass(/\bis-current\b/)
+
+  await all.focus()
+  await page.keyboard.press('Space')
+  await expect.poll(() => ancestors.at(-1)).toBeNull()
+  await expect(table.getByText(record.categoryName, { exact: true })).toBeVisible()
+  await expect(all).toBeFocused()
   expect(errors).toEqual([])
 })

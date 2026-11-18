@@ -22,6 +22,7 @@
         type="button"
         class="smart-preset-card"
         :class="{ 'is-active': isPresetActive(preset) }"
+        :data-appearance-preview="preset.appearance"
         :style="{ '--preset-color': preset.color }"
         :aria-pressed="isPresetActive(preset)"
         @click="applyPreset(preset)"
@@ -56,7 +57,7 @@
 
     <p class="smart-layout-presets__notice">
       <ArtSvgIcon icon="ri:magic-line" />
-      根据当前宽屏工作台推荐“极光专注”；所有方案都可在下方继续微调。
+      推荐从“极光专注”开始，也可在下方微调各方案。
     </p>
   </section>
 </template>
@@ -65,9 +66,9 @@
   import { ElMessage } from 'element-plus'
   import { storeToRefs } from 'pinia'
   import { ContainerWidthEnum, MenuThemeEnum, MenuTypeEnum } from '@/enums/app-enum'
+  import { SILVER_MIST_ACCENT } from '@/config/setting'
   import { useSettingStore } from '@/store/modules/setting'
   import type { WorkTabStyle } from '@/types'
-  import { useSettingsState } from '../composables/useSettingsState'
 
   type PresetPreview = 'focus' | 'command' | 'studio'
 
@@ -78,6 +79,7 @@
     tags: string[]
     preview: PresetPreview
     recommended?: boolean
+    appearance?: 'silver-mist'
     color: string
     menuType: MenuTypeEnum
     menuTheme: MenuThemeEnum
@@ -138,36 +140,50 @@
       tabStyle: 'tab-google',
       transition: 'slide-bottom',
       radius: '1'
+    },
+    {
+      id: 'silver-mist',
+      name: '银雾工作台',
+      description: '银灰侧栏与清晰的内容层次，适合日常长时间操作。',
+      tags: ['苹果风', '紧凑易读'],
+      preview: 'focus',
+      appearance: 'silver-mist',
+      color: SILVER_MIST_ACCENT,
+      menuType: MenuTypeEnum.LEFT,
+      menuTheme: MenuThemeEnum.LIGHT,
+      menuWidth: 228,
+      borderMode: true,
+      containerWidth: ContainerWidthEnum.FULL,
+      tabStyle: 'tab-card',
+      transition: 'fade',
+      radius: '0.625'
     }
   ]
 
+  const props = defineProps<{ selectedMenuLayout: MenuTypeEnum }>()
+  const emit = defineEmits<{ selectMenuLayout: [type: MenuTypeEnum] }>()
   const settingStore = useSettingStore()
-  const { switchMenuLayouts } = useSettingsState()
-  const {
-    menuType,
-    menuThemeType,
-    systemThemeColor,
-    boxBorderMode,
-    containerWidth,
-    tabStyle,
-    customRadius
-  } = storeToRefs(settingStore)
+  const { menuThemeType, systemThemeColor, boxBorderMode, containerWidth, tabStyle, customRadius } =
+    storeToRefs(settingStore)
 
   const isPresetActive = (preset: LayoutPreset): boolean =>
-    menuType.value === preset.menuType &&
-    menuThemeType.value === preset.menuTheme &&
-    systemThemeColor.value.toUpperCase() === preset.color.toUpperCase() &&
-    boxBorderMode.value === preset.borderMode &&
-    containerWidth.value === preset.containerWidth &&
-    tabStyle.value === preset.tabStyle &&
-    customRadius.value === preset.radius
+    preset.appearance
+      ? settingStore.workspaceAppearance === preset.appearance
+      : settingStore.workspaceAppearance !== 'silver-mist' &&
+        props.selectedMenuLayout === preset.menuType &&
+        menuThemeType.value === preset.menuTheme &&
+        systemThemeColor.value.toUpperCase() === preset.color.toUpperCase() &&
+        boxBorderMode.value === preset.borderMode &&
+        containerWidth.value === preset.containerWidth &&
+        tabStyle.value === preset.tabStyle &&
+        customRadius.value === preset.radius
 
   const applyPreset = (preset: LayoutPreset): void => {
     settingStore.rememberLocalAppearance()
-    switchMenuLayouts(preset.menuType)
+    settingStore.workspaceAppearance = preset.appearance ?? 'default'
+    emit('selectMenuLayout', preset.menuType)
     settingStore.switchMenuStyles(preset.menuTheme)
     settingStore.setMenuOpenWidth(preset.menuWidth)
-    settingStore.setMenuOpen(true)
     settingStore.setElementTheme(preset.color)
     settingStore.setContainerWidth(preset.containerWidth)
     settingStore.setTabStyle(preset.tabStyle)
@@ -183,7 +199,7 @@
     )
 
     settingStore.reload()
-    ElMessage.success(`已应用「${preset.name}」布局`)
+    if (!preset.appearance) ElMessage.success(`已应用「${preset.name}」布局`)
   }
 
   defineOptions({ name: 'SmartLayoutPresets' })
@@ -195,6 +211,7 @@
     margin-top: 18px;
     color: #fff;
     background:
+      linear-gradient(rgb(9 17 39 / 26%), rgb(9 17 39 / 26%)),
       radial-gradient(circle at 88% 2%, rgb(34 211 238 / 30%), transparent 31%),
       radial-gradient(circle at 8% 100%, rgb(236 72 153 / 24%), transparent 36%),
       linear-gradient(
@@ -224,7 +241,7 @@
         margin: 0;
         font-size: 11px;
         line-height: 1.65;
-        color: rgb(255 255 255 / 68%);
+        color: rgb(255 255 255 / 90%);
       }
     }
 
@@ -248,7 +265,7 @@
       gap: 6px;
       padding: 5px 8px;
       font-size: 9px;
-      color: rgb(255 255 255 / 78%);
+      color: rgb(255 255 255 / 90%);
       background: rgb(255 255 255 / 10%);
       border: 1px solid rgb(255 255 255 / 12%);
       border-radius: 999px;
@@ -271,9 +288,9 @@
     &__notice {
       gap: 6px;
       margin: 13px 2px 0;
-      font-size: 10px;
+      font-size: 11px;
       line-height: 1.55;
-      color: rgb(255 255 255 / 66%);
+      color: rgb(255 255 255 / 90%);
     }
   }
 
@@ -428,12 +445,10 @@
       small {
         display: block;
         margin-top: 4px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-size: 10px;
+        font-size: 11px;
         line-height: 1.45;
-        color: rgb(255 255 255 / 64%);
-        white-space: nowrap;
+        color: rgb(255 255 255 / 90%);
+        overflow-wrap: anywhere;
       }
     }
 
@@ -457,7 +472,7 @@
 
     &__recommended {
       padding: 2px 6px;
-      font-size: 8px;
+      font-size: 9px;
       font-style: normal;
       color: #172554;
       background: #a5f3fc;
@@ -469,26 +484,38 @@
     }
 
     &__tags {
+      flex-wrap: wrap;
       gap: 5px;
       margin-top: 7px;
 
       em {
         padding: 2px 5px;
-        font-size: 8px;
+        font-size: 10px;
         font-style: normal;
-        color: rgb(255 255 255 / 62%);
+        color: rgb(255 255 255 / 90%);
         background: rgb(255 255 255 / 8%);
         border-radius: 4px;
       }
     }
 
     &__arrow {
-      color: rgb(255 255 255 / 52%);
+      color: rgb(255 255 255 / 75%);
       transition: transform 0.2s ease;
     }
 
     &:hover &__arrow {
       transform: translate(2px, -2px);
+    }
+  }
+
+  @media (width <= 400px) {
+    html:not([data-workspace-appearance='silver-mist']) .smart-preset-card {
+      grid-template-columns: 64px minmax(0, 1fr) 12px;
+      gap: 8px;
+
+      &__preview {
+        width: 64px;
+      }
     }
   }
 

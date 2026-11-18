@@ -52,24 +52,31 @@ const pages = [
 ]
 const app = createApp({
   render: () =>
-    h('main', { class: 'art-page-view p-4', style: { height: '100vh' } }, [
-      ...(parameters.has('navigationTest')
-        ? [h('button', { onClick: () => router.push('/audit-away') }, '打开其他页面')]
-        : []),
-      h(
-        ElConfigProvider,
-        { locale: zhCn },
-        {
-          default: () =>
-            parameters.has('keepAlive')
-              ? h(RouterView, null, {
-                  default: ({ Component }: { Component: VNode }) =>
-                    h(KeepAlive, null, { default: () => Component })
-                })
-              : h(RouterView)
-        }
-      )
-    ])
+    h(
+      'main',
+      {
+        class: 'art-page-view p-4',
+        style: { height: '100vh', '--art-full-height': 'calc(100dvh - 32px)' }
+      },
+      [
+        ...(parameters.has('navigationTest')
+          ? [h('button', { onClick: () => router.push('/audit-away') }, '打开其他页面')]
+          : []),
+        h(
+          ElConfigProvider,
+          { locale: zhCn },
+          {
+            default: () =>
+              parameters.has('keepAlive')
+                ? h(RouterView, null, {
+                    default: ({ Component }: { Component: VNode }) =>
+                      h(KeepAlive, null, { default: () => Component })
+                  })
+                : h(RouterView)
+          }
+        )
+      ]
+    )
 })
 const router = createRouter({
   history: createMemoryHistory(),
@@ -131,6 +138,18 @@ useUserStore(store).setUserInfo({
   tenantId: '11111111-1111-4111-8111-111111111111',
   platformSuper: parameters.get('kind') !== 'cash' && !parameters.has('permissions')
 })
+useUserStore(store).setDictMap({
+  fmsPayablePaymentInitiationType: [
+    ['active', '主动付款'],
+    ['passive', '被动付款']
+  ].map(([value, label]) => ({ name: label, label, code: value, value, status: '1' })),
+  fmsPayableSettlementStatus: [
+    ['draft', '草稿'],
+    ['submitted', '已提交'],
+    ['approved', '已审核'],
+    ['confirmed', '已确认付款']
+  ].map(([value, label]) => ({ name: label, label, code: value, value, status: '1' }))
+})
 if (parameters.get('kind') === 'cash') {
   const permissions = [
     'FinanceCashTransaction:View',
@@ -172,9 +191,14 @@ if (parameters.has('permissionControls')) {
   window.addEventListener('keydown', (event) => {
     if (event.altKey && event.shiftKey && event.code === 'Digit4') {
       const permissions = (parameters.get('permissions') || '').split(',').filter(Boolean)
+      const revokedPermissions = parameters.has('revokePermissions')
+        ? (parameters.get('revokePermissions') || '').split(',').filter(Boolean)
+        : undefined
       useMenuStore(store).setButtonList(
         permissions
-          .filter((name) => !/:(Add|Edit)$/.test(name))
+          .filter((name) =>
+            revokedPermissions ? !revokedPermissions.includes(name) : !/:(Add|Edit)$/.test(name)
+          )
           .map((name) => ({ name, path: name, type: 'button', meta: { title: name } }))
       )
     }
@@ -190,6 +214,20 @@ if (parameters.has('permissionControls')) {
 }
 useTenantScopeStore(store).selectedTenantId =
   parameters.get('scope') === 'all' ? null : '11111111-1111-4111-8111-111111111111'
+if (parameters.has('scopeControls')) {
+  const scope = useTenantScopeStore(store)
+  scope.scopeOwnerUserId = 'purchase-preview-user'
+  scope.tenantOptions = [
+    { id: '11111111-1111-4111-8111-111111111111', tenantCode: 'A', tenantName: '测试租户甲' },
+    { id: '22222222-2222-4222-8222-222222222222', tenantCode: 'B', tenantName: '测试租户乙' }
+  ]
+  window.addEventListener('keydown', (event) => {
+    if (!event.altKey || !event.shiftKey) return
+    if (event.code === 'Digit0') scope.setTenantScope(null)
+    if (event.code === 'Digit1') scope.setTenantScope(scope.tenantOptions[0].id)
+    if (event.code === 'Digit2') scope.setTenantScope(scope.tenantOptions[1].id)
+  })
+}
 const setting = useSettingStore(store)
 const requestedTheme =
   parameters.get('theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')

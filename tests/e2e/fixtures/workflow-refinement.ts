@@ -14,7 +14,7 @@ document.documentElement.dataset.boxMode = params.get('box') || 'border-mode'
 useUserStore(store).setUserInfo({
   userId: 'reviewer-a',
   tenantId: 'tenant-a',
-  platformSuper: true
+  platformSuper: mode !== 'action'
 })
 const baseTask: Api.Workflow.WorkflowTaskRecord = {
   id: 'task-a',
@@ -59,7 +59,20 @@ const router = createRouter({
   routes: [{ path: '/:pathMatch(.*)*', component: {} }]
 })
 let renderContent: () => ReturnType<typeof h>
-if (mode === 'drawer') {
+if (mode === 'action') {
+  const { default: ActionDialog } =
+    await import('@/views/workflow/workbench/modules/workflow-action-dialog.vue')
+  const dialog = ref<InstanceType<typeof ActionDialog>>()
+  renderContent = () =>
+    h('main', { class: 'p-4' }, [
+      h(
+        'button',
+        { onClick: () => void dialog.value?.handleOpen(baseTask, 'approve') },
+        '打开待办审批'
+      ),
+      h(ActionDialog, { ref: dialog })
+    ])
+} else if (mode === 'drawer') {
   const { default: Drawer } =
     await import('@/views/workflow/workbench/modules/workflow-instance-drawer.vue')
   const drawer = ref<InstanceType<typeof Drawer>>()

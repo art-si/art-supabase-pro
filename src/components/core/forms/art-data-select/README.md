@@ -23,9 +23,13 @@ Common defaults live in `defaults.ts`; keep array defaults as factories so insta
 - Use `description-key` for compact secondary context such as a code or owner.
 - For tree data, use `children-key` and `disabled-key`; disabled nodes remain readable as grouping context but cannot be selected.
 - When a selected value may not exist in the current page of results, provide `selected-data` so its label and description remain available.
+- The default single and multiple triggers use the form field's label when it labels the input directly. For standalone triggers or controls inside a named group, the placeholder supplies the input's own accessible name.
 - Remote loaders use `api-fn` and should return a list plus an optional total. Loading, empty, selected, and pagination states are owned by the component.
 - Set `show-table-header` when users need to compare named columns in the picker; compact pickers hide it by default.
 - Table variants can receive a `navigation` object for a reusable left-side hierarchy. Pass flat records plus the row, parent, label, and description keys; selecting a node adds its key to `api-fn` filters under `navigation.filterKey`. Keep descendant-expansion rules in the provider, where tenant and permission scope can be enforced.
+- Classification labels stay on one line. If a name or description is clipped, focusing the tree item with the keyboard or tapping its information icon reveals the complete label. This leaves the current category and selected records unchanged.
+- Selected rows use the same preview when their name or description is clipped. The information button can be opened by keyboard or touch; it remains separate from the remove button.
+- Selected row actions include both the name and description when they are different. Keyboard removal focuses the nearest remaining remove button; after the last item or a keyboard clear, focus returns to the available list or its search field.
 
 ## Request lifecycle and recovery
 
@@ -40,3 +44,5 @@ The dialog is one split workspace rather than separate nested cards: the source 
 The search/list/selected workspace shares a viewport-bounded height, with pagination outside the list body. Desktop panes scroll their own list/tree and selected entries. Narrow screens stack the panes and scroll the workspace when necessary; the main pane retains 320px so navigation and selected summaries cannot squeeze data rows underneath the table header. The dialog footer stays outside this workspace and pagination controls may wrap. Keep the outer viewport bound and verify actual row selection at low heights when adjusting these dimensions.
 
 默认三栏参选（分类导航、列表、已选区）使用 1440px 宽度并由 ArtDialog 限制在视口内；显式 dialogWidth 仍优先。侧栏响应视口宽度；分页按列表区域实测宽度选择常规或紧凑控件，极窄区域保留上下页、每页数量与当前页信息，避免桌面分页换行挤占列表。
+
+表格默认保持单行，过长内容以省略号显示。单选复选框使用记录的完整名称作为无障碍标签；选中值过长时，可通过原字段的标题或弹窗底部的当前选择复核全值。

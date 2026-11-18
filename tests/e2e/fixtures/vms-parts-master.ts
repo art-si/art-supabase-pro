@@ -29,10 +29,13 @@ userStore.setDictMap({
     { value: 'false', label: '否', status: '1' }
   ]
 })
+const readOnly = new URLSearchParams(location.search).has('readonly')
+const actions = readOnly ? ['View'] : ['View', 'Add', 'Edit', 'Delete', 'Import', 'Export']
 useMenuStore(store).setButtonList(
-  ['Parts:View', 'Parts:Add', 'Parts:Edit', 'Parts:Delete', 'Parts:Import', 'Parts:Export'].map(
-    (name) => ({ name, path: '', type: 'button', meta: { title: name } })
-  )
+  actions.map((action) => {
+    const name = `Parts:${action}`
+    return { name, path: '', type: 'button', meta: { title: name } }
+  })
 )
 
 const router = createRouter({

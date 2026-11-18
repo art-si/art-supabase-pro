@@ -12,6 +12,8 @@
 
 ## 关联记录定位
 
+与内管列表共享查询范围的摘要可读取 `dataState.appliedSearchParams.value`。其中只包含当前结果成功采用的查询条件，未提交的编辑和未完成的请求不会更新它；没有有效结果或使用外管模式时为 `null`。
+
 `ArtTableQueryExpose.dataState` 提供只读的 `rows`、`loading`、`error` 计算属性，代表当前表格实际呈现的结果，并沿用公共请求的失效保护。业务页应把表格引用传给 `MasterDeleteProcessingNotice`，由公共组件匹配目标记录；不要根据路由参数是否存在提前显示“已找到”。目标与路由 `recordId` 不同时传 `record-id`，编号规则等非 `id` 主键传 `record-key`。树形记录沿用公共树工具查找。
 
 没有公共查询表格的页面可提供 `record-rows`、`record-loading`、`record-error`；只有已确认的详情加载状态才使用显式 `location-ready`。这些状态用于界面提示，删除前仍须执行 `MasterDataDeleteGuard` 引用检查。
@@ -222,6 +224,8 @@ const load = () => {
 | `tableProps` | `ArtTableQueryTableProps` | 两种 | `{}` | 透传给 `ArtTable` / `ElTable`。 |
 | `focusable` | `boolean` | 两种 | `false` | 是否允许专注模式；工具栏开启时显示入口，也可通过 `v-model:focus-mode` 从页面头部直接进入。 |
 | `focusScopeSelector` | `string` | 两种 | - | 专注模式整体保留的最近祖先选择器；用于“导航树 + 查询表格”等不可拆分的复合工作区。未指定时保留最近的 Element Plus 页签容器及其导航，无页签时保留当前查询表格。 |
+
+手动进入专注模式时，如果当前焦点所在的控件被隐藏，焦点会交给表格的退出按钮；手动退出后可回到原入口。退出时仍然可见的筛选控件保留焦点和输入内容。
 
 ### searchBarProps
 
@@ -505,6 +509,8 @@ const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
 | `import` | `导入` | `ri:upload-2-line` | `success plain` | 渲染 `ArtExcelImport`，导入成功后执行公共导入流程。 |
 | `export` | `导出` | `ri:download-2-line` | `warning plain` | 未传 `onClick` 时执行公共导出流程。 |
 
+用键盘触发工具栏操作时，如果按钮暂时禁用导致焦点丢失，操作结束后会把焦点还给原按钮。用户已切换焦点或原按钮已离开页面时，不重新聚焦。
+
 ### ArtTableQueryHeaderAction
 
 | 字段 | 类型 | 说明 |
@@ -621,6 +627,8 @@ const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
 3. 当前选中行
 4. `apiFn` 每批 500 行读取全部筛选结果，使用 `exportMaxRows` 限制总行数；超限、缺页或响应格式无效时阻止下载。自定义 `responseAdapter` 必须提供真实总数，不能用单页长度代替。
 5. 当前表格数据
+
+受管表格的默认范围导出沿用当前结果的查询条件，未提交的表单值不会改变导出范围。查询失败或首次查询尚未成功时，需要调用接口的默认范围导出不可用。
 
 默认导出列：
 

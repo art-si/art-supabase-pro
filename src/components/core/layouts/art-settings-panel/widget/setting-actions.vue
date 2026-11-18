@@ -1,7 +1,10 @@
 <!-- 设置操作按钮 -->
 <template>
   <div class="setting-actions">
-    <p class="setting-actions__hint">调整立即生效，并自动保存在当前浏览器。</p>
+    <p v-if="settingStore.workspaceAppearance === 'silver-mist'" class="setting-actions__hint">
+      银雾皮肤立即生效，并保存在当前浏览器。
+    </p>
+    <p v-else class="setting-actions__hint">调整立即生效，并自动保存在当前浏览器。</p>
     <ElButton
       v-if="canSaveAppearance"
       type="primary"
@@ -28,7 +31,7 @@
   import { SETTING_DEFAULT_CONFIG } from '@/config/setting'
   import { copyTextToClipboard } from '@/utils/file/clipboard'
   import { useI18n } from 'vue-i18n'
-  import { MenuThemeEnum } from '@/enums/app-enum'
+  import { MenuThemeEnum, type MenuTypeEnum } from '@/enums/app-enum'
   import { useTheme } from '@/hooks/core/useTheme'
   import { useAuth } from '@/hooks/core/useAuth'
   import { saveAppearanceConfig } from '@/hooks/core/useAppearanceConfig'
@@ -36,11 +39,15 @@
 
   defineOptions({ name: 'SettingActions' })
 
+  const props = defineProps<{ selectedMenuLayout: MenuTypeEnum }>()
+  const emit = defineEmits<{ resetMenuLayout: [type: MenuTypeEnum, open: boolean] }>()
   const { t } = useI18n()
   const settingStore = useSettingStore()
   const { switchThemeStyles } = useTheme()
   const { hasAuth } = useAuth()
-  const canSaveAppearance = computed(() => hasAuth('System:SystemParam:Edit'))
+  const canSaveAppearance = computed(
+    () => settingStore.workspaceAppearance !== 'silver-mist' && hasAuth('System:SystemParam:Edit')
+  )
   const savingAppearance = ref(false)
   const handleSaveAppearance = async () => {
     if (!canSaveAppearance.value || savingAppearance.value) return
@@ -149,7 +156,9 @@
 
     CONFIG_ITEMS.forEach((item) => {
       lines.push(`  /** ${item.comment} */`)
-      const value = item.forceValue !== undefined ? item.forceValue : settingStore[item.key]
+      const currentValue =
+        item.key === 'menuType' ? props.selectedMenuLayout : settingStore[item.key]
+      const value = item.forceValue !== undefined ? item.forceValue : currentValue
       lines.push(`  ${String(item.key)}: ${valueToCode(value, item.enumMap)},`)
     })
 
@@ -193,12 +202,12 @@
   const handleResetConfig = async () => {
     try {
       settingStore.rememberLocalAppearance()
+      settingStore.workspaceAppearance = 'default'
       const config = SETTING_DEFAULT_CONFIG
 
       // 菜单相关
-      settingStore.switchMenuLayouts(config.menuType)
+      emit('resetMenuLayout', config.menuType, config.menuOpen)
       settingStore.setMenuOpenWidth(config.menuOpenWidth)
-      settingStore.setMenuOpen(config.menuOpen)
       settingStore.setDualMenuShowText(config.dualMenuShowText)
 
       // 主题相关 - 使用 switchThemeStyles 确保正确处理 AUTO 模式

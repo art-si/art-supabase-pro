@@ -56,10 +56,32 @@ async function mockInventory(page: Page, dictionaryGate: Promise<void>) {
 }
 
 const forms = [
-  { mode: 'warehouse', title: '新增仓库', fields: ['仓库类型', '业务应用范围', '一位一品'] },
-  { mode: 'zone', title: '新增库区', fields: ['库区用途', '启用状态'] },
-  { mode: 'bin', title: '新增库位', fields: ['库位类型', '库位状态'] },
-  { mode: 'serial', title: '新增序列号', fields: ['序列号状态'] }
+  {
+    mode: 'warehouse',
+    title: '新增仓库',
+    fields: [
+      { label: '仓库类型', tab: '仓库身份' },
+      { label: '业务应用范围', tab: '业务控制' },
+      { label: '一位一品', tab: '业务控制' }
+    ]
+  },
+  {
+    mode: 'zone',
+    title: '新增库区',
+    fields: [
+      { label: '库区用途', tab: '库区身份' },
+      { label: '启用状态', tab: '存放控制' }
+    ]
+  },
+  {
+    mode: 'bin',
+    title: '新增库位',
+    fields: [
+      { label: '库位类型', tab: '库位身份' },
+      { label: '库位状态', tab: '存放控制' }
+    ]
+  },
+  { mode: 'serial', title: '新增序列号', fields: [{ label: '序列号状态', tab: undefined }] }
 ]
 for (const form of forms) {
   test(`${form.title}公共字典延迟更新、名称回退和停用过滤`, async ({ page }, info) => {
@@ -79,6 +101,7 @@ for (const form of forms) {
     await expect(dialog).toBeVisible()
     release()
     if (form.mode === 'warehouse') {
+      await dialog.getByRole('tab', { name: '业务控制', exact: true }).click()
       await dialog
         .locator('.el-form-item')
         .filter({ has: page.getByText('启用库位', { exact: true }) })
@@ -86,7 +109,8 @@ for (const form of forms) {
         .locator('..')
         .click()
     }
-    for (const label of form.fields) {
+    for (const { label, tab } of form.fields) {
+      if (tab) await dialog.getByRole('tab', { name: tab, exact: true }).click()
       const select = dialog
         .locator('.el-form-item')
         .filter({ has: page.getByText(label, { exact: true }) })
@@ -149,6 +173,102 @@ for (const mode of ['serial-list', 'reservation-list']) {
     expect(errors).toEqual([])
   })
 }
+
+test('普通用户释放库存预留使用明确确认，取消零写入并可键盘释放', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  await mockInventory(page, Promise.resolve())
+  const reservationId = '11111111-1111-4111-8111-111111111111'
+  const workOrderNo = 'WO-RELEASE-001'
+  let released = false
+  const reads: Array<Record<string, unknown>> = []
+  const writes: Array<{ method: string; filters: Record<string, string>; payload: unknown }> = []
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/rest/v1/sys_dictionary?*', (route) => {
+    if (!route.request().url().includes('mdmInventoryReservationStatus')) return route.fallback()
+    return route.fulfill({
+      json: [
+        { code: 'active', value: 'active', label: '预留中', status: '1' },
+        { code: 'released', value: 'released', label: '已释放', status: '1' }
+      ]
+    })
+  })
+  await page.route('**/rest/v1/rpc/wms_list_reservations_secure', (route) => {
+    reads.push(route.request().postDataJSON())
+    return route.fulfill({
+      json: {
+        data: [
+          {
+            id: reservationId,
+            tenantId: 'test-tenant',
+            workOrderId: 'work-order-release',
+            workOrderNo,
+            materialId: 'material-release',
+            materialCode: 'RAW-RELEASE-001',
+            materialName: '验收原料板',
+            warehouseId: 'warehouse-test',
+            warehouseName: '验收原料仓',
+            binCode: 'RAW-A-01',
+            reservedQuantity: 3,
+            status: released ? 'released' : 'active',
+            createTime: '2026-11-01T08:00:00Z'
+          }
+        ],
+        total: 1
+      }
+    })
+  })
+  await page.route('**/rest/v1/wms_inventory_reservation?*', (route) => {
+    const request = route.request()
+    writes.push({
+      method: request.method(),
+      filters: Object.fromEntries(new URL(request.url()).searchParams),
+      payload: request.postDataJSON()
+    })
+    released = true
+    return route.fulfill({ json: [{ id: reservationId }] })
+  })
+  await page.goto(
+    '/tests/e2e/fixtures/inventory-dictionary-options.html?mode=reservation-list&release=1'
+  )
+  const row = page.locator('.el-table__body tr').filter({ hasText: workOrderNo })
+  const trigger = row.getByRole('button', { name: '释放预留', exact: true })
+  await expect(row).toContainText('验收原料板')
+  await expect(row).toContainText('预留中')
+  await expect(trigger).toBeEnabled()
+  await trigger.click()
+  const confirmation = page.getByRole('dialog', { name: '释放预留', exact: true })
+  await expect(confirmation).toBeVisible()
+  await expect(confirmation).toContainText(workOrderNo)
+  const confirm = confirmation.getByRole('button', { name: '释放预留', exact: true })
+  await expect(confirm).toHaveClass(/\bel-button--primary\b/)
+  await expect(confirm).not.toHaveClass(/\bel-button--danger\b/)
+  await expect(confirmation.getByRole('button', { name: '删除', exact: true })).toHaveCount(0)
+  await confirmation.screenshot({ path: info.outputPath('reservation-release-confirm.png') })
+  await confirmation.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(confirmation).toBeHidden()
+  expect(writes).toEqual([])
+  await expect(trigger).toBeEnabled()
+  const readsBeforeRelease = reads.length
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+  await expect(confirmation).toBeVisible()
+  await confirm.focus()
+  await page.keyboard.press('Enter')
+  await expect(confirmation).toBeHidden()
+  await expect.poll(() => reads.length).toBe(readsBeforeRelease + 1)
+  await expect(row).toHaveCount(1)
+  await expect(row).toContainText('已释放')
+  await expect(trigger).toHaveCount(0)
+  expect(writes).toEqual([
+    {
+      method: 'PATCH',
+      filters: { id: `eq.${reservationId}`, status: 'eq.active', select: 'id' },
+      payload: { status: 'released' }
+    }
+  ])
+  expect(errors).toEqual([])
+})
 
 for (const theme of ['light', 'dark']) {
   for (const box of ['border-mode', 'shadow-mode']) {

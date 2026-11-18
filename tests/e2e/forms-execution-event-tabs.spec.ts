@@ -4,6 +4,10 @@ import { prepareIsolatedSession } from './support/isolated-session'
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(120_000)
 const tenantId = '11111111-1111-4111-8111-111111111111'
+const longActor =
+  '验收发起人 · EMP-MES-EVENT-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const longProblem =
+  '验收现场问题：已完整记录模具定位与装夹检查结果。TRACE-MES-EVENT-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789'
 const task = {
   id: 'task-1',
   tenantId,
@@ -108,7 +112,7 @@ async function prepare(page: Page, mode: string, theme = 'light') {
             quantity: 0,
             handlerPersonId: 'person-1',
             handler: { name: '验收人员' },
-            actorName: '验收发起人',
+            actorName: longActor,
             occurredAt: '2026-11-01T08:00:00Z',
             respondedAt: null,
             completedAt: null,
@@ -125,7 +129,7 @@ async function prepare(page: Page, mode: string, theme = 'light') {
                     requiredCompletionDate: '2026-11-05',
                     plannedCompletionDate: '2026-11-04',
                     inspectionBatchNo: 'QC-ONE',
-                    problemDescription: '验收问题描述'
+                    problemDescription: longProblem
                   }
                 : mode === 'inspection'
                   ? {
@@ -264,6 +268,71 @@ for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: '查看', exact: true }).click()
     const drawer = page.locator('.el-drawer:visible')
     await expect(drawer.getByRole('tab')).toHaveCount(2)
+    const value = (label: string) =>
+      drawer
+        .getByRole('tabpanel')
+        .filter({ visible: true })
+        .getByText(label, { exact: true })
+        .locator('xpath=following-sibling::*[1]')
+        .locator('.art-descriptions__value')
+    await expect(value('发生时间')).toHaveText('2026-11-01 16:00')
+    await expect(value('数量')).toHaveText('0')
+    await expect(value('响应时间')).toHaveText('—')
+    await expect(value('结束时间')).toHaveText('—')
+    await expect(value('处理人')).toHaveText('验收人员')
+    const geometry: Array<Record<string, unknown>> = []
+    for (const [tab, label, text] of [
+      ['记录概况', '发起人', longActor],
+      ['业务与附件', '问题描述', longProblem]
+    ]) {
+      await drawer.getByRole('tab', { name: tab, exact: true }).click()
+      await expect(
+        drawer.getByRole('tabpanel').filter({ visible: true }).locator('.art-descriptions')
+      ).toHaveCount(1)
+      const content = value(label)
+      await expect(content).toHaveText(text)
+      await content.scrollIntoViewIfNeeded()
+      await expect(content).toBeInViewport()
+      const rects = await content.evaluate((element) => {
+        const cell = element.closest('.el-descriptions__content')!
+        const boundary = cell.getBoundingClientRect()
+        const scrollport = element.closest('.el-scrollbar__wrap')!.getBoundingClientRect()
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return {
+          labelWidth: cell.previousElementSibling!.getBoundingClientRect().width,
+          valueWidth: boundary.width,
+          left: Math.max(boundary.left, 0),
+          right: Math.min(boundary.right, innerWidth),
+          top: Math.max(scrollport.top, 0),
+          bottom: Math.min(scrollport.bottom, innerHeight),
+          lines: Array.from(range.getClientRects(), ({ left, right, top, bottom }) => ({
+            left,
+            right,
+            top,
+            bottom
+          }))
+        }
+      })
+      expect(rects.labelWidth).toBeCloseTo(120, 0)
+      expect(rects.valueWidth).toBeGreaterThan(rects.labelWidth)
+      expect(rects.lines.length).toBeGreaterThan(0)
+      for (const line of rects.lines) {
+        expect(line.left).toBeGreaterThanOrEqual(rects.left - 1)
+        expect(line.right).toBeLessThanOrEqual(rects.right + 1)
+        expect(line.top).toBeGreaterThanOrEqual(rects.top - 1)
+        expect(line.bottom).toBeLessThanOrEqual(rects.bottom + 1)
+      }
+      geometry.push({ tab, label, ...rects })
+      await page.screenshot({ path: info.outputPath(`mold-readonly-${tab}-${theme}.png`) })
+    }
+    await info.attach('event-description-geometry', {
+      body: JSON.stringify(geometry, null, 2),
+      contentType: 'application/json'
+    })
+    await expect(value('维修类型')).toHaveText('—')
+    await expect(value('维修日期')).toHaveText('2026-11-01')
+    await expect(value('维修人员')).toHaveText('验收人员')
     await drawer.getByRole('tab', { name: '业务与附件', exact: true }).click()
     await expect(drawer.getByRole('link', { name: '附件 1', exact: true })).toHaveAttribute(
       'href',

@@ -118,7 +118,7 @@ for (const config of [
     await expect(page.getByText('QA-AR-2', { exact: true })).toBeVisible()
     const selectRows = async () => {
       await expect(
-        page.getByRole('checkbox', { name: '选择所有行', exact: true })
+        page.getByRole('checkbox', { name: '选择当前页全部行', exact: true })
       ).not.toBeChecked()
       await page.locator('.el-table__header-wrapper label.el-checkbox').first().click()
     }

@@ -37,7 +37,11 @@
       @retry="loadData"
     />
 
-    <ElTabs v-else-if="state.data && state.bottleneck" v-model="state.activeTab">
+    <ElTabs
+      v-else-if="state.data && state.bottleneck"
+      v-model="state.activeTab"
+      :class="{ 'art-card-xs art-overlay-tab-card': isWithinOverlay }"
+    >
       <ElTabPane label="经营概览" name="overview">
         <section class="workflow-analytics__metrics">
           <article v-for="metric in metrics" :key="metric.label" class="art-card-xs">
@@ -262,10 +266,12 @@
     fetchWorkflowOperationalAnalytics
   } from '@/api/workflow'
   import { getWorkflowBusinessTypeLabel } from './workflow-business-contracts'
+  import { artOverlayRequestScopeKey } from '@/hooks/core/useArtOverlay'
 
   defineOptions({ name: 'WorkflowAnalyticsPanel' })
   withDefaults(defineProps<{ externalLoading?: boolean }>(), { externalLoading: false })
   const emit = defineEmits<{ loadingChange: [loading: boolean] }>()
+  const isWithinOverlay = Boolean(inject(artOverlayRequestScopeKey, undefined))
 
   const configuredPeriodOptions = useDictionaryOptions('workflowAnalyticsPeriodDays', Number)
   const periodOptions = computed(() =>

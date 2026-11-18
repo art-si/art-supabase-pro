@@ -173,10 +173,53 @@ html[data-ui-scope='workspace'][data-box-mode='shadow-mode'] {
   --el-card-border-color: var(--default-border) !important;
 }
 
+$unframed-overlay-form-tabs: '.art-form__tabs--overlay:not(:where(.art-card *, .art-card-sm *, .art-card-xs *))';
+
 .art-card,
 .art-card-sm,
-.art-card-xs {
+.art-card-xs,
+#{$unframed-overlay-form-tabs} {
   @include art-card-base(var(--art-card-border));
+}
+
+// 弹层内容页签与面板共用一张卡片；外层弹窗或抽屉继续负责滚动。
+.art-overlay-tab-card,
+#{$unframed-overlay-form-tabs} {
+  --art-overlay-tab-card-gutter: var(--art-space-4);
+
+  box-sizing: border-box;
+  min-inline-size: 0;
+  padding-block-end: var(--art-overlay-tab-card-gutter);
+  padding-inline: var(--art-overlay-tab-card-gutter);
+
+  @media (width <= 640px) {
+    --art-overlay-tab-card-gutter: var(--art-space-3);
+  }
+}
+
+.art-overlay-tab-card > .el-tabs__content {
+  min-width: 0;
+  min-height: 0;
+  overflow: clip;
+  overflow-clip-margin: var(--art-space-3);
+}
+
+@media (width <= 640px) {
+  :is(.art-overlay-tab-card, .art-form__tabs--overlay)
+    > .el-tabs__header
+    > .el-tabs__nav-wrap.is-scrollable:is(.is-top, .is-bottom) {
+    --art-overlay-tab-arrow-size: var(--art-space-6);
+
+    padding-inline: var(--art-overlay-tab-arrow-size);
+
+    > :is(.el-tabs__nav-prev, .el-tabs__nav-next) {
+      inset-block: 0;
+      display: grid;
+      place-items: center;
+      inline-size: var(--art-overlay-tab-arrow-size);
+      line-height: 1;
+    }
+  }
 }
 
 // 主数据分组导航共用的“全部分组”入口。
@@ -229,7 +272,8 @@ html[data-ui-scope='workspace'][data-box-mode='border-mode'] {
 
   .art-card,
   .art-card-sm,
-  .art-card-xs {
+  .art-card-xs,
+  #{$unframed-overlay-form-tabs} {
     @include art-card-base(var(--art-card-border));
   }
 }
@@ -251,7 +295,8 @@ html[data-ui-scope='workspace'][data-box-mode='shadow-mode'] {
     @include art-card-base(transparent, var(--art-surface-shadow));
   }
 
-  .art-card-xs {
+  .art-card-xs,
+  #{$unframed-overlay-form-tabs} {
     @include art-card-base(transparent, var(--art-card-shadow-xs));
   }
 

@@ -1,5 +1,10 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import {
+  expectQueryDateRangeReadable,
+  installQueryDateClock,
+  selectQueryDateRange
+} from './support/query-date-range'
 import { assertTableFocusContract } from './support/table-focus'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
@@ -296,6 +301,37 @@ for (const scenario of staleCases) {
     expect(state.pageErrors).toEqual([])
   })
 }
+
+test('资金调拨查询在窄桌面和手机上完整显示起止日期', async ({ page }, info) => {
+  const state = await mockPage(page, actions[0])
+  await installQueryDateClock(page)
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto(fixture, { waitUntil: 'domcontentloaded' })
+  const search = page.locator('.fund-transfer-page .art-search-bar')
+  const start = search.getByPlaceholder('开始日期')
+  const end = search.getByPlaceholder('结束日期')
+  await selectQueryDateRange(search)
+
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expectQueryDateRangeReadable(search)
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+    ).toBeLessThanOrEqual(1)
+    await search.screenshot({ path: info.outputPath(`transfer-date-range-${width}.png`) })
+  }
+
+  const previousListCalls = state.listCalls
+  await search.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => state.listCalls).toBeGreaterThan(previousListCalls)
+  await search.getByRole('button', { name: '重置', exact: true }).click()
+  await expect(start).toHaveValue('')
+  await expect(end).toHaveValue('')
+  expect(state.transitions).toEqual([])
+  expect(state.unexpectedRest).toEqual([])
+  expect(state.deniedExternal).toEqual([])
+  expect(state.pageErrors).toEqual([])
+})
 
 test('资金调拨真实页面专注模式保留查询表格和分页并可两种方式退出', async ({ page }, info) => {
   const state = await mockPage(page, actions[0])

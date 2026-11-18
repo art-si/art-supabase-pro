@@ -6,6 +6,8 @@ import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
@@ -56,6 +58,11 @@ const app = createApp({
 app.use(store)
 app.use(router)
 app.use(language)
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 setupGlobDirectives(app)
 await router.push(page.path)
 await router.isReady()

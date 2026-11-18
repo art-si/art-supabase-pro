@@ -83,7 +83,10 @@ const app = createApp({
   render: () =>
     h(
       'main',
-      { class: 'art-page-view h-screen p-4' },
+      {
+        class: 'art-page-view h-screen p-4',
+        style: { '--art-full-height': 'calc(100dvh - 32px)' }
+      },
       mode === 'search-contract'
         ? [...searchContract(), h('output', { 'data-testid': 'submitted-filter' }, submitted.value)]
         : mode === 'serial-list'
@@ -117,8 +120,14 @@ useUserStore(store).setUserInfo({
   platformSuper: false
 })
 useMenuStore(store).setButtonList(
-  ['MdmInventorySerial', 'MdmInventoryReservation'].map((name) => ({
-    name: `${name}:View`,
+  [
+    'MdmInventorySerial:View',
+    'MdmInventoryReservation:View',
+    ...(mode === 'reservation-list' && new URLSearchParams(location.search).get('release') === '1'
+      ? ['MdmInventoryReservation:Release']
+      : [])
+  ].map((name) => ({
+    name,
     path: '',
     type: 'button',
     meta: { title: '查看测试数据' }

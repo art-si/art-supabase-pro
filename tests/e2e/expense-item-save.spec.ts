@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
@@ -19,6 +20,13 @@ for (const mode of [
 ] as const) {
   test(`费用项目保存 ${mode}`, async ({ page }, testInfo) => {
     await prepareIsolatedSession(page)
+    const verifySaveLock = mode === 'create' || mode === 'edit' || mode === 'failure'
+    const narrow = (page.viewportSize()?.width ?? 1440) <= 640
+    const appearance: Parameters<typeof prepareAppearance>[1] = {
+      theme: narrow || testInfo.project.use.colorScheme === 'dark' ? 'dark' : 'light',
+      boxBorderMode: !narrow && !testInfo.project.name.includes('shadow')
+    }
+    if (verifySaveLock) await prepareAppearance(page, appearance)
     const dictionaryItems: Record<string, Array<[string, string]>> = {
       commonBoolean: [
         ['true', '是'],
@@ -64,22 +72,27 @@ for (const mode of [
     })
     const id = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
     const writes: Record<string, unknown>[] = []
-    await page.route('**/rest/v1/tms_expense_item?*', (route) => {
+    let releaseSave = () => {}
+    const firstSave = new Promise<void>((resolve) => (releaseSave = resolve))
+    await page.route('**/rest/v1/tms_expense_item?*', async (route) => {
       if (route.request().method() !== 'GET') {
-        writes.push(route.request().postDataJSON())
+        const payload = route.request().postDataJSON()
+        writes.push(payload)
+        const firstWrite = writes.length === 1
         expect(route.request().method()).toBe(
           mode === 'create' || mode === 'child' ? 'POST' : 'PATCH'
         )
         if (mode !== 'create' && mode !== 'child')
           expect(new URL(route.request().url()).searchParams.get('id')).toBe(`eq.${id}`)
-        if (mode === 'failure')
+        if (verifySaveLock && firstWrite) await firstSave
+        if (mode === 'failure' && firstWrite)
           return route.fulfill({
             status: 503,
             json: { code: 'XX000', message: 'database unavailable' }
           })
         return route.fulfill({
           headers: { 'content-range': '0-0/1' },
-          json: { id, ...writes.at(-1) }
+          json: { id, ...payload }
         })
       }
       return route.fulfill({
@@ -134,6 +147,24 @@ for (const mode of [
       `/tests/e2e/fixtures/record-delete-context.html?target=expense-item&expensePermission=${permission}`
     )
     await expect(page.locator('.el-table__body-wrapper')).toContainText('EXP-001')
+    if (verifySaveLock) {
+      await assertAppearance(page, appearance)
+      await expect(page.locator('html')).toHaveAttribute('data-ui-scope', 'workspace')
+      await expect
+        .poll(() =>
+          page.locator('.el-table__body-wrapper').evaluate((element) => element.clientHeight)
+        )
+        .toBeGreaterThan(80)
+      const tableCard = page.locator('.art-table-card').first()
+      if (appearance.boxBorderMode)
+        await expect
+          .poll(() => tableCard.evaluate((element) => getComputedStyle(element).boxShadow))
+          .toBe('none')
+      else
+        await expect
+          .poll(() => tableCard.evaluate((element) => getComputedStyle(element).boxShadow))
+          .not.toBe('none')
+    }
     if (mode === 'denied') {
       await expect(page.getByRole('button', { name: '新增一级项目', exact: true })).toHaveCount(0)
       await expect(page.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0)
@@ -177,6 +208,8 @@ for (const mode of [
       await dialog.getByRole('button', { name: '保存修改', exact: true }).click()
       await expect(dialog.getByText('请输入费用项目名称', { exact: true })).toBeVisible()
       await expect(dialog.getByRole('textbox', { name: /项目名称/ })).toHaveValue('   ')
+      await expect(dialog.getByRole('textbox', { name: /项目名称/ })).toBeEditable()
+      await expect(dialog.getByRole('textbox', { name: /项目名称/ })).toBeFocused()
       expect(writes).toEqual([])
       await page.screenshot({
         path: testInfo.outputPath('blank-required.png'),
@@ -228,7 +261,64 @@ for (const mode of [
       return
     }
     await expect.poll(() => writes.length).toBe(1)
-    expect(writes[0]).toEqual({
+    if (verifySaveLock) {
+      const name = dialog.locator('[data-art-form-item-key="itemName"] input')
+      const viewport = dialog.locator('.art-dialog__viewport')
+      const content = dialog.locator('.art-dialog__content')
+      const confirm = dialog.getByRole('button', {
+        name: mode === 'create' ? '确认新增' : '保存修改',
+        exact: true
+      })
+      try {
+        await testInfo.attach('pending-save-overlay-state', {
+          body: JSON.stringify(
+            await name.evaluate((element: HTMLInputElement) => ({
+              value: element.value,
+              inert: element.closest('.art-dialog__content')?.hasAttribute('inert'),
+              busy: element
+                .closest('.art-dialog')
+                ?.querySelector('.art-dialog__viewport')
+                ?.getAttribute('aria-busy')
+            })),
+            null,
+            2
+          ),
+          contentType: 'application/json'
+        })
+        await dialog.screenshot({
+          path: testInfo.outputPath('expense-item-pending-save.png'),
+          animations: 'disabled'
+        })
+        await expect(viewport).toHaveAttribute('aria-busy', 'true')
+        await expect(content).toHaveJSProperty('inert', true)
+        await expect(content).toHaveAttribute('aria-hidden', 'true')
+        await expect(viewport.locator(':scope > .art-overlay-loading')).toHaveCount(1)
+        await expect(dialog.locator('.art-overlay-loading')).toHaveCount(1)
+        await expect(dialog.getByText('正在保存费用项目…', { exact: true })).toBeVisible()
+        await expect(dialog.getByText('请稍候，完成后即可继续操作', { exact: true })).toBeVisible()
+        await expect(confirm).toBeDisabled()
+        await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeDisabled()
+        expect(
+          await name.evaluate((element: HTMLInputElement) => {
+            element.focus()
+            return document.activeElement === element
+          })
+        ).toBe(false)
+        await page.keyboard.type('保存期间不能改写')
+        await expect(name).toHaveValue('  新费用分组  ')
+        await confirm.dispatchEvent('click')
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+            )
+        )
+        expect(writes).toHaveLength(1)
+      } finally {
+        releaseSave()
+      }
+    }
+    const expectedPayload = {
       parent_id:
         mode === 'child'
           ? id
@@ -244,16 +334,26 @@ for (const mode of [
       is_enabled: true,
       sort: mode === 'create' || mode === 'child' ? 100 : 0,
       remark: null
-    })
+    }
+    expect(writes[0]).toEqual(expectedPayload)
     if (mode === 'failure') {
       await expect(dialog).toBeVisible()
+      await expect(dialog.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'false')
+      await expect(dialog.locator('.art-dialog__content')).toHaveJSProperty('inert', false)
+      await expect(dialog.locator('.art-overlay-loading')).toHaveCount(0)
       await expect(dialog.getByRole('textbox', { name: /项目名称/ })).toHaveValue('  新费用分组  ')
+      await expect(dialog.getByRole('textbox', { name: /项目名称/ })).toBeEditable()
       await expect(page.locator('.el-message--error')).toHaveCount(1)
       await expect(page.locator('.el-message--error')).not.toContainText('database unavailable')
       await page.screenshot({
         path: testInfo.outputPath('expense-item-save-failure.png'),
         animations: 'disabled'
       })
+      await dialog.getByRole('textbox', { name: /项目名称/ }).fill('  费用分组重试  ')
+      await dialog.getByRole('button', { name: '保存修改', exact: true }).click()
+      await expect.poll(() => writes.length).toBe(2)
+      expect(writes[1]).toEqual({ ...expectedPayload, item_name: '费用分组重试' })
+      await expect(dialog).toBeHidden()
     } else await expect(dialog).not.toBeVisible()
   })
 }

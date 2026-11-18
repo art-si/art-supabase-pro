@@ -16,7 +16,17 @@
  * @module useTable
  */
 
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick, readonly } from 'vue'
+import {
+  ref,
+  shallowRef,
+  reactive,
+  computed,
+  onMounted,
+  onUnmounted,
+  nextTick,
+  readonly
+} from 'vue'
+import { cloneDeep } from 'lodash-es'
 import { useIntervalFn, useWindowSize } from '@vueuse/core'
 import { useTableColumns } from './useTableColumns'
 import type { ColumnOption } from '@/types/component'
@@ -216,6 +226,7 @@ function useTableImpl<TApiFn extends AnyTableApiFn, TRecord>(
 
   // 表格数据
   const data = ref<TRecord[]>([])
+  const appliedSearchParams = shallowRef<Readonly<TParams> | null>(null)
 
   // 请求取消控制器
   let abortController: AbortController | null = null
@@ -334,12 +345,14 @@ function useTableImpl<TApiFn extends AnyTableApiFn, TRecord>(
         })
         requestParams = filteredParams as TParams
       }
+      const submittedParams = cloneDeep(requestParams)
 
       // 检查缓存
       if (useCache && cache) {
         const cachedItem = cache.get(requestParams)
         if (cachedItem) {
           data.value = cachedItem.data
+          appliedSearchParams.value = submittedParams
           updatePaginationFromResponse(pagination, cachedItem.response)
 
           // 修复：避免重复设置相同的值，防止响应式循环更新
@@ -388,6 +401,7 @@ function useTableImpl<TApiFn extends AnyTableApiFn, TRecord>(
 
       // 更新状态
       data.value = tableData
+      appliedSearchParams.value = submittedParams
       updatePaginationFromResponse(pagination, standardResponse)
 
       // 修复：避免重复设置相同的值，防止响应式循环更新
@@ -428,6 +442,7 @@ function useTableImpl<TApiFn extends AnyTableApiFn, TRecord>(
       // 状态机：请求失败，进入 error 状态
       loadingState.value = 'error'
       data.value = []
+      appliedSearchParams.value = null
       const tableError = handleError(err, '获取表格数据失败')
       error.value = tableError
       throw tableError
@@ -641,6 +656,7 @@ function useTableImpl<TApiFn extends AnyTableApiFn, TRecord>(
   // 清空数据
   const clearData = (): void => {
     data.value = []
+    appliedSearchParams.value = null
     error.value = null
     clearCache(CacheInvalidationStrategy.CLEAR_ALL, '清空数据')
   }
@@ -711,6 +727,8 @@ function useTableImpl<TApiFn extends AnyTableApiFn, TRecord>(
     // 搜索相关 - 统一前缀
     /** 搜索参数 */
     searchParams,
+    /** 当前结果所采用的请求参数，独立于正在编辑的表单和未完成的请求。 */
+    appliedSearchParams: readonly(appliedSearchParams),
     /** 替换搜索参数（适用于表单查询，避免旧字段残留） */
     replaceSearchParams,
     /** 重置搜索参数 */

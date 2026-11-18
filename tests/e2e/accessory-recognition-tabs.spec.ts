@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const groupId = '22222222-2222-4222-8222-222222222222'
@@ -148,14 +149,12 @@ async function openWorkspace(page: Page, theme = 'light') {
   const dialog = page.getByRole('dialog').filter({ has: page.locator('.accessory-recognition') })
   await expect(dialog).toBeVisible()
   await dialog.getByRole('tab', { name: '记录与草稿', exact: true }).click()
-  await dialog.getByRole('button', { name: '刷新记录', exact: true }).click()
+  const history = await expectOverlayTabPanel(dialog, '记录与草稿')
+  await history.getByRole('button', { name: '刷新记录', exact: true }).click()
   await expect.poll(() => state.historyFilters.at(-1)).toBe(tenantId)
   await dialog.getByRole('tab', { name: '上传与识别', exact: true }).click()
   await expect(dialog.getByRole('tab')).toHaveCount(3)
-  await expect(dialog.getByRole('tab', { name: '上传与识别', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true'
-  )
+  await expectOverlayTabPanel(dialog, '上传与识别')
   return { dialog, state, lists }
 }
 

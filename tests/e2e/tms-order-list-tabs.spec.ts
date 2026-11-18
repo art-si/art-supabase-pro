@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { installDictionaryOptions } from './support/dictionary-options'
+import {
+  expectQueryDateRangeReadable,
+  installQueryDateClock,
+  selectQueryDateRange
+} from './support/query-date-range'
 import { assertTableFocusContract } from './support/table-focus'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
@@ -36,7 +41,7 @@ const rows = [
 ]
 
 for (const variant of [
-  { width: 1440, height: 900, dark: false },
+  { width: 1280, height: 900, dark: false },
   { width: 900, height: 800, dark: true }
 ]) {
   test(`真实运输订单页 ${variant.width}px${variant.dark ? '暗色' : '浅色'}状态标签与专注模式`, async ({
@@ -106,6 +111,7 @@ for (const variant of [
       ]
     })
 
+    await installQueryDateClock(page)
     await page.goto('/tests/e2e/fixtures/tms-order-list-tabs.html', {
       waitUntil: 'domcontentloaded'
     })
@@ -160,6 +166,23 @@ for (const variant of [
     await assertTableFocusContract(page, info, ['.order-list__status-tabs'])
     await expect(cancelledTab).toHaveClass(/is-selected/)
     await expect(orderList.getByText('QA-ORDER-CANCELLED')).toBeVisible()
+
+    const search = orderList.locator('.art-search-bar')
+    const date = search.locator('[data-art-form-item-key="createTimeRange"]')
+    await expect(search.locator('[data-art-form-item-key="cargoKeyword"]')).toBeVisible()
+    await expect(date).toHaveCount(0)
+    await search.getByRole('button', { name: /^展开/ }).click()
+    await selectQueryDateRange(date)
+    await expectQueryDateRangeReadable(date)
+    await search.screenshot({ path: info.outputPath('order-list-date-range.png') })
+    if (variant.width === 1280) {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await expectQueryDateRangeReadable(date)
+      await search.screenshot({ path: info.outputPath('order-list-date-range-390.png') })
+    }
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+    ).toBeLessThanOrEqual(1)
     expect(unexpectedRequests).toEqual([])
     expect(pageErrors).toEqual([])
   })

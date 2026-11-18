@@ -34,20 +34,23 @@
       "
       #header="{ titleId, titleClass }"
     >
-      <div class="art-drawer__header">
+      <div class="art-drawer__header" :class="{ 'art-drawer__header--standard': !$slots.header }">
         <div class="art-drawer__header-main">
           <slot v-if="$slots.header" name="header" :data="openData" :api="exposedApi" />
-          <div v-else-if="options.headerIcon" class="flex min-w-0 items-center gap-3">
+          <div
+            v-else-if="options.headerIcon"
+            class="art-drawer__header-identity flex min-w-0 items-center gap-3"
+          >
             <span
               class="grid size-10 shrink-0 place-items-center rounded bg-primary/10 text-xl text-primary"
               aria-hidden="true"
             >
               <ArtSvgIcon :icon="options.headerIcon" />
             </span>
-            <div class="min-w-0">
+            <div class="art-drawer__header-text min-w-0">
               <span
                 :id="titleId"
-                class="block text-base font-semibold text-g-900"
+                class="art-drawer__title block text-base font-semibold text-g-900"
                 role="heading"
                 :aria-level="String(drawerBindings.headerAriaLevel ?? '2')"
                 >{{ drawerTitle }}</span
@@ -62,6 +65,7 @@
           <span
             v-else
             :id="titleId"
+            class="art-drawer__title"
             :class="titleClass"
             role="heading"
             :aria-level="String(drawerBindings.headerAriaLevel ?? '2')"
@@ -104,7 +108,11 @@
       </div>
     </template>
 
-    <div class="art-drawer__viewport" :aria-busy="contentLoading">
+    <div
+      class="art-drawer__viewport"
+      :aria-busy="contentLoading"
+      @keydown.capture="preventOverlayTabArrowScroll"
+    >
       <ElScrollbar
         ref="scrollbarRef"
         :always="options.scrollbarAlways"
@@ -198,6 +206,7 @@
     useArtOverlay
   } from '@/hooks/core/useArtOverlay'
   import { focusFirstInvalidFormField } from '@/utils/form/validation'
+  import { preventOverlayTabArrowScroll } from '@/utils/ui/overlay-tab-keyboard'
   import { handoffVerticalWheel } from '@/utils/ui/wheel-scroll'
   import { artFormFocusKey } from '@/components/core/forms/art-form/focus'
 
@@ -583,7 +592,9 @@
   }
 
   @media (width <= 640px) {
-    :global(.art-drawer) {
+    :global(.el-drawer.art-drawer) {
+      --el-drawer-padding-primary: var(--art-space-4);
+
       width: calc(100vw - 12px) !important;
       max-width: calc(100vw - 12px);
     }
@@ -622,6 +633,10 @@
     min-width: 0;
   }
 
+  .art-drawer__title {
+    overflow-wrap: anywhere;
+  }
+
   .art-drawer__header {
     display: flex;
     gap: 8px;
@@ -657,6 +672,29 @@
     line-height: 20px;
     color: var(--el-text-color-secondary);
     overflow-wrap: anywhere;
+  }
+
+  @media (width <= 640px) {
+    .art-drawer__header--standard {
+      flex-wrap: wrap;
+
+      .art-drawer__header-main,
+      .art-drawer__header-identity,
+      .art-drawer__header-text {
+        display: contents;
+      }
+
+      .art-drawer__title {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .art-drawer__subtitle {
+        flex: 0 0 100%;
+        order: 1;
+        margin-top: 0;
+      }
+    }
   }
 
   :global(.art-drawer .el-drawer__header .art-icon-button),
@@ -724,6 +762,7 @@
 
   .art-drawer__footer {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--art-space-2);
     align-items: center;
     justify-content: flex-end;

@@ -90,7 +90,9 @@ for (const config of [
       await confirmation.getByRole('button', { name: '取消', exact: true }).click()
       await expect(confirmation).toBeHidden()
       expect(writes).toEqual([])
-      if (!(await page.getByRole('checkbox', { name: '选择所有行', exact: true }).isChecked()))
+      if (
+        !(await page.getByRole('checkbox', { name: '选择当前页全部行', exact: true }).isChecked())
+      )
         await page.locator('.el-table__header-wrapper label.el-checkbox').first().click()
       await expect(button).toBeEnabled()
       await button.click()

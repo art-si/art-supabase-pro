@@ -79,7 +79,8 @@
     min-width: 0;
     height: 100%;
     min-height: 0;
-    overflow: hidden;
+    overflow: clip;
+    overflow-clip-margin: var(--art-space-3);
 
     &__primary,
     &__secondary {
@@ -88,7 +89,8 @@
       min-width: 0;
       height: 100%;
       min-height: 0;
-      overflow: hidden;
+      overflow: clip;
+      overflow-clip-margin: var(--art-space-3);
 
       > :deep(*) {
         flex: 1 1 auto;
@@ -106,7 +108,10 @@
     }
 
     > :deep(.el-splitter-panel) {
-      overflow: hidden;
+      min-width: 0;
+      min-height: 0;
+      overflow: clip;
+      overflow-clip-margin: var(--art-space-3);
     }
 
     > :deep(.el-splitter-bar) {

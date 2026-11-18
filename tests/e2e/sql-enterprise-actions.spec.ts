@@ -360,9 +360,15 @@ test('virtual tree keeps 5000 loaded functions scrollable without mounting every
 }, info) => {
   test.setTimeout(150000)
   await prepare(page, info.project.name)
-  let requests = 0
+  const metadataRequests: { mode?: string; keyword?: string }[] = []
+  let executionAttempts = 0
   await page.route('**/functions/v1/execute-sql-with-columns', (route) => {
-    requests++
+    const request = route.request().postDataJSON()
+    if (request?.action !== 'metadata') {
+      executionAttempts++
+      return route.abort('blockedbyclient')
+    }
+    metadataRequests.push({ mode: request.mode, keyword: request.keyword })
     return route.fulfill({
       json: {
         schemas: ['public'],
@@ -380,17 +386,48 @@ test('virtual tree keeps 5000 loaded functions scrollable without mounting every
   await page.goto(
     '/tests/e2e/fixtures/sql-console-metadata.html?actor=virtual-tree&tenant=tenant-a'
   )
+  const editorLines = page.locator('.monaco-editor .view-lines').first()
+  await expect(editorLines).toContainText('sys_user')
+  const originalSql = (await editorLines.textContent()) ?? ''
   const narrow = (page.viewportSize()?.width || 0) <= 900
   if (narrow) await page.getByRole('button', { name: '展开数据库资源', exact: true }).click()
   const panel = page.getByRole('complementary', { name: '数据库资源', exact: true })
-  expect(
-    (await panel.locator('.sql-resource-panel__tree-viewport').boundingBox())?.height
-  ).toBeGreaterThan(160)
-  await panel.getByRole('button', { name: '定位对象 public', exact: true }).click()
-  await panel.getByRole('button', { name: '定位对象 函数', exact: true }).click()
-  await expect(
-    panel.getByRole('button', { name: '定位对象 perf_fn_0000', exact: true })
-  ).toBeVisible()
+  const object = (name: string) =>
+    panel.getByRole('button', { name: `定位对象 ${name}`, exact: true })
+  const functions = object('函数')
+  const first = object('perf_fn_0000')
+  const last = object('perf_fn_4999')
+  const functionGroup = functions.locator('xpath=ancestor::*[@role="treeitem"][1]')
+  const viewport = panel.locator('.sql-resource-panel__tree-viewport')
+  await expect(object('public')).toBeVisible()
+  expect((await viewport.boundingBox())?.height).toBeGreaterThan(160)
+  await panel.getByRole('button', { name: '刷新数据库资源', exact: true }).focus()
+  await page.keyboard.press('Tab')
+  await expect(object('public')).toBeFocused()
+  await page.keyboard.press('ArrowRight')
+  await expect(object('表')).toBeVisible()
+  await page.keyboard.press('ArrowRight')
+  await expect(object('表')).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(object('视图')).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(functions).toBeFocused()
+  await page.keyboard.press('ArrowRight')
+  await expect(first).toBeVisible()
+  await page.keyboard.press('ArrowRight')
+  await expect(first).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(functions).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(functionGroup).toHaveAttribute('aria-expanded', 'false')
+  await expect(first).toBeHidden()
+  await page.keyboard.press('ArrowRight')
+  await expect(first).toBeVisible()
+  await page.keyboard.press('ArrowRight')
+  await expect(first).toBeFocused()
+  await page.keyboard.press('Home')
+  await expect(object('public')).toBeFocused()
+  await expect(editorLines).toHaveText(originalSql)
   expect(await panel.getByRole('treeitem').count()).toBeLessThan(80)
   const scrollOwners = await panel.evaluate(
     (element) =>
@@ -425,31 +462,63 @@ test('virtual tree keeps 5000 loaded functions scrollable without mounting every
   }
   await expect(panel.getByRole('button', { name: /^SQL 收藏/ })).toBeInViewport()
   await expect(panel.getByRole('button', { name: /^语句导航/ })).toBeInViewport()
-  const viewport = panel.locator('.sql-resource-panel__tree-viewport')
-  await viewport.hover()
-  await page.mouse.wheel(0, 180000)
+  await expect(last).toHaveCount(0)
+  await page.keyboard.press('End')
+  await expect(last).toBeFocused()
+  await expect(last).toBeInViewport()
+  await expect(first).toHaveCount(0)
+  await page.keyboard.press('ArrowUp')
+  await expect(object('perf_fn_4998')).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(last).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(panel.getByRole('button', { name: '插入 perf_fn_4999', exact: true })).toBeFocused()
+  await page.keyboard.press('Tab')
   await expect(
-    panel.getByRole('button', { name: '定位对象 perf_fn_4999', exact: true })
-  ).toBeVisible()
+    panel.getByRole('button', { name: '更多操作 perf_fn_4999', exact: true })
+  ).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(panel.getByRole('button', { name: /^SQL 收藏/ })).toBeFocused()
+  for (let index = 0; index < 3; index++) await page.keyboard.press('Shift+Tab')
+  await expect(last).toBeFocused()
+  await page.keyboard.press('Shift+F10')
+  const menuRegion = narrow ? page.getByRole('dialog', { name: '数据库资源' }) : page
+  const copyName = menuRegion.getByRole('menuitem', { name: '复制完整名称', exact: true })
+  await expect(copyName).toBeFocused()
+  await expect(copyName).toBeInViewport()
+  await page.keyboard.press('Escape')
+  await expect(copyName).toBeHidden()
+  await expect(last).toBeFocused()
+  const focusRow = last.locator('xpath=ancestor::*[contains(@class,"el-tree-node__content")][1]')
+  await expect(focusRow).toHaveCSS('outline-style', 'solid')
+  await expect(editorLines).toHaveText(originalSql)
   expect(await panel.getByRole('treeitem').count()).toBeLessThan(80)
+  expect(metadataRequests).toEqual([{ mode: 'catalog' }])
   await page.screenshot({ path: info.outputPath('virtual-functions-end.png') })
   await panel.getByRole('button', { name: 'SQL 收藏', exact: true }).click()
   await expect(panel.getByRole('button', { name: '收藏当前脚本', exact: true })).toBeVisible()
   await panel.getByRole('button', { name: '数据库对象', exact: true }).click()
-  await expect(
-    panel.getByRole('button', { name: '定位对象 perf_fn_4999', exact: true })
-  ).toBeVisible()
+  await expect(last).toBeVisible()
   await panel.getByRole('textbox', { name: '搜索数据库资源', exact: true }).fill('perf_fn_4999')
   await expect(
     panel.getByRole('button', { name: '插入函数 public.perf_fn_4999', exact: true })
   ).toBeVisible()
+  const expectedMetadataRequests = [
+    { mode: 'catalog' },
+    { mode: 'search', keyword: 'perf_fn_4999' }
+  ]
+  await expect.poll(() => metadataRequests).toEqual(expectedMetadataRequests)
   await panel.getByRole('textbox', { name: '搜索数据库资源', exact: true }).fill('')
   await viewport.hover()
   await page.mouse.wheel(0, -180000)
-  await panel.getByRole('button', { name: '定位对象 函数', exact: true }).click()
-  await panel.getByRole('button', { name: '定位对象 函数', exact: true }).click()
-  await expect(
-    panel.getByRole('button', { name: '定位对象 perf_fn_0000', exact: true })
-  ).toBeVisible()
-  expect(requests).toBe(1)
+  await functions.click()
+  await functions.click()
+  await expect(first).toBeVisible()
+
+  await first.press('Enter')
+  const reference = '"public"."perf_fn_0000"'
+  await expect(editorLines).toContainText(reference)
+  expect((await editorLines.textContent())?.replace(reference, '')).toBe(originalSql)
+  expect(metadataRequests).toEqual(expectedMetadataRequests)
+  expect(executionAttempts).toBe(0)
 })

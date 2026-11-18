@@ -14,6 +14,7 @@ const app = createApp({
   render: () =>
     h('main', { class: 'p-4' }, [
       h('h1', { class: 'mb-4 text-xl' }, '表格分页导出验收'),
+      ...(mode === 'keyboard' ? [h('button', { type: 'button' }, '继续浏览')] : []),
       h(ArtTableQuery, {
         apiFn: async (params: Record<string, unknown>) => {
           const page = Number(params.page)
@@ -68,14 +69,31 @@ const app = createApp({
               ]
             : [])
         ],
-        headerActions: [{ key: 'export', type: 'export', exportFilename: '分页导出验收' }],
+        headerActions:
+          mode === 'keyboard'
+            ? (['甲', '乙'] as const).map((name) => ({
+                key: `export-${name}`,
+                type: 'export' as const,
+                label: `导出${name}`,
+                exportFilename: `导出${name}`,
+                exportApi: async () => {
+                  const response = await fetch(
+                    `/test-data/table-export/${encodeURIComponent(name)}`
+                  )
+                  if (!response.ok) throw new Error('导出暂未完成，请重试')
+                  return [{ name: `测试记录${name}` }]
+                }
+              }))
+            : [{ key: 'export', type: 'export', exportFilename: '分页导出验收' }],
         showSearchBar: false
       })
     ])
 })
 app.use(store)
-if (mode === 'dictionary')
-  useUserStore(store).setDictMap({
+if (mode === 'dictionary') {
+  const user = useUserStore(store)
+  user.setLoginStatus(true)
+  user.setDictMap({
     qaExportState: [
       { name: '已审核', label: '已审核', value: 'approved', code: 'approved', status: '1' }
     ],
@@ -84,6 +102,7 @@ if (mode === 'dictionary')
     ],
     commonBoolean: [{ name: '否', label: '否', value: 'false', code: 'false', status: '1' }]
   })
+}
 app.use(
   createRouter({
     history: createMemoryHistory(),

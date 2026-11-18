@@ -3,6 +3,29 @@ import { expect, test } from '@playwright/test'
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
 
+test('初始库存键盘复制明细后焦点留在原行操作上', async ({ page }) => {
+  await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+  await page.goto('/tests/e2e/fixtures/wms-document-serials.html?withoutSerial=true')
+  await page.getByRole('button', { name: '打开初始库存单', exact: true }).click()
+  const drawer = page.locator('.el-drawer:visible')
+  await drawer.getByRole('tab', { name: '物料明细', exact: true }).click()
+  const table = drawer.locator('.art-table.wms-editable-line-table')
+  const rows = table.locator('.el-table__body tr')
+  const firstLineNo = rows.first().locator('td').nth(1)
+  await expect(firstLineNo).toHaveText('1')
+  const more = rows.first().getByRole('button', { name: '更多操作', exact: true })
+  await more.focus()
+  await page.keyboard.press('Enter')
+  const copy = page.getByRole('menuitem', { name: '复制明细', exact: true })
+  await expect(copy).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(copy).toBeHidden()
+  await expect(rows).toHaveCount(2)
+  await expect(firstLineNo).toHaveText('10')
+  await expect(rows.nth(1).locator('td').nth(1)).toHaveText('20')
+  await expect(more).toBeFocused()
+})
+
 const scenarios = [
   ['打开初始库存单', '', '初始库存'],
   ...[

@@ -28,23 +28,25 @@
       <component
         :is="useTabs ? ElTabs : 'div'"
         v-bind="useTabs ? { modelValue: activeTab } : {}"
-        :class="useTabs ? 'min-w-0' : 'workflow-simulator__result'"
+        :class="useTabs ? 'min-w-0 art-card-xs art-overlay-tab-card' : 'workflow-simulator__result'"
         @update:model-value="setActiveTab"
       >
         <component
           :is="useTabs ? ElTabPane : 'div'"
           v-bind="useTabs ? { name: 'sample', label: '业务样例', lazy: false } : {}"
         >
-          <ArtSectionCard class="workflow-simulator__section" preserve-content-structure>
-            <template #header>
-              <div class="workflow-simulator__section-header">
-                <div>
-                  <ArtSectionTitle>业务样例</ArtSectionTitle>
-                  <p>这里只模拟当前草稿，不会创建审批实例，也不会修改业务数据。</p>
-                </div>
-                <span>{{ contextFields.length }} 个受控字段</span>
+          <component
+            :is="useTabs ? ArtPageSection : ArtSectionCard"
+            class="workflow-simulator__section"
+            :preserve-content-structure="!useTabs || undefined"
+          >
+            <div class="workflow-simulator__section-header">
+              <div>
+                <ArtSectionTitle>业务样例</ArtSectionTitle>
+                <p>这里只模拟当前草稿，不会创建审批实例，也不会修改业务数据。</p>
               </div>
-            </template>
+              <span>{{ contextFields.length }} 个受控字段</span>
+            </div>
             <ArtForm
               v-if="contextFields.length"
               v-model="form.data"
@@ -60,25 +62,27 @@
               size="compact"
               :visual-size="72"
             />
-          </ArtSectionCard>
+          </component>
         </component>
         <component
           :is="useTabs ? ElTabPane : 'div'"
           v-bind="useTabs ? { name: 'path', label: '模拟路径与体检', lazy: false } : {}"
         >
           <div class="workflow-simulator__result">
-            <ArtSectionCard class="workflow-simulator__section" preserve-content-structure>
-              <template #header>
-                <div class="workflow-simulator__section-header">
-                  <div>
-                    <ArtSectionTitle>模拟路径</ArtSectionTitle>
-                    <p>引擎按节点顺序检查条件，首个命中节点会先生成审批任务。</p>
-                  </div>
-                  <ElTag v-if="result.firstMatchedNodeKey" type="success" effect="plain">
-                    已找到首个审批节点
-                  </ElTag>
+            <component
+              :is="useTabs ? ArtPageSection : ArtSectionCard"
+              class="workflow-simulator__section"
+              :preserve-content-structure="!useTabs || undefined"
+            >
+              <div class="workflow-simulator__section-header">
+                <div>
+                  <ArtSectionTitle>模拟路径</ArtSectionTitle>
+                  <p>引擎按节点顺序检查条件，首个命中节点会先生成审批任务。</p>
                 </div>
-              </template>
+                <ElTag v-if="result.firstMatchedNodeKey" type="success" effect="plain">
+                  已找到首个审批节点
+                </ElTag>
+              </div>
               <WorkflowFlowMap
                 :nodes="config.nodes"
                 :simulation-states="result.simulationStates"
@@ -108,30 +112,30 @@
                   <em>{{ trace.state === 'matched' ? '条件命中' : '本次跳过' }}</em>
                 </article>
               </div>
-            </ArtSectionCard>
-            <ArtSectionCard class="workflow-simulator__section" preserve-content-structure>
-              <template #header>
-                <div class="workflow-simulator__section-header">
-                  <div>
-                    <ArtSectionTitle>配置体检</ArtSectionTitle>
-                    <p>错误项会阻止可靠运行；警告项需要在发布前确认业务意图。</p>
-                  </div>
-                  <ElTag
-                    :type="
-                      result.errorCount ? 'danger' : result.warningCount ? 'warning' : 'success'
-                    "
-                    effect="plain"
-                  >
-                    {{
-                      result.errorCount
-                        ? `${result.errorCount} 个错误`
-                        : result.warningCount
-                          ? `${result.warningCount} 个警告`
-                          : '配置健康'
-                    }}
-                  </ElTag>
+            </component>
+            <component
+              :is="useTabs ? ArtPageSection : ArtSectionCard"
+              class="workflow-simulator__section"
+              :preserve-content-structure="!useTabs || undefined"
+            >
+              <div class="workflow-simulator__section-header">
+                <div>
+                  <ArtSectionTitle>配置体检</ArtSectionTitle>
+                  <p>错误项会阻止可靠运行；警告项需要在发布前确认业务意图。</p>
                 </div>
-              </template>
+                <ElTag
+                  :type="result.errorCount ? 'danger' : result.warningCount ? 'warning' : 'success'"
+                  effect="plain"
+                >
+                  {{
+                    result.errorCount
+                      ? `${result.errorCount} 个错误`
+                      : result.warningCount
+                        ? `${result.warningCount} 个警告`
+                        : '配置健康'
+                  }}
+                </ElTag>
+              </div>
 
               <div v-if="result.diagnostics.length" class="workflow-simulator__diagnostics">
                 <article
@@ -163,18 +167,26 @@
                   <p>建议继续使用边界金额、空值和不同业务类型各试跑一次。</p>
                 </div>
               </div>
-            </ArtSectionCard>
+            </component>
           </div>
         </component>
       </component>
     </div>
 
-    <template #footer="{ api }">
-      <div class="workflow-simulator__footer">
-        <ElButton @click="clearContext"> <ArtSvgIcon icon="ri:eraser-line" />清空样例 </ElButton>
-        <ElButton @click="fillExample"> <ArtSvgIcon icon="ri:magic-line" />生成命中样例 </ElButton>
-        <span />
-        <ElButton type="primary" @click="api.handleConfirm()">完成试跑</ElButton>
+    <template #footer-left>
+      <div class="workflow-simulator__sample-actions">
+        <ElButton @click="clearContext">
+          <template #icon>
+            <ArtSvgIcon class="workflow-simulator__sample-action-icon" icon="ri:eraser-line" />
+          </template>
+          清空样例
+        </ElButton>
+        <ElButton @click="fillExample">
+          <template #icon>
+            <ArtSvgIcon class="workflow-simulator__sample-action-icon" icon="ri:magic-line" />
+          </template>
+          生成命中样例
+        </ElButton>
       </div>
     </template>
   </ArtDialog>
@@ -182,6 +194,7 @@
 
 <script setup lang="ts">
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtPageSection from '@/components/core/layouts/art-page-section/index.vue'
   import { ElTabs, ElTabPane } from 'element-plus'
   import { cloneDeep } from 'lodash-es'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -391,6 +404,10 @@
     &__section {
       min-width: 0;
       padding: 18px;
+
+      &.art-page-section {
+        padding: 0;
+      }
     }
 
     &__section-header {
@@ -609,14 +626,13 @@
       background: var(--el-color-success-light-9);
     }
 
-    &__footer {
+    &__sample-actions {
       display: flex;
-      gap: 10px;
-      align-items: center;
-      width: 100%;
+      flex-wrap: wrap;
+      gap: var(--art-space-2);
 
-      > span {
-        flex: 1;
+      > .el-button {
+        margin-inline-start: 0;
       }
     }
   }
@@ -643,14 +659,6 @@
           grid-column: 3;
         }
       }
-
-      &__footer {
-        flex-wrap: wrap;
-
-        > span {
-          display: none;
-        }
-      }
     }
   }
 
@@ -660,9 +668,8 @@
         display: grid;
       }
 
-      &__footer .el-button {
-        flex: 1 1 calc(50% - 5px);
-        margin-left: 0;
+      &__sample-actions :deep(.el-icon:has(> .workflow-simulator__sample-action-icon)) {
+        display: none;
       }
     }
   }

@@ -64,6 +64,11 @@ import {
 import { debounce } from 'lodash-es'
 import type { SeriesOption } from 'echarts'
 
+export function isNamedChartSeries<T extends { name: string }>(data: number[] | T[]): data is T[] {
+  const first = Array.isArray(data) ? data[0] : undefined
+  return first !== null && typeof first === 'object' && 'name' in first
+}
+
 // 图表主题配置
 export const useChartOps = (): ChartThemeConfig => {
   const cssColor = (name: string): string => getCssVar(name).trim()

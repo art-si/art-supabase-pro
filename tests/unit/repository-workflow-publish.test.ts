@@ -103,9 +103,15 @@ test(
       git(child, ['push', '--quiet', '--set-upstream', 'origin', 'main'])
 
       initialize(root)
-      mkdirSync(join(root, 'scripts'), { recursive: true })
+      mkdirSync(join(root, 'scripts/lib'), { recursive: true })
       mkdirSync(join(root, 'supabase/functions/ai-project-planner'), { recursive: true })
-      for (const name of ['cloudbase-modules.mjs', 'generate-ai-project-snapshot.ts'])
+      for (const name of [
+        'cloudbase-modules.mjs',
+        'generate-ai-project-snapshot.ts',
+        'hosted-module-dependencies.mjs',
+        'lib/git-submodule-paths.mjs',
+        'manage-modules.ts'
+      ])
         copyFileSync(join(projectRoot, 'scripts', name), join(root, 'scripts', name))
       copyFileSync(workflowSource, join(root, 'scripts/repository-workflow.ts'))
       writeFileSync(
@@ -146,6 +152,26 @@ test(
       git(root, ['add', '--all'])
       const manifest = runNode(['scripts/cloudbase-modules.mjs', 'write'])
       assert.equal(manifest.status, 0, `${manifest.stdout}${manifest.stderr}`)
+      const modulesFile = join(root, '.gitmodules')
+      const modulesConfig = readFileSync(modulesFile, 'utf8')
+      writeFileSync(
+        modulesFile,
+        modulesConfig.replace('path = modules/fixture-child', 'path = ../outside')
+      )
+      try {
+        const status = runNode([tsx, 'scripts/manage-modules.ts', 'status'])
+        assert.equal(status.status, 1, `${status.stdout}${status.stderr}`)
+        assert.match(status.stderr, /超出允许目录/)
+        const checkedManifest = runNode(['scripts/cloudbase-modules.mjs', 'check'])
+        assert.equal(
+          checkedManifest.status,
+          0,
+          `${checkedManifest.stdout}${checkedManifest.stderr}`
+        )
+        assert.match(checkedManifest.stdout, /Verified 1 pinned module revisions/)
+      } finally {
+        writeFileSync(modulesFile, modulesConfig)
+      }
       const initialSnapshot = runNode([tsx, 'scripts/generate-ai-project-snapshot.ts'])
       assert.equal(initialSnapshot.status, 0, `${initialSnapshot.stdout}${initialSnapshot.stderr}`)
       git(root, ['add', '--all'])

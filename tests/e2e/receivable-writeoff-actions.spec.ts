@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15000 })
 test.setTimeout(60000)
@@ -6,6 +7,7 @@ const organization = '33333333-3333-4333-8333-333333333333'
 const tenant = '11111111-1111-4111-8111-111111111111'
 
 test('核销方案两条新增及两组核销、查验、失败恢复与反核销', async ({ page }, info) => {
+  await prepareIsolatedSession(page, { tenantId: tenant, platformSuper: true })
   const schemes: Array<{ id: string; name: string }> = []
   const executions: Array<Record<string, unknown>> = []
   const reversals: Array<Record<string, unknown>> = []
@@ -144,7 +146,13 @@ test('核销方案两条新增及两组核销、查验、失败恢复与反核�
     return route.fulfill({ json: [] })
   })
   const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
-  await page.goto(`/tests/e2e/fixtures/receivable-workspace.html?kind=writeoff&theme=${theme}`)
+  const box = theme === 'dark' ? 'shadow-mode' : 'border-mode'
+  await page.goto(
+    `/tests/e2e/fixtures/receivable-workspace.html?kind=writeoff&theme=${theme}&box=${box}`
+  )
+  if (theme === 'dark') await expect(page.locator('html')).toHaveClass(/\bdark\b/)
+  else await expect(page.locator('html')).not.toHaveClass(/\bdark\b/)
+  await expect(page.locator('html')).toHaveAttribute('data-box-mode', box)
   for (const index of [1, 2]) {
     await page.getByRole('button', { name: '核销方案', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '新增核销方案' })
@@ -228,6 +236,7 @@ test('核销方案两条新增及两组核销、查验、失败恢复与反核�
   const historyDialog = page.getByRole('dialog', { name: '核销记录', exact: true })
   for (const index of [1, 2]) {
     const row = historyDialog.getByRole('row').filter({ hasText: `QA-WRITEOFF-${index}` })
+    await expect(row).toBeInViewport()
     await row.getByRole('button', { name: '查看双侧分录' }).click()
     const detail = page.getByRole('dialog', { name: '核销双侧分录' })
     await expect(detail).toContainText(`QA-FINANCIAL-${index}`)

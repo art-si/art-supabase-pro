@@ -1,10 +1,13 @@
 <template>
   <aside
     v-show="visible"
+    ref="panel"
     class="art-notification-panel art-card-sm"
     :class="{ 'is-show': show }"
+    :inert="!value"
     aria-label="通知中心"
     @click.stop
+    @keydown.esc.stop.prevent="dismissByKeyboard"
   >
     <header class="art-notification-panel__header">
       <div>
@@ -22,13 +25,21 @@
       </ElButton>
     </header>
 
-    <div class="art-notification-panel__tabs" role="tablist" aria-label="通知分类">
+    <div
+      class="art-notification-panel__tabs"
+      role="tablist"
+      aria-label="通知分类"
+      @keydown="handleTabKeydown"
+    >
       <button
         v-for="(item, index) in tabs"
         :key="item.category"
+        :id="getTabId(item.category)"
         type="button"
         role="tab"
         :aria-selected="barActiveIndex === index"
+        :aria-controls="tabPanelId"
+        :tabindex="barActiveIndex === index ? 0 : -1"
         :class="{ 'is-active': barActiveIndex === index }"
         @click="changeBar(index)"
       >
@@ -37,7 +48,14 @@
       </button>
     </div>
 
-    <div class="art-notification-panel__body" :aria-busy="state.loading">
+    <div
+      :id="tabPanelId"
+      class="art-notification-panel__body"
+      role="tabpanel"
+      :aria-labelledby="getTabId(activeCategory)"
+      :aria-busy="state.loading"
+      :tabindex="currentList.length || state.error ? undefined : 0"
+    >
       <ArtOverlayLoading
         v-if="state.loading"
         loading
@@ -46,12 +64,12 @@
         text="正在加载通知…"
         description=""
       />
-      <ElScrollbar class="art-notification-panel__scrollbar" always>
+      <ElScrollbar ref="scrollbar" class="art-notification-panel__scrollbar" always>
         <div v-if="state.error" class="art-notification-panel__error">
           <ArtSvgIcon icon="ri:wifi-off-line" />
           <strong>通知加载失败</strong>
           <p>{{ state.error }}</p>
-          <ElButton size="small" @click="loadNotificationCenter(true)">重新加载</ElButton>
+          <ElButton size="small" @click="retryNotificationCenter">重新加载</ElButton>
         </div>
 
         <div v-else-if="currentList.length" class="art-notification-panel__list">
@@ -98,9 +116,11 @@
 <script setup lang="ts">
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
   import { useDocumentVisibility, useIntervalFn, useTimeoutFn } from '@vueuse/core'
-  import { getCurrentScope } from 'vue'
+  import { getCurrentScope, nextTick, useId, useTemplateRef } from 'vue'
+  import type { ScrollbarInstance } from 'element-plus'
   import { useRouter, type LocationQueryRaw } from 'vue-router'
   import { createDateTimeFormatter } from '@/utils/ui/format'
+  import { getFocusedKeyboardButton } from '@/utils/ui/button-focus'
   import { fetchHeaderNotificationCenter, markHeaderNotificationsRead } from '@/api/notification'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
 
@@ -122,10 +142,11 @@
     data: Api.Notification.HeaderNotificationCenter
   }
 
-  const props = defineProps<{ value: boolean }>()
+  const props = defineProps<{ value: boolean; focusOnOpen?: boolean }>()
   const emit = defineEmits<{
     'update:value': [value: boolean]
     'unread-change': [count: number]
+    'dismiss-keyboard': []
   }>()
 
   const router = useRouter()
@@ -133,6 +154,10 @@
   const show = ref(false)
   const visible = ref(false)
   const barActiveIndex = ref(0)
+  const panel = useTemplateRef<HTMLElement>('panel')
+  const scrollbar = useTemplateRef<ScrollbarInstance>('scrollbar')
+  const tabPanelId = useId()
+  const getTabId = (category: NotificationCategory) => `${tabPanelId}-${category}`
   let centerRequest: Promise<void> | undefined
   let lastLoadedAt = 0
   const NOTIFICATION_WARMUP_DELAY_MS = 30_000
@@ -210,7 +235,46 @@
   })
 
   function changeBar(index: number): void {
+    if (barActiveIndex.value === index) return
     barActiveIndex.value = index
+    scrollbar.value?.setScrollTop(0)
+  }
+
+  function focusActiveTab(): void {
+    panel.value
+      ?.querySelector<HTMLButtonElement>('button[role="tab"][aria-selected="true"]')
+      ?.focus({ preventScroll: true })
+  }
+
+  async function handleTabKeydown(event: KeyboardEvent): Promise<void> {
+    const last = tabs.value.length - 1
+    const current = barActiveIndex.value
+    let index: number
+    switch (event.key) {
+      case 'ArrowLeft':
+        index = current === 0 ? last : current - 1
+        break
+      case 'ArrowRight':
+        index = current === last ? 0 : current + 1
+        break
+      case 'Home':
+        index = 0
+        break
+      case 'End':
+        index = last
+        break
+      default:
+        return
+    }
+    event.preventDefault()
+    changeBar(index)
+    await nextTick()
+    if (props.value) focusActiveTab()
+  }
+
+  function dismissByKeyboard(): void {
+    emit('update:value', false)
+    emit('dismiss-keyboard')
   }
 
   function normalizeRouteQuery(query: NotificationItem['routeQuery']): LocationQueryRaw {
@@ -232,6 +296,17 @@
       await request
     } finally {
       if (centerRequest === request) centerRequest = undefined
+    }
+  }
+
+  async function retryNotificationCenter(event: MouseEvent): Promise<void> {
+    const button = getFocusedKeyboardButton(event)
+    await loadNotificationCenter(true)
+    if (!button || state.error || !props.value) return
+    await nextTick()
+    const { ownerDocument } = button
+    if (ownerDocument.hasFocus() && ownerDocument.activeElement === ownerDocument.body) {
+      focusActiveTab()
     }
   }
 
@@ -298,9 +373,15 @@
 
   const animationDelay = ref(5)
   const { start: startAnimation, stop: stopAnimation } = useTimeoutFn(
-    () => {
-      if (props.value) show.value = true
-      else visible.value = false
+    async () => {
+      if (!props.value) {
+        visible.value = false
+        return
+      }
+      show.value = true
+      if (!props.focusOnOpen) return
+      await nextTick()
+      if (props.value && show.value) focusActiveTab()
     },
     animationDelay,
     { immediate: false }
@@ -367,10 +448,9 @@
     right: 20px;
     z-index: 2300;
     display: flex;
-    visibility: hidden;
     flex-direction: column;
     width: 380px;
-    height: min(540px, calc(100vh - 82px));
+    height: min(540px, calc(100dvh - 82px));
     overflow: hidden;
     border-color: var(--art-floating-border) !important;
     box-shadow: var(--art-floating-shadow) !important;
@@ -379,11 +459,9 @@
     transform-origin: top right;
     transition:
       opacity var(--art-motion-duration-fast) var(--art-motion-ease-out),
-      transform var(--art-motion-duration-fast) var(--art-motion-ease-out),
-      visibility var(--art-motion-duration-fast) var(--art-motion-ease-out);
+      transform var(--art-motion-duration-fast) var(--art-motion-ease-out);
 
     &.is-show {
-      visibility: visible;
       opacity: 1;
       transform: translateY(0) scale(1);
     }
@@ -484,6 +562,12 @@
 
       :deep(.el-scrollbar__wrap) {
         overflow-x: hidden;
+      }
+
+      :deep(.el-scrollbar__view) {
+        display: flex;
+        flex-direction: column;
+        min-height: 100%;
       }
     }
 
@@ -595,11 +679,11 @@
     &__empty,
     &__error {
       display: flex;
+      flex: 1 0 auto;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 300px;
-      padding: 24px;
+      padding: clamp(var(--art-space-3), 4vw, var(--art-space-6));
       text-align: center;
     }
 
@@ -639,7 +723,6 @@
       right: 8px;
       left: 8px;
       width: auto;
-      height: min(72vh, 540px);
     }
   }
 </style>

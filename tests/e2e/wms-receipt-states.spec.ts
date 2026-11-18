@@ -30,6 +30,26 @@ for (const scenario of [
   }, testInfo) => {
     test.setTimeout(90_000)
     await installFixtures(page)
+    if (scenario.kind === 'asset_payable') {
+      await page.route('**/rest/v1/sys_dictionary?*', (route) => {
+        const code = new URL(route.request().url()).searchParams.get('dict_type_table.code')
+        if (code !== 'eq.scmAssetPayableStatus') return route.fallback()
+        return route.fulfill({
+          json: [
+            ['draft', '草稿'],
+            ['approved', '已审核']
+          ].map(([value, label], sort) => ({
+            id: `scmAssetPayableStatus-${value}`,
+            code: value,
+            value,
+            label,
+            sort,
+            status: '1',
+            dict_type_table: { code: 'scmAssetPayableStatus', name: '资产应付状态' }
+          }))
+        })
+      })
+    }
     if (scenario.kind === 'inbound') {
       await page.route('**/rpc/current_is_super', (route) => route.fulfill({ json: false }))
       await page.route('**/rest/v1/sys_user?*', (route) =>
@@ -101,6 +121,7 @@ for (const scenario of [
                         id: 'receipt-test',
                         tenant_id: tenantId,
                         document_no: 'RECEIPT-TEST-001',
+                        total_amount: 3,
                         status: 'draft',
                         created_at: '2026-10-01T01:02:03Z',
                         target_kind: scenario.kind,
@@ -329,7 +350,11 @@ for (const scenario of [
       })
     }
     await drawer.getByText('RECEIPT-MAT-2', { exact: true }).scrollIntoViewIfNeeded()
-    await expect(drawer.locator('.receipt-target-detail__summary strong')).toBeInViewport()
+    const summary =
+      scenario.kind === 'asset_payable'
+        ? drawer.locator('.art-descriptions').getByRole('row').filter({ hasText: '应付单号' })
+        : drawer.locator('.receipt-target-detail__summary')
+    await expect(summary.getByText('RECEIPT-TEST-001', { exact: true })).toBeInViewport()
     expect(await drawer.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
       true
     )
@@ -408,6 +433,7 @@ for (const scenario of [
             id: 'receipt-test',
             tenant_id: tenantId,
             document_no: 'RECEIPT-TEST-001',
+            total_amount: 3,
             status: completed ? (scenario.kind === 'inbound' ? 'confirmed' : 'approved') : 'draft',
             target_kind: scenario.kind,
             created_at: '2026-10-01T01:02:03Z'

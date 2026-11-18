@@ -1,13 +1,16 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { access, mkdir, readFile, readdir, writeFile, stat } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, rm, writeFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { BackupVerificationReport } from '../../src/types/supabase-operations'
 import { isBackupVerificationReport } from '../../src/utils/supabase/operations-verification'
 
 export const UPDATE_REPOSITORY_ROOT = fileURLToPath(new URL('../../', import.meta.url))
+export const MAX_SOURCE_DURATION_MS = 15 * 60_000
+const MAX_SCHEMA_DUMP_DURATION_MS = 45 * 60_000
+
 export interface UpdateCommandResult {
   code: number
   stdout: string
@@ -83,6 +86,78 @@ export const runUpdateCommand: UpdateCommand = (command, args, options = {}) =>
       if (options.input) child.stdin.write(options.input)
     } else child.stdin.end(options.input || '')
   })
+
+export async function dumpBackupComponent(
+  file: string,
+  destination: string,
+  password: string,
+  run: UpdateCommand,
+  logStage: (message: string) => void
+): Promise<void> {
+  const argumentsByFile: Record<string, string[]> = {
+    'schema.sql': ['--keep-comments'],
+    'roles.sql': ['--role-only'],
+    'managed-schema-snapshot.sql': ['--schema', 'auth,storage', '--keep-comments'],
+    'migration-history-schema.sql': ['--schema', 'supabase_migrations']
+  }
+  logStage(`校对结构文件 ${file}`)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await run(
+      'supabase',
+      ['db', 'dump', '--linked', ...argumentsByFile[file], '--file', destination],
+      {
+        env: { SUPABASE_DB_PASSWORD: password, PGPASSWORD: password },
+        timeoutMs: file === 'schema.sql' ? MAX_SCHEMA_DUMP_DURATION_MS : MAX_SOURCE_DURATION_MS
+      }
+    )
+    if (result.code !== 0) {
+      const diagnostic = `${result.stderr}\n${result.stdout}`
+      let code = 'BACKUP_DUMP_FAILED'
+      if (/\b28P01\b|password authentication failed|invalid password/i.test(diagnostic))
+        code = '28P01'
+      else if (/\b42501\b|permission denied|must be owner/i.test(diagnostic)) code = '42501'
+      else if (/\b57014\b|canceling statement due to statement timeout/i.test(diagnostic))
+        code = '57014'
+      else if (
+        /cache lookup failed|\b(?:relation|function|type|schema)\b[^\n]*\bdoes not exist\b/i.test(
+          diagnostic
+        )
+      )
+        code = 'BACKUP_DUMP_SOURCE_CHANGED'
+      else if (
+        /\b08[A-Z0-9]{3}\b|connect(?:ion)?[^\n]*(?:failed|refused|closed|reset|timed out|timeout)|server closed the connection|could not receive data from server|SSL SYSCALL[^\n]*EOF|unexpected EOF|broken pipe|no route to host|could not translate host name|network is unreachable/i.test(
+          diagnostic
+        )
+      )
+        code = 'BACKUP_DUMP_CONNECTION_FAILED'
+      if (code === 'BACKUP_DUMP_CONNECTION_FAILED' && attempt === 0) {
+        await rm(destination, { force: true })
+        logStage(`结构文件 ${file} 连接中断，清理暂存文件后重试`)
+        continue
+      }
+      throw Object.assign(
+        new Error(`结构文件 ${file} 导出失败，原备份保持不变。`, { cause: result }),
+        {
+          code
+        }
+      )
+    }
+    const content = (await exists(destination)) ? await readFile(destination, 'utf8') : ''
+    const tail = content.trimEnd().split(/\r?\n/).slice(-16).join('\n')
+    const complete =
+      content.trim().length > 0 &&
+      (file === 'roles.sql'
+        ? /^RESET ALL;\s*$/m.test(tail)
+        : file === 'migration-history-schema.sql'
+          ? /ADD CONSTRAINT .* PRIMARY KEY|^-- PostgreSQL database dump complete\s*$/m.test(tail)
+          : /^-- PostgreSQL database dump complete\s*$/m.test(tail))
+    if (!complete)
+      throw Object.assign(new Error(`结构文件 ${file} 导出不完整，原备份保持不变。`), {
+        code: 'BACKUP_DUMP_INCOMPLETE'
+      })
+    return
+  }
+}
 
 export async function fileHash(file: string, algorithm = 'sha256'): Promise<string> {
   const hash = createHash(algorithm)

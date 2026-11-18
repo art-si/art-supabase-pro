@@ -82,6 +82,7 @@
 
     <ElTree
       ref="treeRef"
+      :aria-label="`${scopeCopy.entityLabel}组织树`"
       :data="data"
       :props="treeProps"
       :filter-node-method="filterNode"
@@ -90,6 +91,7 @@
       highlight-current
       :expand-on-click-node="false"
       @node-click="handleNodeClick"
+      @keydown.capture="handleSelectableTreeKeydown"
     >
       <template #default="{ data: node }">
         <div class="user-organization-filter__node">
@@ -160,6 +162,7 @@
 
 <script setup lang="ts">
   import { getOrganizationTypeIcon } from '@/utils/organization-display'
+  import { handleSelectableTreeKeydown } from '@/utils/ui/selection-tree-keyboard'
   import type { ElTree, TreeNodeData } from 'element-plus'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'

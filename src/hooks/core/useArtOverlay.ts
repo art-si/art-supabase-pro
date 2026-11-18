@@ -12,6 +12,7 @@ import {
   type ShallowRef
 } from 'vue'
 import { cloneDeep } from 'lodash-es'
+import { getFocusedKeyboardButton, restoreButtonFocusIfLost } from '@/utils/ui/button-focus'
 
 export type Awaitable<T> = T | Promise<T>
 export type ArtScrollOptions =
@@ -85,7 +86,7 @@ export interface ArtOverlayExpose<TData, TOptions> {
   /** 关闭；force=true 时跳过 onClose */
   handleClose: (force?: boolean) => Promise<boolean>
   /** 执行确认流程 */
-  handleConfirm: () => Promise<boolean>
+  handleConfirm: (event?: MouseEvent) => Promise<boolean>
   /** 恢复打开时的数据快照并清理加载状态 */
   handleReset: () => void
   /** 设置内容加载状态 */
@@ -257,7 +258,7 @@ export const useArtOverlay = <TData, TApi, TOptions extends ArtOverlayOptions<TD
     }
   }
 
-  const handleConfirm = async (): Promise<boolean> => {
+  const handleConfirm = async (event?: MouseEvent): Promise<boolean> => {
     if (
       !visible.value ||
       options.value.confirmDisabled ||
@@ -276,6 +277,7 @@ export const useArtOverlay = <TData, TApi, TOptions extends ArtOverlayOptions<TD
       return true
     }
 
+    const keyboardTrigger = getFocusedKeyboardButton(event)
     confirmLoading.value = true
     try {
       const result = await activeOptions.onConfirm?.(openData.value, config.getApi())
@@ -299,6 +301,11 @@ export const useArtOverlay = <TData, TApi, TOptions extends ArtOverlayOptions<TD
       return false
     } finally {
       if (sequence === openSequence.value || !visible.value) confirmLoading.value = false
+      if (keyboardTrigger && sequence === openSequence.value && visible.value) {
+        await nextTick()
+        if (sequence === openSequence.value && visible.value)
+          restoreButtonFocusIfLost(keyboardTrigger)
+      }
     }
   }
 

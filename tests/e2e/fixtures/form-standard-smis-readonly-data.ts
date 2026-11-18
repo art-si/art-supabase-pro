@@ -19,6 +19,20 @@ import {
   timestamp
 } from './form-standard-smis-data'
 
+export const longRiskMeasure = {
+  positions:
+    '智能装备装配事业部设备维护与工艺保障联合班组安全管理岗位、生产设备检修责任岗位及夜班值守复核岗位',
+  standardBasis:
+    '依据生产设备安全防护管理标准第七章第三节与装配生产线检修联锁作业指导书，逐项核验固定防护罩、检修门联锁和紧急停机装置的有效性。标准依据结束。',
+  failureMode:
+    '防护罩固定螺栓松脱、检修门联锁接线断开或旁路、紧急停机装置失效，可能导致检修人员进入危险区域时旋转部件未停止。失效形式结束。'
+}
+export const longHazardSource = {
+  sourceRecordNo: 'SOURCE-SMIS-ASSEMBLY-GUARD-INTERLOCK-INSPECTION-2026-0000123456789-END',
+  inspectionTypeName:
+    '智能装备装配生产线传动系统防护与检修联锁综合专项排查（设备维护、安全管理及夜班值守联合复核）'
+}
+
 export const hazardGovernance: SmisHiddenHazardGovernanceDetail = {
   id: recordId,
   hazardNo: 'HG-SMIS',

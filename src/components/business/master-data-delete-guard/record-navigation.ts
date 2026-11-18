@@ -91,6 +91,19 @@ export function createRecordReferenceNavigation(
   )
   return {
     ...warehouseReferences,
+    driver_mobile_account: {
+      routeName: 'User',
+      ...permitted('System:User:ManageMobile'),
+      routeQuery: (record) => ({ mobileAccount: record.targetId, mobileKind: 'driver' })
+    },
+    mobile_shipper_account: {
+      routeName: 'User',
+      ...permitted('System:User:ManageMobile'),
+      unit: '个',
+      description: '客户已有登录账号关联，请停用客户并保留账号和业务历史。',
+      actionLabel: '管理货主账号',
+      routeQuery: (record) => ({ mobileAccount: record.targetId, mobileKind: 'shipper' })
+    },
     tms_order: {
       routeName: 'TmsOrderQueryDetail',
       ...permitted('TmsOrderQuery:View'),

@@ -15,6 +15,10 @@
     "requestConfigError": "Request configuration error"
   },
   "topBar": {
+    "breadcrumb": {
+      "title": "Breadcrumb",
+      "ancestors": "Show parent pages"
+    },
     "search": {
       "title": "Search"
     },
@@ -312,7 +316,8 @@
   },
   "table": {
     "pagination": {
-      "pageSize": "Items per page"
+      "pageSize": "Items per page",
+      "selectAllRowsOnPage": "Select all rows on the current page"
     },
     "form": {
       "reset": "Reset",
@@ -323,6 +328,10 @@
       "search": "Search",
       "expand": "Expand",
       "collapse": "Collapse",
+      "appliedFilterCount": "Applied {count}",
+      "filledFilterCount": "Filled {count}",
+      "expandAppliedFilters": "Expand, {count} hidden filter applied | Expand, {count} hidden filters applied",
+      "expandFilledFilters": "Expand, {count} hidden filter filled | Expand, {count} hidden filters filled",
       "searchInputPlaceholder": "Please enter",
       "searchSelectPlaceholder": "Please select"
     },

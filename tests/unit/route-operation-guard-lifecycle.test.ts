@@ -36,8 +36,16 @@ test('route operation invalidation is reactive and stays invalid after scope dis
     const secondRoute = capture()
     assert.equal(secondRoute(), true)
 
+    await router.push('/first')
+    assert.equal(firstRoute(), false)
+    assert.equal(secondRoute(), false)
+    assert.deepEqual(observed, [false])
+    const returnedRoute = capture()
+    assert.equal(returnedRoute(), true)
+
     scope.stop()
     assert.equal(secondRoute(), false)
+    assert.equal(returnedRoute(), false)
     assert.equal(capture()(), false)
   } finally {
     scope.stop()

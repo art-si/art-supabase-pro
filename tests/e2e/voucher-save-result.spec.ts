@@ -6,6 +6,7 @@ test.setTimeout(120_000)
 
 for (const result of [
   'success',
+  'draft-pending',
   'missing-id',
   'missing-detail',
   'allocation-retry',
@@ -21,6 +22,10 @@ for (const result of [
     let allocations = 0
     let transitions = 0
     const submitting = result.startsWith('submit-')
+    const pendingDraft = result === 'draft-pending'
+    const draftSuccess = result === 'success' || pendingDraft
+    const saveResponse = Promise.withResolvers<void>()
+    const allocationResponse = Promise.withResolvers<void>()
     let payload: Record<string, unknown> | undefined
     const payloads: Record<string, unknown>[] = []
     await page.route('**/rest/v1/rpc/fms_list_financial_statement_items_secure**', (route) =>
@@ -49,6 +54,7 @@ for (const result of [
       saves += 1
       payload = route.request().postDataJSON().p_payload
       if (payload) payloads.push(payload)
+      if (pendingDraft) await saveResponse.promise
       if (result === 'revoked-after-save')
         await page
           .getByTestId('revoke-delete-permission')
@@ -71,11 +77,13 @@ for (const result of [
         await page
           .getByTestId('revoke-delete-permission')
           .evaluate((button: HTMLButtonElement) => button.click())
-      if (result === 'allocation-retry' && allocations === 1)
+      if (result === 'allocation-retry' && allocations === 1) {
+        await allocationResponse.promise
         return route.fulfill({
           status: 400,
           json: { code: 'P0001', message: '测试归集失败，请重试' }
         })
+      }
       return route.fulfill({ json: [] })
     })
     await page.route('**/rest/v1/rpc/transition_fms_voucher_secure**', (route) => {
@@ -87,7 +95,7 @@ for (const result of [
         : route.fulfill({ json: { id: 'eeeeeeee-eeee-4eee-aeee-eeeeeeeeeeee', status: 'pending' } })
     })
     await page.goto(
-      `/tests/e2e/fixtures/record-delete-context.html?validationTarget=voucher&voucherPermission=${submitting ? 'Add,Edit,Submit' : result === 'allocation-retry' ? 'Add,Edit' : 'Add'}&voucherTemplate=true`
+      `/tests/e2e/fixtures/record-delete-context.html?validationTarget=voucher&voucherPermission=${submitting || pendingDraft ? 'Add,Edit,Submit' : result === 'allocation-retry' ? 'Add,Edit' : 'Add'}&voucherTemplate=true`
     )
     await page.getByRole('button', { name: '打开校验表单', exact: true }).click()
     const dialog = page.getByRole('dialog')
@@ -95,10 +103,36 @@ for (const result of [
     await page.getByRole('option', { name: 'TEST 测试模板', exact: true }).click()
     const summary = dialog.getByPlaceholder('概括本次经济业务', { exact: true })
     await expect(summary).toHaveValue('有效测试凭证')
-    await dialog
-      .getByRole('button', { name: submitting ? '保存并提交' : '保存草稿', exact: true })
-      .click()
-    if (result === 'success' || result === 'submit-success') {
+    const save = dialog.getByRole('button', {
+      name: submitting ? '保存并提交' : '保存草稿',
+      exact: true
+    })
+    if (result === 'allocation-retry') {
+      await save.focus()
+      await page.keyboard.press('Enter')
+      try {
+        await expect.poll(() => allocations).toBe(1)
+        await expect(save).toBeDisabled()
+      } finally {
+        allocationResponse.resolve()
+      }
+    } else await save.click()
+    if (pendingDraft) {
+      try {
+        await expect.poll(() => saves).toBe(1)
+        await expect(dialog.getByRole('button', { name: '保存草稿', exact: true })).toHaveClass(
+          /\bis-loading\b/
+        )
+        const submit = dialog.getByRole('button', { name: '保存并提交', exact: true })
+        await expect(submit).toBeDisabled()
+        await expect(submit).not.toHaveClass(/\bis-loading\b/)
+        expect(transitions).toBe(0)
+        await dialog.screenshot({ path: test.info().outputPath('voucher-draft-pending.png') })
+      } finally {
+        saveResponse.resolve()
+      }
+    }
+    if (draftSuccess || result === 'submit-success') {
       await expect(dialog).toHaveCount(0)
       await expect(
         page.getByText(submitting ? '凭证已提交审核' : '会计凭证草稿已保存', { exact: true })
@@ -117,7 +151,9 @@ for (const result of [
       ).toBeVisible()
       expect(saves).toBe(1)
       expect(allocations).toBe(1)
-      await dialog.getByRole('button', { name: '保存草稿', exact: true }).click()
+      await expect(save).toBeEnabled()
+      await expect(save).toBeFocused()
+      await page.keyboard.press('Enter')
       await expect(dialog).toHaveCount(0)
       await expect(page.getByText('会计凭证草稿已保存', { exact: true })).toBeVisible()
       expect(payloads[0].id).toBeUndefined()
@@ -131,9 +167,7 @@ for (const result of [
       await expect(dialog.getByRole('button', { name: '保存草稿', exact: true })).toHaveCount(0)
     }
     expect(saves).toBe(result === 'allocation-retry' ? 2 : 1)
-    expect(allocations).toBe(
-      result === 'allocation-retry' ? 2 : result === 'success' || submitting ? 1 : 0
-    )
+    expect(allocations).toBe(result === 'allocation-retry' ? 2 : draftSuccess || submitting ? 1 : 0)
     expect(transitions).toBe(
       ['submit-success', 'submit-failure', 'submit-empty'].includes(result) ? 1 : 0
     )

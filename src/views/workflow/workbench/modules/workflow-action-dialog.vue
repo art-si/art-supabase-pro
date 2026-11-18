@@ -109,7 +109,7 @@
             :type="state.action === 'reject' ? 'danger' : 'primary'"
             :loading="loading"
             :disabled="state.snapshotLoading"
-            @click="api.handleConfirm()"
+            @click="api.handleConfirm"
           >
             {{ confirmText }}
           </ElButton>

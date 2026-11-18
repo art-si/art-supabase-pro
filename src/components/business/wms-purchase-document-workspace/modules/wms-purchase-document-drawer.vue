@@ -57,34 +57,32 @@
           isEntrustedProcessing ? '客户' : '供应商'
         }}，再在“物料明细”中点击“导入明细”；导入后请核对仓储和价格信息。
       </ElAlert>
-      <ElTabs v-model="activeTab" class="min-w-0">
+      <ElTabs v-model="activeTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane name="basic" label="单据表头" :lazy="false">
-          <ArtSectionCard
-            title="单据表头"
-            :subtitle="
+          <p class="mb-4 text-xs leading-5 text-g-700">
+            {{
               isOtherInbound
                 ? '供应商、业务部门可参选，提交时至少填写一项；记账日期由系统记录。'
                 : `${isEntrustedProcessing ? '客户' : '供应商'}、业务日期和库存组织是必填信息；记账日期由系统记录。`
-            "
-          >
-            <ArtDescriptions
-              v-if="mode === 'view'"
-              :data="viewData"
-              :items="viewItems"
-              :columns="3"
-            />
-            <ArtForm
-              v-else
-              ref="formRef"
-              v-model="form"
-              :items="headerItems"
-              :rules="headerRules"
-              :span="8"
-              :gutter="18"
-              label-position="top"
-            >
-            </ArtForm>
-          </ArtSectionCard>
+            }}
+          </p>
+          <ArtDescriptions
+            v-if="mode === 'view'"
+            :data="viewData"
+            :items="viewItems"
+            :columns="3"
+          />
+          <ArtForm
+            v-else
+            ref="formRef"
+            v-model="form"
+            :items="headerItems"
+            :rules="headerRules"
+            :span="8"
+            :gutter="18"
+            label-position="top"
+            root-class="px-0! pt-0!"
+          />
         </ElTabPane>
         <ElTabPane name="details" label="物料明细" :lazy="false">
           <ArtSectionCard

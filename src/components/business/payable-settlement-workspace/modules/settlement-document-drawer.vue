@@ -19,7 +19,7 @@
           ></template
         >
       </ArtEntitySummary>
-      <ElTabs v-model="activeTab" class="min-w-0">
+      <ElTabs v-model="activeTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane name="basic" label="基本信息" :lazy="false">
           <ArtSectionCard
             title="基本信息"
@@ -32,7 +32,7 @@
               v-if="editable"
               ref="formRef"
               v-model="document"
-              root-class="art-form--mobile-stack"
+              root-class="art-form--mobile-stack px-0! pt-0!"
               :items="headerItems"
               :rules="{
                 documentTypeId: [{ required: true, message: '请选择单据类型' }],

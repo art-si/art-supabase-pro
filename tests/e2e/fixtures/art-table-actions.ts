@@ -19,7 +19,7 @@ let attempts = 0
 const action: ArtTableQueryHeaderAction = {
   key: 'run-preview',
   label: '执行测试操作',
-  confirm: true,
+  confirm: mode !== 'keyboard',
   permission: mode === 'revoked' ? 'Fixture:Execute' : undefined,
   content: '确认执行测试操作？',
   onClick: async () => {
@@ -52,8 +52,8 @@ app.use(store)
 if (mode === 'revoked') {
   const user = useUserStore()
   const menu = useMenuStore()
-  user.info = { isPlatformSuper: false }
-  menu.buttonList = [{ name: 'Fixture:Execute', path: '/fixture' }]
+  user.setUserInfo({ platformSuper: false })
+  menu.buttonList = [{ name: 'Fixture:Execute', path: '/fixture', meta: { title: '执行测试操作' } }]
   document.addEventListener('revoke-fixture-permission', () => {
     menu.buttonList = []
   })

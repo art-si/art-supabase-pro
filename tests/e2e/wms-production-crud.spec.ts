@@ -1311,7 +1311,7 @@ for (const kind of ['issue', 'return', 'finished_inbound', 'finished_return']) {
         ).toBeVisible()
         await picker.locator('.el-table__header-wrapper .el-checkbox').click()
         await expect(
-          picker.getByRole('checkbox', { name: '选择所有行', exact: true })
+          picker.getByRole('checkbox', { name: '选择当前页全部行', exact: true })
         ).toBeChecked()
         if (draft === 1) {
           await picker.getByRole('button', { name: '取消', exact: true }).click()
@@ -1329,7 +1329,7 @@ for (const kind of ['issue', 'return', 'finished_inbound', 'finished_return']) {
             })
             .click()
           await expect(
-            picker.getByRole('checkbox', { name: '选择所有行', exact: true })
+            picker.getByRole('checkbox', { name: '选择当前页全部行', exact: true })
           ).not.toBeChecked()
           await picker.locator('.el-table__header-wrapper .el-checkbox').click()
         }

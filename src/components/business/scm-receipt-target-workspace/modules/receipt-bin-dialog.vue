@@ -25,7 +25,7 @@
             ><ElButton
               v-if="warehouse?.enableLocations"
               :loading="recommending"
-              :disabled="!canRecommend"
+              :disabled="!canRecommend || confirming"
               @click="recommend"
               ><ArtSvgIcon icon="ri:magic-line" />自动选位</ElButton
             ></template
@@ -74,6 +74,7 @@
 
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<Context>>()
+  const confirming = computed(() => unref(dialogRef.value?.confirmLoading) === true)
   const context = shallowRef<Context>()
   const warehouse = shallowRef<ScmReceiptPlacementWarehouse | null>(null)
   const bins = ref<ScmReceiptPlacementBin[]>([])
@@ -111,7 +112,7 @@
         id: 'receipt-bin-select',
         filterable: true,
         clearable: true,
-        disabled: recommending.value,
+        disabled: recommending.value || confirming.value,
         placeholder: '选择可用库位',
         emptyText: '此仓库未启用库位，入库将直接归属仓库。'
       }
@@ -127,7 +128,15 @@
     const current = context.value
     const warehouseId = current?.line.lineSnapshot.warehouseId
     const materialId = current?.line.lineSnapshot.materialId
-    if (!current || !warehouseId || !materialId || quantity.value <= 0 || recommending.value) return
+    if (
+      !current ||
+      !warehouseId ||
+      !materialId ||
+      quantity.value <= 0 ||
+      recommending.value ||
+      confirming.value
+    )
+      return
     const requestGeneration = generation
     recommending.value = true
     try {

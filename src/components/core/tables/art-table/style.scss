@@ -1,5 +1,6 @@
 .art-table {
   position: relative;
+  min-width: 0;
   height: 100%;
 
   &.is-virtual-render {
@@ -264,13 +265,13 @@
 
   :deep(.el-table__body tr.is-art-selected-row > td.el-table__cell),
   :deep(.art-table-v2 .el-table-v2__row.is-art-selected-row > .el-table-v2__row-cell) {
-    background-color: color-mix(in srgb, var(--theme-color) 7%, var(--default-box-color));
+    background-color: color-mix(in srgb, var(--theme-color) 10%, var(--default-box-color));
   }
 
-  :deep(.el-table__body tr.is-art-selected-row.hover-row > td.el-table__cell),
+  :deep(.el-table__body tr.is-art-selected-row:is(:hover, .hover-row) > td.el-table__cell),
   :deep(.art-table-v2 .el-table-v2__row.is-art-selected-row:hover > .el-table-v2__row-cell),
   :deep(.art-table-v2 .el-table-v2__row.is-art-selected-row.is-hovered > .el-table-v2__row-cell) {
-    background-color: color-mix(in srgb, var(--theme-color) 9%, var(--default-box-color));
+    background-color: color-mix(in srgb, var(--theme-color) 13%, var(--default-box-color));
   }
 
   :deep(.el-table__body tr:hover > td.el-table__cell),
@@ -304,7 +305,15 @@
 
   .pagination {
     display: flex;
+    min-width: 0;
     margin-top: var(--art-space-3);
+
+    :deep(.el-pagination) {
+      flex-wrap: wrap;
+      row-gap: var(--art-space-2);
+      min-width: 0;
+      font-variant-numeric: tabular-nums;
+    }
 
     :deep(.el-select) {
       width: 102px !important;
@@ -328,10 +337,6 @@
 // 移动端分页
 @media (width <= 640px) {
   :deep(.el-pagination) {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--art-space-3) 0;
-    align-items: center;
     justify-content: center;
   }
 }

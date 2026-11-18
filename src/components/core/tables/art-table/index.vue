@@ -33,6 +33,7 @@
         :highlight-current-row="Boolean(highlightCurrentRow)"
         :scrollbar-always-on="Boolean(scrollbarAlwaysOn)"
         :selected-row-keys="selectedRowKeys"
+        :select-all-label="selectAllRowsLabel"
         :row-identity="getRowIdentity"
         :render-cell="renderVirtualCell"
         :render-header="renderVirtualHeader"
@@ -373,7 +374,7 @@
           >当前页过滤 {{ activeColumnFilterCount }} 项 · 显示 {{ filteredRows.length }} /
           {{ tableRows.length }} 条</span
         >
-        <ElButton link type="primary" @click="clearColumnFilters">清空列过滤</ElButton>
+        <ElButton link type="primary" @click="clearColumnFiltersFromFooter">清空列过滤</ElButton>
       </div>
       <ElPagination
         v-if="showPagination"
@@ -433,7 +434,13 @@
   } from '@/utils/table/column-profile'
   import { cloneVNode, type ComponentPublicInstance } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import { ElTooltip, type TableProps } from 'element-plus'
+  import {
+    ElTooltip,
+    localeContextKey,
+    useGlobalConfig,
+    useLocale,
+    type TableProps
+  } from 'element-plus'
   import { storeToRefs } from 'pinia'
   import { useDraggable, type DraggableEvent } from 'vue-draggable-plus'
   import type { ColumnOption, TableColumnValidationContext } from '@/types'
@@ -458,6 +465,7 @@
   } from '@vueuse/core'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import TreeUtils from '@/utils/tree'
+  import { getFocusedKeyboardButton } from '@/utils/ui/button-focus'
   import { handoffVerticalWheel } from '@/utils/ui/wheel-scroll'
   import { filterTenantDimensionDescriptors } from '@/utils/tenant-dimension-visibility'
 
@@ -644,6 +652,8 @@
     columns?: ArtTableColumn[]
     /** 分页状态 */
     pagination?: PaginationConfig | false
+    /** Rows are paged by a separate control outside this table. */
+    externalPagination?: boolean
     /** Slice the loaded working set locally; never requests or replaces source rows. */
     clientPagination?: boolean
     /** 分页配置 */
@@ -841,6 +851,14 @@
         isColumnFilterActive(columnFilters.value[column.prop!])
       ).length
   )
+  const selectFilterOptions = computed(() => {
+    const rows = flattenRows(tableRows.value)
+    return new Map(
+      filterableColumns.value
+        .filter((column) => column.filterType === 'select')
+        .map((column) => [column.prop!, columnFilterOptions(rows, column.prop!)] as const)
+    )
+  })
   const filteredRows = computed(() =>
     filterColumnRows(
       tableRows.value,
@@ -863,12 +881,36 @@
   function clearColumnFilters(): void {
     columnFilters.value = {}
   }
+  async function clearColumnFiltersFromFooter(event: MouseEvent): Promise<void> {
+    const button = getFocusedKeyboardButton(event)
+    const root = containerRef.value
+    const target =
+      button &&
+      root &&
+      Array.from(
+        root.querySelectorAll<HTMLButtonElement>(
+          'button[data-art-column-filter][aria-pressed="true"]'
+        )
+      ).find((trigger) => trigger.closest('.art-table') === root)
+    clearColumnFilters()
+    if (!button || !target) return
+    await nextTick()
+    const { ownerDocument } = button
+    if (
+      target.isConnected &&
+      ownerDocument.hasFocus() &&
+      ownerDocument.activeElement === ownerDocument.body
+    ) {
+      target.focus()
+    }
+  }
   function renderColumnFilter(column: ArtTableColumn) {
     return h(ArtTableColumnFilter, {
       label: column.label ?? column.prop!,
       type: column.filterType!,
       modelValue: columnFilters.value[column.prop!],
-      options: columnFilterOptions(flattenRows(tableRows.value), column.prop!),
+      options:
+        column.filterType === 'select' ? (selectFilterOptions.value.get(column.prop!) ?? []) : [],
       dictCode: column.dict?.code,
       'onUpdate:modelValue': (value: ColumnFilterCondition) => {
         columnFilters.value = { ...columnFilters.value, [column.prop!]: value }
@@ -1094,6 +1136,48 @@
   // 是否显示分页器
   const currentPagination = computed(() =>
     props.pagination === false ? undefined : props.pagination
+  )
+  const { locale: elementLocale, t: elementText } = useLocale(useGlobalConfig('locale'))
+  const hasPagedRows = computed(() => Boolean(currentPagination.value || props.externalPagination))
+  const selectAllRowsLabel = computed(() =>
+    hasPagedRows.value
+      ? t('table.pagination.selectAllRowsOnPage')
+      : elementText('el.table.selectAllLabel')
+  )
+  const focusCurrentPageSelection = (): void => {
+    const container = containerRef.value
+    if (!container) return
+    const selectAllLabel = `[aria-label="${CSS.escape(selectAllRowsLabel.value)}"]`
+    const control = [
+      ...container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:enabled')
+    ].find(
+      (checkbox) =>
+        checkbox.closest('.art-table') === container &&
+        checkbox.closest(selectAllLabel) &&
+        !checkbox.closest('[inert], [aria-hidden="true"]') &&
+        checkbox.getClientRects().length > 0 &&
+        getComputedStyle(checkbox).visibility === 'visible'
+    )
+    control?.focus()
+  }
+  // ElTable ignores the header slot for a selection column. Keep its native checkbox and events.
+  provide(
+    localeContextKey,
+    computed(() => {
+      const locale = elementLocale.value
+      if (!hasPagedRows.value) return locale
+      const table = locale.el.table
+      return {
+        ...locale,
+        el: {
+          ...locale.el,
+          table: {
+            ...(typeof table === 'object' && !Array.isArray(table) ? table : {}),
+            selectAllLabel: selectAllRowsLabel.value
+          }
+        }
+      }
+    })
   )
   const clientPage = computed(() =>
     currentPagination.value
@@ -1626,8 +1710,11 @@
       handler(...args)
     }
   }
-  const dispatchVirtualEvent = (name: string, ...args: unknown[]) =>
-    callTableEventHandler(attrs[name], ...args)
+  const dispatchVirtualEvent = (name: string, ...args: unknown[]) => {
+    // Match native table events, including listeners passed through an object v-bind.
+    const event = name.slice(2).replace(/\B[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+    callTableEventHandler(attrs[`on${event}`] ?? attrs[name], ...args)
+  }
   const virtualColumns = computed(() =>
     visibleColumns.value.map((column) => ({ ...column, ...cleanColumnProps(column) }))
   )
@@ -2149,6 +2236,7 @@
     validateField,
     clearValidate,
     scrollToTop,
+    focusCurrentPageSelection,
     getRenderMode: () => ({ ...renderMode.value }),
     elTableRef
   })

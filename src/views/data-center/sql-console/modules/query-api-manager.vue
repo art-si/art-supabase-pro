@@ -123,7 +123,7 @@
                   @click="copyUrl"
                 />
               </div>
-              <ElTabs v-model="test.activeTab">
+              <ElTabs v-model="test.activeTab" class="art-card-xs art-overlay-tab-card">
                 <ElTabPane label="调用测试" name="test">
                   <ElAlert
                     v-if="!selected.enabled"

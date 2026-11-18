@@ -88,7 +88,10 @@ const units = [
   }
 ]
 
-async function installFixture(page: Page, options?: { failCategories?: boolean }) {
+async function installFixture(
+  page: Page,
+  options?: { failCategories?: boolean; readOnly?: boolean }
+) {
   const listQueries: URL[] = []
   const categoryQueries: URL[] = []
   const supplierOptionRequests: Array<Record<string, unknown>> = []
@@ -133,9 +136,9 @@ async function installFixture(page: Page, options?: { failCategories?: boolean }
       })
     }
     if (table === 'mdm_part') {
-      if (request.method() === 'POST') {
+      if (['POST', 'PATCH', 'DELETE'].includes(request.method())) {
         writes.push(request.postDataJSON())
-        return route.fulfill({ status: 201, json: [] })
+        return route.fulfill({ status: request.method() === 'POST' ? 201 : 200, json: [] })
       }
       listQueries.push(url)
       const categoryFilter = url.searchParams.get('category_id')
@@ -186,7 +189,12 @@ async function installFixture(page: Page, options?: { failCategories?: boolean }
     if (table === 'rpc' || url.pathname.includes('/rpc/')) return route.fulfill({ json: [] })
     return route.fulfill({ json: [] })
   })
-  await page.goto('/tests/e2e/fixtures/vms-parts-master.html', { waitUntil: 'domcontentloaded' })
+  await page.goto(
+    `/tests/e2e/fixtures/vms-parts-master.html${options?.readOnly ? '?readonly' : ''}`,
+    {
+      waitUntil: 'domcontentloaded'
+    }
+  )
   return {
     listQueries,
     categoryQueries,
@@ -198,17 +206,56 @@ async function installFixture(page: Page, options?: { failCategories?: boolean }
 }
 
 test('类别树筛选包含下级，全部入口可恢复列表与焦点模式', async ({ page }, info) => {
-  const { listQueries } = await installFixture(page)
+  const { listQueries, writes } = await installFixture(page)
   const panel = page.locator('.parts-category-filter')
-  await expect(panel.getByText('轮胎', { exact: true })).toBeVisible()
-  await panel.getByText('车辆配件', { exact: true }).click()
+  const branch = panel.getByRole('treeitem', { name: /^车辆配件/ })
+  const leaf = panel.getByRole('treeitem', { name: /^轮胎/ })
+  const part = page.getByRole('cell', { name: 'M-002', exact: true })
+  const unrelated = page.getByRole('cell', { name: '车载箱', exact: true })
+  await expect(unrelated).toBeVisible({ timeout: 60_000 })
+  await expect(leaf).toBeVisible()
+  const initialReads = listQueries.length
+  await branch.press('ArrowLeft')
+  await expect(branch).toHaveAttribute('aria-expanded', 'false')
+  await branch.press('ArrowRight')
+  await expect(branch).toHaveAttribute('aria-expanded', 'true')
+  await branch.press('ArrowRight')
+  await expect(leaf).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(branch).toBeFocused()
+  expect(listQueries).toHaveLength(initialReads)
+  await page.keyboard.press('Enter')
   await expect
     .poll(() => listQueries.at(-1)?.searchParams.get('category_id'))
-    .toContain('cat-child')
-  await expect(page.getByRole('cell', { name: '车载箱' })).toHaveCount(0)
-  await expect(page.getByRole('cell', { name: '轮胎' })).toBeVisible()
+    .toBe('in.(cat-root,cat-child)')
+  await expect(unrelated).toHaveCount(0)
+  await expect(part).toBeVisible()
+  await expect(page.getByRole('cell', { name: '刹车片' })).toBeVisible()
+  await branch.press('ArrowRight')
+  await expect(leaf).toBeFocused()
+  await page.keyboard.press('Space')
+  await expect
+    .poll(() => listQueries.at(-1)?.searchParams.get('category_id'))
+    .toBe('in.(cat-child)')
+  await expect(page.getByRole('cell', { name: '刹车片' })).toHaveCount(0)
+  await expect(part).toBeVisible()
+
+  const row = page.getByRole('row').filter({ has: part })
+  const more = row.getByRole('button', { name: '更多操作', exact: true })
+  const beforeMenu = listQueries.length
+  await more.press('Enter')
+  const remove = page.getByRole('menuitem', { name: '删除', exact: true })
+  await expect(remove).toBeVisible()
+  await remove.press('Escape')
+  await expect(remove).toBeHidden()
+  await expect(more).toBeFocused()
+  await expect(leaf).toHaveClass(/is-current/)
+  expect(listQueries).toHaveLength(beforeMenu)
+  expect(writes).toEqual([])
+
   await panel.getByRole('button', { name: '全部零部件' }).click()
-  await expect(page.getByRole('cell', { name: '车载箱' })).toBeVisible()
+  await expect(unrelated).toBeVisible()
+  expect(listQueries.at(-1)?.searchParams.get('category_id')).toBeNull()
   await page
     .locator('.business-table-workspace-actions__toggle')
     .filter({ hasText: '专注模式' })
@@ -220,6 +267,25 @@ test('类别树筛选包含下级，全部入口可恢复列表与焦点模式',
   await page.keyboard.press('Escape')
   await expect(page.locator('.business-workspace-header')).toBeVisible()
   await page.screenshot({ path: info.outputPath('parts-list.png') })
+})
+
+test('只读零部件仍可键盘筛选，编辑和删除操作不可用', async ({ page }) => {
+  await page.setViewportSize({ width: 860, height: 760 })
+  const { listQueries, writes } = await installFixture(page, { readOnly: true })
+  const panel = page.locator('.parts-category-filter')
+  const leaf = panel.getByRole('treeitem', { name: /^轮胎/ })
+  await expect(leaf).toBeVisible({ timeout: 60_000 })
+  await leaf.press('Enter')
+  await expect
+    .poll(() => listQueries.at(-1)?.searchParams.get('category_id'))
+    .toBe('in.(cat-child)')
+  const part = page.getByRole('cell', { name: 'M-002', exact: true })
+  await expect(part).toBeVisible()
+  const row = page.getByRole('row').filter({ has: part })
+  await expect(row.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0)
+  await expect(row.getByRole('button', { name: '更多操作', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '新增', exact: true })).toHaveCount(0)
+  expect(writes).toEqual([])
 })
 
 test('类别树失败可重试，窄屏保留类别与列表', async ({ page }, info) => {

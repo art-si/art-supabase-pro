@@ -69,7 +69,15 @@ for (const kind of ['tool', 'ppe'] as const) {
     await page.getByRole('button', { name: open, exact: true }).click()
     const dialog = page.getByRole('dialog', { name: `新增${title}发放标准` })
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByText(`${title}明细标准`, { exact: true })).toBeVisible()
+    const positionField = dialog.locator('[data-art-form-item-key="positionIds"]')
+    const positionInput = positionField.getByRole('textbox')
+    const organizationInput = dialog
+      .locator('[data-art-form-item-key="organizationIds"]')
+      .getByRole('textbox')
+    await expect(positionInput).toHaveAccessibleName('适用工种 / 岗位')
+    await expect(positionInput).toHaveAttribute('placeholder', '请选择适用岗位')
+    await expect(organizationInput).toHaveAccessibleName('适用公司 / 部门')
+    await expect(organizationInput).toHaveAttribute('placeholder', '请选择适用公司或部门')
     await expect(dialog.getByPlaceholder('例如：焊接岗位基础防护标准')).toBeEditable()
     await dialog.getByRole('button', { name: '保存标准', exact: true }).click()
     await expect(dialog.getByText('请输入发放标准名称', { exact: true })).toBeVisible()
@@ -78,13 +86,43 @@ for (const kind of ['tool', 'ppe'] as const) {
     await dialog.getByPlaceholder('例如：焊接岗位基础防护标准').fill(`${title}测试发放标准`)
     await dialog.getByRole('button', { name: '保存标准', exact: true }).click()
     await expect(page.getByText('适用岗位和适用公司/部门至少选择一项')).toBeVisible()
-    await dialog.getByPlaceholder('请选择适用岗位').click()
     const positionPicker = page.getByRole('dialog', { name: '选择适用工种 / 岗位' })
-    await expect(positionPicker.getByText('测试岗位', { exact: true })).toBeVisible()
-    await positionPicker.locator('.el-table__body-wrapper .el-checkbox').first().click()
-    await positionPicker.getByRole('button', { name: '确定', exact: true }).click()
+    const pickPosition = async () => {
+      await positionInput.press('Enter')
+      await expect(positionPicker.getByText('测试岗位', { exact: true })).toBeVisible()
+      await positionPicker.locator('.el-table__body-wrapper .el-checkbox').first().click()
+      await positionPicker.getByRole('button', { name: '确定', exact: true }).click()
+      await expect(positionField.getByText('测试岗位', { exact: true })).toBeVisible()
+      await expect(positionInput).toHaveAccessibleName('适用工种 / 岗位')
+    }
+    await pickPosition()
+    const positionFrame = positionField.locator('.el-input-tag')
+    await positionInput.blur()
+    const restingShadow = await positionFrame.evaluate((frame) => getComputedStyle(frame).boxShadow)
+    await positionInput.focus()
+    await expect(positionFrame).not.toHaveCSS('box-shadow', restingShadow)
+    await expect(positionInput).toHaveCSS('outline-style', 'none')
+    await positionField.screenshot({
+      path: info.outputPath(`${kind}-position-labelled.png`),
+      animations: 'disabled'
+    })
+    if (kind === 'tool') {
+      await page.emulateMedia({ forcedColors: 'active' })
+      await expect(positionInput).toHaveCSS('outline-style', 'solid')
+      await page.emulateMedia({ forcedColors: 'none' })
+    }
+    await positionField.getByRole('button', { name: '清空', exact: true }).click()
+    await expect(positionField.getByText('测试岗位', { exact: true })).toHaveCount(0)
+    await expect(positionInput).toHaveAccessibleName('适用工种 / 岗位')
+    await expect(positionInput).toHaveAttribute('placeholder', '请选择适用岗位')
+    await pickPosition()
     await dialog.getByRole('button', { name: '保存标准', exact: true }).click()
     await expect(page.getByText(`请至少添加一条${title}明细`)).toBeVisible()
+    await expect(dialog.getByRole('tab', { name: '明细标准', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    await expect(dialog.getByText(`${title}明细标准`, { exact: true })).toBeVisible()
 
     await dialog.getByPlaceholder('新增明细').click()
     const materialPicker = page.getByRole('dialog', { name: `选择${title}物料` })
@@ -128,6 +166,7 @@ for (const kind of ['tool', 'ppe'] as const) {
     const dialog = page.getByRole('dialog', { name: `编辑${title}发放标准` })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByPlaceholder('例如：焊接岗位基础防护标准')).toHaveValue('现有发放标准')
+    await dialog.getByRole('tab', { name: '明细标准', exact: true }).click()
     await expect(dialog.getByRole('cell', { name: /现有物料 MAT-001/ })).toBeVisible()
     await dialog.getByRole('button', { name: '保存标准', exact: true }).click()
     await expect
@@ -149,6 +188,7 @@ for (const kind of ['tool', 'ppe'] as const) {
     await page.getByRole('button', { name: open, exact: true }).click()
     const fresh = page.getByRole('dialog', { name: `新增${title}发放标准` })
     await expect(fresh.getByPlaceholder('例如：焊接岗位基础防护标准')).toHaveValue('')
+    await fresh.getByRole('tab', { name: '明细标准', exact: true }).click()
     await expect(fresh.getByText('暂无明细', { exact: true })).toBeVisible()
     await expect(fresh.getByRole('button', { name: '保存标准', exact: true })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

@@ -1,9 +1,13 @@
 import { createApp, h } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import PendingWaybills from '@tms/views/waybill-management/pending/index.vue'
 import LoadedWaybills from '@tms/views/waybill-management/loaded/index.vue'
@@ -69,7 +73,7 @@ const router = createRouter({
     {
       path: '/tms/order-list/detail/:id',
       name: 'TmsOrderDetail',
-      component: { render: () => h('div', '订单详情') }
+      component: () => import('@tms/views/order-list/detail/index.vue')
     }
   ]
 })
@@ -84,17 +88,25 @@ const app = createApp({
           '--art-full-height': 'calc(100dvh - 32px)'
         }
       },
-      [h(RouterView)]
+      [h(ElConfigProvider, { locale: zhCn }, () => h(RouterView))]
     )
 })
 app.use(store)
 app.use(router)
 app.use(language)
+initializeTheme()
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 setupGlobDirectives(app)
+const params = new URLSearchParams(location.search)
+const orderId = params.get('orderId')
 await router.push(
-  new URLSearchParams(location.search).get('mode') === 'loaded'
-    ? '/tms/waybill-management/loaded'
-    : '/tms/waybill-management/pending'
+  orderId
+    ? `/tms/order-list/detail/${orderId}`
+    : params.get('mode') === 'loaded'
+      ? '/tms/waybill-management/loaded'
+      : '/tms/waybill-management/pending'
 )
 await router.isReady()
 app.mount('#tms-waybill-list-visual')

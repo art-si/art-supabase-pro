@@ -4,6 +4,9 @@ import { prepareIsolatedSession } from './support/isolated-session'
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(120_000)
 const tenantId = '11111111-1111-4111-8111-111111111111'
+const longReporter = '验收报工人 · EMP-MES-DETAIL-LONG-IDENTITY-20261118-ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const longNarrative =
+  '验收长记录：生产现场已按完整流程复核。TRACE-MES-20261118-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789'
 const task = {
   id: 'task-1',
   tenantId,
@@ -87,6 +90,10 @@ for (const profile of [
                 goodQuantity: 5,
                 compensationHours: 2,
                 compensationReason: '验收补偿',
+                reporterName: longReporter,
+                remark: longNarrative,
+                status: 'rejected',
+                rejectReason: longNarrative,
                 media: ['https://example.invalid/evidence.pdf'],
                 defects: [
                   {
@@ -121,11 +128,11 @@ for (const profile of [
                   clamping: '验收装夹',
                   repairType: '验收维修',
                   repairDate: '2026-11-01',
-                  problemDescription: '验收问题',
-                  resolution: '验收处理记录'
+                  problemDescription: longNarrative,
+                  resolution: longNarrative
                 },
                 media: ['https://example.invalid/evidence.pdf'],
-                remark: '验收备注'
+                remark: longNarrative
               }
             ]
           })
@@ -153,15 +160,127 @@ for (const profile of [
         const drawer = page.locator('.el-drawer:visible'),
           tabs = drawer.getByRole('tab')
         await expect(tabs).toHaveCount(3)
+        const geometry: Array<Record<string, unknown>> = []
         for (const tab of await tabs.all()) {
           await tab.click()
-          await expect(drawer.getByRole('tabpanel').filter({ visible: true })).not.toBeEmpty()
+          const panel = drawer.getByRole('tabpanel').filter({ visible: true })
+          await expect(panel).not.toBeEmpty()
+          await expect(panel.locator('.art-descriptions')).toHaveCount(1)
+          const value = (label: string) =>
+            panel
+              .getByText(label, { exact: true })
+              .locator('xpath=following-sibling::*[1]')
+              .locator('.art-descriptions__value')
+          const tabName = await tab.innerText()
+          if (mode === 'reports') {
+            if (tabName === '生产任务') {
+              await expect(value('工单数量')).toHaveText('10')
+              await expect(value('产品')).toHaveText('MAT-001 · 验收板材')
+              await expect(value('开始加工')).toContainText('2026-11-01')
+            } else if (tabName === '产量与工时') {
+              await expect(value('良品数量')).toHaveText('5')
+              await expect(value('加工不良')).toHaveText('0')
+              await expect(value('来料不良')).toHaveText('0')
+              await expect(value('机器用时')).toHaveText('2.00 h')
+              await expect(value('人工用时')).toHaveText('0.00 h')
+              await expect(value('良品率')).toHaveText('100%')
+              await expect(value('计划达成率')).toHaveText('50%')
+            } else {
+              await expect(value('补偿工时 / 原因')).toHaveText('2 h · 验收补偿')
+              await expect(value('奖惩工时 / 原因')).toHaveText('0 h · —')
+              await expect(value('操作人员')).toHaveText('—')
+              await expect(value('审批时间')).toHaveText('—')
+              await expect(value('报工人')).toHaveText(longReporter)
+              await expect(value('驳回原因')).toHaveText(longNarrative)
+              for (const label of ['补偿工时 / 原因', '奖惩工时 / 原因']) {
+                const caption = await panel
+                  .getByText(label, { exact: true })
+                  .evaluate((element) => {
+                    const range = document.createRange()
+                    range.selectNodeContents(element)
+                    return {
+                      labelWidth: element.getBoundingClientRect().width,
+                      lineCount: new Set(Array.from(range.getClientRects(), (rect) => rect.top))
+                        .size
+                    }
+                  })
+                expect(caption.labelWidth).toBeCloseTo(120, 0)
+                expect(caption.lineCount, label).toBe(1)
+                geometry.push({ tab: tabName, label, ...caption })
+              }
+            }
+          } else if (tabName === '关联任务') {
+            await expect(value('工单 / 完工数')).toHaveText('10 / 0')
+            await expect(value('工序')).toHaveText('OP1 验收工序')
+          } else if (tabName === '上模与下模') {
+            await expect(value('调模时长')).toHaveText('1.00 h')
+            await expect(value('标准调模工时')).toHaveText('—')
+            await expect(value('上模人员')).toHaveText('—')
+            await expect(value('下模人员')).toHaveText('—')
+            await expect(value('库位')).toHaveText('上模区')
+          } else {
+            await expect(value('问题描述')).toHaveText(longNarrative)
+            await expect(value('处理记录')).toHaveText(longNarrative)
+            await expect(value('关联质检批号')).toHaveText('—')
+            await expect(value('维修人员')).toHaveText('—')
+          }
+          if (tabName === '审批与附件' || tabName === '维护与附件') {
+            const longValues =
+              mode === 'reports' ? ['报工人', '驳回原因', '备注'] : ['问题描述', '处理记录', '备注']
+            for (const label of longValues) {
+              const content = value(label)
+              if (label === '备注') await expect(content).toHaveText(longNarrative)
+              await content.scrollIntoViewIfNeeded()
+              await expect(content).toBeInViewport()
+              const rects = await content.evaluate((element) => {
+                const cell = element.closest('.el-descriptions__content')!
+                const labelCell = cell.previousElementSibling!
+                const range = document.createRange()
+                range.selectNodeContents(element)
+                const boundary = cell.getBoundingClientRect()
+                const scrollport = element.closest('.el-scrollbar__wrap')!.getBoundingClientRect()
+                return {
+                  cellLeft: boundary.left,
+                  cellRight: boundary.right,
+                  labelWidth: labelCell.getBoundingClientRect().width,
+                  valueWidth: boundary.width,
+                  viewportWidth: innerWidth,
+                  visibleTop: Math.max(scrollport.top, 0),
+                  visibleBottom: Math.min(scrollport.bottom, innerHeight),
+                  lines: Array.from(range.getClientRects(), (rect) => ({
+                    left: rect.left,
+                    right: rect.right,
+                    top: rect.top,
+                    bottom: rect.bottom
+                  }))
+                }
+              })
+              expect(rects.lines.length).toBeGreaterThan(0)
+              expect(rects.labelWidth).toBeCloseTo(120, 0)
+              expect(rects.valueWidth).toBeGreaterThan(rects.labelWidth)
+              for (const line of rects.lines) {
+                expect(line.left).toBeGreaterThanOrEqual(Math.max(rects.cellLeft, 0) - 1)
+                expect(line.right).toBeLessThanOrEqual(
+                  Math.min(rects.cellRight, rects.viewportWidth) + 1
+                )
+                expect(line.top).toBeGreaterThanOrEqual(rects.visibleTop - 1)
+                expect(line.bottom).toBeLessThanOrEqual(rects.visibleBottom + 1)
+              }
+              geometry.push({ tab: tabName, label, ...rects })
+            }
+          }
           await page.screenshot({
             path: info.outputPath(`pane-${await tab.getAttribute('id')}.png`),
             animations: 'disabled'
           })
         }
-        await expect(drawer.getByRole('link', { name: /附件 1/ })).toBeVisible()
+        await info.attach('detail-value-geometry', {
+          body: JSON.stringify(geometry, null, 2),
+          contentType: 'application/json'
+        })
+        const attachment = drawer.getByRole('link', { name: /附件 1/ })
+        await attachment.scrollIntoViewIfNeeded()
+        await expect(attachment).toBeInViewport()
         expect(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)
         ).toBe(true)

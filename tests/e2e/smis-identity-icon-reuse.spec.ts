@@ -3,6 +3,11 @@ import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { assertAppearance, prepareAppearance } from './support/appearance'
 import { prepareIsolatedSession } from './support/isolated-session'
+import {
+  expectQueryDateRangeReadable,
+  installQueryDateClock,
+  selectQueryDateRange
+} from './support/query-date-range'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
@@ -89,6 +94,36 @@ async function expectIconBoxes(page: Page, mode: Mode) {
     expect(geometry.radius).not.toBe('0px')
   }
 }
+
+test('隐患排查计划筛选在侧栏分栏、平板和手机保持完整日期', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-1440')
+  await page.setViewportSize({ width: 1280, height: 840 })
+  await installQueryDateClock(page)
+  await prepareIsolatedSession(page)
+  await prepareAppearance(page, { theme: 'light', boxBorderMode: true })
+  await mockPageReads(page)
+  await page.goto('/tests/e2e/fixtures/smis-identity-icon-reuse.html?mode=plan', {
+    waitUntil: 'domcontentloaded'
+  })
+
+  const plan = page.locator('.hidden-hazard-plan-page')
+  const search = plan.locator('.art-search-bar')
+  const dateRange = search.locator('[data-art-form-item-key="plannedRange"]')
+  await expect(plan.locator('.hidden-hazard-plan-page__navigator')).toBeVisible()
+  await search.getByRole('button', { name: '展开', exact: true }).click()
+  await selectQueryDateRange(dateRange)
+
+  for (const width of [1280, 900, 390]) {
+    await page.setViewportSize({ width, height: 840 })
+    await expectQueryDateRangeReadable(dateRange)
+    await expect(search.getByRole('button', { name: '查询', exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width + 1
+    )
+    if (width !== 900)
+      await search.screenshot({ path: testInfo.outputPath(`hazard-plan-date-range-${width}.png`) })
+  }
+})
 
 for (const scenario of [
   {

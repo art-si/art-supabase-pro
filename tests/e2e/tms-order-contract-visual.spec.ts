@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(360_000)
@@ -8,6 +9,11 @@ const contractId = '11111111-1111-4111-8111-111111111601'
 
 for (const linked of [true, false]) {
   test(`订单综合查询${linked ? '已关联' : '未关联'}合同可读且布局完整`, async ({ page }, info) => {
+    const appearance = {
+      theme: info.project.name === 'mobile-390' ? 'dark' : 'light',
+      boxBorderMode: info.project.name !== 'mobile-390'
+    } as const
+    await prepareAppearance(page, appearance)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.route('**/rest/v1/**', (route) => {
@@ -19,6 +25,7 @@ for (const linked of [true, false]) {
             orderNo: linked ? 'QA-ORDER-CONTRACT-001' : 'QA-ORDER-CONTRACT-002',
             contractId: linked ? contractId : null,
             orderStatus: 'pending_load',
+            createTime: '2026-10-31T08:09:10',
             originStation: '上海站',
             destinationStation: '苏州站',
             shippingCustomer: { customerName: '验收客户甲' },
@@ -81,6 +88,8 @@ for (const linked of [true, false]) {
     await expect(page.locator('#tms-order-contract-visual .order-query-detail')).toBeVisible({
       timeout: 300_000
     })
+    await assertAppearance(page, appearance)
+    await expect(page.getByText('2026-10-31 08:09:10', { exact: true })).toBeVisible()
     await expect(page.getByText('合同与报价')).toBeVisible()
     await page.getByRole('tab', { name: '合同与报价' }).click()
     await expect(page.getByText('待配载').first()).toBeVisible()

@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test'
 import { mockApplicationMenus } from './support/menu-rpc'
 import { prepareIsolatedSession } from './support/isolated-session'
 
@@ -22,9 +22,13 @@ const menus = [
   }))
 ]
 
-async function prepare(page: Page, initialMenuIds: string[] = [menuId(0)]) {
+async function prepare(
+  page: Page,
+  initialMenuIds: string[] = [menuId(0)],
+  access: 'platform' | 'tenant-assigner' = 'platform'
+) {
   test.setTimeout(120_000)
-  const tenant = await prepareIsolatedSession(page)
+  const tenant = await prepareIsolatedSession(page, { platformSuper: access === 'platform' })
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
   await page.route('**/rest/v1/sys_role?*', (route) =>
@@ -63,7 +67,23 @@ async function prepare(page: Page, initialMenuIds: string[] = [menuId(0)]) {
     children: [roleMenu]
   }
   await mockApplicationMenus(page, {
-    platform: [{ ...systemMenu, children: undefined }, roleMenu]
+    platform: [
+      { ...systemMenu, children: undefined },
+      roleMenu,
+      ...(access === 'tenant-assigner'
+        ? [
+            {
+              id: 'permission-assigner',
+              parentId: roleMenu.id,
+              type: 'button',
+              name: 'System:Role:AssignPermission',
+              path: '',
+              component: '',
+              meta: { title: '配置菜单权限', is_enable: true }
+            }
+          ]
+        : [])
+    ]
   })
   await page.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
     route.fulfill({
@@ -227,6 +247,108 @@ test('large permission tree stays bounded through scrolling, search, collapse an
   await expect(selected).toHaveText('已选 1 / 1601 项')
   await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBe(0)
   expect(savedPayloads).toEqual([])
+  expect(pageErrors).toEqual([])
+})
+
+test('角色权限虚拟树自然 Tab、跨窗方向导航，只用空格修改草稿', async ({ page }, info) => {
+  const { dialog, openButtons, save, selected, search, savedPayloads, pageErrors } = await prepare(
+    page,
+    [menuId(0)],
+    'tenant-assigner'
+  )
+  test.setTimeout(180_000)
+  await openButtons.first().click()
+  await expect(save).toBeEnabled({ timeout: 60_000 })
+  const tree = dialog.getByRole('tree')
+  const scroll = tree.locator('.el-tree-virtual-list')
+  const tabStop = tree.locator('input[type="checkbox"][tabindex="0"]')
+  const parent = tree.getByRole('checkbox', { name: '测试权限目录权限', exact: true })
+  const first = tree.getByRole('checkbox', { name: '测试操作 0000权限', exact: true })
+  const second = tree.getByRole('checkbox', { name: '测试操作 0001权限', exact: true })
+  const last = tree.getByRole('checkbox', { name: '测试操作 1599权限', exact: true })
+  const cascade = dialog.getByRole('checkbox', { name: '父级联动下级', exact: true })
+  const row = (input: Locator) => input.locator('xpath=ancestor::*[@role="treeitem"][1]')
+  await expect(selected).toHaveText('已选 1 / 1601 项')
+  await expect(last).toHaveCount(0)
+  await expect(tabStop).toHaveCount(1)
+  await search.focus()
+  await page.keyboard.press('Tab')
+  await expect(parent).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(cascade).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(parent).toBeFocused()
+
+  await page.keyboard.press('ArrowLeft')
+  await expect(first).toHaveCount(0)
+  await expect(parent).toBeFocused()
+  await page.keyboard.press('ArrowRight')
+  await expect(row(first)).toBeVisible()
+  await expect(parent).toBeFocused()
+  await page.keyboard.press('ArrowRight')
+  await expect(first).toBeFocused()
+  await page.keyboard.press('End')
+  await expect(last).toBeFocused()
+  await expect(first).toHaveCount(0)
+  await expect(tabStop).toHaveCount(1)
+  await expect(last).not.toBeChecked()
+  await expect(selected).toHaveText('已选 1 / 1601 项')
+  const focusGeometry = await row(last)
+    .locator('.el-tree-node__content')
+    .evaluate((element) => {
+      const viewport = element.closest('.role-permission-dialog__tree-viewport')
+      const code = element.querySelector('.role-permission-dialog__node-code')
+      if (!viewport || !code) throw new Error('未找到权限树视区或权限编码')
+      const bounds = element.getBoundingClientRect()
+      return {
+        bottomGap: viewport.getBoundingClientRect().bottom - bounds.bottom,
+        rightGap: bounds.right - code.getBoundingClientRect().right,
+        outline: getComputedStyle(element).outlineStyle
+      }
+    })
+  expect(focusGeometry.bottomGap).toBeGreaterThanOrEqual(-1)
+  expect(focusGeometry.rightGap).toBeGreaterThanOrEqual(8)
+  expect(focusGeometry.outline).toBe('solid')
+  await dialog.screenshot({ path: info.outputPath('permission-tree-keyboard-tail.png') })
+  await page.keyboard.press('Space')
+  await expect(last).toBeChecked()
+  await expect(selected).toHaveText('已选 2 / 1601 项')
+
+  await search.fill('PermissionFixture:0000')
+  await expect(row(first)).toBeVisible()
+  await expect(last).toHaveCount(0)
+  await expect(second).toHaveCount(0)
+  await search.press('Tab')
+  await expect(tabStop).toBeFocused()
+  await page.keyboard.press('End')
+  await expect(first).toBeFocused()
+  await expect(selected).toHaveText('已选 2 / 1601 项')
+
+  await search.clear()
+  await expect(row(second)).toBeVisible()
+  await expect
+    .poll(() => scroll.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(50_000)
+  await scroll.hover()
+  await page.mouse.wheel(0, 100_000)
+  await expect(first).toHaveCount(0)
+  await expect(row(last)).toBeVisible()
+  await expect(tabStop).toHaveCount(1)
+  await search.press('Tab')
+  await expect(tabStop).toBeFocused()
+  await expect(selected).toHaveText('已选 2 / 1601 项')
+  expect(savedPayloads).toEqual([])
+
+  await save.click()
+  await expect
+    .poll(() => savedPayloads)
+    .toEqual([
+      {
+        p_role_id: 'permission-role-A',
+        p_menu_ids: [menuId(0), menuId(1599)],
+        p_expected_menu_ids: [menuId(0)]
+      }
+    ])
   expect(pageErrors).toEqual([])
 })
 

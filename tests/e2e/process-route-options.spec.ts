@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 30_000 })
 // The real route editor also loads the material picker and reference panels on a cold Vite server.
@@ -36,6 +37,8 @@ for (const mode of ['list', 'dialog']) {
     if (mode === 'dialog') await page.getByRole('button', { name: '打开路线', exact: true }).click()
     const scope = mode === 'list' ? page.locator('.art-search-bar') : page.getByRole('dialog')
     for (const label of mode === 'list' ? ['启用状态'] : ['路线类型', '分配方式', '来源']) {
+      if (mode === 'dialog' && label === '来源')
+        await scope.getByRole('tab', { name: '策略与状态', exact: true }).click()
       const field = scope
         .locator('.el-form-item')
         .filter({ has: page.getByText(label, { exact: true }) })
@@ -56,6 +59,19 @@ for (const mode of ['list', 'dialog']) {
       }
     }
     await page.screenshot({ path: info.outputPath('options.png') })
+    if (mode === 'dialog') {
+      const expectAlignedCard = async () => {
+        await expectOverlayTabPanel(scope, '策略与状态')
+        const card = (await scope.locator('.art-form__tabs').boundingBox())!
+        const identity = (await scope.locator('.art-entity-summary').boundingBox())!
+        expect(card.x).toBeCloseTo(identity.x, 0)
+        expect(card.width).toBeCloseTo(identity.width, 0)
+      }
+      await expectAlignedCard()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await expectAlignedCard()
+      await scope.screenshot({ path: info.outputPath('process-route-tab-card-390.png') })
+    }
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
     ).toBeLessThanOrEqual(1)

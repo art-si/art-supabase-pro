@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { assertAppearance, prepareAppearance } from './support/appearance'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 import { readonlyPurchase, readonlySales } from './fixtures/form-standard-readonly-data'
 import { formStandardTransportDictionaries } from './fixtures/form-standard-transport-dictionaries'
 import {
@@ -12,34 +14,34 @@ import {
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 25_000 })
 test.setTimeout(90_000)
 const cases = [
-  { entry: 'business-detail', tabs: 2, text: '验收业务类型' },
-  { entry: 'document-detail', tabs: 0, text: '验收单据类型' },
-  { entry: 'document-detail-production', tabs: 2, text: '验收单据类型' },
-  { entry: 'document-detail-production-many', tabs: 3, text: '验收单据类型' },
-  { entry: 'document-detail-payable', tabs: 0, text: '验收单据类型' },
-  { entry: 'catalog-detail', tabs: 2, text: '验收主数据' },
-  { entry: 'catalog-detail-compact', tabs: 0, text: '验收主数据' },
-  { entry: 'bom-detail', tabs: 3, text: '验收BOM物料' },
+  { entry: 'business-detail', tabs: 2, text: '验收业务类型', tabCard: true },
+  { entry: 'document-detail', tabs: 0, text: '验收单据类型', tabCard: false },
+  { entry: 'document-detail-production', tabs: 2, text: '验收单据类型', tabCard: true },
+  { entry: 'document-detail-production-many', tabs: 3, text: '验收单据类型', tabCard: true },
+  { entry: 'document-detail-payable', tabs: 0, text: '验收单据类型', tabCard: false },
+  { entry: 'catalog-detail', tabs: 2, text: '验收主数据', tabCard: true },
+  { entry: 'catalog-detail-compact', tabs: 0, text: '验收主数据', tabCard: false },
+  { entry: 'bom-detail', tabs: 3, text: '验收BOM物料', tabCard: true },
   { entry: 'movement-detail', tabs: 0, text: '验收入库' },
   { entry: 'expense-detail', tabs: 0, text: '验收费用' },
   { entry: 'category-detail', tabs: 2, text: '验收报价项' },
   { entry: 'category-detail-compact', tabs: 0, text: '验收报价项' },
   { entry: 'purchase-detail', tabs: 4, text: 'PURCHASE-TEST' },
   { entry: 'sales-detail', tabs: 4, text: 'SALES-TEST' },
-  { entry: 'equipment-detail', tabs: 2, text: '验收生产设备' },
+  { entry: 'equipment-detail', tabs: 2, text: '验收生产设备', tabCard: true },
   { entry: 'native-service', tabs: 2, text: 'SERVICE-READONLY' },
   { entry: 'native-electronic', tabs: 3, text: 'ELECTRONIC-READONLY' },
   { entry: 'native-agreement', tabs: 3, text: 'AGREEMENT-READONLY' },
-  { entry: 'native-fuel-consume', tabs: 2, text: 'CARD-TEST · 测A12345' },
-  { entry: 'native-fuel-recharge', tabs: 0, text: 'CARD-TEST · 测A12345' },
-  { entry: 'native-electric-consume', tabs: 2, text: 'CARD-TEST · 测A12345' },
-  { entry: 'native-electric-recharge', tabs: 0, text: 'CARD-TEST · 测A12345' }
+  { entry: 'native-fuel-consume', tabs: 2, text: 'CARD-TEST · 测A12345', tabCard: true },
+  { entry: 'native-fuel-recharge', tabs: 0, text: 'CARD-TEST · 测A12345', tabCard: false },
+  { entry: 'native-electric-consume', tabs: 2, text: 'CARD-TEST · 测A12345', tabCard: true },
+  { entry: 'native-electric-recharge', tabs: 0, text: 'CARD-TEST · 测A12345', tabCard: false }
 ]
 for (const item of cases) {
   for (const visual of [
     { width: 1440, height: 900, theme: 'light' },
     { width: 390, height: 844, theme: 'dark' }
-  ]) {
+  ] as const) {
     test(`${item.entry} ${visual.theme}${visual.width} 只读分类与全部内容`, async ({
       page
     }, info) => {
@@ -48,6 +50,11 @@ for (const item of cases) {
       page.on('pageerror', (error) => errors.push(error.message))
       await page.setViewportSize(visual)
       await prepareIsolatedSession(page)
+      const appearance = {
+        theme: visual.theme,
+        boxBorderMode: visual.theme !== 'dark'
+      }
+      await prepareAppearance(page, appearance)
       await page.route('**/rest/v1/**', (route) => {
         const request = route.request()
         const path = new URL(request.url()).pathname
@@ -87,14 +94,14 @@ for (const item of cases) {
               : [nativeElectronic],
             headers
           })
-        if (/vms_list_(fuel|electric)_card_entries_secure$/.test(path))
+        if (/\/vms_list_(fuel_card_entries_secure|electric_card_entries_secure_v2)$/.test(path))
           return route.fulfill({
             json: {
               records: [ledgerDetail(item.entry.endsWith('recharge') ? 'recharge' : 'consume')],
               total: 1
             }
           })
-        if (/vms_list_(fuel|electric)_cards_secure$/.test(path))
+        if (/\/vms_list_(fuel_cards_secure|electric_cards_secure_v2)$/.test(path))
           return route.fulfill({ json: { records: [], total: 0 } })
         if (path.endsWith('/mdm_list_production_equipment_v2_secure'))
           return route.fulfill({
@@ -130,6 +137,7 @@ for (const item of cases) {
       await page.goto(
         `/tests/e2e/fixtures/form-standard-transport.html?entry=${item.entry}&theme=${visual.theme}`
       )
+      await assertAppearance(page, appearance)
       if (/native-(fuel|electric)/.test(item.entry))
         await page.getByText('CARD-TEST', { exact: true }).first().click()
       else if (item.entry === 'equipment-detail' || item.entry.startsWith('native-'))
@@ -141,12 +149,22 @@ for (const item of cases) {
       await expect(overlay.locator('.art-async-state[aria-busy="true"]')).toHaveCount(0)
       const tabs = overlay.getByRole('tab')
       await expect(tabs).toHaveCount(item.tabs)
+      if (item.tabCard === false)
+        await expect(overlay.locator('.art-overlay-tab-card')).toHaveCount(0)
       await expect(
         overlay.locator('input:not([type="hidden"]),textarea,[contenteditable="true"]')
       ).toHaveCount(0)
       const count = await tabs.count()
       for (let index = 0; index < Math.max(count, 1); index++) {
-        if (count) await tabs.nth(index).click()
+        if (count) {
+          const tab = tabs.nth(index)
+          await tab.click()
+          if (item.tabCard) {
+            const panel = await expectOverlayTabPanel(overlay, (await tab.innerText()).trim())
+            if (item.entry.startsWith('document-detail-production'))
+              await expect(panel.locator('.art-card, .art-card-sm, .art-card-xs')).toHaveCount(0)
+          }
+        }
         expect(
           await overlay.evaluate((element) => element.scrollWidth > element.clientWidth + 1)
         ).toBe(false)
@@ -156,6 +174,12 @@ for (const item of cases) {
           timeout: 60_000
         })
       }
+      if (['business-detail', 'document-detail', 'expense-detail'].includes(item.entry)) {
+        await expect(overlay.getByText('2026-10-01 16:00:00', { exact: true })).toBeAttached()
+        await expect(overlay.getByText('2026-10-31 16:00:00', { exact: true })).toBeAttached()
+      }
+      if (item.entry.startsWith('native-electric-'))
+        await expect(overlay.getByText('2026-10-31 16:00:00', { exact: true })).toHaveCount(2)
       expect(unexpected).toEqual([])
       expect(errors).toEqual([])
       if (count) {

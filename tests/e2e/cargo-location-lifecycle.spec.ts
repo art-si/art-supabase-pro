@@ -155,6 +155,66 @@ test('读取失败使用可重试状态，旧读取失败不覆盖新运单', as
   await expect(page.locator('.el-message--error')).toHaveCount(0)
 })
 
+test('键盘提交装货信息失败后恢复提交按钮焦点并可重试', async ({ page }, info) => {
+  const weightTon = 12.5
+  const photoUrls = [
+    'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+  ]
+  const weighbridgeTicketUrls = [...photoUrls]
+  const { promise: canFail, resolve: releaseFailure } = Promise.withResolvers<void>()
+  let attempts = 0
+  await page.route('**/rest/v1/rpc/tms_get_waybill_cargo_operation_context', (route) => {
+    const context = operationContext(route.request().postDataJSON(), true)
+    return route.fulfill({
+      json: {
+        ...context,
+        operation: { ...context.operation, weightTon, photoUrls, weighbridgeTicketUrls }
+      }
+    })
+  })
+  await page.route('**/rest/v1/rpc/tms_complete_waybill_cargo_operation', async (route) => {
+    const payload = route.request().postDataJSON()
+    expect(payload).toMatchObject({ p_operation_type: 'loading', p_weight_ton: weightTon })
+    attempts++
+    if (attempts === 1) {
+      await canFail
+      return route.fulfill({
+        status: 409,
+        json: { code: 'P0001', message: '装货信息暂未提交，请重试' }
+      })
+    }
+    return route.fulfill({ json: operationContext(payload, true) })
+  })
+  await page.goto('/tests/e2e/fixtures/cargo-location-lifecycle.html', {
+    waitUntil: 'domcontentloaded'
+  })
+  await page.getByRole('button', { name: '打开装卸表单', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '装货打卡与资料', exact: true })
+  const submit = dialog.getByRole('button', { name: '提交装货信息', exact: true })
+  await expect(dialog.getByRole('spinbutton', { name: /装货重量/ })).toHaveValue('12.500')
+  await expect(dialog.getByRole('img', { name: '装货照片', exact: true })).toBeVisible()
+  await expect(dialog.getByRole('img', { name: '装货磅单', exact: true })).toBeVisible()
+  await expect(submit).toBeEnabled()
+  await page.clock.runFor(350)
+  try {
+    await submit.focus()
+    await expect(submit).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => attempts).toBe(1)
+    await expect(submit).toBeDisabled()
+  } finally {
+    releaseFailure()
+  }
+  await expect(page.locator('.el-message--error')).toBeVisible()
+  await expect(submit).toBeEnabled()
+  await expect(submit).toBeFocused()
+  await dialog.screenshot({ path: info.outputPath('cargo-submit-retry-focus.png') })
+  await page.keyboard.press('Enter')
+  await expect(dialog).toBeHidden()
+  await expect(page.getByTestId('success-count')).toHaveText('1')
+  expect(attempts).toBe(2)
+})
+
 test('已发出的旧请求保留真实成功刷新，但不关闭新表单或清除新定位状态', async ({ page }) => {
   let release!: () => void
   await page.route('**/rest/v1/rpc/tms_check_in_waybill_cargo_operation', async (route) => {

@@ -234,6 +234,12 @@ html.dark .el-card {
     background-color: var(--theme-color);
     border-color: var(--art-themed-action-active-border);
     box-shadow: var(--art-themed-action-active-shadow);
+
+    &:focus-visible {
+      outline: 2px solid var(--el-color-primary);
+      outline-offset: 2px;
+      box-shadow: none;
+    }
   }
 }
 
@@ -262,7 +268,7 @@ html.dark .el-card {
     display: flex;
     align-items: center;
     min-height: 56px;
-    padding: 16px 24px !important;
+    padding: var(--art-space-4) var(--art-dialog-gutter, var(--art-space-5)) !important;
     margin-right: 0;
     background: color-mix(in srgb, var(--theme-color) 2%, var(--default-box-color));
     border-bottom: 1px solid var(--art-card-border);
@@ -281,7 +287,7 @@ html.dark .el-card {
 
   &.art-dialog > .el-dialog__footer {
     min-height: 60px;
-    padding: 12px 24px !important;
+    padding: var(--art-space-3) var(--art-dialog-gutter, var(--art-space-5)) !important;
     background: color-mix(in srgb, var(--art-gray-100) 58%, var(--default-box-color));
     border-top: 1px solid var(--art-card-border);
   }
@@ -403,31 +409,49 @@ html.dark .el-card {
   }
 }
 
-// ElSelect 的可搜索内层 input 由外层 wrapper 统一呈现焦点态，避免生产构建中出现双层焦点框。
-.el-select__input:focus-visible {
+// ElSelect 和 ElInputTag 由外框呈现焦点态，避免内外各出现一层焦点框。
+.el-select__input:focus-visible,
+.el-input-tag.is-focused .el-input-tag__input:focus-visible {
   outline: none;
+}
+
+@mixin compact-date-range-panel {
+  width: calc(100vw - 24px) !important;
+  max-height: min(480px, 50dvh);
+  overflow-y: auto;
+
+  .el-picker-panel__body {
+    min-width: 0 !important;
+  }
+
+  .el-date-range-picker__content {
+    display: block !important;
+    width: 100% !important;
+
+    &.is-left {
+      border-right: 0;
+      border-bottom: 1px solid var(--el-border-color-lighter);
+    }
+  }
+}
+
+// 双月浮层宽 648px，带快捷栏时宽 758px；保留 24px 的视口余量。
+@media screen and (width < 672px) {
+  .el-date-range-picker:not(.single-panel) {
+    @include compact-date-range-panel;
+  }
+}
+
+@media screen and (672px <= width < 782px) {
+  .el-date-range-picker.has-sidebar:not(.single-panel) {
+    @include compact-date-range-panel;
+  }
 }
 
 // 处理移动端组件兼容性
 @media screen and (width <= 640px) {
-  .el-date-range-picker {
-    width: calc(100vw - 24px) !important;
-    max-height: min(480px, 50dvh);
-    overflow-y: auto;
-
-    .el-picker-panel__body {
-      min-width: 0 !important;
-    }
-
-    .el-date-range-picker__content {
-      display: block !important;
-      width: 100% !important;
-
-      &.is-left {
-        border-right: 0;
-        border-bottom: 1px solid var(--el-border-color-lighter);
-      }
-    }
+  .el-date-range-picker.single-panel {
+    @include compact-date-range-panel;
   }
 
   .el-message-box,
@@ -553,7 +577,7 @@ html.dark .el-card {
   width: fit-content !important;
   max-width: 100%;
   height: 24px !important;
-  padding: 0 9px !important;
+  padding: 0 var(--art-tag-padding-inline, 9px) !important;
   font-size: var(--el-tag-font-size, 12px) !important;
   font-weight: 500;
   line-height: 1 !important;
@@ -565,12 +589,12 @@ html.dark .el-card {
 
   &.el-tag--small {
     height: 20px !important;
-    padding: 0 7px !important;
+    padding: 0 var(--art-tag-padding-inline, 7px) !important;
   }
 
   &.el-tag--large {
     height: 32px !important;
-    padding: 0 11px !important;
+    padding: 0 var(--art-tag-padding-inline, 11px) !important;
   }
 
   &.is-round {
@@ -1036,6 +1060,15 @@ html.dark .el-card {
         }
       }
     }
+  }
+}
+
+// Keep schema-driven pickers within the viewport without changing their row density.
+.el-select__popper.art-form-picker-popper {
+  max-inline-size: calc(100vw - 2 * var(--art-space-2));
+
+  .el-select-dropdown {
+    max-inline-size: 100%;
   }
 }
 

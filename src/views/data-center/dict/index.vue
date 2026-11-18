@@ -324,34 +324,31 @@
   )
   const dictWorkspaceTitle = computed(() => table.currentDictType?.name || '字典项维护')
   const dictWorkspaceDescription = computed(() => {
-    if (table.currentDictType?.nodeType === 'dictionary') {
-      return (
-        table.currentDictType.remark ||
-        `维护「${table.currentDictType.name}」类型下的字典项、取值状态与呈现方式。`
-      )
-    }
-
-    if (table.currentDictType?.nodeType === 'directory') {
-      return `「${table.currentDictType.name}」用于组织字典类型，请从左侧选择需要维护的具体类型。`
-    }
-
-    return '从左侧目录选择字典类型，查看并维护对应的字典项。'
+    const item = table.currentDictType
+    if (!item) return '管理业务表单和列表使用的选项、编码及展示方式。'
+    if (item.remark) return item.remark
+    return item.nodeType === 'dictionary'
+      ? '维护该类型下的字典项、启用状态及展示方式。'
+      : '按业务分类组织字典类型。'
   })
-  const dictWorkspaceTags = computed(() => [
-    {
-      label: table.currentDictType?.code
-        ? `类型编码 · ${table.currentDictType.code}`
-        : '等待选择字典类型',
-      type: isDictionarySelected.value ? ('primary' as const) : ('info' as const)
-    }
-  ])
+  const dictWorkspaceTags = computed(() => {
+    const item = table.currentDictType
+    if (!item?.code) return []
+    const isType = item.nodeType === 'dictionary'
+    return [
+      {
+        label: `${isType ? '类型编码' : '目录编码'} · ${item.code}`,
+        type: isType ? ('primary' as const) : ('info' as const)
+      }
+    ]
+  })
   const selectionEmptyTitle = computed(() =>
     table.currentDictType?.nodeType === 'directory' ? '请选择具体的字典类型' : '先选择一个字典类型'
   )
   const selectionEmptyDescription = computed(() =>
     table.currentDictType?.nodeType === 'directory'
-      ? `「${table.currentDictType.name}」是目录，请从其下级选择需要维护的字典类型。`
-      : '从左侧目录中选择字典类型后，可查看并维护对应字典项。'
+      ? `在左侧展开「${table.currentDictType.name}」，选择要维护的字典类型。`
+      : '在左侧选择字典类型。也可以先按名称或编码搜索。'
   )
 
   const fetchTableData = (params: TableParams) => {

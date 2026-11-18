@@ -5,7 +5,7 @@
         <ArtSectionTitle :show-line="false">登录方式</ArtSectionTitle>
         <p>绑定后可使用对应渠道进入同一个系统账号，租户、角色和业务权限不会改变。</p>
       </div>
-      <ElButton :loading="state.loading" @click="loadIdentities">
+      <ElButton ref="refreshButton" :loading="state.loading" @click="reloadFromButton">
         <ArtSvgIcon icon="ri:refresh-line" />
         刷新状态
       </ElButton>
@@ -26,8 +26,10 @@
       empty-text="暂无可管理的第三方登录方式"
       empty-description="请联系平台管理员在网站配置中启用认证渠道。"
       :min-height="190"
-      @retry="loadIdentities"
     >
+      <template #error-action>
+        <ElButton type="primary" @click="reloadFromButton">重新加载</ElButton>
+      </template>
       <div class="login-methods__list">
         <article v-for="row in methodRows" :key="row.key" class="login-method-row">
           <div class="login-method-row__icon" aria-hidden="true">
@@ -75,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-  import { ElMessage } from 'element-plus'
+  import { ElMessage, type ButtonInstance } from 'element-plus'
   import { omit } from 'lodash-es'
   import {
     fetchCurrentUserIdentities,
@@ -87,6 +89,7 @@
   import { useWebsiteConfig } from '@/hooks/core/useWebsiteConfig'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { buildAuthCallbackUrl, getFriendlySupabaseErrorMessage } from '@/utils/supabase'
+  import { getFocusedKeyboardButton, restoreButtonFocusIfLost } from '@/utils/ui/button-focus'
 
   interface LoginMethodRow {
     key: string
@@ -107,6 +110,7 @@
   const router = useRouter()
   const { websiteConfig, loadWebsiteConfig } = useWebsiteConfig()
   const { confirmAction } = useArtFeedback()
+  const refreshButton = ref<ButtonInstance>()
   const identities = ref<Api.Auth.LinkedIdentity[]>([])
   const state = reactive<StateGroup>({ loading: false, activeKey: '', error: null })
 
@@ -168,6 +172,15 @@
     } finally {
       state.loading = false
     }
+  }
+
+  const reloadFromButton = async (event: MouseEvent): Promise<void> => {
+    if (state.loading) return
+    const target = getFocusedKeyboardButton(event) && refreshButton.value?.ref
+    await loadIdentities()
+    if (!target) return
+    await nextTick()
+    restoreButtonFocusIfLost(target)
   }
 
   const startLink = async (channel: Api.Auth.AuthChannel): Promise<void> => {

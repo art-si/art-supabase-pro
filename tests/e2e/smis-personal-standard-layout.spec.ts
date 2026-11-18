@@ -76,16 +76,26 @@ for (const scenario of [
         }))
       ]
     })
+    const parent = { id: 'scope-test', name: '测试组织岗位', code: 'TEST', sort: 1 }
+    const child = { id: 'scope-child', name: '测试子部门', code: 'TEST-CHILD', parentId: parent.id }
     await page.route(`**/rest/v1/rpc/smis_list_${scenario.kind}_scope_options_secure`, (route) =>
-      route.fulfill({ json: [{ id: 'scope-test', name: '测试组织岗位', code: 'TEST', sort: 1 }] })
+      route.fulfill({ json: [parent, child] })
     )
+    const organizationRequests: unknown[] = []
+    const writeRequests: string[] = []
+    await page.route(/\/rpc\/smis_(save|generate|set|delete)_/, (route) => {
+      writeRequests.push(route.request().url())
+      return route.abort()
+    })
     let empty = false
     let failure = false
     let exportRequests = 0
     await page.route(
       `**/rest/v1/rpc/smis_list_${scenario.kind}_personal_standards_secure`,
       (route) => {
-        if (route.request().postDataJSON().p_purpose === 'export') exportRequests += 1
+        const payload = route.request().postDataJSON()
+        if (payload.p_purpose === 'export') exportRequests += 1
+        else organizationRequests.push(payload.p_organization_ids)
         if (failure)
           return route.fulfill({
             status: 503,
@@ -164,6 +174,30 @@ for (const scenario of [
     await expect(employee).toContainText('EMP-TEST')
     await expect(employee).toHaveCSS('display', 'flex')
     await expect(employee).toHaveCSS('text-align', 'left')
+    if (testInfo.project.name === 'desktop-1440') {
+      const viewport = page.viewportSize()!
+      await page.setViewportSize({ width: 390, height: 844 })
+      const openScope = root.getByRole('button', { name: '选择组织', exact: true })
+      await openScope.press('Enter')
+      const drawer = page.getByRole('dialog', { name: '选择组织范围' })
+      await expect(drawer).toBeVisible()
+      const organization = (name: string) =>
+        drawer.getByText(name, { exact: true }).locator('xpath=ancestor::*[@role="treeitem"][1]')
+      const parentNode = organization(parent.name)
+      const childNode = organization(child.name)
+      await expect(childNode).toBeVisible()
+      const initialRequests = organizationRequests.length
+      await parentNode.press('ArrowRight')
+      await expect(childNode).toBeFocused()
+      await childNode.press('ArrowLeft')
+      await expect(parentNode).toBeFocused()
+      expect(organizationRequests).toHaveLength(initialRequests)
+      await parentNode.press('Enter')
+      await expect.poll(() => organizationRequests.at(-1)).toEqual([parent.id, child.id])
+      await expect(drawer).toBeHidden()
+      await expect(openScope).toBeFocused()
+      await page.setViewportSize(viewport)
+    }
     const actions = root.locator('.el-table__body .business-table-row-actions').first()
     await expect(actions).toHaveCount(1)
     await expect(actions.locator('.art-button-table')).toHaveCount(3)
@@ -251,5 +285,6 @@ for (const scenario of [
       animations: 'disabled'
     })
     expect(errors).toEqual([])
+    expect(writeRequests).toEqual([])
   })
 }

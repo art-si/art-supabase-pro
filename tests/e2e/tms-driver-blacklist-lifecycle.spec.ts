@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { prepareIsolatedSession } from './support/isolated-session'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(120_000)
@@ -78,6 +79,8 @@ async function mockExactDetail(
 }
 
 test('司机黑名单展示关联资料、司机选择及解除历史', async ({ page }, info) => {
+  await prepareIsolatedSession(page, { tenantId, platformSuper: false })
+  const candidateRequests: Array<Record<string, unknown>> = []
   const pageErrors: string[] = []
   page.on('pageerror', (error) => {
     pageErrors.push(error.message)
@@ -136,6 +139,7 @@ test('司机黑名单展示关联资料、司机选择及解除历史', async ({
       })
     }
     if (endpoint === 'tms_list_blacklist_driver_candidates_secure') {
+      candidateRequests.push(route.request().postDataJSON() as Record<string, unknown>)
       return route.fulfill({
         json: {
           records: [
@@ -183,6 +187,7 @@ test('司机黑名单展示关联资料、司机选择及解除历史', async ({
   await expect(driverField).toBeVisible()
   await driverField.click()
   await expect(page.getByText('验收司机乙').first()).toBeVisible()
+  expect(candidateRequests.at(-1)).toMatchObject({ p_from: 0, p_to: 9, p_keyword: null })
   const candidateRow = page.getByRole('row').filter({ hasText: '验收司机乙' })
   await expect(candidateRow).toContainText('自有司机')
   await expect(candidateRow).toContainText('副驾')
@@ -206,6 +211,15 @@ test('司机黑名单展示关联资料、司机选择及解除历史', async ({
   await page.screenshot({ path: info.outputPath('blacklist-driver-autofill.png'), fullPage: true })
 
   await page.getByRole('button', { name: '取消' }).last().click()
+  await expect(page.getByRole('button', { name: '解除黑名单' })).toBeInViewport({ ratio: 0.95 })
+  await expect
+    .poll(() =>
+      page
+        .locator('.el-table__body-wrapper')
+        .first()
+        .evaluate((el) => el.clientHeight)
+    )
+    .toBeGreaterThan(48)
   await page.getByRole('button', { name: '解除黑名单' }).click()
   await page.getByRole('button', { name: '确认解除' }).click()
   await expect(page.getByText('已解除').first()).toBeVisible()

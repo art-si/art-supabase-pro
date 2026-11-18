@@ -4,7 +4,13 @@ import { loadEnv } from 'vite'
 const appVersion = loadEnv('e2e', process.cwd(), '').VITE_VERSION
 
 /** 隔离测试身份与后台读取；调用方随后注册自己的业务接口。 */
-export async function prepareIsolatedSession(page: Page) {
+export async function prepareIsolatedSession(
+  page: Page,
+  {
+    tenantId = 'permission-test-tenant',
+    platformSuper = true
+  }: { tenantId?: string; platformSuper?: boolean } = {}
+) {
   await page.addInitScript((version) => {
     const now = Math.floor(Date.now() / 1000)
     const user = { id: 'permission-test-auth', aud: 'authenticated', role: 'authenticated' }
@@ -42,7 +48,7 @@ export async function prepareIsolatedSession(page: Page) {
     )
   }, appVersion)
   // 使用合成身份隔离网络延迟；真实认证与权限边界由独立集成测试验证。
-  const tenant = { id: 'permission-test-tenant', tenant_code: 'test', tenant_name: '测试租户' }
+  const tenant = { id: tenantId, tenant_code: 'test', tenant_name: '测试租户' }
   // 默认拦截外壳后台读取，业务测试随后注册更具体的响应。
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
   await page.route('**/rest/v1/sys_param?*', (route) => route.fulfill({ json: [] }))
@@ -68,7 +74,9 @@ export async function prepareIsolatedSession(page: Page) {
       }
     })
   )
-  await page.route('**/rest/v1/rpc/current_is_super', (route) => route.fulfill({ json: true }))
+  await page.route('**/rest/v1/rpc/current_is_super', (route) =>
+    route.fulfill({ json: platformSuper })
+  )
   await page.route('**/rest/v1/sys_tenant?*', (route) => route.fulfill({ json: [tenant] }))
   await page.route('**/rest/v1/rpc/get_organization_list_secure', (route) =>
     route.fulfill({ json: [] })

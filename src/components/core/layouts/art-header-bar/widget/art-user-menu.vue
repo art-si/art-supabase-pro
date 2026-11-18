@@ -16,7 +16,7 @@
       <button
         ref="userMenuButton"
         type="button"
-        class="mr-5 rounded-full max-sm:mr-[16px]"
+        class="art-header-user-trigger mr-5 rounded-full max-sm:mr-[16px]"
         aria-label="打开用户菜单"
       >
         <img

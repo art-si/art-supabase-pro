@@ -652,6 +652,10 @@ if (requestedTheme === 'light' || requestedTheme === 'dark') {
   const theme = requestedTheme === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
   setting.setGlobalTheme(theme, theme)
 }
+const requestedBoxMode = new URLSearchParams(location.search).get('box')
+if (requestedBoxMode === 'border-mode' || requestedBoxMode === 'shadow-mode')
+  setting.boxBorderMode = requestedBoxMode === 'border-mode'
+document.documentElement.dataset.boxMode = setting.boxBorderMode ? 'border-mode' : 'shadow-mode'
 initializeTheme()
 useTheme().switchThemeStyles(setting.systemThemeType)
 useUserStore(store).setUserInfo({

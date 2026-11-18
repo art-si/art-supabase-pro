@@ -171,6 +171,7 @@ for (const theme of ['light', 'dark']) {
         .click()
       await page.getByRole('treeitem', { name: '验收财务部', exact: true }).click()
       await drawer.getByRole('textbox', { name: '摘要', exact: true }).fill(`退款验收${index}`)
+      await drawer.getByRole('tab', { name: '付款明细', exact: true }).click()
       await drawer.getByRole('button', { name: '新增明细', exact: true }).click()
       await drawer.getByRole('combobox', { name: '原付款明细', exact: true }).click()
       await page.getByRole('option', { name: new RegExp(`QA-PAID-${index}`) }).click()
@@ -181,18 +182,23 @@ for (const theme of ['light', 'dark']) {
       await amount.fill('0')
       await drawer.getByRole('button', { name: '保存', exact: true }).click()
       expect(saves).toHaveLength(index === 1 ? 0 : 2)
-      await expect(page.locator('.el-message--warning').last()).toContainText('金额不正确')
+      await expect(page.locator('.el-message--warning').last()).toHaveText(
+        '退款本金不正确，请核对金额范围'
+      )
       await amount.fill(String(index * 100))
       if (index === 2) {
         await expect(page.locator('.el-message')).toHaveCount(0)
+        await drawer.getByRole('tab', { name: '基本信息', exact: true }).click()
         await drawer.getByRole('combobox', { name: '退款组织' }).scrollIntoViewIfNeeded()
         await drawer.screenshot({ path: info.outputPath(`refund-${theme}-form-header.png`) })
+        await drawer.getByRole('tab', { name: '付款明细', exact: true }).click()
         await amount.scrollIntoViewIfNeeded()
         await drawer.screenshot({ path: info.outputPath(`refund-${theme}-form-lines.png`) })
       }
       await drawer.getByRole('button', { name: '保存', exact: true }).click()
       if (index === 1) {
         await expect(page.locator('.el-message--error')).toHaveCount(1)
+        await drawer.getByRole('tab', { name: '基本信息', exact: true }).click()
         await expect(drawer.getByRole('textbox', { name: '摘要', exact: true })).toHaveValue(
           '退款验收1'
         )
@@ -212,7 +218,7 @@ for (const theme of ['light', 'dark']) {
       })
     })
     const selectAll = async () => {
-      const checkbox = page.getByRole('checkbox', { name: '选择所有行', exact: true })
+      const checkbox = page.getByRole('checkbox', { name: '选择当前页全部行', exact: true })
       if (!(await checkbox.isChecked()))
         await page.locator('.el-table__header-wrapper label.el-checkbox').first().click()
     }

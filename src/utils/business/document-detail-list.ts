@@ -120,7 +120,7 @@ export function groupDocumentLines<TLine>(
 
 /** Merge repeated document fields while keeping every material cell independent. */
 export function documentGroupSpan<T extends { documentId?: string; id?: string }>(
-  rows: T[],
+  rows: readonly T[],
   rowIndex: number,
   property: string | undefined,
   lineProperties: ReadonlySet<string>,
@@ -135,4 +135,23 @@ export function documentGroupSpan<T extends { documentId?: string; id?: string }
     count += 1
   }
   return [count, 1]
+}
+
+/** Keep the table span callback in sync as the display mode and visible page change. */
+export function createDocumentGroupSpan<T extends { documentId?: string; id?: string }>(
+  getDisplayMode: () => 'document' | 'line',
+  getRows: () => readonly T[] | undefined,
+  lineProperties: ReadonlySet<string>,
+  getDocumentId?: (row: T) => string
+) {
+  return ({
+    rowIndex,
+    column: { property }
+  }: {
+    rowIndex: number
+    column: { property?: string }
+  }): [number, number] => {
+    if (getDisplayMode() !== 'line' || !property) return [1, 1]
+    return documentGroupSpan(getRows() ?? [], rowIndex, property, lineProperties, getDocumentId)
+  }
 }

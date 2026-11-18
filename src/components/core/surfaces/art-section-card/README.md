@@ -24,6 +24,8 @@ State priority is loading, error, empty, then content. Skeleton loading is the d
 
 Use the standard `title`, `subtitle`, and `actions` contract whenever possible. A specialized card may use `#header` to preserve a richer established header, but the slot must contain the complete header and must not recreate the card surface. Loading, empty, and error states still belong on `ArtSectionCard`.
 
+Header actions stay right-aligned. When a narrow card cannot fit the title and actions on one line, the action group moves below the title. Its controls wrap within the available width when needed. An untitled header reserves no space for a title marker.
+
 When the whole card body owns the state but needs an established body layout class, pass it through `body-class`. Keep an inner `ArtAsyncState` only for a genuinely independent sub-region, such as a table whose search toolbar must remain available while the table is empty or reloading.
 
 For an error state in a short embedded card, `:body-class="error ? 'is-compact' : ''"` reuses the existing `ArtAsyncState` compact layout. Keep the card's bounded `ElScrollbar`, and verify that the message and complete retry button are visible before focus or automatic scrolling. Do not copy the compact icon and spacing rules into the page.

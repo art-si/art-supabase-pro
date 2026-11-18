@@ -133,6 +133,8 @@ settings.systemThemeMode = settings.systemThemeType
 settings.boxBorderMode = query.get('box') !== 'shadow'
 initializeTheme()
 document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
+// This standalone fixture has 16px padding on both edges and no app shell to set the height.
+document.documentElement.style.setProperty('--art-full-height', 'calc(100vh - 32px)')
 app.use(language)
 app.use(router)
 setupGlobDirectives(app)

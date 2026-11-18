@@ -17,6 +17,7 @@
       <ArtSearchBar
         v-model="searchModel"
         v-bind="resolvedSearchBarProps"
+        :applied-search-values="isManaged ? managedTable.appliedSearchParams.value : undefined"
         :search-loading="resolvedLoading && !iconOnlyRefresh"
         @search="handleSearch"
         @reset="handleReset"
@@ -89,7 +90,8 @@
       :class="{
         'has-header-top': hasHeaderTopContent,
         'has-table-header': shouldRenderTableHeader,
-        'is-table-only': !hasHeaderTopContent && !shouldRenderTableHeader
+        'is-table-only': !hasHeaderTopContent && !shouldRenderTableHeader,
+        'has-retry-focus': tableHostFocusedByRetry
       }"
       shadow="never"
     >
@@ -117,6 +119,7 @@
 
       <ArtTableHeader
         v-if="shouldRenderTableHeader"
+        ref="tableHeaderRef"
         v-model:columns="resolvedColumnsModel"
         class="art-table-query__command-bar"
         :class="{
@@ -232,7 +235,7 @@
                     size="small"
                     link
                     type="primary"
-                    @click="clearSelectedRows"
+                    @click="handleClearSelectionClick"
                   >
                     取消选择
                   </ElButton>
@@ -275,16 +278,23 @@
           title="数据加载失败"
           :description="managedTable.error.value?.message || '暂时无法获取列表，请稍后重试。'"
         >
-          <ElButton type="primary" @click="handleRefresh">重新加载</ElButton>
+          <ElButton ref="errorRetryButton" type="primary" @click="retryAfterError">
+            重新加载
+          </ElButton>
         </ArtEmptyState>
       </ElScrollbar>
       <div
         v-else
+        ref="tableHostRef"
         class="art-table-query__table-host"
+        role="group"
+        :aria-label="sectionTitle || '查询结果'"
+        tabindex="-1"
         :class="{
           'art-table-query__table-host--configured-height':
             !focusMode && resolvedTableProps.height != null
         }"
+        @blur="tableHostFocusedByRetry = false"
       >
         <ArtTable
           ref="tableRef"
@@ -322,10 +332,10 @@
     type VNode,
     type VNodeChild
   } from 'vue'
-  import type { ButtonProps, TableColumnCtx, TableProps } from 'element-plus'
+  import type { ButtonInstance, ButtonProps, TableColumnCtx, TableProps } from 'element-plus'
   import { ElMessage } from 'element-plus'
   import { useEventListener, useRafFn, useResizeObserver } from '@vueuse/core'
-  import { cloneDeep, get, uniqBy } from 'lodash-es'
+  import { cloneDeep, get, omit, uniqBy } from 'lodash-es'
   import {
     commandIcon,
     isRangeAction,
@@ -342,6 +352,7 @@
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import ArtTableHeader from '@/components/core/tables/art-table-header/index.vue'
   import type { ArtTableInstance } from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -349,6 +360,7 @@
   import { useGlobalFocusPreference } from '@/hooks/core/useGlobalFocusPreference'
   import { useTable, type TableRequestOptions } from '@/hooks/core/useTable'
   import type { ApiResponse } from '@/utils/table/table-cache'
+  import { tableConfig } from '@/utils/table/table-config'
   import {
     defaultResponseAdapter,
     extractTableData,
@@ -364,6 +376,7 @@
   import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { useUserStore } from '@/store/modules/user'
   import { getDictionaryDisplayLabel } from '@/utils/form/option'
+  import { getFocusedKeyboardButton, restoreButtonFocusIfLost } from '@/utils/ui/button-focus'
   import { isPlainObjectRecord } from '@/utils/type-guards'
   import { getFriendlySupabaseErrorMessage, wasErrorUserNotified } from '@/utils/supabase'
   import {
@@ -709,6 +722,7 @@
 
   interface ArtTableExpose {
     elTableRef?: ArtTableInstance | null
+    focusCurrentPageSelection: () => void
   }
 
   interface ArtTableBindings extends ArtTableQueryTableProps {
@@ -847,7 +861,11 @@
   const pendingActionKey = ref<string | null>(null)
   const initialSearchModel = ref<Record<string, unknown>>({})
   const rootRef = ref<HTMLElement>()
+  const tableHostRef = ref<HTMLElement>()
+  const errorRetryButton = ref<ButtonInstance>()
+  const tableHostFocusedByRetry = ref(false)
   const tableRef = ref<ArtTableExpose | null>(null)
+  const tableHeaderRef = ref<InstanceType<typeof ArtTableHeader>>()
   const headerTopRef = ref<HTMLElement>()
   const tableHeaderActionHostRef = ref<HTMLElement>()
   const sectionHeaderActionHostRef = ref<HTMLElement>()
@@ -1056,6 +1074,22 @@
       selectedRows.value.length > 0 &&
       (selectionActionSource.value.length > 0 || !!slots['selection-bar'])
   )
+
+  const handleClearSelectionClick = async (event: MouseEvent): Promise<void> => {
+    const trigger = getFocusedKeyboardButton(event)
+    const table = tableRef.value
+    clearSelectedRows()
+    if (!trigger || !table) return
+    await nextTick()
+    const { ownerDocument } = trigger
+    if (
+      tableRef.value === table &&
+      ownerDocument.hasFocus() &&
+      ownerDocument.activeElement === ownerDocument.body
+    ) {
+      table.focusCurrentPageSelection()
+    }
+  }
 
   const hasStandaloneHeaderActions = computed(() =>
     props.headerActions.some(
@@ -1330,6 +1364,16 @@
     return action.selectionRequired ?? getHeaderActionDefault(action)?.selectionRequired ?? false
   }
 
+  const requiresAppliedExportSearch = (
+    action: ArtTableQueryHeaderAction,
+    scope: ArtTableQueryHeaderActionContext['scope']
+  ): boolean =>
+    scope === 'default' &&
+    isManaged.value &&
+    action.type === 'export' &&
+    !action.onClick &&
+    (!!action.exportApi || !action.exportData)
+
   const isHeaderActionDisabled = (
     action: ArtTableQueryHeaderAction,
     scope: ArtTableQueryHeaderActionContext['scope'] = 'default',
@@ -1342,6 +1386,7 @@
       iconOnlyRefresh.value ||
       pendingActionKey.value !== null ||
       (action.type === 'import' && importPending.value) ||
+      (requiresAppliedExportSearch(action, scope) && !managedTable.appliedSearchParams.value) ||
       (isHeaderActionSelectionRequired(action) && ctx.selectedCount === 0)
     )
   }
@@ -1451,6 +1496,17 @@
     const maxRows = action.exportMaxRows || 10000
     const columns = resolveExcelColumns(action.exportColumns, ctx)
     const scopedSelectedRows = ctx.scope === 'selection' ? ctx.selectedRows : []
+    const usesAppliedSearch = requiresAppliedExportSearch(action, ctx.scope)
+    const appliedSearch = managedTable.appliedSearchParams.value
+    if (usesAppliedSearch && !appliedSearch) throw new Error('请先成功查询，再导出结果')
+    const searchParams = cloneSearchModel(
+      usesAppliedSearch
+        ? omit(appliedSearch, [
+            props.paginationKey?.current || tableConfig.paginationKey.current,
+            props.paginationKey?.size || tableConfig.paginationKey.size
+          ])
+        : searchModel.value
+    )
 
     if (action.exportApi) {
       const selectedIds = scopedSelectedRows
@@ -1461,7 +1517,7 @@
           selectedRows: scopedSelectedRows,
           selectedIds,
           selectedCount: scopedSelectedRows.length,
-          searchParams: cloneSearchModel(searchModel.value),
+          searchParams,
           columns,
           maxRows
         },
@@ -1480,12 +1536,11 @@
 
     if (scopedSelectedRows.length) return scopedSelectedRows
     if (action.exportData) return await action.exportData(ctx)
-    if (scopedSelectedRows.length) return scopedSelectedRows
     if (!props.apiFn) return resolvedData.value
 
     return loadTableExportRows<TableQueryRecord>(
       props.apiFn,
-      searchModel.value,
+      searchParams,
       maxRows,
       props.paginationKey,
       props.responseAdapter
@@ -1531,11 +1586,12 @@
       }
       assertCanDownload()
 
+      const filename = getActionFilename(action, ctx)
       await exportExcel({
         data: rows,
         columns: resolveExcelColumns(action.exportColumns, ctx),
-        filename: getActionFilename(action, ctx),
-        sheetName: action.exportSheetName || getActionFilename(action, ctx),
+        filename,
+        sheetName: action.exportSheetName || filename,
         maxRows: action.exportMaxRows,
         assertCanDownload
       })
@@ -1651,6 +1707,8 @@
     if (!isHeaderActionVisible(action, scope, rows) || isHeaderActionDisabled(action, scope, rows))
       return
 
+    const defaultExport = action.type === 'export' && !action.onClick
+    const keyboardTrigger = getFocusedKeyboardButton(event)
     pendingActionKey.value = getHeaderActionKey(action)
     try {
       const ctx = createHeaderActionContext(
@@ -1681,7 +1739,7 @@
         return
       }
       emit('header-action-click', action, ctx)
-      if (action.type === 'export' && !action.onClick) {
+      if (defaultExport) {
         await handleDefaultExport(action, ctx)
       } else {
         await action.onClick?.(ctx)
@@ -1697,6 +1755,10 @@
       }
     } finally {
       pendingActionKey.value = null
+      if (keyboardTrigger) {
+        await nextTick()
+        restoreButtonFocusIfLost(keyboardTrigger)
+      }
     }
   }
 
@@ -1780,6 +1842,21 @@
     }
   }
 
+  const retryAfterError = async (event: MouseEvent): Promise<void> => {
+    const trigger = getFocusedKeyboardButton(event)
+    await handleRefresh()
+    if (!trigger) return
+    await nextTick()
+    const { ownerDocument } = trigger
+    if (!ownerDocument.hasFocus() || ownerDocument.activeElement !== ownerDocument.body) return
+    const retry: unknown = errorRetryButton.value?.$el
+    const target = retry instanceof HTMLButtonElement ? retry : tableHostRef.value
+    if (!target?.isConnected || target.ownerDocument !== ownerDocument) return
+    const tableHost = target === tableHostRef.value
+    target.focus({ preventScroll: tableHost })
+    if (tableHost) tableHostFocusedByRetry.value = ownerDocument.activeElement === target
+  }
+
   const refreshRemove = async (): Promise<void> => {
     clearSelectedRows()
     await managedTable.refreshRemove()
@@ -1823,6 +1900,8 @@
   let focusPageElement: HTMLElement | undefined
   let showSearchBarBeforeFocus = true
   let focusScrollPositions: Array<{ element: HTMLElement; top: number; left: number }> = []
+  let focusEntryElement: HTMLElement | undefined
+  let pendingFocusHandoff: { entering: boolean; origin: HTMLElement } | undefined
 
   const addManagedClass = (
     element: HTMLElement,
@@ -1891,11 +1970,33 @@
   const focusPage = (): HTMLElement | null =>
     rootRef.value?.closest<HTMLElement>('.art-page-view') ?? null
 
+  const moveFocusIfOriginWasHidden = (
+    origin: HTMLElement | undefined,
+    ...targets: Array<HTMLElement | undefined>
+  ): void => {
+    if (!origin || (origin.isConnected && origin.getClientRects().length)) return
+    const { ownerDocument } = origin
+    const active = ownerDocument.activeElement
+    if (!ownerDocument.hasFocus() || (active !== ownerDocument.body && active !== origin)) return
+    const target = targets.find(
+      (element) => element?.isConnected && element.getClientRects().length
+    )
+    target?.focus({ preventScroll: true })
+  }
+
   const handleFocusModeChange = (
     value: boolean,
     source: 'manual' | 'automatic' = 'manual'
   ): void => {
     if (!props.focusable) return
+    if (value !== focusMode.value) {
+      const scope = source === 'manual' ? (focusPage() ?? rootRef.value) : undefined
+      const focused = scope?.ownerDocument.activeElement
+      pendingFocusHandoff =
+        focused instanceof HTMLElement && scope?.contains(focused)
+          ? { entering: value, origin: focused }
+          : undefined
+    }
     if (!value && focusMode.value && source === 'manual' && globalFocusPreference.enabled.value) {
       const page = focusPage()
       if (page) dismissGlobalTableFocus(page)
@@ -1910,8 +2011,15 @@
         focusScrollPositions.push({ element, top: element.scrollTop, left: element.scrollLeft })
       }
     }
+    const handoff = pendingFocusHandoff
     focusMode.value = value
     emit('focus-change', value)
+    if (handoff) {
+      // 受控模型可能不接受本次切换，后续外部更新不复用这次焦点。
+      void nextTick(() => {
+        if (pendingFocusHandoff === handoff) pendingFocusHandoff = undefined
+      })
+    }
   }
 
   export interface ArtTableQueryWorkspaceController {
@@ -1958,16 +2066,26 @@
   watch(
     focusMode,
     (value, previousValue) => {
+      const origin =
+        pendingFocusHandoff?.entering === value ? pendingFocusHandoff.origin : undefined
+      pendingFocusHandoff = undefined
       if (value && props.focusable) {
         if (!previousValue) {
           showSearchBarBeforeFocus = showSearchBar.value
+          focusEntryElement = origin
         }
-        void nextTick(applyFocusLayout)
+        void nextTick(() => {
+          if (!focusMode.value) return
+          applyFocusLayout()
+          moveFocusIfOriginWasHidden(origin, tableHeaderRef.value?.focusButtonRef)
+        })
       } else {
         if (previousValue && hasSearchBar.value) {
           showSearchBar.value = showSearchBarBeforeFocus
         }
         restoreFocusLayout()
+        const entry = focusEntryElement
+        focusEntryElement = undefined
         const positions = focusScrollPositions
         focusScrollPositions = []
         void nextTick(() => {
@@ -1977,6 +2095,12 @@
             element.scrollTop = top
             element.scrollLeft = left
           })
+          moveFocusIfOriginWasHidden(
+            origin,
+            entry,
+            tableHeaderRef.value?.focusButtonRef,
+            tableHostRef.value
+          )
         })
       }
     },
@@ -2098,6 +2222,8 @@
   export interface ArtTableQueryDataState {
     /** 当前实际呈现的数据，沿用表格的请求失效保护。 */
     rows: ComputedRef<readonly object[]>
+    /** 内管模式下当前结果接受的查询条件；没有有效结果时为 null。 */
+    appliedSearchParams: ComputedRef<Readonly<Record<string, unknown>> | null>
     loading: ComputedRef<boolean>
     error: ComputedRef<unknown>
     /** 替代视图复用当前分页状态。 */
@@ -2106,6 +2232,9 @@
 
   const dataState: ArtTableQueryDataState = {
     rows: resolvedData,
+    appliedSearchParams: computed(() =>
+      isManaged.value ? managedTable.appliedSearchParams.value : null
+    ),
     loading: computed(() => Boolean(resolvedLoading.value)),
     error: computed(() => (isManaged.value ? managedTable.error.value : null)),
     pagination: resolvedPagination

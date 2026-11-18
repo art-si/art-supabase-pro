@@ -3,9 +3,12 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
+import { useSettingStore } from '@/store/modules/setting'
 import { setupGlobDirectives } from '@/directives'
-import { useTheme } from '@/hooks/core/useTheme'
+import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
 import { SystemThemeEnum } from '@/enums/app-enum'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import Benefits from '../../../modules/art-supabase-hr/src/views/operations/benefits/modules/benefit-detail-drawer.vue'
 import Compliance from '../../../modules/art-supabase-hr/src/views/personnel/compliance/modules/compliance-detail-drawer.vue'
 import Relations from '../../../modules/art-supabase-hr/src/views/operations/employee-relations/modules/employee-relation-detail-drawer.vue'
@@ -45,25 +48,26 @@ const app = createApp({
       if (darkTheme) switchThemeStyles(SystemThemeEnum.DARK)
       open('first-record')
     })
-    return () => [
-      h(
-        'button',
-        {
-          style: { position: 'fixed', top: '4px', left: '4px', zIndex: 10000 },
-          onClick: () => open('second-record')
-        },
-        '切换测试记录'
-      ),
-      feature === 'benefits'
-        ? h(Benefits, { ref: benefits })
-        : feature === 'compliance'
-          ? h(Compliance, { ref: compliance })
-          : feature === 'relations'
-            ? h(Relations, { ref: relations })
-            : feature === 'service'
-              ? h(Service, { ref: service })
-              : h(Experience, { ref: experience })
-    ]
+    return () =>
+      h(ElConfigProvider, { locale: zhCn }, () => [
+        h(
+          'button',
+          {
+            style: { position: 'fixed', top: '4px', left: '4px', zIndex: 10000 },
+            onClick: () => open('second-record')
+          },
+          '切换测试记录'
+        ),
+        feature === 'benefits'
+          ? h(Benefits, { ref: benefits })
+          : feature === 'compliance'
+            ? h(Compliance, { ref: compliance })
+            : feature === 'relations'
+              ? h(Relations, { ref: relations })
+              : feature === 'service'
+                ? h(Service, { ref: service })
+                : h(Experience, { ref: experience })
+      ])
   }
 })
 app.use(store)
@@ -75,4 +79,33 @@ useUserStore(store).setUserInfo({
   tenantId: 'test-tenant',
   platformSuper: true
 })
+const dictionaries: Record<string, Array<[string, string]>> = {
+  hrQualificationStatus: [['valid', '有效']],
+  hrQualificationVerificationStatus: [['verified', '已核验']],
+  hrComplianceRiskStatus: [['clear', '正常']],
+  hrBenefitPlanStatus: [['draft', '草稿']],
+  hrEmployeeRelationSeverity: [['low', '低']],
+  hrEmployeeRelationCaseStatus: [['reported', '已受理']]
+}
+useUserStore(store).setDictMap({
+  ...useUserStore(store).getDictMap,
+  ...Object.fromEntries(
+    Object.entries(dictionaries).map(([code, entries]) => [
+      code,
+      entries.map(([value, label], sort) => ({
+        value,
+        code: value,
+        label,
+        name: label,
+        status: '1',
+        sort
+      }))
+    ])
+  )
+})
+initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 app.mount('#hr-detail-states')

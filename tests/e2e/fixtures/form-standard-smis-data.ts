@@ -16,6 +16,12 @@ export const itemId = '55555555-5555-4555-8555-555555555555'
 export const operationTypeId = '66666666-6666-4666-8666-666666666666'
 export const frequencyId = '77777777-7777-4777-8777-777777777777'
 export const timestamp = '2026-10-31T08:00:00+08:00'
+export const readonlyAttachmentNames = ['A', 'B'].map(
+  (version) => `${'安全检查要点与设备现场记录'.repeat(4)}-版本${version}.txt`
+)
+export const readonlyAttachmentUrls = readonlyAttachmentNames.map(
+  (name) => `/tests/e2e/fixtures/readonly-attachments/${encodeURIComponent(name)}`
+)
 const dictionaryOptions: Record<
   string,
   Array<{ label: string; value: string; remark?: string }>
@@ -181,6 +187,13 @@ export const riskPoint: SmisRiskPoint = {
   activityCount: 1,
   riskScore: 20,
   riskLevel: 'low'
+}
+export const secondSafetyRiskPoint: SmisRiskPoint = {
+  ...riskPoint,
+  id: '81818181-8181-4181-8181-818181818181',
+  pointNo: 'RP-00002',
+  pointName: '验收仓储区风险点',
+  siteName: '验收仓储区'
 }
 export const riskOptions = {
   sites: [

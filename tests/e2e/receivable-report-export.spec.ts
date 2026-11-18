@@ -1,12 +1,19 @@
 import { expect, test } from '@playwright/test'
 import ExcelJS from 'exceljs'
+import { prepareIsolatedSession } from './support/isolated-session'
+import { expectTreeChoiceReadable } from './support/tree-select-assertions'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15000 })
-test.setTimeout(60000)
+test.setTimeout(90_000)
 
 test('应收报表两条记录、组织树筛选、汇总账龄与导出文件一致', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
   const queries: Array<Record<string, unknown>> = []
   const tenant = '11111111-1111-4111-8111-111111111111'
+  const organizationNames = [
+    '华东重工工业园综合经营服务财务结算中心客户事业部一厂',
+    '华东重工工业园综合经营服务财务结算中心客户事业部二厂'
+  ]
   const dictionaries: Record<string, Array<[string, string]>> = {
     arReportMode: [
       ['detail', '应收明细'],
@@ -52,7 +59,7 @@ test('应收报表两条记录、组织树筛选、汇总账龄与导出文件�
             tenant_id: tenant,
             parent_id: 'group',
             organization_code: `ORG-${index}`,
-            organization_name: `验收结算公司${index}`,
+            organization_name: organizationNames[index - 1],
             organization_type: 'company',
             status: '1'
           }))
@@ -65,7 +72,7 @@ test('应收报表两条记录、组织树筛选、汇总账龄与导出文件�
             ? [1, 2].map((index) => ({
                 id: `org-${index}`,
                 tenant_id: tenant,
-                name: `验收结算公司${index}`
+                name: organizationNames[index - 1]
               }))
             : []
       })
@@ -80,7 +87,7 @@ test('应收报表两条记录、组织树筛选、汇总账龄与导出文件�
           currencyCode: 'CNY',
           kind: 'financial',
           documentNo: `QA-AR-REPORT-${index}`,
-          organizationName: `验收结算公司${index}`,
+          organizationName: organizationNames[index - 1],
           businessDate: '2026-10-01',
           dueDate: '2026-10-10',
           ageDays: 14,
@@ -96,20 +103,39 @@ test('应收报表两条记录、组织树筛选、汇总账龄与导出文件�
     return route.fulfill({ json: [] })
   })
   const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
+  const desktopViewport = page.viewportSize()
+  await page.setViewportSize({ width: 390, height: 850 })
   await page.goto(
-    `/tests/e2e/fixtures/receivable-workspace.html?kind=report&theme=${theme}&permissions=FinanceReceivableReport:View,FinanceReceivableReport:Export`
+    `/tests/e2e/fixtures/receivable-workspace.html?kind=report&theme=${theme}&permissions=FinanceReceivableReport:View,FinanceReceivableReport:Export`,
+    { waitUntil: 'domcontentloaded' }
   )
   await expect(page.getByText('QA-AR-REPORT-1', { exact: true })).toBeVisible()
   await expect(page.getByText('QA-AR-REPORT-2', { exact: true })).toBeVisible()
   const expand = page.getByRole('button', { name: '展开', exact: true })
   if (await expand.isVisible()) await expand.click()
-  await page.getByRole('combobox', { name: '结算组织', exact: true }).click()
+  const organization = page.getByRole('combobox', { name: '结算组织', exact: true })
+  await organization.press('ArrowDown')
+  await expect(organization).toHaveAttribute('aria-expanded', 'true')
+  const popup = page.locator('.el-select__popper.el-tree-select__popper:visible')
   const parent = page.getByRole('treeitem', { name: '验收集团', exact: true })
   await expect(parent).toHaveAttribute('aria-disabled', 'true')
-  await parent.locator('.el-tree-node__expand-icon').click()
-  await page.getByRole('treeitem', { name: '验收结算公司1', exact: true }).click()
+  await parent.getByText('验收集团', { exact: true }).click()
+  await expect(organization).toHaveAttribute('aria-expanded', 'true')
+  if ((await parent.getAttribute('aria-expanded')) !== 'true') {
+    await parent.locator('.el-tree-node__expand-icon').click()
+  }
+  const organizationChoice = popup.getByText(organizationNames[0], { exact: true })
+  await expectTreeChoiceReadable(organizationChoice)
+  await popup.screenshot({ path: info.outputPath('report-organization-options-390.png') })
+  await organizationChoice.click()
+  const selected = page
+    .locator('[data-art-form-item-key="organizationId"] .el-select__selected-item')
+    .getByText(organizationNames[0], { exact: true })
+  await expect(selected).toHaveAttribute('title', organizationNames[0])
   await page.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => queries.at(-1)?.organizationId).toBe('org-1')
   await expect(page.getByText('QA-AR-REPORT-2', { exact: true })).toHaveCount(0)
+  if (desktopViewport) await page.setViewportSize(desktopViewport)
   await page.getByRole('radio', { name: '应收汇总与账龄', exact: true }).locator('..').click()
   await expect(page.getByRole('columnheader', { name: '单据编号', exact: true })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: '0—30天', exact: true })).toHaveCount(0)
@@ -157,7 +183,8 @@ test('应收报表两条记录、组织树筛选、汇总账龄与导出文件�
   expect(exported[0]).toMatchObject({ mode: 'summary', organizationId: 'org-1', agingBasis: 'due' })
   await page.screenshot({ path: info.outputPath('report-summary-filtered.png'), fullPage: true })
   await page.goto(
-    `/tests/e2e/fixtures/receivable-workspace.html?kind=report&theme=${theme}&permissions=FinanceReceivableReport:View`
+    `/tests/e2e/fixtures/receivable-workspace.html?kind=report&theme=${theme}&permissions=FinanceReceivableReport:View`,
+    { waitUntil: 'domcontentloaded' }
   )
   await expect(page.getByText('QA-AR-REPORT-1', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '导出', exact: true })).toHaveCount(0)

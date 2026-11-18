@@ -178,7 +178,7 @@ for (const kind of ['estimated', 'financial']) {
     const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light'
     await page.goto(`/tests/e2e/fixtures/purchase-payable.html?kind=${kind}&theme=${theme}`)
     const selectAll = async () => {
-      const checkbox = page.getByRole('checkbox', { name: '选择所有行', exact: true })
+      const checkbox = page.getByRole('checkbox', { name: '选择当前页全部行', exact: true })
       if (!(await checkbox.isChecked()))
         await page.locator('.el-table__header-wrapper label.el-checkbox').first().click()
     }

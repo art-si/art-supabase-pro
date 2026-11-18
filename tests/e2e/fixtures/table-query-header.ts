@@ -13,16 +13,45 @@ const router = createRouter({
 })
 const mounted = ref(true)
 const expanded = ref(false)
-const empty = new URLSearchParams(location.search).has('empty')
+const query = new URLSearchParams(location.search)
+const empty = query.has('empty')
+const toolbar = query.has('toolbar')
+const virtualSelection = query.has('virtual-selection')
+const columnFilter = query.has('column-filter')
+const filterRows = ['A', 'B'].map((key) => ({
+  id: key,
+  name: `业务记录 ${key}`,
+  code: `华北生产基地运输合同及配套业务验证仓库运输结算编码 CONNECT-${key}`
+}))
+const loading = ref(false)
+const startTableRequest = () => {
+  loading.value = true
+}
 const renderQuery = () =>
   h(
     ArtTableQuery,
     {
-      data: empty ? [] : [{ id: 'test', name: '验收记录' }],
+      data: columnFilter ? filterRows : empty ? [] : [{ id: 'test', name: '验收记录' }],
       pagination: { current: 1, size: 20, total: empty ? 0 : 41 },
-      tableProps: { emptyText: '暂无验收记录' },
-      tableColumns: [{ prop: 'name', label: '业务记录' }],
-      showTableHeader: false
+      tableProps: {
+        emptyText: '暂无验收记录',
+        ...(virtualSelection ? { virtualScroll: true, height: 320 } : {})
+      },
+      tableColumns: [
+        ...(virtualSelection ? [{ type: 'selection' as const }] : []),
+        { prop: 'name', label: '业务记录' },
+        ...(columnFilter ? [{ prop: 'code', label: '编码', filterType: 'select' as const }] : [])
+      ],
+      columns: toolbar ? [{ prop: 'name', label: '业务记录', checked: true }] : undefined,
+      showTableHeader: toolbar,
+      showTableToolbar: toolbar,
+      searchItems: toolbar ? [{ key: 'name', label: '关键词', type: 'input' }] : undefined,
+      loading: loading.value,
+      onRefresh: startTableRequest,
+      onSearch: startTableRequest,
+      selectionActions: virtualSelection
+        ? [{ key: 'selection-test', label: '批量处理' }]
+        : undefined
     },
     {
       'table-header-top': () =>
@@ -50,10 +79,27 @@ const app = createApp({
         },
         '切换表格挂载'
       ),
+      toolbar
+        ? h(
+            'button',
+            {
+              onClick: () => {
+                loading.value = false
+              }
+            },
+            '完成表格请求'
+          )
+        : null,
       h(
         'section',
-        { style: { height: '500px', display: 'flex', flexDirection: 'column' } },
-        new URLSearchParams(location.search).has('cache')
+        {
+          style: {
+            height: query.has('table-flow') ? 'auto' : '500px',
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        },
+        query.has('cache')
           ? h(KeepAlive, {}, { default: () => (mounted.value ? renderQuery() : null) })
           : mounted.value
             ? [renderQuery()]

@@ -1,5 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { assertAppearance, prepareAppearance } from './support/appearance'
+import { mockApplicationMenus } from './support/menu-rpc'
+import type { SmisHiddenHazardGovernanceDetail } from '@smis/api'
 import { inspectionCategory, unit } from './fixtures/form-standard-smis-batch-two-data'
 import { rescuePlan } from './fixtures/form-standard-smis-batch-three-data'
 import { issuanceStandard, riskPosition } from './fixtures/form-standard-smis-batch-four-data'
@@ -7,6 +10,8 @@ import { question, questionCategory } from './fixtures/form-standard-smis-batch-
 import {
   hazardGovernance,
   hiddenTaskDetail,
+  longHazardSource,
+  longRiskMeasure,
   riskTaskDetail
 } from './fixtures/form-standard-smis-readonly-data'
 import {
@@ -19,7 +24,10 @@ import {
   organization,
   permit,
   planDetail,
+  readonlyAttachmentNames,
+  readonlyAttachmentUrls,
   recordId,
+  secondSafetyRiskPoint,
   tenantId
 } from './fixtures/form-standard-smis-data'
 
@@ -29,6 +37,42 @@ test.setTimeout(90_000)
 interface Write {
   path: string
   payload: unknown
+}
+
+const longInspectionIdentity = {
+  inspectionTypeName: '装配生产线与设备安全日常综合检查',
+  inspectionOrganizationName: '华东装备制造园区生产运营与安全监督管理中心',
+  inspectedOrganizationName: '智能装备装配事业部设备维护与工艺保障联合班组',
+  executorEmployeeName: '张明远（设备与生产运营联合排查负责人）',
+  executorEmployeeNo: 'EMP-SMIS-INSPECTION-2026-0000123456789'
+}
+const longRiskIdentity = {
+  responsibleEmployeeName: '王晓宁（生产设备与工艺风险管控责任人）',
+  responsibleEmployeeNo: 'EMP-SMIS-RISK-OWNER-2026-0000123456789',
+  assigneeEmployeeName: '李文青（园区安全与设备巡查执行负责人）',
+  assigneeEmployeeNo: 'EMP-SMIS-RISK-ASSIGNEE-2026-0000123456789',
+  actualExecutorEmployeeName: '陈子安（跨部门联合风险巡查实际执行人）'
+}
+const longGovernanceContext = {
+  sourceRecordNo: longHazardSource.sourceRecordNo,
+  reporterEmployeeName: '张明远（生产装配与设备安全联合排查上报负责人）',
+  reporterEmployeeNo: 'EMP-SMIS-GOVERNANCE-REPORTER-2026-0000123456789',
+  approverEmployeeName: '王晓宁（园区安全与生产运营隐患核准负责人）',
+  approverEmployeeNo: 'EMP-SMIS-GOVERNANCE-APPROVER-2026-0000123456789',
+  rectificationResponsibleEmployeeName: '李文青（生产设备防护与联锁整改责任人）',
+  rectificationResponsibleEmployeeNo: 'EMP-SMIS-GOVERNANCE-RECTIFIER-2026-0000123456789',
+  acceptorEmployeeName: '陈子安（设备维护与安全管理联合验收负责人）',
+  acceptorEmployeeNo: 'EMP-SMIS-GOVERNANCE-ACCEPTOR-2026-0000123456789'
+} satisfies Partial<SmisHiddenHazardGovernanceDetail>
+const longInspectionItem = {
+  standardName: '机械设备传动系统防护装置与联锁停机安全检查标准（生产装配区联合巡查适用）',
+  standardCode: 'STD-SMIS-ASSEMBLY-GUARD-INTERLOCK-2026-0000123456789-END',
+  itemCode: 'CHECK-SMIS-ASSEMBLY-GUARD-INTERLOCK-2026-0000123456789-END',
+  inspectionContent:
+    '检查传动轴、联轴器和输送装置的防护罩固定可靠，逐项确认检修门联锁及紧急停机功能有效；发现松动、缺失或联锁失效时立即停止设备，并记录位置、隔离措施和复核结果，确认全部符合要求后方可恢复运行。检查指令结束。',
+  remark:
+    '现场发现输送装置检修门联锁接线松动，已由值班人员停止设备、挂牌隔离并通知维修班组；复核时应对照原始检查项逐点验证，保存整改前后记录，未经确认不得解除隔离。执行说明结束。',
+  hazardNo: 'HAZARD-SMIS-ASSEMBLY-GUARD-INTERLOCK-2026-0000123456789-END'
 }
 
 async function chooseColor(page: Page, key: string, value: string) {
@@ -178,7 +222,7 @@ test('隐患排查动态字段保留异常说明校验与项目标识', async ({
 })
 
 async function open(page: Page, entry: string, writes: Write[], query = '') {
-  await prepareIsolatedSession(page)
+  await prepareIsolatedSession(page, { tenantId, platformSuper: !query.includes('&ordinary=1') })
   await page.route('**/rest/v1/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -264,10 +308,34 @@ async function open(page: Page, entry: string, writes: Write[], query = '') {
                 }
               ]
             }
-          : hazardGovernance
+          : {
+              ...hazardGovernance,
+              ...(entry === 'hazard-governance-detail' && query.includes('&longValues=1')
+                ? longGovernanceContext
+                : {})
+            }
       })
     if (path.endsWith('/smis_get_hidden_hazard_inspection_task_secure'))
-      return route.fulfill({ json: hiddenTaskDetail })
+      return route.fulfill({
+        json: {
+          ...hiddenTaskDetail,
+          ...(query.includes('&longValues=1')
+            ? {
+                ...longInspectionIdentity,
+                sourcePlanNo: 'HP-SMIS-SOURCE-PLAN-2026-0000123456789',
+                items: hiddenTaskDetail.items.map((item) => ({
+                  ...item,
+                  standardName: longInspectionItem.standardName,
+                  itemCode: longInspectionItem.itemCode,
+                  inspectionContent: longInspectionItem.inspectionContent,
+                  remark: longInspectionItem.remark,
+                  hiddenHazardNo: longInspectionItem.hazardNo,
+                  result: 'abnormal'
+                }))
+              }
+            : {})
+        }
+      })
     if (path.endsWith('/smis_get_risk_inspection_task_secure'))
       return route.fulfill({
         json:
@@ -281,7 +349,22 @@ async function open(page: Page, entry: string, writes: Write[], query = '') {
                   remark: null
                 }))
               }
-            : riskTaskDetail
+            : {
+                ...riskTaskDetail,
+                ...(query.includes('&longValues=1')
+                  ? {
+                      ...longRiskIdentity,
+                      items: riskTaskDetail.items.map((item) => ({
+                        ...item,
+                        hazardSource: longInspectionItem.standardName,
+                        hazardNo: longInspectionItem.hazardNo,
+                        inspectionContent: longInspectionItem.inspectionContent,
+                        remark: longInspectionItem.remark,
+                        result: 'abnormal'
+                      }))
+                    }
+                  : {})
+              }
       })
     if (path.endsWith('/smis_list_risk_hazard_workspace_secure'))
       return route.fulfill({ json: { activities: [], hazards: [] } })
@@ -351,7 +434,24 @@ async function open(page: Page, entry: string, writes: Write[], query = '') {
     if (path.endsWith('/smis_get_special_operation_permit_secure'))
       return route.fulfill({ json: permit })
     if (path.endsWith('/smis_get_hidden_hazard_inspection_plan_secure'))
-      return route.fulfill({ json: planDetail })
+      return route.fulfill({
+        json: {
+          ...planDetail,
+          ...(query.includes('&longValues=1')
+            ? {
+                ...longInspectionIdentity,
+                items: planDetail.items.map((item) => ({
+                  ...item,
+                  standardName: longInspectionItem.standardName,
+                  standardCode: longInspectionItem.standardCode,
+                  itemCode: longInspectionItem.itemCode,
+                  inspectionContent: longInspectionItem.inspectionContent
+                }))
+              }
+            : {}),
+          ...(query.includes('&attachments=long') ? { attachmentUrls: readonlyAttachmentUrls } : {})
+        }
+      })
     if (path.endsWith('/smis_list_special_operation_catalog_secure'))
       return route.fulfill({ json: { records: [], total: 0 } })
     if (/\/smis_(?:save|submit_hazard_source_report)_/.test(path)) {
@@ -576,7 +676,111 @@ for (const scenario of cases)
     const writes: Write[] = []
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
-    const dialog = await open(page, scenario.entry, writes)
+    const appearance: Parameters<typeof prepareAppearance>[1] | undefined =
+      scenario.entry === 'position-control'
+        ? {
+            theme: (page.viewportSize()?.width ?? 1440) < 768 ? 'dark' : 'light',
+            boxBorderMode: false
+          }
+        : undefined
+    if (appearance) await prepareAppearance(page, appearance)
+    const dialog = await open(
+      page,
+      scenario.entry,
+      writes,
+      appearance ? `&theme=${appearance.theme}` : ''
+    )
+    if (appearance) {
+      await assertAppearance(page, appearance)
+      await expect(dialog.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'false')
+      const form = dialog.locator('.art-form:has(> .el-form > .art-form__tabs--overlay)').first()
+      const card = form.locator(':scope > .el-form > .art-form__tabs--overlay')
+      const context = form.locator('[data-art-form-item-key="context"]')
+      await expect(form).not.toHaveClass(/art-form--overlay-tabs-only/)
+      await expect(card).toHaveCount(1)
+      await expect(context.getByText('验收安全岗', { exact: true })).toBeVisible()
+      await expect(card.locator('[data-art-form-item-key="hazardFactor"] textarea')).toHaveValue(
+        '验收机械传动部位'
+      )
+      await expect(card.locator('.el-skeleton:visible')).toHaveCount(0)
+      const geometry = await card.evaluate((element) => {
+        const rect = element.getBoundingClientRect()
+        const context = element
+          .closest('.art-form')!
+          .querySelector('[data-art-form-item-key="context"]')!
+        const contextRect = context.getBoundingClientRect()
+        const ancestors = []
+        for (let node = element.parentElement; node; node = node.parentElement) {
+          const style = getComputedStyle(node)
+          const bounds = node.getBoundingClientRect()
+          const sx = node.offsetWidth ? bounds.width / node.offsetWidth : 1
+          const sy = node.offsetHeight ? bounds.height / node.offsetHeight : 1
+          const bothClip = style.overflowX === 'clip' && style.overflowY === 'clip'
+          const margin = bothClip
+            ? Number(style.getPropertyValue('overflow-clip-margin').match(/([\d.]+)px/)?.[1] ?? 0)
+            : 0
+          const paintContain = /(^|\s)(paint|strict|content)(\s|$)/.test(style.contain)
+          const clipX =
+            paintContain || ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX)
+          const clipY =
+            paintContain || ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowY)
+          const left = bounds.left + node.clientLeft * sx
+          const top = bounds.top + node.clientTop * sy
+          ancestors.push({
+            tag: node.tagName,
+            className: node.className,
+            overflowX: style.overflowX,
+            overflowY: style.overflowY,
+            appliedClipMargin: margin,
+            clipX,
+            clipY,
+            leftRoom: rect.left - left + margin * sx,
+            rightRoom: left + node.clientWidth * sx + margin * sx - rect.right,
+            topRoom: rect.top - top + margin * sy
+          })
+        }
+        return {
+          card: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+          contextBottom: contextRect.bottom,
+          contextInsideCard: element.contains(context),
+          shadow: getComputedStyle(element).boxShadow,
+          ancestors,
+          viewportWidth: innerWidth,
+          horizontalOverflow: document.documentElement.scrollWidth - innerWidth
+        }
+      })
+      await info.attach('position-control-common-fields-shadow', {
+        body: JSON.stringify(geometry, null, 2),
+        contentType: 'application/json'
+      })
+      await dialog.screenshot({
+        path: info.outputPath('position-control-common-fields-shadow.png'),
+        animations: 'disabled'
+      })
+      expect(geometry.contextInsideCard).toBe(false)
+      expect(geometry.contextBottom).toBeLessThanOrEqual(geometry.card.top + 1)
+      expect(geometry.shadow).not.toBe('none')
+      expect(geometry.card.left).toBeGreaterThanOrEqual(6)
+      expect(geometry.card.right).toBeLessThanOrEqual(geometry.viewportWidth - 6)
+      expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1)
+      for (const ancestor of geometry.ancestors) {
+        if (ancestor.clipX) {
+          expect(
+            ancestor.leftRoom,
+            `${ancestor.className}: left shadow space`
+          ).toBeGreaterThanOrEqual(5.5)
+          expect(
+            ancestor.rightRoom,
+            `${ancestor.className}: right shadow space`
+          ).toBeGreaterThanOrEqual(5.5)
+        }
+        if (ancestor.clipY)
+          expect(
+            ancestor.topRoom,
+            `${ancestor.className}: top shadow space`
+          ).toBeGreaterThanOrEqual(5.5)
+      }
+    }
     const input = field(dialog, scenario.label).getByRole('textbox')
     await input.fill('')
     await dialog.getByRole('tab', { name: scenario.other, exact: true }).click()
@@ -975,6 +1179,39 @@ test('exam 实际主列表创建试卷，跨页校验后勾选题目并保存组
     .filter({ hasText: '验收操作前应确认防护装置可靠' })
     .click()
   await expect(dialog.getByRole('checkbox', { name: /验收操作前应确认防护装置可靠/ })).toBeChecked()
+  await page.setViewportSize({ width: 320, height: 720 })
+  const progress = dialog.getByRole('list', { name: '试卷配置进度', exact: true })
+  await expect(progress.getByRole('listitem')).toHaveCount(3)
+  const progressLines = await progress.getByRole('listitem').evaluateAll((items) =>
+    items.map((item) => {
+      const range = document.createRange()
+      range.selectNodeContents(item)
+      return new Set(Array.from(range.getClientRects(), (rect) => rect.y)).size
+    })
+  )
+  expect(progressLines).toEqual([1, 1, 1])
+  const footer = dialog.locator('.el-dialog__footer')
+  const summary = footer.locator('.exam-page__footer-summary')
+  const scoreSummary = summary.getByText('1 题 · 100 分', { exact: true })
+  const passingSummary = summary.getByText(/^及格线 .+ 分$/)
+  for (const statistic of [scoreSummary, passingSummary]) {
+    await expect(statistic).toBeInViewport()
+    const lines = await statistic.evaluate((element) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      return new Set(Array.from(range.getClientRects(), (rect) => rect.y)).size
+    })
+    expect(lines, `试卷底部 ${await statistic.innerText()} 应完整显示在一行`).toBe(1)
+  }
+  const actions = [footer.getByRole('button', { name: '取消', exact: true }), save]
+  const footerBounds = (await footer.boundingBox())!
+  for (const action of actions) {
+    await expect(action).toBeInViewport()
+    const bounds = (await action.boundingBox())!
+    expect(bounds.x).toBeGreaterThanOrEqual(footerBounds.x)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(footerBounds.x + footerBounds.width)
+  }
+  await dialog.screenshot({ path: info.outputPath('exam-paper-footer-320.png') })
   await save.click()
   await expect(dialog).not.toBeVisible()
   expect(writes).toHaveLength(1)
@@ -1453,6 +1690,38 @@ test('permit 窄屏暗色表单切换保持内容，返回后提交完整作业�
   })
 })
 
+test('permit 提交进行中禁用草稿操作且保留提交加载反馈', async ({ page }, info) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'permit', writes)
+  const response = Promise.withResolvers<void>()
+  await page.route('**/rest/v1/rpc/smis_save_special_operation_permit_secure', async (route) => {
+    writes.push({
+      path: new URL(route.request().url()).pathname,
+      payload: route.request().postDataJSON()
+    })
+    await response.promise
+    return route.fulfill({ json: recordId })
+  })
+  const draft = dialog.getByRole('button', { name: '保存草稿', exact: true })
+  const submitButton = dialog.getByRole('button', { name: '提交审批', exact: true })
+  await expect(draft).toBeEnabled()
+  await submitButton.click()
+  try {
+    await expect.poll(() => writes.length).toBe(1)
+    await expect(submitButton).toHaveClass(/\bis-loading\b/)
+    await draft.evaluate((button: HTMLButtonElement) => button.click())
+    await expect(submitButton).toHaveClass(/\bis-loading\b/)
+    await expect(draft).toBeDisabled()
+    await expect(draft).not.toHaveClass(/\bis-loading\b/)
+    await dialog.screenshot({ path: info.outputPath('permit-submit-pending.png') })
+  } finally {
+    response.resolve()
+  }
+  await expect(page.getByTestId('save-result')).toHaveText('已保存')
+  expect(writes).toHaveLength(1)
+  expect(writes[0].payload).toMatchObject({ p_submit: true, p_tenant_id: tenantId })
+})
+
 test('risk-task-execution 配置字段保持动态结果校验、异常说明与任务租户负载', async ({
   page
 }, info) => {
@@ -1539,6 +1808,74 @@ test('safety-risk 配置化风险字段选择保留场所信息与关联风险�
   })
 })
 
+test('safety-risk 切换风险点后只显示和提交当前风险点的作业活动', async ({ page }) => {
+  const writes: Write[] = []
+  const dialog = await open(page, 'safety-risk', writes)
+  const workspace = '**/rest/v1/rpc/smis_list_risk_hazard_workspace_secure'
+  const previous = { id: itemId, activityName: '装配变速箱', workStep: '装配' }
+  const current = { id: frequencyId, activityName: '清点仓储设备', workStep: '盘点' }
+  const previousRequested = Promise.withResolvers<void>()
+  const releasePrevious = Promise.withResolvers<void>()
+  await page.route(workspace, async (route) => {
+    const { p_risk_point_id: riskPointId } = route.request().postDataJSON()
+    if (riskPointId === recordId) {
+      previousRequested.resolve()
+      await releasePrevious.promise
+    }
+    const activity = riskPointId === recordId ? previous : current
+    await route.fulfill({
+      json: { activities: [{ ...activity, sort: 0, hazardCount: 0 }], hazards: [] }
+    })
+  })
+
+  try {
+    await dialog
+      .locator('[data-art-form-item-key="hazardFactor"]')
+      .getByRole('textbox')
+      .fill('验收仓储盘点风险')
+    const riskPointSelect = dialog
+      .locator('[data-art-form-item-key="riskPointId"]')
+      .getByRole('combobox')
+    await riskPointSelect.click()
+    await page.getByRole('option', { name: /验收装配区风险点/ }).click()
+    await previousRequested.promise
+    await riskPointSelect.click()
+    await page.getByRole('option', { name: /验收仓储区风险点/ }).click()
+
+    await dialog.locator('[data-art-form-item-key="activityIds"] .el-select').click()
+    const currentOption = page.getByRole('option', { name: '清点仓储设备 · 盘点', exact: true })
+    await expect(currentOption).toBeVisible()
+    const previousResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/smis_list_risk_hazard_workspace_secure') &&
+        response.request().postDataJSON().p_risk_point_id === recordId
+    )
+    releasePrevious.resolve()
+    await (await previousResponse).finished()
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+    )
+
+    await expect(currentOption).toBeVisible()
+    await expect(page.getByRole('option', { name: '装配变速箱 · 装配', exact: true })).toHaveCount(
+      0
+    )
+    await currentOption.click()
+    await dialog.getByRole('heading', { name: '新增安全风险', exact: true }).click()
+    await dialog.getByRole('button', { name: '保存安全风险', exact: true }).click()
+    await expect(page.getByTestId('save-result')).toHaveText('已保存')
+    expect(writes[0].payload).toMatchObject({
+      p_risk_point_id: secondSafetyRiskPoint.id,
+      p_activity_ids: [current.id]
+    })
+  } finally {
+    releasePrevious.resolve()
+  }
+})
+
 test('hazard-governance-detail 待核准阶段保留两页，不显示未发生的整改与验收页', async ({
   page
 }) => {
@@ -1551,6 +1888,524 @@ test('hazard-governance-detail 待核准阶段保留两页，不显示未发生�
   await expect(dialog.getByText('验收隐患登记事件', { exact: true })).toBeVisible()
   expect(writes).toHaveLength(0)
 })
+
+test('hazard-governance-detail 完整呈现来源编号与各阶段责任人姓名工号', async ({ page }, info) => {
+  const writes: Write[] = []
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  for (const appearance of [
+    { width: 1440, theme: 'light', boxBorderMode: true },
+    { width: 390, theme: 'dark', boxBorderMode: false }
+  ] as const) {
+    await page.setViewportSize({ width: appearance.width, height: 900 })
+    await prepareAppearance(page, appearance)
+    const dialog = await open(
+      page,
+      'hazard-governance-detail',
+      writes,
+      `&theme=${appearance.theme}&ordinary=1&longValues=1`
+    )
+    await assertAppearance(page, appearance)
+    await expect(page.locator('html')).toHaveAttribute('data-ui-scope', 'workspace')
+    const card = dialog.locator('.art-overlay-tab-card')
+    if (appearance.boxBorderMode) await expect(card).toHaveCSS('box-shadow', 'none')
+    else await expect(card).not.toHaveCSS('box-shadow', 'none')
+    await expect(dialog.getByRole('tab')).toHaveText([
+      '隐患与证据',
+      '核准与整改',
+      '验收信息',
+      '流转记录'
+    ])
+    for (const section of [
+      {
+        tab: '隐患与证据',
+        values: [
+          longGovernanceContext.sourceRecordNo,
+          `${longGovernanceContext.reporterEmployeeName} · ${longGovernanceContext.reporterEmployeeNo}`
+        ],
+        dictionaryLabels: ['一般隐患', '快速上报'],
+        dateCount: 1
+      },
+      {
+        tab: '核准与整改',
+        values: [
+          `${longGovernanceContext.approverEmployeeName} · ${longGovernanceContext.approverEmployeeNo}`,
+          `${longGovernanceContext.rectificationResponsibleEmployeeName} · ${longGovernanceContext.rectificationResponsibleEmployeeNo}`
+        ],
+        dictionaryLabels: ['整改'],
+        dateCount: 3
+      },
+      {
+        tab: '验收信息',
+        values: [
+          `${longGovernanceContext.acceptorEmployeeName} · ${longGovernanceContext.acceptorEmployeeNo}`
+        ],
+        dictionaryLabels: ['通过'],
+        dateCount: 1
+      }
+    ]) {
+      await dialog.getByRole('tab', { name: section.tab, exact: true }).click()
+      const panel = dialog.getByRole('tabpanel', { name: section.tab, exact: true })
+      await expect(panel).toBeVisible()
+      for (const label of section.dictionaryLabels)
+        await expect(panel.getByText(label, { exact: true })).toBeAttached()
+      await expect(panel.getByText('2026-10-31 08:00', { exact: true })).toHaveCount(
+        section.dateCount
+      )
+      for (const value of section.values) {
+        const field = panel.getByText(value, { exact: true })
+        await field.scrollIntoViewIfNeeded()
+        await expect(field).toBeVisible()
+        const geometry = await field.evaluate((element) => {
+          const cell = element.closest('dd, .el-descriptions__content') ?? element
+          const bounds = cell.getBoundingClientRect()
+          const scrollport = element.closest('.el-scrollbar__wrap')?.getBoundingClientRect()
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          const lines = Array.from(range.getClientRects())
+          return {
+            hasText: lines.length > 0,
+            fitsCell: lines.every(
+              (line) =>
+                line.left >= bounds.left - 1 &&
+                line.right <= bounds.right + 1 &&
+                line.top >= bounds.top - 1 &&
+                line.bottom <= bounds.bottom + 1
+            ),
+            fitsScrollport:
+              !scrollport ||
+              lines.every(
+                (line) =>
+                  line.left >= scrollport.left - 1 &&
+                  line.right <= scrollport.right + 1 &&
+                  line.top >= scrollport.top - 1 &&
+                  line.bottom <= scrollport.bottom + 1
+              ),
+            fitsViewport: lines.every(
+              (line) =>
+                line.left >= -1 &&
+                line.right <= innerWidth + 1 &&
+                line.top >= -1 &&
+                line.bottom <= innerHeight + 1
+            )
+          }
+        })
+        expect(geometry, value).toEqual({
+          hasText: true,
+          fitsCell: true,
+          fitsScrollport: true,
+          fitsViewport: true
+        })
+      }
+      await panel.locator('.hazard-governance-detail__grid').screenshot({
+        path: info.outputPath(
+          `governance-${section.tab}-${appearance.width}-${appearance.theme}.png`
+        )
+      })
+    }
+    await dialog.getByRole('tab', { name: '流转记录', exact: true }).click()
+    await expect(dialog.getByText('验收闭环事件', { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      appearance.width + 1
+    )
+    await dialog.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+    expect(writes).toHaveLength(0)
+  }
+  expect(errors).toEqual([])
+})
+
+for (const entry of ['inspection-plan-detail', 'hidden-task-detail', 'risk-task-detail']) {
+  test(`${entry} 完整呈现长姓名工号与组织字段`, async ({ page }, info) => {
+    const writes: Write[] = []
+    const values =
+      entry === 'risk-task-detail'
+        ? [
+            `${longRiskIdentity.responsibleEmployeeName} · ${longRiskIdentity.responsibleEmployeeNo}`,
+            `${longRiskIdentity.assigneeEmployeeName} · ${longRiskIdentity.assigneeEmployeeNo}`,
+            longRiskIdentity.actualExecutorEmployeeName
+          ]
+        : [
+            longInspectionIdentity.inspectionTypeName,
+            longInspectionIdentity.inspectionOrganizationName,
+            longInspectionIdentity.inspectedOrganizationName,
+            `${longInspectionIdentity.executorEmployeeName} · ${longInspectionIdentity.executorEmployeeNo}`
+          ]
+    if (entry === 'hidden-task-detail') values.push('HP-SMIS-SOURCE-PLAN-2026-0000123456789')
+    for (const appearance of [
+      { width: 1440, theme: 'light', boxBorderMode: true },
+      { width: 1440, theme: 'dark', boxBorderMode: false },
+      { width: 390, theme: 'light', boxBorderMode: true },
+      { width: 320, theme: 'dark', boxBorderMode: false }
+    ] as const) {
+      await page.setViewportSize({ width: appearance.width, height: 900 })
+      await prepareAppearance(page, appearance)
+      const dialog = await open(
+        page,
+        entry,
+        writes,
+        `&theme=${appearance.theme}&ordinary=1&longValues=1`
+      )
+      await assertAppearance(page, appearance)
+      const panel = dialog.getByRole('tabpanel').first()
+      for (const value of values) {
+        const field = panel.getByText(value, { exact: true })
+        await field.scrollIntoViewIfNeeded()
+        await expect(field).toBeInViewport({ ratio: 0.95 })
+        const geometry = await field.evaluate((el) => {
+          const cell = el.closest('.el-descriptions__content, dd') || el
+          const bounds = cell.getBoundingClientRect()
+          const range = document.createRange()
+          range.selectNodeContents(el)
+          return Array.from(range.getClientRects()).every(
+            (rect) =>
+              rect.left >= bounds.left - 1 &&
+              rect.right <= bounds.right + 1 &&
+              rect.top >= bounds.top - 1 &&
+              rect.bottom <= bounds.bottom + 1
+          )
+        })
+        expect(geometry, value).toBe(true)
+      }
+      if (entry === 'inspection-plan-detail') {
+        await expect(panel.getByText('2 天', { exact: true })).toBeAttached()
+        await expect(panel.getByText('每 1 周', { exact: true })).toBeAttached()
+        await expect(panel.getByText('2026-11-01 08:00', { exact: true })).toBeAttached()
+        await expect(panel.getByText('验收管理员', { exact: true })).toBeAttached()
+      } else {
+        await expect(panel.getByText('2026-10-31 08:00', { exact: true })).toHaveCount(2)
+        await expect(panel.getByText('—', { exact: true })).toHaveCount(
+          entry === 'risk-task-detail' ? 2 : 1
+        )
+      }
+      if (entry === 'risk-task-detail') {
+        await expect(panel.getByText('设备设施', { exact: true })).toBeAttached()
+        await expect(panel.getByText('班组级', { exact: true })).toBeAttached()
+        await expect(panel.locator('.task-detail-drawer__risk')).toHaveText('低风险')
+        await expect(panel.locator('.task-detail-drawer__risk')).toHaveCSS(
+          '--risk-color',
+          '#059669'
+        )
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        appearance.width + 1
+      )
+      await dialog.screenshot({
+        path: info.outputPath(`long-context-${appearance.width}-${appearance.theme}.png`)
+      })
+      await dialog.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+      expect(writes).toHaveLength(0)
+    }
+  })
+}
+
+for (const entry of ['inspection-plan-detail', 'hidden-task-detail', 'risk-task-detail']) {
+  test(`${entry} 长检查项完整呈现指令、编号与执行说明`, async ({ page }, info) => {
+    const writes: Write[] = []
+    const contentTab =
+      entry === 'inspection-plan-detail'
+        ? '排查明细'
+        : entry === 'hidden-task-detail'
+          ? '排查结果'
+          : '执行情况'
+    const listSelector =
+      entry === 'inspection-plan-detail'
+        ? '.hidden-hazard-plan-detail__items'
+        : entry === 'hidden-task-detail'
+          ? '.hidden-hazard-task-detail__items'
+          : '.task-detail-drawer__inspection-list'
+    const values =
+      entry === 'inspection-plan-detail'
+        ? [
+            longInspectionItem.standardName,
+            longInspectionItem.standardCode,
+            longInspectionItem.inspectionContent,
+            longInspectionItem.itemCode
+          ]
+        : entry === 'hidden-task-detail'
+          ? [
+              longInspectionItem.standardName,
+              longInspectionItem.itemCode,
+              longInspectionItem.inspectionContent,
+              longInspectionItem.remark,
+              longInspectionItem.hazardNo
+            ]
+          : [
+              longInspectionItem.standardName,
+              longInspectionItem.hazardNo,
+              longInspectionItem.inspectionContent,
+              longInspectionItem.remark
+            ]
+    for (const appearance of [
+      { width: 1440, theme: 'light', boxBorderMode: true },
+      { width: 390, theme: 'dark', boxBorderMode: false }
+    ] as const) {
+      await page.setViewportSize({ width: appearance.width, height: 900 })
+      await prepareAppearance(page, appearance)
+      const dialog = await open(
+        page,
+        entry,
+        writes,
+        `&theme=${appearance.theme}&ordinary=1&longValues=1`
+      )
+      await assertAppearance(page, appearance)
+      await dialog.getByRole('tab', { name: contentTab, exact: true }).click()
+      const list = dialog.locator(listSelector)
+      const item = list.locator('li')
+      await expect(item).toHaveCount(1)
+      await expect(item.locator(':scope > span')).toHaveText('1')
+      if (entry !== 'inspection-plan-detail') {
+        await expect(item).toHaveAttribute('data-result', 'abnormal')
+        await expect(item.getByText('异常', { exact: true })).toBeVisible()
+      }
+      await dialog.screenshot({
+        path: info.outputPath(`long-instructions-${appearance.width}-${appearance.theme}.png`)
+      })
+      for (const [index, value] of values.entries()) {
+        const field = item.getByText(value, { exact: true })
+        await field.scrollIntoViewIfNeeded()
+        const geometry = await field.evaluate((element) => {
+          const bounds = element.getBoundingClientRect()
+          const row = element.closest('li')!.getBoundingClientRect()
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          const rects = Array.from(range.getClientRects())
+          return {
+            bounds: bounds.toJSON(),
+            row: row.toJSON(),
+            viewport: { width: innerWidth, height: innerHeight },
+            textRects: rects.map((rect) => rect.toJSON()),
+            textFitsElement:
+              rects.length > 0 &&
+              rects.every(
+                (rect) =>
+                  rect.left >= bounds.left - 1 &&
+                  rect.right <= bounds.right + 1 &&
+                  rect.top >= bounds.top - 1 &&
+                  rect.bottom <= bounds.bottom + 1
+              ),
+            textFitsItem: rects.every(
+              (rect) =>
+                rect.left >= row.left - 1 &&
+                rect.right <= row.right + 1 &&
+                rect.top >= row.top - 1 &&
+                rect.bottom <= row.bottom + 1
+            ),
+            textFitsViewport: rects.every(
+              (rect) =>
+                rect.left >= -1 &&
+                rect.right <= innerWidth + 1 &&
+                rect.top >= -1 &&
+                rect.bottom <= innerHeight + 1
+            )
+          }
+        })
+        await info.attach(`instruction-${appearance.width}-${appearance.theme}-${index}`, {
+          body: JSON.stringify({ value, ...geometry }, null, 2),
+          contentType: 'application/json'
+        })
+        expect(geometry.textFitsElement, value).toBe(true)
+        expect(geometry.textFitsItem, value).toBe(true)
+        expect(geometry.textFitsViewport, value).toBe(true)
+        await expect(field).toBeInViewport({ ratio: 0.95 })
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        appearance.width + 1
+      )
+      if (entry !== 'inspection-plan-detail') {
+        await dialog
+          .getByRole('tab', {
+            name: entry === 'hidden-task-detail' ? '流转记录' : '执行记录',
+            exact: true
+          })
+          .click()
+        await expect(
+          dialog.getByText(
+            entry === 'hidden-task-detail' ? '验收隐患任务完成事件' : '验收风险任务完成事件',
+            { exact: true }
+          )
+        ).toBeVisible()
+      }
+      await dialog.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+      expect(writes).toHaveLength(0)
+    }
+  })
+}
+
+for (const entry of ['risk-information-detail', 'hazard-ledger-detail'] as const) {
+  test(`${entry} 长业务字段完整呈现且保留只读详情`, async ({ page }, info) => {
+    const writes: Write[] = []
+    const riskInformation = entry === 'risk-information-detail'
+    const values = Object.values(riskInformation ? longRiskMeasure : longHazardSource)
+    for (const appearance of [
+      { width: 1440, theme: 'light', boxBorderMode: true },
+      { width: 390, theme: 'dark', boxBorderMode: false }
+    ] as const) {
+      await page.setViewportSize({ width: appearance.width, height: 900 })
+      await prepareAppearance(page, appearance)
+      const dialog = await open(
+        page,
+        entry,
+        writes,
+        `&theme=${appearance.theme}&ordinary=1&longValues=1`
+      )
+      await assertAppearance(page, appearance)
+      const initialPanel = dialog.getByRole('tabpanel', {
+        name: riskInformation ? '风险辨识' : '隐患信息',
+        exact: true
+      })
+      if (riskInformation) {
+        await expect(initialPanel.getByText('机械伤害', { exact: true })).toBeVisible()
+        await expect(initialPanel.getByText('验收机械伤害后果', { exact: true })).toBeVisible()
+        await dialog.getByRole('tab', { name: '风险评价', exact: true }).click()
+        const assessment = dialog.getByRole('tabpanel', { name: '风险评价', exact: true })
+        await expect(assessment.getByText('LEC', { exact: true })).toBeVisible()
+        await expect(assessment.getByText('L=1 · E=2 · C=3', { exact: true })).toBeVisible()
+        await expect(assessment.getByText('6', { exact: true })).toBeVisible()
+        await expect(assessment.getByText('低风险', { exact: true })).toBeVisible()
+        await dialog.getByRole('tab', { name: '防控与执行', exact: true }).click()
+      } else {
+        await expect(initialPanel.getByText('快速上报', { exact: true })).toBeVisible()
+        await expect(initialPanel.getByText('一般隐患', { exact: true })).toBeVisible()
+        await expect(initialPanel.getByText('2026-10-31 08:00', { exact: true })).toBeVisible()
+      }
+      const panel = riskInformation
+        ? dialog.getByRole('tabpanel', { name: '防控与执行', exact: true })
+        : initialPanel
+      if (riskInformation) {
+        const measure = panel.locator('.risk-information-detail__measures > article')
+        await expect(measure).toHaveCount(1)
+        await expect(measure.getByText('工程措施', { exact: true })).toBeVisible()
+        await expect(measure.getByText('班组级 · 每天1次', { exact: true })).toBeVisible()
+        await expect(measure.getByText('验收固定防护罩管控', { exact: true })).toBeVisible()
+      }
+      await dialog.screenshot({
+        path: info.outputPath(`long-detail-${appearance.width}-${appearance.theme}.png`)
+      })
+      for (const [index, value] of values.entries()) {
+        const field = panel.getByText(value, { exact: true })
+        await field.scrollIntoViewIfNeeded()
+        const geometry = await field.evaluate((element) => {
+          const cell = element.closest('dd, .el-descriptions__content')
+          const scrollport = element.closest('.el-scrollbar__wrap')
+          if (!cell || !scrollport) throw new Error('详情字段缺少可核对的值单元格或抽屉滚动区')
+          const bounds = element.getBoundingClientRect()
+          const cellBounds = cell.getBoundingClientRect()
+          const scrollBounds = scrollport.getBoundingClientRect()
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          const rects = Array.from(range.getClientRects())
+          return {
+            bounds: bounds.toJSON(),
+            cell: cellBounds.toJSON(),
+            scrollport: scrollBounds.toJSON(),
+            viewport: { width: innerWidth, height: innerHeight },
+            textRects: rects.map((rect) => rect.toJSON()),
+            textFitsCell:
+              rects.length > 0 &&
+              rects.every(
+                (rect) =>
+                  rect.left >= cellBounds.left - 1 &&
+                  rect.right <= cellBounds.right + 1 &&
+                  rect.top >= cellBounds.top - 1 &&
+                  rect.bottom <= cellBounds.bottom + 1
+              ),
+            textFitsScrollport: rects.every(
+              (rect) =>
+                rect.left >= scrollBounds.left - 1 &&
+                rect.right <= scrollBounds.right + 1 &&
+                rect.top >= scrollBounds.top - 1 &&
+                rect.bottom <= scrollBounds.bottom + 1
+            ),
+            textFitsViewport: rects.every(
+              (rect) =>
+                rect.left >= -1 &&
+                rect.right <= innerWidth + 1 &&
+                rect.top >= -1 &&
+                rect.bottom <= innerHeight + 1
+            )
+          }
+        })
+        await info.attach(`detail-value-${appearance.width}-${appearance.theme}-${index}`, {
+          body: JSON.stringify({ value, ...geometry }, null, 2),
+          contentType: 'application/json'
+        })
+        expect(geometry.textFitsCell, value).toBe(true)
+        expect(geometry.textFitsScrollport, value).toBe(true)
+        expect(geometry.textFitsViewport, value).toBe(true)
+        await expect(field).toBeInViewport({ ratio: 0.95 })
+      }
+      await dialog.screenshot({
+        path: info.outputPath(`long-detail-bottom-${appearance.width}-${appearance.theme}.png`)
+      })
+      if (appearance.width === 1440) {
+        const table = panel.locator(
+          riskInformation
+            ? '.risk-information-detail__measures > article .el-descriptions__table'
+            : '.el-descriptions__table'
+        )
+        for (const breakpoint of [
+          { width: 900, rows: riskInformation ? 6 : 8 },
+          { width: 901, rows: riskInformation ? 2 : 4 }
+        ]) {
+          await page.setViewportSize({ width: breakpoint.width, height: 900 })
+          const rows = table.locator(':scope > tbody > tr')
+          await expect(rows).toHaveCount(breakpoint.rows)
+          const geometry = await table.evaluate((element) => ({
+            table: element.getBoundingClientRect().toJSON(),
+            rows: Array.from(element.querySelectorAll(':scope > tbody > tr')).map((row) =>
+              row.getBoundingClientRect().toJSON()
+            ),
+            viewport: { width: innerWidth, height: innerHeight },
+            documentWidth: document.documentElement.scrollWidth
+          }))
+          await info.attach(`detail-columns-${breakpoint.width}`, {
+            body: JSON.stringify(geometry, null, 2),
+            contentType: 'application/json'
+          })
+          expect(geometry.table.width).toBeGreaterThan(0)
+          expect(geometry.table.left).toBeGreaterThanOrEqual(-1)
+          expect(geometry.table.right).toBeLessThanOrEqual(breakpoint.width + 1)
+          expect(geometry.documentWidth).toBeLessThanOrEqual(breakpoint.width + 1)
+        }
+        await page.setViewportSize({ width: appearance.width, height: 900 })
+      }
+      if (!riskInformation) {
+        await dialog.getByRole('tab', { name: '整改闭环', exact: true }).click()
+        const closure = dialog.getByRole('tabpanel', { name: '整改闭环', exact: true })
+        await expect(closure.getByText('2026-10-31 08:00', { exact: true })).toHaveCount(4)
+        await expect(closure.getByText('—', { exact: true })).toHaveCount(1)
+        await expect(closure.getByText('验收核准人', { exact: true })).toBeVisible()
+        await expect(closure.getByText('验收整改人', { exact: true })).toBeVisible()
+        await expect(closure.getByText('验收复核人', { exact: true })).toBeVisible()
+        await dialog.getByRole('tab', { name: '流转记录', exact: true }).click()
+        const events = dialog.getByRole('tabpanel', { name: '流转记录', exact: true })
+        await expect(events.getByText('验收台账闭环事件', { exact: true })).toBeVisible()
+        await expect(events.getByText('验收整改记录归档', { exact: true })).toBeVisible()
+        await expect(events.getByText('2026-10-31 08:00', { exact: true })).toBeVisible()
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        appearance.width + 1
+      )
+      const close = dialog.getByRole('button', { name: '关闭抽屉', exact: true })
+      await close.focus()
+      await close.press('Enter')
+      await expect(dialog).toBeHidden()
+      expect(writes).toHaveLength(0)
+    }
+    const defaults = await open(page, entry, writes, '&theme=dark&ordinary=1')
+    if (riskInformation)
+      await defaults.getByRole('tab', { name: '防控与执行', exact: true }).click()
+    const defaultFields = riskInformation
+      ? defaults.locator('.risk-information-detail__measures > article')
+      : defaults.getByRole('tabpanel', { name: '隐患信息', exact: true })
+    await expect(defaultFields.getByText('—', { exact: true })).toHaveCount(riskInformation ? 2 : 3)
+    if (riskInformation)
+      await expect(defaultFields.getByText('验收安全岗', { exact: true })).toBeVisible()
+    await defaults.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+    await expect(defaults).toBeHidden()
+    expect(writes).toHaveLength(0)
+  })
+}
 
 for (const entry of [
   'permit-detail',
@@ -1664,4 +2519,110 @@ for (const entry of [
     await page.getByRole('button', { name: '打开真实 SMIS 入口', exact: true }).click()
     await expect(navigation.first()).toHaveAttribute('aria-selected', 'true')
     expect(writes).toHaveLength(0)
+    if (entry === 'inspection-plan-detail' || entry === 'training-record-detail') {
+      await page.context().route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+      await page.context().route('**/auth/v1/**', (route) => route.fulfill({ json: {} }))
+      await page.context().route('**/readonly-attachments/**', (route) =>
+        route.fulfill({
+          contentType: 'text/plain; charset=utf-8',
+          body: '只读附件验收内容'
+        })
+      )
+      for (const appearance of [
+        { width: 1440, theme: 'light', boxBorderMode: true },
+        { width: 390, theme: 'dark', boxBorderMode: false }
+      ] as const) {
+        await page.setViewportSize({ width: appearance.width, height: 844 })
+        await prepareAppearance(page, appearance)
+        const populated = await open(
+          page,
+          entry,
+          writes,
+          `&theme=${appearance.theme}&attachments=long&ordinary=1`
+        )
+        await assertAppearance(page, appearance)
+        if (entry === 'training-record-detail')
+          await populated.getByRole('tab', { name: '归档材料', exact: true }).click()
+        await expect(
+          populated.getByText('当前用户尚未配置编号规则。', { exact: true })
+        ).toHaveCount(0)
+        const links = populated.getByRole('link')
+        for (const [index, name] of readonlyAttachmentNames.entries()) {
+          const link = links.filter({ hasText: name })
+          await link.scrollIntoViewIfNeeded()
+          await expect(link).toBeInViewport({ ratio: 0.95 })
+          await expect(link).toHaveAttribute(
+            'title',
+            entry === 'inspection-plan-detail' ? `预览 ${name}` : name
+          )
+          await link.focus()
+          await expect(link).toBeFocused()
+          const popupPromise = page.waitForEvent('popup')
+          await link.press('Enter')
+          const popup = await popupPromise
+          if (entry === 'inspection-plan-detail') {
+            await popup.waitForURL(/file-preview\?key=/)
+            const previewUrl = new URL(popup.url())
+            const key = new URLSearchParams(previewUrl.hash.split('?')[1] || previewUrl.search).get(
+              'key'
+            )
+            expect(key).toBeTruthy()
+            const file = await page.evaluate(
+              (key) => JSON.parse(localStorage.getItem(`art-file-preview:${key}`) || '{}').file,
+              key
+            )
+            expect(file).toMatchObject({
+              name,
+              url: new URL(readonlyAttachmentUrls[index], page.url()).href
+            })
+            // 夹具位于独立 HTML；进入真实宿主的静态预览页继续验证文件内容。
+            await prepareIsolatedSession(popup, { tenantId, platformSuper: false })
+            await popup.route('**/rest/v1/rpc/get_accessible_applications', (route) =>
+              route.fulfill({
+                json: [{ code: 'smis', name: '安全管理', baseUrl: '/smis/' }]
+              })
+            )
+            const menuPath =
+              '/smis/dual-control-system/hidden-hazard-governance/hidden-hazard-inspection-plan'
+            await mockApplicationMenus(popup, {
+              smis: [
+                {
+                  id: 'preview-inspection-plan',
+                  parentId: null,
+                  name: 'SmisHiddenHazardInspectionPlan',
+                  path: menuPath,
+                  component: `${menuPath}/index`,
+                  type: 'menu',
+                  sort: 1,
+                  meta: { title: '隐患排查计划', is_enable: true, is_hide: false, roles: [] }
+                }
+              ]
+            })
+            await popup.goto(`/${previewUrl.hash}`)
+            await expect(
+              popup.locator('.art-file-viewer-page__header').getByRole('heading')
+            ).toHaveAccessibleName(name)
+            await expect(popup.locator('.art-file-viewer-page__body')).toContainText(
+              '只读附件验收内容'
+            )
+          } else {
+            await popup.waitForLoadState('domcontentloaded')
+            expect(popup.url()).toBe(new URL(readonlyAttachmentUrls[index], page.url()).href)
+            await expect(popup.locator('body')).toContainText('只读附件验收内容')
+            await expect(link).toHaveAttribute('target', '_blank')
+            await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+          }
+          await popup.close()
+        }
+        await expect(populated.locator('input[type="file"]')).toHaveCount(0)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          appearance.width + 1
+        )
+        await populated.screenshot({
+          path: info.outputPath(`${entry}-attachments-${appearance.width}-${appearance.theme}.png`)
+        })
+        await populated.getByRole('button', { name: /^关闭(弹窗|抽屉)$/ }).click()
+        expect(writes).toHaveLength(0)
+      }
+    }
   })

@@ -50,7 +50,7 @@
         </article>
       </section>
 
-      <ElTabs v-model="activeTab" class="min-w-0">
+      <ElTabs v-model="activeTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane label="基础定义与路由" name="basicSection" :lazy="false">
           <ArtDescriptions :data="menu" :items="accessItems" :columns="2" :label-width="112" />
         </ElTabPane>
@@ -75,7 +75,6 @@
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import type { AppRouteRecord } from '@/types/router'
   import { formatMenuTitle } from '@/utils/router'
-  import { formatWithDayjs } from '@/utils/time'
   import TreeUtils from '@/utils/tree'
   import {
     getDirectPermissionCount,
@@ -253,13 +252,15 @@
     {
       key: 'createTime',
       label: '创建时间',
-      value: (row: MenuRecord) => formatWithDayjs(row.createTime) || '--'
+      field: 'createTime',
+      format: 'datetime'
     },
     { key: 'updateBy', label: '最后编辑人', field: 'updateBy' },
     {
       key: 'updateTime',
       label: '最后编辑时间',
-      value: (row: MenuRecord) => formatWithDayjs(row.updateTime) || '--'
+      field: 'updateTime',
+      format: 'datetime'
     }
   ])
 

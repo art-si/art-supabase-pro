@@ -451,6 +451,15 @@ verify_jwt = false
 [functions.bff-gateway]
 verify_jwt = false
 
+[functions.driver-auth]
+verify_jwt = false
+
+[functions.mobile-wechat-auth]
+verify_jwt = false
+
+[functions.mobile-account-admin]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

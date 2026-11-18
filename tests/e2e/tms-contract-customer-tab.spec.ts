@@ -1,7 +1,59 @@
 import { expect, test } from '@playwright/test'
+import { expectInputTextUnclipped } from './support/input-text-width'
+import { expectQueryLabelLayout } from './support/query-label-layout'
+import { assertTableFocusContract } from './support/table-focus'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
+
+for (const { name, embedded, width } of [
+  { name: '独立页面', embedded: false, width: 320 },
+  { name: '客户页签', embedded: true, width: 390 }
+]) {
+  test(`运输合同${name}在 ${width}px 保持关键词提示可读与标签对齐`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 })
+    const customerId = '11111111-1111-4111-8111-111111111112'
+    const listRequests: Array<Record<string, unknown>> = []
+    await page.route('**/rest/v1/**', (route) => {
+      if (route.request().url().endsWith('/rpc/tms_list_contracts_secure')) {
+        listRequests.push(route.request().postDataJSON())
+        return route.fulfill({ json: { records: [], total: 0, fieldAccess: {} } })
+      }
+      return route.fulfill({ json: [] })
+    })
+    await page.goto(
+      `/tests/e2e/fixtures/tms-contract-customer-tab.html${embedded ? '' : '?standalone'}`,
+      { waitUntil: 'domcontentloaded' }
+    )
+    await expect.poll(() => listRequests.length).toBeGreaterThan(0)
+    const filters = page.locator('#contract-customer-tab .art-search-bar')
+    const field = filters.locator('[data-art-form-item-key="keyword"]')
+    const keyword = field.getByRole('textbox', { name: '关键字', exact: true })
+    if (!(await keyword.isVisible())) await filters.getByRole('button', { name: /^展开/ }).click()
+    await expect(keyword).toBeVisible()
+    await expect(keyword).toBeEmpty()
+    await page.evaluate(() => document.fonts.ready.then(() => undefined))
+    await field.screenshot({ path: info.outputPath(`tms-contract-keyword-${width}.png`) })
+    await expectInputTextUnclipped(keyword, 'placeholder')
+    await expect(keyword).toHaveAttribute('placeholder', '名称/编号/路线')
+    const description = '可按合同名称、编号、纸质编号、助记码、联系人或路线查询'
+    await expect(keyword).toHaveAttribute('title', description)
+    await expect(keyword).toHaveAccessibleDescription(description)
+    await expectQueryLabelLayout(field)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width + 1
+    )
+    await keyword.fill('纸质合同-A01')
+    await keyword.press('Enter')
+    await expect
+      .poll(() => listRequests.at(-1))
+      .toMatchObject({
+        p_keyword: '纸质合同-A01',
+        p_customer_id: embedded ? customerId : null
+      })
+    if (!embedded) await assertTableFocusContract(page, info)
+  })
+}
 
 test('客户页签复用运输合同列表、状态和复制操作', async ({ page }, testInfo) => {
   const customerId = '11111111-1111-4111-8111-111111111112'
@@ -239,7 +291,7 @@ test('合同表单用标准参选控件展示承运商五列信息', async ({ pa
   await expect(page.getByRole('option', { name: '吨', exact: true })).toHaveCount(0)
 })
 
-test('运输合同提审失败保留草稿，重试成功刷新列表', async ({ page }) => {
+test('运输合同提审失败保留草稿，键盘重试成功刷新列表', async ({ page }, info) => {
   test.setTimeout(120_000)
   const customerId = '11111111-1111-4111-8111-111111111112'
   const tenantId = '11111111-1111-4111-8111-111111111111'
@@ -266,7 +318,9 @@ test('运输合同提审失败保留草稿，重试成功刷新列表', async ({
   let saves = 0
   let submits = 0
   let failWorkflow = true
-  await page.route('**/rest/v1/**', (route) => {
+  const firstSave = Promise.withResolvers<void>()
+  const firstApproval = Promise.withResolvers<void>()
+  await page.route('**/rest/v1/**', async (route) => {
     const url = new URL(route.request().url())
     const name = url.pathname.split('/').at(-1)
     if (name === 'sys_dictionary') {
@@ -299,15 +353,18 @@ test('运输合同提审失败保留草稿，重试成功刷新列表', async ({
     if (name === 'tms_get_contract_secure') return route.fulfill({ json: contract })
     if (name === 'tms_update_contract_secure') {
       saves++
+      if (saves === 1) await firstSave.promise
       return route.fulfill({ json: contract })
     }
     if (name === 'start_workflow') {
       submits++
-      if (failWorkflow)
+      if (failWorkflow) {
+        await firstApproval.promise
         return route.fulfill({
           status: 400,
           json: { code: 'P0001', message: 'No active workflow definition' }
         })
+      }
       contract.contractStatus = 'pending'
       return route.fulfill({ json: '33333333-3333-4333-8333-333333333333' })
     }
@@ -323,17 +380,43 @@ test('运输合同提审失败保留草稿，重试成功刷新列表', async ({
   await page.getByRole('button', { name: '编辑' }).first().click()
   const form = page.getByRole('dialog', { name: '编辑合同' })
   await expect(form).toBeVisible()
-  await form.getByRole('button', { name: '提交审核' }).click()
+  const save = form.getByRole('button', { name: '保存', exact: true })
+  const submit = form.getByRole('button', { name: '提交审核', exact: true })
+  await save.click()
+  try {
+    await expect.poll(() => saves).toBe(1)
+    await expect(save).toHaveClass(/is-loading/)
+    await expect(submit).toBeDisabled()
+  } finally {
+    firstSave.resolve()
+  }
+  await expect(form).toBeHidden()
+  expect(submits).toBe(0)
+
+  await page.getByRole('button', { name: '编辑' }).first().click()
+  await expect(submit).toBeEnabled()
+  try {
+    await submit.focus()
+    await expect(submit).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => submits).toBe(1)
+    await expect(submit).toBeDisabled()
+  } finally {
+    firstApproval.resolve()
+  }
   await expect(
     page.getByText('合同已保存为草稿，但审批未发起。请检查运输合同审批流程是否已发布并启用后重试。')
   ).toBeVisible({ timeout: 20_000 })
-  expect(saves).toBe(1)
+  expect(saves).toBe(2)
   expect(submits).toBe(1)
   await expect(form).toBeVisible()
+  await expect(submit).toBeEnabled()
+  await expect(submit).toBeFocused()
+  await form.screenshot({ path: info.outputPath('contract-approval-retry-focus.png') })
   failWorkflow = false
-  await form.getByRole('button', { name: '提交审核' }).click()
+  await page.keyboard.press('Enter')
   await expect(form).toBeHidden()
-  expect(saves).toBe(2)
+  expect(saves).toBe(3)
   expect(submits).toBe(2)
   await expect(
     page.getByRole('row', { name: /HT-2026-RETRY/ }).getByRole('button', { name: '编辑' })

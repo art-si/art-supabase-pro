@@ -20,11 +20,12 @@ test('调薪周期新增使用认证租户，编辑保留跨租户记录的实�
     recommendation_due_date: '2026-11-01',
     calibration_due_date: '2026-11-15',
     effective_date: '2026-12-01',
-    default_budget_percent: 5,
+    default_budget_percent: 5.5,
     guideline_min_percent: 0,
-    guideline_max_percent: 10
+    guideline_max_percent: 10.34
   }
   const scopes: Array<string | null> = []
+  let amountAccess = true
   let saved: { p_id: string; p_payload: Record<string, unknown> } | undefined
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -55,7 +56,14 @@ test('调薪周期新增使用认证租户，编辑保留跨租户记录的实�
       })
     }
     if (url.includes('hr_compensation_review_overview_secure'))
-      return route.fulfill({ json: { cycle_count: 1, amount_access: true, selected_cycle: cycle } })
+      return route.fulfill({
+        json: {
+          cycle_count: 1,
+          amount_access: amountAccess,
+          budget_utilization: 25.678,
+          selected_cycle: cycle
+        }
+      })
     if (url.includes('hr_list_compensation_review_options_secure'))
       return route.fulfill({
         json: [{ id, tenant_id: other, name: cycle.cycle_name, status: 'draft' }]
@@ -65,7 +73,7 @@ test('调薪周期新增使用认证租户，编辑保留跨租户记录的实�
         json: {
           records: route.request().postDataJSON().p_kind === 'cycle' ? [cycle] : [],
           total: route.request().postDataJSON().p_kind === 'cycle' ? 1 : 0,
-          amount_access: true
+          amount_access: amountAccess
         }
       })
     if (url.includes('hr_save_compensation_review_record_secure')) {
@@ -77,6 +85,15 @@ test('调薪周期新增使用认证租户，编辑保留跨租户记录的实�
   await page.goto('/tests/e2e/fixtures/hr-all-pages.html?page=operations/compensation-review')
   await expect(page.locator('.business-workspace-page')).toBeVisible({ timeout: 60_000 })
   await expect(page.locator('#review-command-title')).toHaveText(cycle.cycle_name)
+  const guardrails = page.locator('.review-page__guardrails')
+  await expect(guardrails.getByText('0% ～ 10.34%', { exact: true })).toBeVisible()
+  await expect(guardrails.getByText('默认预算率 5.5%', { exact: true })).toBeVisible()
+  await expect(guardrails.getByText('25.68%', { exact: true })).toBeVisible()
+  await guardrails.scrollIntoViewIfNeeded()
+  await guardrails.screenshot({
+    path: testInfo.outputPath('cycle-percent-guidance-570.png'),
+    animations: 'disabled'
+  })
   await page.getByRole('button', { name: '新增调薪周期', exact: true }).first().click()
   const add = page.getByRole('dialog', { name: '新增调薪周期', exact: true })
   await expect(add).toBeVisible()
@@ -96,8 +113,10 @@ test('调薪周期新增使用认证租户，编辑保留跨租户记录的实�
   await budget.getByRole('button', { name: '取消', exact: true }).click()
   await page.getByRole('tab', { name: /^调薪周期/ }).click()
   const row = page.locator('.el-table__body tr').filter({ hasText: 'MERIT-OTHER' }).first()
-  await row.getByRole('button', { name: '更多操作', exact: true }).click()
-  await page.getByRole('menuitem', { name: '编辑规则', exact: true }).click()
+  const more = row.getByRole('button', { name: '更多操作', exact: true })
+  await more.press('ArrowDown', { timeout: 10_000 })
+  await expect(more).toHaveAttribute('aria-expanded', 'true')
+  await page.getByRole('menuitem', { name: '编辑规则', exact: true }).click({ timeout: 10_000 })
   const edit = page.getByRole('dialog', { name: '编辑调薪周期', exact: true })
   await expect(edit.getByRole('textbox', { name: /周期名称$/ })).toHaveValue('跨租户调薪周期')
   await expect.poll(() => scopes.includes(other)).toBe(true)
@@ -113,5 +132,9 @@ test('调薪周期新增使用认证租户，编辑保留跨租户记录的实�
   expect(saved?.p_payload.tenant_id).toBe(other)
   expect(saved?.p_payload.cycle_name).toBe('更新后的跨租户周期')
   expect(saved?.p_payload.cycle_code).toBe('MERIT-OTHER')
+  amountAccess = false
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(guardrails.getByText('金额受控', { exact: true })).toBeVisible()
+  await expect(page.getByText('25.68%', { exact: true })).toHaveCount(0)
   expect(errors).toEqual([])
 })

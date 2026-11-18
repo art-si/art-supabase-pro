@@ -1,12 +1,14 @@
 <!-- 混合菜单 -->
 <template>
-  <div class="art-mixed-menu relative box-border flex-c w-full overflow-hidden">
+  <div ref="menuRef" class="art-mixed-menu flex-c min-w-0 flex-1">
     <!-- 左侧滚动按钮 -->
     <button
-      v-show="showLeftArrow"
+      v-show="hasOverflow"
       type="button"
       class="button-arrow"
+      :disabled="!canScrollLeft"
       aria-label="向左滚动菜单"
+      title="向左滚动菜单"
       @click="scroll('left')"
     >
       <ElIcon>
@@ -17,20 +19,20 @@
     <!-- 滚动容器 -->
     <ElScrollbar
       ref="scrollbarRef"
-      wrap-class="scrollbar-wrapper"
-      :horizontal="true"
+      class="min-w-0 flex-1"
       @scroll="handleScroll"
       @wheel="handleWheel"
     >
-      <div class="box-border flex-c flex-shrink-0 flex-nowrap h-15 whitespace-nowrap">
+      <div ref="trackRef" class="art-mixed-menu__track box-border flex-c w-max whitespace-nowrap">
         <template v-for="item in processedMenuList" :key="item.meta.title">
           <button
             v-if="!item.meta.isHide"
             type="button"
-            class="menu-item art-icon-label relative flex-shrink-0 h-10 px-3 text-sm c-p hover:text-theme"
+            class="menu-item art-icon-label relative shrink-0 h-10 px-3 text-sm c-p hover:text-theme"
             :class="{
               'menu-item-active text-theme': item.isActive
             }"
+            :aria-current="item.isActive ? 'location' : undefined"
             @click="startMenuJump(item, true)"
           >
             <ArtSvgIcon
@@ -49,10 +51,12 @@
 
     <!-- 右侧滚动按钮 -->
     <button
-      v-show="showRightArrow"
+      v-show="hasOverflow"
       type="button"
-      class="button-arrow right-2"
+      class="button-arrow"
+      :disabled="!canScrollRight"
       aria-label="向右滚动菜单"
+      title="向右滚动菜单"
       @click="scroll('right')"
     >
       <ElIcon>
@@ -64,9 +68,9 @@
 
 <script setup lang="ts">
   import { getScrollBehavior } from '@/utils/ui/scroll'
-  import { ref, computed, onMounted, nextTick } from 'vue'
+  import { ref, computed, watch } from 'vue'
   import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
-  import { useThrottleFn } from '@vueuse/core'
+  import { useElementSize, useThrottleFn } from '@vueuse/core'
   import { formatMenuTitle } from '@/utils/router'
   import { startMenuJump } from '@/utils/navigation'
   import type { AppRouteRecord } from '@/types/router'
@@ -95,9 +99,14 @@
     list: () => []
   })
 
+  const menuRef = ref<HTMLElement>()
+  const trackRef = ref<HTMLElement>()
   const scrollbarRef = ref<ScrollbarExpose>()
-  const showLeftArrow = ref(false)
-  const showRightArrow = ref(false)
+  const { width: menuWidth } = useElementSize(menuRef)
+  const { width: trackWidth } = useElementSize(trackRef)
+  const hasOverflow = computed(() => trackWidth.value > menuWidth.value)
+  const canScrollLeft = ref(false)
+  const canScrollRight = ref(false)
 
   /** 滚动配置 */
   const SCROLL_CONFIG = {
@@ -163,11 +172,8 @@
 
     const { scrollLeft, scrollWidth, clientWidth } = scrollbarRef.value.wrapRef
 
-    // 判断是否显示左侧滚动按钮
-    showLeftArrow.value = scrollLeft > 0
-
-    // 判断是否显示右侧滚动按钮
-    showRightArrow.value = scrollLeft + clientWidth < scrollWidth
+    canScrollLeft.value = scrollLeft > 0
+    canScrollRight.value = scrollLeft + clientWidth < scrollWidth - 1
   }
 
   /**
@@ -202,9 +208,7 @@
    * @param event 滚轮事件
    */
   const handleWheel = (event: WheelEvent): void => {
-    // 立即阻止默认滚动行为和事件冒泡，避免页面滚动
-    event.preventDefault()
-    event.stopPropagation()
+    if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
 
     // 直接处理滚动，提升响应性
     if (!scrollbarRef.value?.wrapRef) return
@@ -220,6 +224,10 @@
     const scrollDelta = event.deltaY > 0 ? scrollStep : -scrollStep
     const targetScroll = Math.max(0, Math.min(scrollLeft + scrollDelta, scrollWidth - clientWidth))
 
+    if (targetScroll === scrollLeft) return
+    event.preventDefault()
+    event.stopPropagation()
+
     // 立即滚动，无动画
     wrapRef.scrollLeft = targetScroll
 
@@ -227,40 +235,36 @@
     handleScrollCore()
   }
 
-  /**
-   * 初始化滚动状态
-   */
-  const initScrollState = (): void => {
-    nextTick(() => {
-      handleScrollCore()
-    })
-  }
-
-  onMounted(initScrollState)
+  watch([menuWidth, trackWidth], handleScrollCore, { flush: 'post' })
 </script>
 
 <style scoped>
+  .art-mixed-menu__track {
+    block-size: var(--art-mixed-menu-height, var(--art-header-height));
+  }
+
   @reference '@styles/core/tailwind.css';
 
   .button-arrow {
-    @apply absolute 
-    top-1/2
-    z-2 
-    flex
-    items-center
-    justify-center
-    size-7.5
-    text-g-600 
-    cursor-pointer
-    rounded-surface
-    -translate-y-1/2 
-    hover:text-g-900 
-    hover:bg-g-200;
+    @apply grid size-7.5 shrink-0 place-items-center rounded-surface text-g-600;
 
     transition:
-      color 300ms ease,
-      background-color 300ms ease,
-      transform 300ms ease;
+      color var(--art-motion-duration-fast) ease,
+      background-color var(--art-motion-duration-fast) ease;
+  }
+
+  .button-arrow:hover:not(:disabled) {
+    @apply cursor-pointer bg-g-200 text-g-900;
+  }
+
+  .button-arrow:focus-visible,
+  .menu-item:focus-visible {
+    outline: 2px solid var(--theme-color);
+    outline-offset: -2px;
+  }
+
+  .button-arrow:disabled {
+    @apply cursor-not-allowed opacity-40;
   }
 </style>
 
@@ -269,12 +273,6 @@
     bottom: 5px;
     display: none;
     height: 2px;
-  }
-
-  :deep(.scrollbar-wrapper) {
-    flex: 1;
-    min-width: 0;
-    margin: 0 50px 0 30px;
   }
 
   .menu-item-active::after {
@@ -290,7 +288,7 @@
   }
 
   .menu-item {
-    margin: 10px 2px;
+    margin-inline: 2px;
     border-radius: var(--art-surface-radius);
     transition:
       color 0.18s ease,
@@ -301,11 +299,5 @@
   .menu-item:hover {
     background: color-mix(in srgb, var(--theme-color) 8%, var(--default-box-color));
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-color) 11%, transparent);
-  }
-
-  @media (width <= 1440px) {
-    :deep(.scrollbar-wrapper) {
-      margin: 0 45px;
-    }
   }
 </style>

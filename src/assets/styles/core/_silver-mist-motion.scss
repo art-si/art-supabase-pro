@@ -1,0 +1,179 @@
+// Element Plus keeps ownership of each transition's mount, focus and cancellation lifecycle.
+@mixin appearance {
+  @media (prefers-reduced-motion: no-preference) {
+    .dialog-fade-enter-active,
+    .el-drawer-fade-enter-active,
+    .fade-in-linear-enter-active:has(> .el-overlay-message-box) {
+      --silver-mist-overlay-duration: var(--art-motion-duration-base);
+    }
+
+    .dialog-fade-leave-active,
+    .el-drawer-fade-leave-active,
+    .fade-in-linear-leave-active:has(> .el-overlay-message-box) {
+      --silver-mist-overlay-duration: var(--art-motion-duration-fast);
+    }
+
+    :is(
+      .dialog-fade-enter-active,
+      .dialog-fade-leave-active,
+      .el-drawer-fade-enter-active,
+      .el-drawer-fade-leave-active
+    ),
+    :is(.fade-in-linear-enter-active, .fade-in-linear-leave-active):has(> .el-overlay-message-box) {
+      // Vue waits on the overlay. Keep its duration matched to the surface it contains.
+      transition: opacity var(--silver-mist-overlay-duration) var(--art-motion-ease-out) !important;
+      animation: none !important;
+    }
+
+    :is(
+      .dialog-fade-enter-from,
+      .dialog-fade-leave-to,
+      .el-drawer-fade-enter-from,
+      .el-drawer-fade-leave-to
+    ),
+    :is(.fade-in-linear-enter-from, .fade-in-linear-leave-to):has(> .el-overlay-message-box) {
+      opacity: 0;
+    }
+
+    :is(.dialog-fade-enter-active, .dialog-fade-leave-active) .el-dialog,
+    :is(.fade-in-linear-enter-active, .fade-in-linear-leave-active) > .el-overlay-message-box {
+      transition:
+        translate var(--silver-mist-overlay-duration) var(--art-motion-ease-out),
+        scale var(--silver-mist-overlay-duration) var(--art-motion-ease-out);
+      animation: none !important;
+    }
+
+    // Element Plus measures the dialog during drag. Keep its bounds stable while the overlay fades.
+    :is(.dialog-fade-enter-from, .dialog-fade-leave-to)
+      .el-dialog:not(.is-fullscreen, .is-draggable),
+    :is(.fade-in-linear-enter-from, .fade-in-linear-leave-to) > .el-overlay-message-box {
+      scale: 0.985;
+      translate: 0 6px;
+    }
+
+    :is(.el-drawer-fade-enter-active, .el-drawer-fade-leave-active) .el-drawer {
+      transition: transform var(--silver-mist-overlay-duration) var(--art-motion-ease-out) !important;
+    }
+
+    :is(.el-drawer-fade-enter-from, .el-drawer-fade-leave-to) .el-drawer {
+      opacity: 1;
+
+      &.rtl {
+        transform: translateX(100%) !important;
+      }
+
+      &.ltr {
+        transform: translateX(-100%) !important;
+      }
+
+      &.ttb {
+        transform: translateY(-100%) !important;
+      }
+
+      &.btt {
+        transform: translateY(100%) !important;
+      }
+    }
+
+    // Anchored popup text stays at its natural size. Leave Popper's inline positioning intact.
+    @each $transition in el-zoom-in-top, el-zoom-in-bottom, el-zoom-in-center, el-zoom-in-left,
+      el-fade-in, el-fade-in-linear, fade-in-linear
+    {
+      .el-popper:is(.#{$transition}-enter-active, .#{$transition}-leave-active) {
+        transform: none;
+        transition: opacity var(--art-motion-duration-fast) var(--art-motion-ease-out);
+      }
+
+      .el-popper:is(.#{$transition}-enter-from, .#{$transition}-leave-to) {
+        opacity: 0;
+        transform: none;
+      }
+
+      .el-popper.#{$transition}-leave-from {
+        opacity: 1;
+      }
+    }
+
+    .el-image-viewer__wrapper:is(.viewer-fade-enter-active, .viewer-fade-leave-active) {
+      transition: opacity var(--art-motion-duration-fast) var(--art-motion-ease-out);
+      animation: none;
+    }
+
+    .el-image-viewer__wrapper:is(.viewer-fade-enter-from, .viewer-fade-leave-to) {
+      opacity: 0;
+    }
+
+    .el-form-item__error:is(.el-zoom-in-top-enter-active, .el-zoom-in-top-leave-active) {
+      transform: none;
+      transition: opacity var(--art-motion-duration-fast) var(--art-motion-ease-out);
+    }
+
+    .el-form-item__error:is(.el-zoom-in-top-enter-from, .el-zoom-in-top-leave-to) {
+      opacity: 0;
+      transform: none;
+    }
+
+    .el-form-item__error.el-zoom-in-top-leave-from {
+      opacity: 1;
+    }
+
+    .el-message,
+    .el-notification {
+      // The library positions stacked notices by top/bottom. Maintain continuity when a sibling closes.
+      transition:
+        opacity var(--art-motion-duration-fast) var(--art-motion-ease-out),
+        translate var(--art-motion-duration-fast) var(--art-motion-ease-out),
+        top var(--art-motion-duration-fast) var(--art-motion-ease-out),
+        bottom var(--art-motion-duration-fast) var(--art-motion-ease-out);
+    }
+
+    .el-message:is(.el-message-fade-enter-from, .el-message-fade-leave-to) {
+      transform: none;
+      translate: 0 -6px;
+
+      &.is-center {
+        transform: translateX(-50%);
+      }
+
+      &.is-bottom {
+        translate: 0 6px;
+      }
+    }
+
+    .el-notification:is(.el-notification-fade-enter-from, .el-notification-fade-leave-to) {
+      transform: none;
+
+      &.right {
+        translate: 8px 0;
+      }
+
+      &.left {
+        translate: -8px 0;
+      }
+    }
+
+    .el-notification.el-notification-fade-enter-from {
+      opacity: 0;
+    }
+
+    .el-collapse,
+    .el-slider,
+    .el-switch,
+    .el-segmented {
+      --el-transition-duration: var(--art-motion-duration-fast);
+      --el-transition-duration-fast: var(--art-motion-duration-fast);
+    }
+
+    .el-carousel__item.is-animating {
+      transition: transform var(--art-motion-duration-base) var(--art-motion-ease-out);
+    }
+
+    :is(.el-select, .el-cascader, .el-input-tag) :is(.el-list-enter-active, .el-list-leave-active) {
+      transition: opacity var(--art-motion-duration-fast) var(--art-motion-ease-out);
+    }
+
+    :is(.el-select, .el-cascader, .el-input-tag) :is(.el-list-enter-from, .el-list-leave-to) {
+      transform: none;
+    }
+  }
+}

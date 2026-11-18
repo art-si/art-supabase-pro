@@ -7,6 +7,7 @@ import language from '@/locales'
 import { setupGlobDirectives } from '@/directives'
 import { initializeTheme } from '@/hooks/core/useTheme'
 import { useUserStore } from '@/store/modules/user'
+import { useSettingStore } from '@/store/modules/setting'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -39,5 +40,8 @@ await router.push('/bff-integration')
 await router.isReady()
 initializeTheme()
 document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+  ? 'border-mode'
+  : 'shadow-mode'
 document.documentElement.style.setProperty('--art-full-height', 'calc(100vh - 32px)')
 app.mount('#app')

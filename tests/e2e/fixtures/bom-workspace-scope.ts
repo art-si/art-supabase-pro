@@ -12,8 +12,10 @@ import '@styles/index.scss'
 
 const actor = '11111111-1111-4111-8111-111111111111'
 const target = '22222222-2222-4222-8222-222222222222'
-const scope = new URLSearchParams(location.search).get('scope')
-const deleteTest = new URLSearchParams(location.search).has('deleteTest')
+const fixtureQuery = new URLSearchParams(location.search)
+const scope = fixtureQuery.get('scope')
+const deleteTest = fixtureQuery.has('deleteTest')
+const locateBom = fixtureQuery.get('locateBom')
 const ordinary = scope?.startsWith('ordinary') ?? false
 useUserStore(store).setUserInfo({
   userId: 'workspace-test',
@@ -72,6 +74,19 @@ const app = createApp({
       },
       [
         h('button', { onClick: () => router.push('/away') }, '离开 BOM 页面'),
+        locateBom
+          ? h(
+              'button',
+              {
+                onClick: () =>
+                  router.push({
+                    path: '/mdm/engineering/bom-maintenance',
+                    query: { fromMasterDelete: '1', dependencyCode: 'mdm_bom', recordId: locateBom }
+                  })
+              },
+              '定位关联 BOM'
+            )
+          : null,
         h(
           'button',
           {

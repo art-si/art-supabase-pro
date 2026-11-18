@@ -81,9 +81,10 @@
 
     <div
       class="art-dialog__viewport"
-      :class="{ 'is-loading': contentLoading }"
+      :class="{ 'is-loading': contentLoading, 'is-confirming': confirmLoading }"
       :style="{ '--art-dialog-loading-min-height': normalizedContentHeight || undefined }"
       :aria-busy="contentLoading"
+      @keydown.capture="preventOverlayTabArrowScroll"
     >
       <ElScrollbar
         v-if="shouldUseScrollbar"
@@ -147,7 +148,7 @@
 
     <template v-if="options.showFooter" #footer>
       <slot name="footer" :data="openData" :loading="confirmLoading" :api="exposedApi">
-        <div class="art-dialog__footer" :class="{ 'has-left': $slots['footer-left'] }">
+        <div class="art-dialog__footer">
           <div v-if="$slots['footer-left']" class="art-dialog__footer-left">
             <slot name="footer-left" :data="openData" :loading="confirmLoading" :api="exposedApi" />
           </div>
@@ -193,6 +194,7 @@
     useArtOverlay
   } from '@/hooks/core/useArtOverlay'
   import { focusFirstInvalidFormField } from '@/utils/form/validation'
+  import { preventOverlayTabArrowScroll } from '@/utils/ui/overlay-tab-keyboard'
   import { handoffVerticalWheel } from '@/utils/ui/wheel-scroll'
   import { artFormFocusKey } from '@/components/core/forms/art-form/focus'
 
@@ -385,7 +387,9 @@
     const inheritedWidth = attrs.width as string | number | undefined
     const presetWidth = options.value.size ? dialogSizeMap[options.value.size] : undefined
     const configuredWidth = options.value.width ?? inheritedWidth
-    const width = normalizeSize(configuredWidth ?? presetWidth ?? '50%')
+    const width = normalizeSize(
+      configuredWidth ?? presetWidth ?? 'var(--art-dialog-default-width, 50%)'
+    )
     if (!width) return undefined
     return `min(${width}, calc(100vw - 32px))`
   })
@@ -628,7 +632,9 @@
   }
 
   :global(.art-dialog:not(.is-fullscreen) > .el-dialog__body) {
+    display: flex;
     flex: 1;
+    flex-direction: column;
     min-height: 0;
     overflow: hidden;
   }
@@ -711,9 +717,13 @@
     &__header-actions {
       display: flex;
       flex: none;
-      gap: 8px;
+      flex-wrap: wrap;
+      gap: var(--art-space-2);
       align-items: center;
+      justify-content: flex-end;
+      max-width: 100%;
       min-height: 32px;
+      margin-inline-start: auto;
 
       :deep(.art-icon-button) {
         flex: none;
@@ -729,9 +739,12 @@
 
     &__viewport {
       position: relative;
+      display: flex;
+      flex-direction: column;
       min-width: 0;
+      min-height: 0;
 
-      &.is-loading {
+      &.is-loading:not(.is-confirming) {
         min-height: min(
           var(--art-dialog-loading-min-height, clamp(320px, 54dvh, 580px)),
           calc(100dvh - 220px)
@@ -744,7 +757,8 @@
       min-height: 1px;
       padding: var(
         --art-dialog-content-padding,
-        var(--art-space-4) var(--art-space-5) var(--art-space-5)
+        var(--art-space-4) var(--art-dialog-gutter, var(--art-space-5))
+          var(--art-dialog-gutter, var(--art-space-5))
       );
     }
 
@@ -759,43 +773,62 @@
     }
 
     &__scrollbar {
+      display: flex;
+      flex-direction: column;
       width: 100%;
+      min-height: 0;
 
       :deep(.el-scrollbar__wrap) {
+        min-height: 0;
         overscroll-behavior: contain;
       }
     }
 
     &__footer {
       display: flex;
-      gap: 0;
+      flex-wrap: wrap;
+      gap: var(--art-space-2) var(--art-space-4);
       align-items: center;
       justify-content: flex-end;
       width: 100%;
-
-      &.has-left {
-        justify-content: space-between;
-      }
     }
 
     &__footer-left {
+      flex: 1 1 auto;
       min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      max-width: 100%;
       font-size: 14px;
       color: var(--el-text-color-secondary);
-      white-space: nowrap;
+      text-align: start;
+      overflow-wrap: anywhere;
     }
 
     &__footer-actions {
       display: flex;
-      flex: none;
+      flex-wrap: wrap;
       gap: var(--art-space-2);
+      justify-content: flex-end;
+      min-width: 0;
 
       > .el-button {
         min-width: 72px;
         margin-left: 0;
       }
+    }
+  }
+
+  @media (width <= 640px) {
+    :global(.art-dialog) {
+      --art-dialog-default-width: 100%;
+      --art-dialog-gutter: var(--art-space-4);
+    }
+
+    .art-dialog__header {
+      flex-wrap: wrap;
+    }
+
+    .art-dialog__header-main {
+      flex-basis: min(100%, 8rem);
     }
   }
 

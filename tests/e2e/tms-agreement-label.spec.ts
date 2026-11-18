@@ -26,6 +26,7 @@ const agreement = (id: string, agreementNo: string, vehicleType: string) => ({
   status: 'pending_signed',
   approvalStatus: 'draft',
   contentHtml: '<p>验收协议内容</p>',
+  attachments: [],
   idCardImages: [],
   registrationImages: [],
   driverLicenseImages: [],
@@ -68,6 +69,101 @@ const dictionaries = [
   }
 ]
 
+test('运输协议换车后清除旧司机和自动带入的乙方代表人', async ({ page }, info) => {
+  const current = {
+    ...records[0],
+    driverId: '11111111-1111-4111-8111-111111111502',
+    partyBRepresentative: '原车验收司机'
+  }
+  const vehicle = {
+    id: '11111111-1111-4111-8111-111111111302',
+    carrierId: current.carrierId,
+    tenantId,
+    plateNo: '测A·20002',
+    vehicleType: 'box_truck'
+  }
+  const saves: Record<string, unknown>[] = []
+  await page.route('**/rest/v1/**', (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    switch (url.pathname.split('/').at(-1)) {
+      case 'sys_dictionary':
+        return route.fulfill({
+          json: dictionaries.filter(
+            (row) =>
+              row.dict_type_table.code ===
+              url.searchParams.get('dict_type_table.code')?.replace(/^eq\./, '')
+          )
+        })
+      case 'tms_transport_agreement':
+        if (request.method() === 'PATCH') {
+          saves.push(request.postDataJSON())
+          return route.fulfill({
+            json: current,
+            headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
+          })
+        }
+        return route.fulfill({
+          json: [current],
+          headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
+        })
+      case 'tms_list_basic_carrier_options_secure':
+        return route.fulfill({
+          json: [{ id: current.carrierId, tenantId, companyName: current.carrierName }]
+        })
+      case 'list_vehicle_driver_choices_secure': {
+        const records = request.postDataJSON()?.p_source === 'carrier_vehicle' ? [vehicle] : []
+        return route.fulfill({ json: { records, total: records.length } })
+      }
+      case 'get_table_column_runtime':
+        return route.fulfill({ json: { enabled: false, profiles: [] } })
+      default:
+        return route.fulfill({ json: [] })
+    }
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/tests/e2e/fixtures/tms-agreement-label.html', { waitUntil: 'commit' })
+  await page
+    .getByRole('row')
+    .filter({ hasText: knownNo })
+    .getByRole('button', { name: '编辑', exact: true })
+    .click()
+  const form = page.getByRole('dialog', { name: `编辑运输协议 · ${knownNo}` })
+  const driver = form.locator('[data-art-form-item-key="driverId"] input')
+  const vehicleField = form.locator('[data-art-form-item-key="vehicleId"]')
+  const vehicleInput = vehicleField.locator('input')
+  const save = form.getByRole('button', { name: '确定', exact: true })
+  await expect(driver).toHaveValue(current.partyBRepresentative)
+  await expect(vehicleInput).toHaveValue(current.plateNo)
+  await form.screenshot({ path: info.outputPath('agreement-edit-1440.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(save).toBeInViewport()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  await vehicleField.getByRole('button', { name: '清空', exact: true }).click()
+  await expect(vehicleInput).toHaveValue('')
+  await expect(driver).toHaveValue('')
+  await save.click()
+  await expect(form.getByText('请选择车牌号', { exact: true })).toBeVisible()
+  expect(saves).toHaveLength(0)
+  await vehicleInput.click()
+  const picker = page.getByRole('dialog', { name: '选择车辆', exact: true })
+  await picker.getByRole('row').filter({ hasText: vehicle.plateNo }).click()
+  await picker.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(vehicleInput).toHaveValue(vehicle.plateNo)
+  await expect(driver).toHaveValue('')
+  await form.screenshot({ path: info.outputPath('agreement-edit-cleared-390.png') })
+  expect(saves).toHaveLength(0)
+  await save.click()
+  await expect
+    .poll(() => saves.at(-1))
+    .toMatchObject({
+      vehicle_id: vehicle.id,
+      driver_id: null,
+      party_b_representative: null
+    })
+})
+
 test('运输协议车型在列表、详情、表单和导出均显示字典中文', async ({ page }, info) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
@@ -83,14 +179,17 @@ test('运输协议车型在列表、详情、表单和导出均显示字典中�
         )
       })
     }
-    if (endpoint === 'tms_transport_agreement')
+    if (endpoint === 'tms_transport_agreement') {
+      const id = url.searchParams.get('id')?.replace(/^eq\./, '')
+      const rows = id ? records.filter((record) => record.id === id) : records
       return route.fulfill({
-        json: records,
+        json: rows,
         headers: {
-          'content-range': '0-2/3',
+          'content-range': rows.length ? `0-${rows.length - 1}/${rows.length}` : '*/0',
           'access-control-expose-headers': 'content-range'
         }
       })
+    }
     if (endpoint === 'tms_list_basic_carrier_options_secure')
       return route.fulfill({
         json: [
@@ -100,19 +199,6 @@ test('运输协议车型在列表、详情、表单和导出均显示字典中�
             companyName: '验收承运商',
             contactName: '代表乙',
             legalRepresentative: '代表乙'
-          }
-        ]
-      })
-    if (endpoint === 'vms_list_vehicle_archive_options_secure')
-      return route.fulfill({
-        json: [
-          {
-            id: records[0].vehicleId,
-            tenantId,
-            carrierId: records[0].carrierId,
-            plateNo: records[0].plateNo,
-            vehicleType: records[0].vehicleType,
-            vehicleLengthM: records[0].vehicleLengthM
           }
         ]
       })

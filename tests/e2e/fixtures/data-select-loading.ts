@@ -3,10 +3,14 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import language from '@/locales'
 import { store } from '@/store'
 import { setupGlobDirectives } from '@/directives'
+import ArtDataSelect from '@/components/core/forms/art-data-select/index.vue'
 import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
 import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
 import ArtTable from '@/components/core/tables/art-table/index.vue'
-import type { ArtDataSelectExpose } from '@/components/core/forms/art-data-select/types'
+import type {
+  ArtDataSelectExpose,
+  DataSelectModelValue
+} from '@/components/core/forms/art-data-select/types'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -18,6 +22,7 @@ const empty = new URLSearchParams(location.search).has('empty')
 const singleMode = new URLSearchParams(location.search).get('single')
 const tableMode = new URLSearchParams(location.search).get('table')
 const emptyLayoutMode = new URLSearchParams(location.search).has('empty-layout')
+const treeMode = new URLSearchParams(location.search).get('tree')
 const tablePage = ref(1)
 const singleRows = Array.from({ length: 21 }, (_, index) => ({
   id: `row-${index + 1}`,
@@ -27,7 +32,53 @@ const tableRows = Array.from({ length: 210 }, (_, index) => ({
   id: `row-${index + 1}`,
   label: `选择项 ${index + 1}`
 }))
-const app = createApp({
+
+const isTreeMultiple = treeMode !== 'single' && treeMode !== 'remote'
+const treeModel = ref<DataSelectModelValue>(isTreeMultiple ? [] : undefined)
+const treeRecords = ref<string[]>([])
+const keyboardTree = [
+  {
+    id: 'department',
+    label: '生产部门',
+    children: [
+      { id: 'workshop-a', label: '甲车间' },
+      { id: 'workshop-b', label: '乙车间' }
+    ]
+  },
+  { id: 'inactive', label: '停用车间', disabled: true }
+]
+async function fetchRemoteKeyboardTree() {
+  const response = await fetch('/__test/data-select-tree')
+  if (!response.ok) throw new Error('测试组织树加载失败')
+  return response.json()
+}
+
+const renderTreeKeyboardFixture = () =>
+  h('main', { class: 'p-4' }, [
+    h('button', { onClick: () => selector.value?.open() }, '打开组织选择器'),
+    h(ArtDataSelect, {
+      ref: selector,
+      title: '组织键盘选择',
+      mode: 'tree',
+      multiple: isTreeMultiple,
+      treeCheckStrictly: treeMode !== 'cascade',
+      showPagination: false,
+      showSelectedPanel: isTreeMultiple,
+      data: treeMode === 'remote' ? [] : keyboardTree,
+      apiFn: treeMode === 'remote' ? fetchRemoteKeyboardTree : undefined,
+      modelValue: treeModel.value,
+      'onUpdate:modelValue': (value) => (treeModel.value = value),
+      onConfirm: (_value, records) => {
+        treeRecords.value = records.flatMap((record) =>
+          'id' in record && typeof record.id === 'string' ? [record.id] : []
+        )
+      }
+    }),
+    h('output', { 'data-testid': 'tree-value' }, JSON.stringify(treeModel.value ?? null)),
+    h('output', { 'data-testid': 'tree-confirmed-records' }, JSON.stringify(treeRecords.value))
+  ])
+
+const tableFixture = {
   render: () =>
     emptyLayoutMode
       ? h('main', { class: 'p-4' }, [
@@ -149,7 +200,8 @@ const app = createApp({
               ),
               h('output', { 'data-testid': 'selector-result' }, result.value)
             ])
-})
+}
+const app = createApp(treeMode ? { render: renderTreeKeyboardFixture } : tableFixture)
 app.use(store)
 app.use(language)
 app.use(

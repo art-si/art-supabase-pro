@@ -457,9 +457,42 @@ test('a silent heartbeat has a bounded deadline and fences the snapshot', async 
   assert.equal(end.mock.callCount(), 1)
 })
 
+function controlPreflightDeadline(t: TestContext, deadlineMs: number) {
+  const schedule = globalThis.setTimeout
+  const cancel = globalThis.clearTimeout
+  const started = Date.now()
+  let deadline: { timer: ReturnType<typeof setTimeout>; expire: () => void } | undefined
+  t.mock.method(Date, 'now', () => started)
+  // Keep driver timers real. Release the application deadline only after the peer sees the query.
+  t.mock.method(
+    globalThis,
+    'setTimeout',
+    (...[callback, delay, ...args]: Parameters<typeof schedule>) => {
+      if (delay !== deadlineMs) return schedule(callback, delay, ...args)
+      assert.equal(deadline, undefined, 'the previous deadline must be cleared')
+      const timer = schedule(() => {}, delay)
+      deadline = { timer, expire: () => callback(...args) }
+      return timer
+    }
+  )
+  t.mock.method(globalThis, 'clearTimeout', (timer: Parameters<typeof cancel>[0]) => {
+    if (deadline?.timer === timer) deadline = undefined
+    cancel(timer)
+  })
+  return () => {
+    assert.ok(deadline, 'the preflight must have an active deadline')
+    deadline.expire()
+  }
+}
+
 async function stalledPostgres(
   t: TestContext,
-  options: { completePreflight?: boolean; encrypted?: boolean; rejectAuth?: boolean } = {}
+  options: {
+    completePreflight?: boolean
+    encrypted?: boolean
+    rejectAuth?: boolean
+    onPostAuthRequest?: () => void
+  } = {}
 ) {
   const sockets = new Set<Socket>()
   const closed: Promise<void>[] = []
@@ -498,6 +531,7 @@ async function stalledPostgres(
         } else {
           received.push(data.toString('utf8'))
           requests++
+          options.onPostAuthRequest?.()
           if (preflight) {
             preflight = false
             const body = Buffer.from('SELECT 1\0')
@@ -543,7 +577,11 @@ test(
   'real PostgreSQL client retries and closes sockets when auth succeeds but preflight is silent',
   { timeout: 5000 },
   async (t) => {
-    const server = await stalledPostgres(t)
+    const deadlineMs = 100
+    const server = await stalledPostgres(t, {
+      // Reach the silent preflight before advancing the deadline on each connection.
+      onPostAuthRequest: controlPreflightDeadline(t, deadlineMs)
+    })
     let created = 0
     await assert.rejects(
       connectBackupSource(
@@ -554,7 +592,7 @@ test(
           created++
           return postgres({ ...options, ssl: false })
         },
-        100
+        deadlineMs
       ),
       (cause: unknown) => backupUpdateErrorCode(cause) === 'BACKUP_SOURCE_CONNECT_TIMEOUT'
     )
@@ -625,7 +663,11 @@ test(
   'encrypted PostgreSQL preflight deadlines close TLS before pool teardown and retry safely',
   { timeout: 5000 },
   async (t) => {
-    const server = await stalledPostgres(t, { encrypted: true })
+    const deadlineMs = 200
+    const server = await stalledPostgres(t, {
+      encrypted: true,
+      onPostAuthRequest: controlPreflightDeadline(t, deadlineMs)
+    })
     let created = 0
     await assert.rejects(
       connectBackupSource(
@@ -643,7 +685,7 @@ test(
             }
           })
         },
-        200
+        deadlineMs
       ),
       (cause: unknown) => backupUpdateErrorCode(cause) === 'BACKUP_SOURCE_CONNECT_TIMEOUT'
     )

@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { installFixtures, meta, tenantId } from './support/inventory-fixtures'
 import { mockApplicationMenus } from './support/menu-rpc'
 import { captureBusinessEvidence } from './support/capture-business-evidence'
+import { expectWarehouseCodeVisible } from './support/warehouse-option'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -164,6 +165,85 @@ test('盘点普通用户实际菜单候选加载及失败重试期间不可打�
   await expect(dialog).toBeHidden()
 })
 
+test('盘点创建窄屏按编号区分同名仓库并提交仓库 ID', async ({ page }, info) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installCountMenu(page, true)
+  await page.route('**/rest/v1/mdm_organization?*', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'org-one',
+          tenant_id: tenantId,
+          organization_code: 'ORG-A',
+          organization_name: '测试库存组织',
+          organization_type: 'company',
+          status: '1',
+          initialization: {
+            enabled_on: '2026-10-01',
+            is_default: true,
+            initialization_closed_at: '2026-10-01'
+          }
+        }
+      ],
+      headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
+    })
+  )
+  const name = '华东地区精密零部件生产配套及成品包装配送综合周转仓储服务中心'
+  const codes = ['WARE-A01', 'WARE-B02']
+  await page.route('**/rest/v1/mdm_warehouse?*', (route) =>
+    route.fulfill({
+      json: codes.map((code, index) => ({
+        id: `warehouse-${index}`,
+        tenant_id: tenantId,
+        organization_id: 'org-one',
+        warehouse_code: code,
+        warehouse_name: name,
+        enable_locations: false,
+        status: 'enabled'
+      }))
+    })
+  )
+  const writes: unknown[] = []
+  await page.route('**/rpc/wms_create_count_plan_v2_secure', (route) => {
+    writes.push(route.request().postDataJSON())
+    return route.fulfill({ json: true })
+  })
+  await page.goto('#/wms/count-business/count', { waitUntil: 'domcontentloaded' })
+  const hint = page.getByText('知道了', { exact: true })
+  if (await hint.isVisible()) await hint.click()
+  const create = page.getByRole('button', { name: '生成盘点方案', exact: true })
+  await expect(create).toBeEnabled({ timeout: 60_000 })
+  await create.click()
+  const dialog = page.getByRole('dialog', { name: '生成盘点方案', exact: true })
+  await dialog.locator('[data-art-form-item-key="organizationId"]').getByRole('combobox').click()
+  await page.getByRole('treeitem', { name: '测试库存组织 · ORG-A', exact: true }).click()
+  await dialog.getByRole('tab', { name: '盘点范围', exact: true }).click()
+  const field = dialog.locator('[data-art-form-item-key="warehouseIds"]')
+  await field.locator('.el-select').click()
+  const popup = page.locator('.el-select__popper.art-form-picker-popper:visible')
+  for (const code of codes) {
+    const option = popup.getByRole('option', { name: new RegExp(code) })
+    await expectWarehouseCodeVisible(option, code)
+    await expect(option).toHaveAttribute('title', `${code} · ${name}`)
+  }
+  const bounds = (await popup.boundingBox())!
+  expect(bounds.x).toBeGreaterThanOrEqual(0)
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(391)
+  await page.screenshot({
+    path: info.outputPath('count-warehouse-options-390.png'),
+    animations: 'disabled'
+  })
+  const selectedLabel = `WARE-B02 · ${name}`
+  await popup.getByRole('option', { name: selectedLabel, exact: true }).click()
+  await page.keyboard.press('Escape')
+  await expect(popup).toBeHidden()
+  await expect(field.getByText(selectedLabel, { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(writes).toMatchObject([{ p_payload: { warehouse_ids: ['warehouse-1'] } }])
+})
+
 test('盘点新增范围切换、取消重开及保存失败保留范围', async ({ page }, testInfo) => {
   test.setTimeout(90_000)
   const payloads: unknown[] = []
@@ -207,7 +287,7 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
   await dialog.getByRole('tab', { name: '盘点范围', exact: true }).click()
   await expect(project).toBeEnabled()
   await warehouse.click()
-  await page.getByRole('option', { name: '测试盘点仓库 first · FIRST', exact: true }).click()
+  await page.getByRole('option', { name: 'FIRST · 测试盘点仓库 first', exact: true }).click()
   await project.click()
   await page.getByRole('option', { name: '测试项目 active · PROJECT-ACTIVE', exact: true }).click()
   await section.click()
@@ -221,7 +301,7 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
   )
   await dialog.getByRole('tab', { name: '盘点范围', exact: true }).click()
   await warehouse.click()
-  await page.getByRole('option', { name: '测试盘点仓库 first · FIRST', exact: true }).click()
+  await page.getByRole('option', { name: 'FIRST · 测试盘点仓库 first', exact: true }).click()
   await project.click()
   await page.getByRole('option', { name: '测试项目 active · PROJECT-ACTIVE', exact: true }).click()
   await section.click()
@@ -248,7 +328,7 @@ test('盘点新增范围切换、取消重开及保存失败保留范围', async
   await open.click()
   await dialog.getByRole('tab', { name: '盘点范围', exact: true }).click()
   await warehouse.click()
-  await page.getByRole('option', { name: '测试盘点仓库 first · FIRST', exact: true }).click()
+  await page.getByRole('option', { name: 'FIRST · 测试盘点仓库 first', exact: true }).click()
   await project.click()
   await page.getByRole('option', { name: '测试项目 active · PROJECT-ACTIVE', exact: true }).click()
   await section.click()

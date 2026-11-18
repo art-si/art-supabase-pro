@@ -1,8 +1,44 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectOverlayTabPanel } from './support/overlay-tab-card'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 30_000 })
 test.setTimeout(180_000)
+
+test('ESOP 弹窗页签与正文共用卡片并保留草稿与校验', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  const writes: string[] = []
+  await page.route('**/rest/v1/**', async (route) => {
+    const { pathname } = new URL(route.request().url())
+    if (pathname.includes('save_esop')) writes.push(pathname)
+    await route.fulfill({ json: [] })
+  })
+  await page.goto('/tests/e2e/fixtures/engineering-dictionary-options.html?mode=document')
+  await page.getByRole('button', { name: '打开表单' }).click()
+  const dialog = page.getByRole('dialog', { name: '新增 ESOP', exact: true })
+  const documentPanel = await expectOverlayTabPanel(dialog, '文档信息')
+  const name = documentPanel.getByRole('textbox', { name: '文档名称' })
+  await name.fill('测试文档草稿')
+
+  await dialog.getByRole('tab', { name: '适用范围' }).click()
+  const scope = await expectOverlayTabPanel(dialog, '适用范围')
+  await expect(scope.getByText('产品与工艺关联', { exact: true })).toBeVisible()
+  await dialog.screenshot({ path: info.outputPath('esop-tab-card-desktop.png') })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => {
+    document.documentElement.classList.add('dark')
+    document.documentElement.dataset.uiScope = 'workspace'
+    document.documentElement.dataset.boxMode = 'shadow-mode'
+  })
+  await expect(scope.getByText('适用工艺路线', { exact: true })).toBeVisible()
+  await dialog.screenshot({ path: info.outputPath('esop-tab-card-dark-390.png') })
+  await dialog.getByRole('button', { name: '保存 ESOP', exact: true }).click()
+  await expectOverlayTabPanel(dialog, '文档信息')
+  await expect(name).toHaveValue('测试文档草稿')
+  await expect(documentPanel.locator('.el-form-item__error').first()).toBeVisible()
+  expect(writes).toEqual([])
+})
 
 test('ESOP 行操作复用公共容器', async ({ page }, info) => {
   await prepareIsolatedSession(page)
@@ -63,6 +99,40 @@ test('ESOP 行操作复用公共容器', async ({ page }, info) => {
   expect(errors).toEqual([])
 })
 
+test('生产设备范围树展开不查询且键盘确认分类', async ({ page }) => {
+  await prepareIsolatedSession(page)
+  const categories = [
+    { id: 'scope-parent', parent_id: null, name: '设备总类', code: 'P' },
+    { id: 'scope-child', parent_id: 'scope-parent', name: '总装设备类', code: 'C' }
+  ]
+  const scopes: Array<string | null> = []
+  await page.route('**/rest/v1/rpc/mdm_list_production_equipment_v2_secure', (route) => {
+    scopes.push(route.request().postDataJSON().p_category_id)
+    return route.fulfill({ json: { records: [], total: 0, references: { categories } } })
+  })
+  await page.goto('/tests/e2e/fixtures/engineering-dictionary-options.html?mode=equipment-list')
+  const tree = page.getByRole('tree').filter({ hasText: '设备总类' })
+  const branch = tree.locator('[role="treeitem"][data-key="scope-parent"]')
+  const child = tree.locator('[role="treeitem"][data-key="scope-child"]')
+  await expect(child).toBeVisible()
+  await branch.focus()
+  const before = scopes.length
+  await page.keyboard.press('ArrowLeft')
+  await expect(branch).toHaveAttribute('aria-expanded', 'false')
+  await expect(child).toBeHidden()
+  await page.keyboard.press('ArrowRight')
+  await expect(child).toBeVisible()
+  await page.keyboard.press('ArrowRight')
+  await expect(child).toBeFocused()
+  expect(scopes).toHaveLength(before)
+
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.production-equipment-page__scope-bar strong')).toHaveText(
+    '总装设备类'
+  )
+  await expect.poll(() => scopes.slice(before)).toEqual(['scope-child'])
+})
+
 for (const mode of ['equipment-list', 'esop-list', 'equipment', 'document', 'category']) {
   test(`工程主数据公共字典选项 ${mode}`, async ({ page }, info) => {
     await prepareIsolatedSession(page)
@@ -106,6 +176,7 @@ for (const mode of ['equipment-list', 'esop-list', 'equipment', 'document', 'cat
     }
     if (mode === 'equipment') {
       await page.getByRole('tab', { name: '治理设置' }).click()
+      await expectOverlayTabPanel(page.getByRole('dialog'), '治理设置')
       await page
         .getByRole('dialog')
         .locator('.el-form-item')
@@ -119,6 +190,25 @@ for (const mode of ['equipment-list', 'esop-list', 'equipment', 'document', 'cat
       await page.getByRole('option', { name: '公共状态名称', exact: true }).click()
     }
     await page.screenshot({ path: info.outputPath(`${mode}.png`) })
+    if (mode === 'equipment') {
+      const expectAlignedCard = async () => {
+        await expectOverlayTabPanel(scope, '治理设置')
+        const card = (await scope.locator('.art-form__tabs').boundingBox())!
+        const identity = (await scope.locator('.equipment-dialog__identity').boundingBox())!
+        expect(card.x).toBeCloseTo(identity.x, 0)
+        expect(card.width).toBeCloseTo(identity.width, 0)
+      }
+      await expectAlignedCard()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.evaluate(() => {
+        document.documentElement.classList.add('dark')
+        document.documentElement.dataset.uiScope = 'workspace'
+        document.documentElement.dataset.boxMode = 'shadow-mode'
+      })
+      await expectAlignedCard()
+      await expect(scope.locator('.art-form__tabs')).not.toHaveCSS('box-shadow', 'none')
+      await scope.screenshot({ path: info.outputPath('equipment-tab-card-390.png') })
+    }
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
     ).toBeLessThanOrEqual(1)

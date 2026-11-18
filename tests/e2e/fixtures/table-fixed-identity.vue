@@ -137,8 +137,12 @@
       editRender: { name: 'input' }
     }
   ]
-  if (new URLSearchParams(location.search).get('controls') === '1')
-    columns.push({ type: 'selection', width: 48, fixed: 'left' })
+  const params = new URLSearchParams(location.search)
+  if (params.get('controls') === '1') columns.push({ type: 'selection', width: 48, fixed: 'left' })
+  if (params.has('edit-keyboard'))
+    for (const column of columns)
+      if (column.prop === 'before' || column.prop === 'center')
+        column.editRender = { name: 'input' }
   const property = (value: unknown): string => {
     const column = toObjectRecord(value)
     return String(column.property || column.prop || '')

@@ -602,6 +602,7 @@ test('完整档案分组和跨页签字段保留并进入同一保存请求', as
   )
   await page.getByRole('button', { name: '保存草稿', exact: true }).click()
   await expect(page.getByText('请输入车牌号', { exact: true })).toBeVisible()
+  await expect(page.locator('[data-art-form-item-key="plateNo"] input')).toBeFocused()
   expect(savedPayload).toBeUndefined()
   await page.locator('[data-art-form-item-key="plateNo"] input').fill('测A完整001')
   await page.locator('[data-art-form-item-key="plateColor"] .el-select').click()
@@ -651,6 +652,328 @@ test('完整档案分组和跨页签字段保留并进入同一保存请求', as
     remark: '完整字段验收备注'
   })
 })
+
+const vehicleSaveScenarios: Array<{
+  canEdit: boolean
+  leaveOutcome?: 'success' | 'failure'
+  writeFailure?: 'create' | 'update' | 'update-draft'
+}> = [
+  { canEdit: true },
+  { canEdit: false },
+  { canEdit: true, leaveOutcome: 'success' },
+  { canEdit: true, leaveOutcome: 'failure' },
+  { canEdit: true, writeFailure: 'create' },
+  { canEdit: true, writeFailure: 'update' },
+  { canEdit: true, writeFailure: 'update-draft' }
+]
+for (const { canEdit, leaveOutcome, writeFailure } of vehicleSaveScenarios) {
+  const editingWrite = writeFailure === 'update' || writeFailure === 'update-draft'
+  const saveOnly = writeFailure === 'create' || writeFailure === 'update-draft'
+  const name = writeFailure
+    ? `车辆${writeFailure === 'create' ? '首次创建' : writeFailure === 'update-draft' ? '编辑草稿保存' : '编辑后提审前保存'}失败只提示一次并可键盘重试`
+    : leaveOutcome
+      ? `新增车辆提交等待时返回列表，旧审批${leaveOutcome === 'success' ? '成功' : '失败'}不恢复离开的编辑页`
+      : `新增车辆提审失败后重试使用已保存草稿，不再次创建档案${canEdit ? '' : '（无编辑权限）'}`
+  test(name, async ({ page }, info) => {
+    const tenantId = '11111111-1111-4111-8111-111111111111'
+    const profileId = '22222222-2222-4222-8222-222222222222'
+    const savedId = '33333333-3333-4333-8333-333333333333'
+    const heldApproval = Promise.withResolvers<void>()
+    const heldWrite = Promise.withResolvers<void>()
+    const writeError = '车辆档案保存失败，请核对车牌资料后重试'
+    let successfulCreates = 0
+    const creates: Array<Record<string, unknown>> = []
+    const updates: Array<{ p_id: string; p_payload: Record<string, unknown> }> = []
+    const approvals: Array<{ p_business_type: string; p_business_id: string }> = []
+    const detailReads: string[] = []
+    const record = {
+      id: savedId,
+      tenantId,
+      plateNo: '测A提审001',
+      plateColor: 'yellow',
+      companyName: '验收法人公司',
+      vehicleOwnership: 'self_operated',
+      vehicleType: '半挂车',
+      vehicleTypeProfileId: profileId,
+      specLengthM: 13,
+      volumeM3: 75,
+      loadTons: 30,
+      operationStatus: 'operating',
+      isNewEnergy: false,
+      auditStatus: 'draft',
+      registerDate: '2026-11-01',
+      issueDate: '2026-11-02',
+      invoiceDate: '2026-11-03',
+      startUseDate: '2026-11-04',
+      remark: '提审失败后保留的车辆资料',
+      fieldAccess: Object.fromEntries(
+        [
+          'vehicleIdentifiers',
+          'ownerIdentity',
+          'contactPhones',
+          'mailingAddress',
+          'operationRoute',
+          'documents',
+          'deviceIdentity'
+        ].map((field) => [field, canEdit ? 'edit' : 'read'])
+      )
+    }
+    await page.route('**/rest/v1/rpc/vms_list_asset_company_options_secure', (route) =>
+      route.fulfill({ json: [{ id: 'company-1', label: record.companyName, isDefault: true }] })
+    )
+    await page.route('**/rest/v1/rpc/vms_list_asset_carrier_options_secure', (route) =>
+      route.fulfill({ json: [] })
+    )
+    await page.route('**/rest/v1/rpc/vms_list_vehicle_type_profiles_secure', (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: profileId,
+            tenant_id: tenantId,
+            category: '半挂车',
+            length_m: 13,
+            volume_m3: 75,
+            load_tons: 30,
+            status: '1',
+            sort: 1
+          }
+        ]
+      })
+    )
+    await page.route('**/rest/v1/rpc/vms_create_vehicle_archive_secure', async (route) => {
+      creates.push(route.request().postDataJSON().p_payload)
+      if (writeFailure === 'create' && creates.length === 1) {
+        await heldWrite.promise
+        return route.fulfill({ status: 400, json: { code: 'P0001', message: writeError } })
+      }
+      successfulCreates++
+      return route.fulfill({ json: savedId })
+    })
+    await page.route('**/rest/v1/rpc/vms_update_vehicle_archive_secure', async (route) => {
+      updates.push(route.request().postDataJSON())
+      if (editingWrite && updates.length === 1) {
+        await heldWrite.promise
+        return route.fulfill({ status: 400, json: { code: 'P0001', message: writeError } })
+      }
+      return route.fulfill({ json: record })
+    })
+    await page.route('**/rest/v1/rpc/vms_get_vehicle_archive_secure', (route) => {
+      const id = route.request().postDataJSON().p_id
+      detailReads.push(id)
+      expect(id).toBe(savedId)
+      return route.fulfill({ json: record })
+    })
+    await page.route('**/rest/v1/rpc/vms_get_default_trailer_secure', (route) =>
+      route.fulfill({ json: null })
+    )
+    await page.route('**/rest/v1/rpc/start_workflow', async (route) => {
+      approvals.push(route.request().postDataJSON())
+      if (writeFailure) return route.fulfill({ json: '44444444-4444-4444-8444-444444444444' })
+      if (approvals.length === 1) {
+        await heldApproval.promise
+        if (leaveOutcome === 'success')
+          return route.fulfill({ json: '44444444-4444-4444-8444-444444444444' })
+        return route.fulfill({
+          status: 400,
+          json: { code: 'P0001', message: '车辆档案审批流程暂不可用' }
+        })
+      }
+      return route.fulfill({ json: '44444444-4444-4444-8444-444444444444' })
+    })
+    await page.goto(
+      `/tests/e2e/fixtures/vehicle-asset-form.html?submit${canEdit ? '' : '&noEdit'}${editingWrite ? `&editId=${savedId}` : ''}`
+    )
+    await expect(page.locator('[data-art-form-item-key="companyName"] input')).toHaveValue(
+      record.companyName
+    )
+    const plate = page.locator('[data-art-form-item-key="plateNo"] input')
+    await plate.fill(record.plateNo)
+    await page.locator('[data-art-form-item-key="plateColor"] .el-select').click()
+    await page.getByRole('option', { name: '黄牌', exact: true }).click()
+    if (!editingWrite) {
+      await page.getByRole('button', { name: /请选择车型与规格/ }).click()
+      const picker = page.getByRole('dialog', { name: '参选车型', exact: true })
+      await picker.locator('.vehicle-type-profile-picker__choice').first().click()
+      await picker.getByRole('button', { name: '使用此车型', exact: true }).click()
+    }
+    for (const key of ['registerDate', 'issueDate', 'invoiceDate'] as const) {
+      const input = page.locator(`[data-art-form-item-key="${key}"] input`)
+      await input.fill(record[key])
+      await input.press('Tab')
+    }
+    await page
+      .getByRole('region', { name: '车辆证件字段核对', exact: true })
+      .getByRole('tab', { name: '营运证信息', exact: true })
+      .click()
+    const startUseDate = page.locator('[data-art-form-item-key="startUseDate"] input')
+    await expect(startUseDate).toBeVisible()
+    await startUseDate.fill(record.startUseDate)
+    await startUseDate.press('Tab')
+    const remark = page.locator('[data-art-form-item-key="remark"] textarea')
+    await remark.fill(record.remark)
+    const submit = page.getByRole('button', { name: '保存并提交审核', exact: true })
+    if (writeFailure) {
+      const primary = saveOnly
+        ? page.getByRole('button', { name: editingWrite ? '保存资料' : '保存草稿', exact: true })
+        : submit
+      const endpoint =
+        writeFailure === 'create'
+          ? '/rpc/vms_create_vehicle_archive_secure'
+          : '/rpc/vms_update_vehicle_archive_secure'
+      let rejectedWrite: ReturnType<typeof page.waitForResponse>
+      try {
+        await expect(primary).toBeEnabled()
+        await primary.focus()
+        await page.keyboard.press('Enter')
+        await expect
+          .poll(() => (writeFailure === 'create' ? creates.length : updates.length))
+          .toBe(1)
+        await expect(primary).toBeDisabled()
+        await expect(plate).toBeDisabled()
+        await expect(remark).toBeDisabled()
+      } finally {
+        rejectedWrite = page.waitForResponse(
+          (response) => response.url().endsWith(endpoint) && response.status() === 400
+        )
+        heldWrite.resolve()
+      }
+      await (await rejectedWrite).finished()
+      await expect(page.locator('.el-message--error')).toHaveCount(1)
+      await expect(page.locator('.el-message--error')).toHaveText(writeError)
+      await expect(primary).toBeEnabled()
+      await expect(plate).toBeEnabled()
+      await expect(plate).toHaveValue(record.plateNo)
+      await expect(remark).toBeEnabled()
+      await expect(remark).toHaveValue(record.remark)
+      expect(approvals).toEqual([])
+      await expect(primary).toBeFocused()
+      await page.screenshot({ path: info.outputPath(`vehicle-${writeFailure}-error-retry.png`) })
+      await page.keyboard.press('Enter')
+      await expect(page.getByText('车辆档案列表', { exact: true })).toBeVisible()
+      const expectedPayload = {
+        plate_no: record.plateNo,
+        vehicle_type_profile_id: profileId,
+        remark: record.remark
+      }
+      if (writeFailure === 'create') {
+        expect(creates).toHaveLength(2)
+        expect(successfulCreates).toBe(1)
+        expect(creates[0]).toEqual(creates[1])
+        expect(creates[0]).toMatchObject(expectedPayload)
+        expect(creates[0].tenant_id).toBeUndefined()
+        expect(updates).toEqual([])
+        expect(approvals).toEqual([])
+      } else {
+        expect(creates).toEqual([])
+        expect(updates).toHaveLength(2)
+        expect(updates[0]).toEqual(updates[1])
+        expect(updates[0]).toMatchObject({ p_id: savedId, p_payload: expectedPayload })
+        expect(approvals).toHaveLength(saveOnly ? 0 : 1)
+        if (!saveOnly)
+          expect(approvals[0]).toMatchObject({
+            p_business_type: 'vehicle_archive',
+            p_business_id: savedId
+          })
+      }
+      return
+    }
+    let completion: ReturnType<typeof page.waitForResponse>
+    try {
+      await submit.click()
+      await expect.poll(() => approvals.length).toBe(1)
+      expect(creates).toHaveLength(1)
+      await expect(submit).toHaveClass(/\bis-loading\b/)
+      const draft = page.getByRole('button', { name: '保存草稿', exact: true })
+      await expect(draft).toBeDisabled()
+      await expect(draft).not.toHaveClass(/\bis-loading\b/)
+      await expect.soft(plate).toBeDisabled()
+      await expect.soft(remark).toBeDisabled()
+      if (leaveOutcome) {
+        await page.getByRole('button', { name: '返回', exact: true }).click()
+        await expect(page.getByText('车辆档案列表', { exact: true })).toBeVisible()
+      }
+    } finally {
+      completion = page.waitForResponse(
+        (response) =>
+          response.url().endsWith('/rpc/start_workflow') &&
+          response.status() === (leaveOutcome === 'success' ? 200 : 400)
+      )
+      heldApproval.resolve()
+    }
+    await (await completion).finished()
+    if (leaveOutcome) {
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          )
+      )
+      await page.screenshot({ path: info.outputPath(`vehicle-left-approval-${leaveOutcome}.png`) })
+      await expect(page.getByText('车辆档案列表', { exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: '编辑车辆档案', exact: true })).toHaveCount(0)
+      await expect(page.getByText(/车辆档案已保存，审批未发起/)).toHaveCount(0)
+      expect(detailReads).toEqual([])
+      expect(updates).toEqual([])
+      expect(creates).toHaveLength(1)
+      expect(creates[0]).toMatchObject({
+        plate_no: record.plateNo,
+        vehicle_type_profile_id: profileId,
+        remark: record.remark
+      })
+      expect(creates[0].tenant_id).toBeUndefined()
+      expect(approvals).toHaveLength(1)
+      expect(approvals[0]).toMatchObject({
+        p_business_type: 'vehicle_archive',
+        p_business_id: savedId
+      })
+      return
+    }
+    await expect(page.getByRole('heading', { name: '编辑车辆档案', exact: true })).toBeVisible()
+    await expect(plate).toHaveValue(record.plateNo)
+    await expect(remark).toHaveValue(record.remark)
+    await expect(page.getByRole('button', { name: /半挂车.*13 米.*参选/ })).toBeVisible()
+    for (const key of ['specLengthM', 'volumeM3', 'loadTons'] as const) {
+      await expect(page.locator(`[data-art-form-item-key="${key}"] input`)).toHaveValue(
+        String(record[key])
+      )
+    }
+    expect(detailReads).toEqual([savedId])
+    const savedDraftFeedback = await page
+      .getByText(/已保存.*审批(?:未发起|未成功|发起失败|失败)/)
+      .first()
+      .isVisible()
+    await expect(page.locator('.el-message--error')).toHaveCount(0)
+    await expect(page.locator('.el-message--warning')).toHaveCount(1)
+    if (canEdit) {
+      await expect(submit).toBeEnabled()
+      await expect(page.getByRole('button', { name: '保存资料', exact: true })).toBeEnabled()
+    } else {
+      await expect(submit).toHaveCount(0)
+      await expect(page.getByRole('button', { name: /^(保存草稿|保存资料)$/ })).toHaveCount(0)
+    }
+    await page.screenshot({ path: info.outputPath('vehicle-created-approval-retry.png') })
+    if (canEdit) {
+      await submit.click()
+      await expect(page.getByText('车辆档案列表', { exact: true })).toBeVisible()
+    } else {
+      expect(updates).toEqual([])
+    }
+    expect(creates).toHaveLength(1)
+    expect(creates[0]).toMatchObject({
+      plate_no: record.plateNo,
+      vehicle_type_profile_id: profileId
+    })
+    expect(creates[0].tenant_id).toBeUndefined()
+    expect(approvals.map((approval) => [approval.p_business_type, approval.p_business_id])).toEqual(
+      [['vehicle_archive', savedId], ...(canEdit ? [['vehicle_archive', savedId]] : [])]
+    )
+    for (const update of updates) {
+      expect(update.p_id).toBe(savedId)
+      expect(update.p_payload.plate_no).toBe(record.plateNo)
+    }
+    expect(savedDraftFeedback).toBe(true)
+  })
+}
 
 test('新增车辆显示挂车管理保存提示并保留返回后的基础信息', async ({ page }) => {
   await page.route('**/rest/v1/rpc/vms_list_asset_company_options_secure', (route) =>

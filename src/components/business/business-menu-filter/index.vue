@@ -60,6 +60,7 @@
 
     <ElTree
       ref="treeRef"
+      aria-label="业务菜单树"
       :data="data"
       node-key="id"
       :props="treeProps"
@@ -68,6 +69,7 @@
       highlight-current
       :filter-node-method="filterNode"
       @node-click="handleNodeClick"
+      @keydown.capture="handleSelectableTreeKeydown"
     >
       <template #default="{ data }">
         <div class="business-menu-filter__node">
@@ -116,6 +118,7 @@
 <script setup lang="ts" generic="T extends AppRouteRecord">
   import { computed, nextTick, ref, watch } from 'vue'
   import { ElTree, type TreeNodeData } from 'element-plus'
+  import { handleSelectableTreeKeydown } from '@/utils/ui/selection-tree-keyboard'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'

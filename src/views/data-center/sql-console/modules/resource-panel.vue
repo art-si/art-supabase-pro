@@ -213,10 +213,11 @@
                     size="compact"
                   /> </div></ElScrollbar
             ></ArtAsyncState>
-            <div v-else class="sql-resource-panel__tree-viewport">
+            <div v-else ref="resourceTreeViewport" class="sql-resource-panel__tree-viewport">
               <ElAutoResizer
                 ><template #default="{ height }">
                   <ElTreeV2
+                    ref="resourceTreeRef"
                     :data="resourceNodes"
                     :height="Math.max(1, height)"
                     :item-size="TREE_ROW_HEIGHT"
@@ -234,23 +235,28 @@
                       <div
                         class="sql-resource-panel__node"
                         :title="[data.label, data.description].filter(Boolean).join('\n')"
+                        @focusin="setFocusedKey(data.key)"
                         @keydown="nodeKeydown($event, data)"
                         @contextmenu.prevent.stop="contextMenu($event, data)"
                       >
                         <span
-                          v-if="data.kind === 'detail' && !data.retryParent"
+                          v-if="!hasResourceControl(data)"
                           class="text-xs text-g-600"
                           role="status"
                           >{{ data.label }}</span
                         >
                         <button
                           v-else
+                          :ref="(element) => registerNode(data.key, element)"
                           type="button"
                           class="sql-resource-panel__label art-icon-label min-w-0 flex-1 text-left"
                           :aria-label="`定位对象 ${data.label}`"
+                          :data-virtual-tree-key="data.key"
+                          :tabindex="resourceNodeTabIndex(data.key)"
                           @click="retryNode($event, data)"
                           @dblclick.stop="activate(data)"
                           @keydown.enter.prevent.stop="activate(data)"
+                          @keydown="handleResourceNavigation($event, data.key)"
                         >
                           <ArtSvgIcon :icon="data.icon" class="shrink-0 text-g-600" /><span
                             class="truncate"
@@ -271,6 +277,7 @@
                         </span>
                         <ArtIconButton
                           v-if="data.kind === 'table'"
+                          :tabindex="resourceNodeTabIndex(data.key)"
                           size="small"
                           :icon="isPinned(data) ? 'ri:star-fill' : 'ri:star-line'"
                           :label="`${isPinned(data) ? '取消收藏' : '收藏'}对象 ${data.name}`"
@@ -278,6 +285,7 @@
                         />
                         <ArtIconButton
                           v-if="data.kind === 'table'"
+                          :tabindex="resourceNodeTabIndex(data.key)"
                           size="small"
                           icon="ri:information-line"
                           :label="`查看 ${data.label} 结构`"
@@ -285,6 +293,7 @@
                         />
                         <ArtIconButton
                           v-if="data.kind === 'column' || data.kind === 'function'"
+                          :tabindex="resourceNodeTabIndex(data.key)"
                           size="small"
                           icon="ri:corner-down-left-line"
                           :label="`插入 ${data.label}`"
@@ -292,6 +301,7 @@
                         />
                         <ArtIconButton
                           v-if="data.kind === 'index'"
+                          :tabindex="resourceNodeTabIndex(data.key)"
                           size="small"
                           icon="ri:code-s-slash-line"
                           :label="`查看索引 ${data.label}`"
@@ -299,6 +309,7 @@
                         />
                         <ArtIconButton
                           v-if="data.kind === 'foreign'"
+                          :tabindex="resourceNodeTabIndex(data.key)"
                           size="small"
                           icon="ri:external-link-line"
                           :label="`定位关联表 ${data.target?.name}`"
@@ -306,6 +317,7 @@
                         />
                         <ArtIconButton
                           v-if="hasMenu(data)"
+                          :tabindex="resourceNodeTabIndex(data.key)"
                           size="small"
                           icon="ri:more-2-fill"
                           :label="`更多操作 ${data.label}`"
@@ -437,9 +449,11 @@
 </template>
 <script setup lang="ts">
   import { computed, ref, watch, shallowRef, reactive, onBeforeUnmount, useId } from 'vue'
-  import { ElMessage, ElTreeV2 } from 'element-plus'
+  import { ElMessage, ElTreeV2, type TreeV2Instance } from 'element-plus'
   import { ElAutoResizer } from 'element-plus/es/components/table-v2/index.mjs'
+  import { useVirtualTreeTabStop } from '@/hooks/core/useVirtualTreeTabStop'
   import { toObjectRecord } from '@/utils/record'
+  import { focusVirtualTreeNode } from '@/utils/ui/virtual-tree-focus'
   import ArtMenuRight, {
     type MenuItemType
   } from '@/components/core/others/art-menu-right/index.vue'
@@ -574,6 +588,8 @@
   const loadingKeys = reactive(new Set<string>())
   const expandedKeys = ref<string[]>([])
   const currentKey = ref<string>()
+  const resourceTreeRef = ref<TreeV2Instance>()
+  const resourceTreeViewport = ref<HTMLElement>()
   let treeRevision = 0
   let disposed = false
   onBeforeUnmount(() => {
@@ -933,6 +949,88 @@
       .filter((schema) => showSystem.value || !isHiddenSqlSchema(schema))
       .map((schema) => attachChildren(make('schema', schema, undefined, 'ri:database-line')))
   )
+  const hasResourceControl = (node: ResourceNode): boolean =>
+    node.kind !== 'detail' || !!node.retryParent
+
+  const visibleResourceKeys = computed(() => {
+    const expanded = new Set(expandedKeys.value)
+    const keys: string[] = []
+    const visit = (nodes: ResourceNode[]) => {
+      for (const node of nodes) {
+        if (hasResourceControl(node)) keys.push(node.key)
+        if (node.children && expanded.has(node.key)) visit(node.children)
+      }
+    }
+    visit(resourceNodes.value)
+    return keys
+  })
+  const { tabStopKey, registerNode, setFocusedKey } = useVirtualTreeTabStop(
+    () => visibleResourceKeys.value
+  )
+  const resourceNodeTabIndex = (key: string) => (tabStopKey.value === key ? 0 : -1)
+
+  const handleResourceNavigation = async (event: KeyboardEvent, key: string): Promise<void> => {
+    const tree = resourceTreeRef.value
+    if (
+      !tree ||
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
+    )
+      return
+
+    const keys = visibleResourceKeys.value
+    const index = keys.indexOf(key)
+    if (index === -1) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    const node = tree.getNode(key)
+    let targetKey: string | undefined
+    switch (event.key) {
+      case 'ArrowDown':
+        targetKey = keys[index + 1]
+        break
+      case 'ArrowUp':
+        targetKey = keys[index - 1]
+        break
+      case 'Home':
+        targetKey = keys[0]
+        break
+      case 'End':
+        targetKey = keys.at(-1)
+        break
+      case 'ArrowLeft':
+        if (node && !node.isLeaf && node.expanded) tree.collapseNode(node)
+        else if (node?.parent) targetKey = String(node.parent.key)
+        break
+      case 'ArrowRight':
+        if (node && !node.isLeaf) {
+          const next = keys[index + 1]
+          if (!node.expanded) tree.expandNode(node)
+          else if (node.children?.some((child) => child.key === next)) targetKey = next
+        }
+        break
+    }
+    if (!targetKey || targetKey === key) return
+
+    const revision = treeRevision
+    await focusVirtualTreeNode({
+      tree,
+      viewport: resourceTreeViewport.value,
+      key: targetKey,
+      isCurrent: () =>
+        revision === treeRevision &&
+        resourceTreeRef.value === tree &&
+        activeGroup.value === 'objects' &&
+        !keyword.value.trim()
+    })
+  }
+
   const TREE_ROW_HEIGHT = 32
   // Element Plus erases custom node fields. Every value entering this adapter is made by make().
   const resourceData = (value: unknown): ResourceNode | undefined => {
@@ -1201,8 +1299,7 @@
         cursor: pointer;
 
         &:focus-visible {
-          outline: 2px solid var(--el-color-primary);
-          outline-offset: -2px;
+          outline: none;
         }
       }
 
@@ -1233,6 +1330,11 @@
       > .sql-resource-panel__label {
         justify-content: flex-start;
         height: 30px;
+
+        &:focus-visible {
+          outline: 2px solid var(--el-color-primary);
+          outline-offset: -2px;
+        }
       }
     }
 
@@ -1273,6 +1375,11 @@
 
       .el-tree-node__content {
         padding-right: 8px;
+
+        &:has(.sql-resource-panel__label:focus-visible) {
+          outline: 2px solid var(--el-color-primary);
+          outline-offset: -2px;
+        }
       }
     }
   }

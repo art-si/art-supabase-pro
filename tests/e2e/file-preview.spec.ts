@@ -1,10 +1,13 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import ExcelJS from 'exceljs'
 import { readFile } from 'node:fs/promises'
 import { prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(180_000)
+
+const previewHeading = (page: Page) =>
+  page.locator('.art-file-viewer-page__header').getByRole('heading', { level: 1 })
 
 test('production PDF preview decodes JPEG 2000 without WebAssembly', async ({ context, page }) => {
   test.skip(process.env.E2E_FILE_VIEWER_PRODUCTION !== 'true', '需提供生产构建的 E2E_BASE_URL')
@@ -169,13 +172,45 @@ test('file preview renders an image and an expired-link state', async ({ page },
   })
 
   await page.goto('#/file-preview?key=sample-image', { waitUntil: 'domcontentloaded' })
-  await expect(page.locator('.art-file-viewer-page__title strong')).toHaveText('安全阀照片.png', {
+  await expect(previewHeading(page)).toHaveText('安全阀照片.png', {
     timeout: 60_000
   })
   await expect(page.locator('.art-file-viewer-page__body img').first()).toBeVisible()
   await expect(page.locator('.art-file-viewer-page__body')).not.toContainText('无法打开文件预览')
   expect(fullPresetRequests).toHaveLength(0)
   await page.screenshot({ path: testInfo.outputPath('file-preview.png') })
+
+  const preview = page.locator('.art-file-viewer-page__body')
+  await expect(preview).toHaveAttribute('aria-busy', 'false')
+  const download = preview.getByRole('button', { name: '下载', exact: true })
+  if (!(await download.isVisible()))
+    await preview.getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(download).toBeEnabled()
+  await page.evaluate(() => {
+    const nativeCreateObjectURL = URL.createObjectURL
+    ;(window as Window & { __restorePreviewDownload?: () => void }).__restorePreviewDownload =
+      () => {
+        URL.createObjectURL = nativeCreateObjectURL
+      }
+    URL.createObjectURL = () => {
+      sessionStorage.setItem('preview-download-blocked', '1')
+      throw new DOMException('浏览器已阻止测试附件下载', 'SecurityError')
+    }
+  })
+  try {
+    await download.click()
+    await expect
+      .poll(() => page.evaluate(() => sessionStorage.getItem('preview-download-blocked')))
+      .toBe('1')
+    await expect(preview.getByText(/下载失败/).first()).toBeVisible()
+    await expect(preview.getByText('无法打开文件预览', { exact: true })).toHaveCount(0)
+    await expect(preview.getByRole('button', { name: '重新加载', exact: true })).toHaveCount(0)
+    await expect(preview).toHaveAttribute('aria-busy', 'false')
+  } finally {
+    await page.evaluate(() =>
+      (window as Window & { __restorePreviewDownload?: () => void }).__restorePreviewDownload?.()
+    )
+  }
 
   await page.goto('#/file-preview?key=sample-text', { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.art-file-viewer-page__body')).toContainText('文件预览按需加载验证')
@@ -319,13 +354,45 @@ test('file preview 丢弃旧缓存危险地址并可读取相对与本源 Blob �
   }
   const blobUrl = await page.evaluate(() => sessionStorage.getItem('file-preview-fixture-blob'))
   expect(blobUrl).toMatch(/^blob:http:\/\/127\.0\.0\.1:3006\//)
-  await expect(page.locator('.art-file-viewer-page__title strong')).toHaveText('附件')
+  await expect(previewHeading(page)).toHaveText('附件')
   expect(presetRequests).toEqual([])
   await page.screenshot({ path: info.outputPath('file-preview-safe-blob.png') })
 })
 
-test('本源 Blob 读取失败只呈现可重试错误，重试后真实图片恢复', async ({ page }, info) => {
-  await page.setViewportSize({ width: 570, height: 900 })
+test('窄屏文件预览支持查看被省略的完整文件名', async ({ page }, info) => {
+  const name = '华东区域零部件采购合同补充协议暨年度运输费用核验回执电子原件20261116最终签收版.png'
+  await page.setViewportSize({ width: 320, height: 570 })
+  await page.addInitScript((filename) => {
+    localStorage.setItem(
+      'art-file-preview:long-file-name',
+      JSON.stringify({
+        file: {
+          url: new URL('/tests/e2e/fixtures/preview-safe.png', location.href).href,
+          name: filename,
+          fileType: 'png'
+        },
+        expiresAt: Date.now() + 60_000
+      })
+    )
+  }, name)
+  await page.goto('#/file-preview?key=long-file-name', { waitUntil: 'domcontentloaded' })
+  const title = page.locator('.art-file-viewer-page__header').getByText(name, { exact: true })
+  await expect(title).toBeVisible()
+  await expect(title).toHaveCSS('white-space', 'nowrap')
+  expect(await title.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+  await title.press('Enter')
+  const fullName = page.getByRole('tooltip').filter({ hasText: name })
+  await expect(fullName).toBeVisible()
+  await expect(fullName).toBeInViewport({ ratio: 0.98 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
+  await page.screenshot({ path: info.outputPath('file-preview-long-name-320.png') })
+  await title.press('Escape')
+  await expect(fullName).toBeHidden()
+  await expect(title).toBeFocused()
+})
+
+test('本源 Blob 读取失败只呈现可重试错误，键盘重试后真实图片恢复', async ({ page }, info) => {
+  await page.setViewportSize({ width: 320, height: 430 })
   await prepareAppearance(page, { theme: 'dark', boxBorderMode: false })
   await page.addInitScript(() => {
     const bytes = Uint8Array.from(
@@ -348,7 +415,7 @@ test('本源 Blob 读取失败只呈现可重试错误，重试后真实图片�
       if (String(input).startsWith('blob:')) {
         attempts++
         sessionStorage.setItem('blob-retry-attempts', String(attempts))
-        if (attempts === 1) return Promise.reject(new TypeError('fixture blob read failed'))
+        if (attempts <= 2) return Promise.reject(new TypeError('fixture blob read failed'))
       }
       return nativeFetch(input, init)
     }
@@ -358,20 +425,26 @@ test('本源 Blob 读取失败只呈现可重试错误，重试后真实图片�
   await expect(page.getByText('本地附件读取失败，请从附件名称重新打开后重试')).toBeVisible()
   await expect(page.getByRole('button', { name: '重新加载' })).toBeVisible()
   await expect(page.locator('.el-message')).toHaveCount(0)
-  await page.screenshot({ path: info.outputPath('file-preview-blob-error-dark-570.png') })
+  await page.screenshot({ path: info.outputPath('file-preview-blob-error-dark-320.png') })
 
-  await page.getByRole('button', { name: '重新加载' }).click()
-  const image = page.locator('.art-file-viewer-page__body img').first()
+  const retry = page.getByRole('button', { name: '重新加载' })
+  await retry.press('Enter')
+  await expect(retry).toBeFocused()
+  expect(await page.evaluate(() => sessionStorage.getItem('blob-retry-attempts'))).toBe('2')
+  await page.keyboard.press('Enter')
+  const preview = page.locator('.art-file-viewer-page__body')
+  const image = preview.locator('img').first()
   await expect(image).toBeVisible()
   await expect
     .poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth))
     .toBeGreaterThan(0)
   await expect(page.getByText('无法打开文件预览')).toHaveCount(0)
-  expect(await page.evaluate(() => sessionStorage.getItem('blob-retry-attempts'))).toBe('2')
+  await expect(preview).toBeFocused()
+  expect(await page.evaluate(() => sessionStorage.getItem('blob-retry-attempts'))).toBe('3')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true
   )
-  await page.screenshot({ path: info.outputPath('file-preview-blob-recovered-dark-570.png') })
+  await page.screenshot({ path: info.outputPath('file-preview-blob-recovered-dark-320.png') })
 })
 
 test('旧 Blob 请求晚于切换的预览结果不会覆盖当前图片', async ({ page }) => {
@@ -429,7 +502,7 @@ test('旧 Blob 请求晚于切换的预览结果不会覆盖当前图片', async
     .poll(() => page.evaluate(() => sessionStorage.getItem('stale-blob-started')))
     .toBe('1')
   await page.goto('#/file-preview?key=current-relative', { waitUntil: 'domcontentloaded' })
-  await expect(page.locator('.art-file-viewer-page__title strong')).toHaveText('当前图片.png')
+  await expect(previewHeading(page)).toHaveText('当前图片.png')
   const current = page.locator('.art-file-viewer-page__body img').first()
   await expect(current).toBeVisible()
   await expect
@@ -444,12 +517,86 @@ test('旧 Blob 请求晚于切换的预览结果不会覆盖当前图片', async
   expect(await page.evaluate(() => sessionStorage.getItem('stale-blob-signal-aborted'))).toBe(
     'true'
   )
-  await expect(page.locator('.art-file-viewer-page__title strong')).toHaveText('当前图片.png')
+  await expect(previewHeading(page)).toHaveText('当前图片.png')
   await expect(page.getByText('无法打开文件预览')).toHaveCount(0)
   await expect(current).toBeVisible()
   await expect
     .poll(() => current.evaluate((element) => (element as HTMLImageElement).naturalWidth))
     .toBe(1)
+})
+
+test('旧远程请求失败晚于新图片完成时不覆盖当前预览', async ({ page }, info) => {
+  await page.route('**/file-preview-old-remote.png', (route) =>
+    route.fulfill({ status: 403, contentType: 'text/plain', body: 'Old file access denied' })
+  )
+  await page.addInitScript(() => {
+    const expiresAt = Date.now() + 120_000
+    for (const [key, file] of Object.entries({
+      'remote-stale': {
+        url: new URL('/file-preview-old-remote.png', location.href).href,
+        name: '旧远程图片.png',
+        fileType: 'png'
+      },
+      'remote-current': {
+        url: new URL('/tests/e2e/fixtures/preview-safe.png', location.href).href,
+        name: '当前远程图片.png',
+        fileType: 'png'
+      }
+    }))
+      localStorage.setItem(`art-file-preview:${key}`, JSON.stringify({ file, expiresAt }))
+
+    const nativeFetch = window.fetch.bind(window)
+    window.fetch = async (input, init) => {
+      const response = await nativeFetch(input, init)
+      if (!String(input).endsWith('/file-preview-old-remote.png')) return response
+      sessionStorage.setItem('stale-remote-status', String(response.status))
+      sessionStorage.setItem('stale-remote-has-signal', String(Boolean(init?.signal)))
+      return new Promise<Response>((resolve) => {
+        ;(window as Window & { __releaseStaleRemote?: () => Promise<void> }).__releaseStaleRemote =
+          async () => {
+            sessionStorage.setItem('stale-remote-signal-aborted', String(init?.signal?.aborted))
+            resolve(response)
+            await new Promise<void>((done) =>
+              requestAnimationFrame(() => requestAnimationFrame(() => done()))
+            )
+            sessionStorage.setItem('stale-remote-released', '1')
+          }
+      })
+    }
+  })
+
+  await page.goto('#/file-preview?key=remote-stale', { waitUntil: 'domcontentloaded' })
+  await expect
+    .poll(() => page.evaluate(() => sessionStorage.getItem('stale-remote-status')))
+    .toBe('403')
+  const preview = page.locator('.art-file-viewer-page__body')
+  await expect(preview).toHaveAttribute('aria-busy', 'true')
+
+  await page.goto('#/file-preview?key=remote-current', { waitUntil: 'domcontentloaded' })
+  await expect(previewHeading(page)).toHaveText('当前远程图片.png')
+  const current = preview.locator('img').first()
+  await expect(current).toBeVisible()
+  await expect.poll(() => current.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1)
+  await expect(preview).toHaveAttribute('aria-busy', 'false')
+  await page.evaluate(() =>
+    (window as Window & { __releaseStaleRemote?: () => Promise<void> }).__releaseStaleRemote?.()
+  )
+  await expect
+    .poll(() => page.evaluate(() => sessionStorage.getItem('stale-remote-released')))
+    .toBe('1')
+  if (await page.evaluate(() => sessionStorage.getItem('stale-remote-has-signal') === 'true'))
+    expect(await page.evaluate(() => sessionStorage.getItem('stale-remote-signal-aborted'))).toBe(
+      'true'
+    )
+  await expect(previewHeading(page)).toHaveText('当前远程图片.png')
+  await expect(preview.getByText('无法打开文件预览', { exact: true })).toHaveCount(0)
+  await expect(preview.getByRole('button', { name: '重新加载', exact: true })).toHaveCount(0)
+  await expect(current).toBeVisible()
+  await expect.poll(() => current.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1)
+  await expect(preview).toHaveAttribute('aria-busy', 'false')
+  await page.screenshot({
+    path: info.outputPath('file-preview-remote-current-after-old-error.png')
+  })
 })
 
 test('代码附件保留高亮原文，HTML 可从沙箱切回源代码', async ({ page }) => {

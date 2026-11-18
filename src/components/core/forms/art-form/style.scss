@@ -1,4 +1,21 @@
+@mixin compact-select-tags {
+  gap: var(--art-space-1);
+  padding-inline: var(--art-space-2);
+
+  .el-select__selection {
+    gap: var(--art-space-1);
+  }
+
+  .el-tag {
+    --art-tag-padding-inline: var(--art-space-1);
+  }
+}
+
 .art-form {
+  :deep(.art-form__select--compact-tags > .el-select__wrapper) {
+    @include compact-select-tags;
+  }
+
   &:not(.art-form--custom-layout) {
     min-width: 0;
     max-width: 100%;
@@ -18,6 +35,11 @@
       height: 104px;
       min-height: 104px !important;
     }
+  }
+
+  // 弹层页签的阴影和长表单溢出交由外层滚动容器承接。
+  &:has(> .el-form > .art-form__tabs--overlay) {
+    overflow: visible;
   }
 
   &--custom-layout {
@@ -54,15 +76,20 @@
     }
   }
 
-  &--dialog-focus {
-    :deep(.el-form-item__label) {
+  &--overlay-focus {
+    :deep(.el-form-item__label:has(> .art-form-item__label--compact)) {
       min-width: 0;
-      white-space: nowrap;
     }
 
-    .art-form-item__label {
+    .art-form-item__label--compact {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
       max-width: 100%;
-      white-space: nowrap;
+
+      .art-form-item__help-icon {
+        flex: none;
+      }
     }
 
     .art-form-item__label-text {
@@ -76,14 +103,82 @@
   &.art-search-bar {
     padding: var(--art-space-4) var(--art-section-padding) 0;
 
-    :deep(.el-row) {
+    .art-form__field-row {
+      align-items: center;
       width: 100%;
       margin-right: 0 !important;
       margin-left: 0 !important;
     }
 
-    :deep(.el-col) {
-      min-width: 0;
+    :deep(> .el-form--label-top .art-form__field-row) {
+      align-items: flex-end;
+    }
+
+    .art-form__field-row :deep(> .el-col) {
+      min-inline-size: min(
+        100%,
+        calc(var(--art-query-column-chrome, 0px) + var(--art-query-editor-min, 0px))
+      );
+    }
+
+    .art-form__field-row :deep(> .el-col > .el-form-item) {
+      margin-bottom: var(--art-space-3);
+    }
+
+    .art-form__field-row
+      :deep(
+        > .el-col
+          > :is(.el-form-item--label-left, .el-form-item--label-right):not(
+            :has(.art-form-item__description, .el-form-item__error)
+          )
+      ) {
+      align-items: center;
+    }
+
+    // 嵌入录入表单的查询栏仍使用自身的行内标签布局。
+    .art-form__field-row
+      :deep(
+        > .el-col > :is(.el-form-item--label-left, .el-form-item--label-right) .el-form-item__label
+      ) {
+      display: flex;
+      align-items: center;
+      padding-inline-end: var(--art-space-2);
+      margin-bottom: 0;
+    }
+
+    .art-form__field-row :deep(> .el-col > .el-form-item--label-right .el-form-item__label) {
+      justify-content: flex-end;
+      text-align: right;
+    }
+
+    .art-form-item__label > span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .art-form__actions-column {
+      // 按整组操作的实际宽度排版；本行空间不足时整组换行。
+      flex: 1 0 auto;
+      max-width: 100%;
+    }
+
+    .art-form__actions {
+      gap: var(--art-space-2);
+      align-items: center;
+      margin-bottom: var(--art-space-3);
+    }
+
+    .art-form__action-buttons {
+      flex: none;
+
+      :deep(.el-button) {
+        padding-inline: var(--art-space-3);
+      }
+
+      :deep(.el-button + .el-button) {
+        margin-left: 0;
+      }
     }
 
     :deep(.el-form-item__content),
@@ -98,8 +193,167 @@
       max-width: 100%;
     }
 
+    :deep(.art-form-item__content:has(> :is(.el-input, .el-select))) {
+      container: art-query-input / inline-size;
+    }
+
+    @container art-query-input (width < 160px) {
+      :deep(.el-input > .el-input__wrapper) {
+        padding-inline: var(--art-space-2);
+      }
+    }
+
+    @container art-query-input (width < 180px) {
+      :deep(.el-select__wrapper) {
+        @include compact-select-tags;
+      }
+    }
+
+    :deep(.art-form-item__content:has(> :is(.el-radio-group, .el-checkbox-group, .el-segmented))) {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      container: art-query-choices / inline-size;
+    }
+
+    :deep(.art-form-item__content > :is(.el-radio-group, .el-checkbox-group)) {
+      max-inline-size: 100%;
+    }
+
+    :deep(.art-form-item__content:has(> .el-segmented)) {
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      scrollbar-width: thin;
+    }
+
+    :deep(.art-form-item__content > .el-segmented) {
+      min-inline-size: max-content;
+    }
+
+    :deep(:is(.el-radio-group, .el-checkbox-group):has(> :is(.el-radio, .el-checkbox))) {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0 var(--art-space-3);
+    }
+
+    :deep(:is(.el-radio-group, .el-checkbox-group) > :is(.el-radio, .el-checkbox)) {
+      max-inline-size: 100%;
+      margin-inline-end: 0;
+    }
+
+    @container art-query-choices (width < 224px) {
+      :deep(.el-segmented__item) {
+        padding-inline: var(--art-space-1);
+      }
+
+      // 独立边框避免换行后仍使用仅适用于单排的首尾圆角。
+      :deep(
+        :is(.el-radio-group, .el-checkbox-group):has(> :is(.el-radio-button, .el-checkbox-button))
+      ) {
+        gap: var(--art-space-1) var(--art-space-2);
+
+        > :is(.el-radio-button, .el-checkbox-button) {
+          max-inline-size: 100%;
+
+          :is(.el-radio-button__inner, .el-checkbox-button__inner) {
+            max-inline-size: 100%;
+            padding-inline: var(--art-space-2);
+            border-radius: var(--el-border-radius-base);
+          }
+        }
+      }
+    }
+
     :deep(.el-range-input) {
       min-width: 0;
+    }
+
+    @container art-query-choices (width < 168px) {
+      :deep(.el-segmented__item) {
+        padding-inline: calc(var(--art-space-1) / 2);
+      }
+    }
+
+    // 日期、日期时间与月份的起止值长度不同，使用同一套布局规则，各自预留实际可读宽度。
+    @each $kind, $minimum, $stack-width in (daterange, 232px, 214px), (datetimerange, 352px, 332px),
+      (monthrange, 188px, 168px)
+    {
+      $editor: '.el-date-editor--#{$kind}';
+
+      .art-form__field-row :deep(> .el-col:has(> .el-form-item #{$editor})) {
+        --art-query-editor-min: #{$minimum};
+      }
+
+      :deep(.art-form-item__content:has(> #{$editor})) {
+        container: art-query-range / inline-size;
+      }
+
+      :deep(#{$editor} .el-range-input) {
+        flex: 1 1 0;
+        width: 0;
+      }
+
+      @container art-query-range (width < #{$minimum}) {
+        :deep(#{$editor}) {
+          padding-inline: var(--art-space-1);
+
+          .el-range-separator {
+            padding-inline: calc(var(--art-space-1) / 2);
+          }
+        }
+      }
+
+      @container art-query-range (width < #{$stack-width}) {
+        :deep(#{$editor}) {
+          display: grid;
+          grid-template-areas: 'calendar start clear' 'separator end clear';
+          grid-template-columns: auto minmax(0, 1fr) auto;
+          column-gap: var(--art-space-1);
+          height: auto;
+          padding-block: var(--art-space-1);
+
+          .el-range-input {
+            width: 100%;
+            height: 24px;
+            text-align: start;
+
+            &:first-of-type {
+              grid-area: start;
+            }
+
+            &:last-of-type {
+              grid-area: end;
+            }
+          }
+
+          .el-range__icon {
+            grid-area: calendar;
+            justify-self: center;
+          }
+
+          .el-range-separator {
+            grid-area: separator;
+            justify-self: center;
+            padding-inline: 0;
+          }
+
+          .el-range__close-icon {
+            grid-area: clear;
+            justify-self: center;
+          }
+        }
+      }
+    }
+
+    // 极窄分栏中把图标和分隔符放在两行之间，给完整时间留下编辑宽度。
+    @container art-query-range (width < 184px) {
+      :deep(.el-date-editor--datetimerange) {
+        grid-template-areas: 'start start start' 'calendar separator clear' 'end end end';
+
+        .el-range-separator {
+          line-height: var(--art-space-4);
+        }
+      }
     }
 
     :deep(.el-range-separator),
@@ -146,13 +400,12 @@
   }
 
   &__filter-toggle {
-    display: flex;
-    align-items: center;
+    flex: none;
     min-height: 32px;
     padding: 0 var(--art-space-1);
-    margin-left: 10px;
-    line-height: 32px;
+    font-size: 14px;
     color: var(--el-text-color-primary);
+    white-space: nowrap;
     cursor: pointer;
     background: transparent;
     border: 0;
@@ -169,28 +422,23 @@
       color: var(--theme-color);
       text-decoration: underline;
       text-underline-offset: 3px;
-      outline: none;
+      outline: 2px solid var(--theme-color);
+      outline-offset: -2px;
       background: transparent;
-      box-shadow: none;
     }
 
     span {
       font-size: 14px;
       user-select: none;
     }
-  }
 
-  &__filter-toggle-icon {
-    display: flex;
-    align-items: center;
-    margin-left: 4px;
-    font-size: 14px;
-    transition: transform 0.2s ease;
-  }
-
-  @media (width <= 768px) {
-    &.art-search-bar {
-      padding: var(--art-space-4) var(--art-section-padding) 0;
+    .art-form__filter-count {
+      padding: 2px var(--art-space-1);
+      font-size: 12px;
+      line-height: 1.25;
+      color: var(--el-text-color-primary);
+      background: var(--art-gray-200);
+      border-radius: var(--art-control-radius);
     }
   }
 }

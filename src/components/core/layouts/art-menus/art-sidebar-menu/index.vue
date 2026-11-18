@@ -106,29 +106,9 @@
           :show-timeout="50"
           :hide-timeout="50"
         >
-          <SidebarSubmenu
-            :list="menuList"
-            :isMobile="isMobileMode"
-            :theme="getMenuTheme"
-            @close="handleMenuClose"
-          />
+          <SidebarSubmenu :list="menuList" :theme="getMenuTheme" @close="handleMenuClose" />
         </ElMenu>
       </ElScrollbar>
-
-      <!-- 双列菜单右侧折叠按钮 -->
-      <button
-        v-if="isDualMenu"
-        type="button"
-        class="dual-menu-collapse-btn"
-        :aria-label="menuOpen ? '收起侧边菜单' : '展开侧边菜单'"
-        :aria-expanded="menuOpen"
-        @click="toggleMenuVisibility"
-      >
-        <ArtSvgIcon
-          class="text-g-500/70"
-          :icon="menuOpen ? 'ri:arrow-left-wide-fill' : 'ri:arrow-right-wide-fill'"
-        />
-      </button>
 
       <button
         type="button"
@@ -141,6 +121,18 @@
         }"
       ></button>
     </div>
+
+    <button
+      v-if="isDualMenu && menuList.length > 0"
+      type="button"
+      class="dual-menu-collapse-btn"
+      :aria-label="dualMenuToggleLabel"
+      :title="dualMenuToggleLabel"
+      :aria-expanded="menuOpen"
+      @click="toggleMenuVisibility"
+    >
+      <ArtSvgIcon :icon="menuOpen ? 'ri:arrow-left-wide-line' : 'ri:arrow-right-wide-line'" />
+    </button>
   </div>
 </template>
 
@@ -154,12 +146,11 @@
   import { formatMenuTitle } from '@/utils/router'
   import SidebarSubmenu from './widget/sidebar-submenu.vue'
   import { useCommon } from '@/hooks/core/useCommon'
-  import { useWindowSize, useTimeoutFn } from '@vueuse/core'
+  import { useMediaQuery, useTimeoutFn } from '@vueuse/core'
   import type { AppRouteRecord } from '@/types/router'
 
   defineOptions({ name: 'ArtSidebarMenu' })
 
-  const MOBILE_BREAKPOINT = 800
   const SIDEBAR_RESIZE_DURATION_MS = 170
   const MENU_CLOSE_WIDTH = MenuWidth.CLOSE
 
@@ -172,11 +163,7 @@
 
   // 组件内部状态
   const defaultOpenedMenus = ref<string[]>([])
-  const isMobileMode = ref(false)
   const showMobileModal = ref(false)
-
-  // 使用 VueUse 的窗口尺寸监听
-  const { width } = useWindowSize()
 
   // 菜单宽度相关
   const menuopenwidth = computed(() => getMenuOpenWidth.value)
@@ -192,9 +179,9 @@
       menuType.value === MenuTypeEnum.TOP_LEFT
   )
   const isDualMenu = computed(() => menuType.value === MenuTypeEnum.DUAL_MENU)
+  const dualMenuToggleLabel = computed(() => (menuOpen.value ? '收起侧边菜单' : '展开侧边菜单'))
 
-  // 移动端屏幕判断（使用 computed 避免重复计算）
-  const isMobileScreen = computed(() => width.value < MOBILE_BREAKPOINT)
+  const isMobileScreen = useMediaQuery('(max-width: 800px)')
 
   // 路由相关
   const firstLevelMenuPath = computed(() => resolveMenuRootPath(route.matched, route.path))
@@ -255,7 +242,7 @@
   /**
    * 延迟隐藏移动端模态框（使用 VueUse 的 useTimeoutFn）
    */
-  const { start: delayHideMobileModal } = useTimeoutFn(
+  const { start: delayHideMobileModal, stop: cancelHideMobileModal } = useTimeoutFn(
     () => {
       showMobileModal.value = false
     },
@@ -307,27 +294,13 @@
   const toggleMenuVisibility = (): void => {
     settingStore.rememberLocalAppearance()
     settingStore.setMenuOpen(!menuOpen.value)
-
-    // 移动端模态框控制逻辑
-    if (isMobileScreen.value) {
-      if (!menuOpen.value) {
-        // 菜单即将打开，立即显示模态框
-        showMobileModal.value = true
-      } else {
-        // 菜单即将关闭，延迟隐藏模态框确保动画完成
-        delayHideMobileModal()
-      }
-    }
   }
 
   /**
    * 处理菜单关闭（来自子组件）
    */
   const handleMenuClose = (): void => {
-    if (isMobileScreen.value) {
-      settingStore.setMenuOpen(false)
-      delayHideMobileModal()
-    }
+    if (isMobileScreen.value) settingStore.setMenuOpen(false)
   }
 
   /**
@@ -342,16 +315,11 @@
    * 监听窗口尺寸变化，自动处理移动端菜单
    */
   watch(
-    width,
-    (newWidth) => {
-      if (newWidth < MOBILE_BREAKPOINT) {
-        settingStore.setMenuOpen(false)
-        if (!menuOpen.value) {
-          showMobileModal.value = false
-        }
-      } else {
-        showMobileModal.value = false
-      }
+    isMobileScreen,
+    (isMobile) => {
+      cancelHideMobileModal()
+      showMobileModal.value = false
+      if (isMobile) settingStore.setMenuOpen(false)
     },
     { immediate: true }
   )
@@ -367,6 +335,7 @@
       // 小屏幕设备上，根据菜单状态控制模态框
       if (isMenuOpen) {
         // 菜单打开时立即显示模态框
+        cancelHideMobileModal()
         showMobileModal.value = true
       } else {
         // 菜单关闭时延迟隐藏模态框，确保动画完成

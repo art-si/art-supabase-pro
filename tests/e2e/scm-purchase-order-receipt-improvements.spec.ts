@@ -17,7 +17,10 @@ test.beforeEach(async ({ page }, info) => {
 })
 
 test('采购订单逐行批量操作、收料带入和参选布局', async ({ page }, testInfo) => {
-  const tenant = await prepareIsolatedSession(page)
+  const tenant = await prepareIsolatedSession(page, {
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    platformSuper: false
+  })
   await page.route('**/rest/v1/sys_dictionary?*', (route) => {
     const code = new URL(route.request().url()).searchParams.get('dict_type_table.code')
     return route.fulfill({
@@ -94,6 +97,31 @@ test('采购订单逐行批量操作、收料带入和参选布局', async ({ pa
       }
     ]
   })
+  await page.route('**/rest/v1/sys_menu?**', (route) => {
+    const name = new URL(route.request().url()).searchParams.get('name')
+    return name?.startsWith('in.')
+      ? route.fulfill({
+          json: [
+            { id: menu.id, name: menu.name },
+            { id: 'receipt-test', name: 'ScmReceiptNotice' }
+          ]
+        })
+      : route.fallback()
+  })
+  await page.route('**/rest/v1/mdm_document_type?**', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'order-type',
+          tenant_id: tenant.id,
+          menu_ids: [menu.id],
+          document_type_name: '标准采购订单',
+          document_type_code: 'ORDER',
+          is_default: true
+        }
+      ]
+    })
+  )
   const request = {
     id: 'request-1',
     tenant_id: tenant.id,
@@ -170,22 +198,60 @@ test('采购订单逐行批量操作、收料带入和参选布局', async ({ pa
     operations.push(route.request().postDataJSON())
     return route.fulfill({ json: 1 })
   })
-  await page.route('**/rest/v1/mdm_material?**', (route) =>
+  const categoryQueries: Array<{ categories: string; tenant: string | null }> = []
+  const pickerMaterial = {
+    id: 'picker-child-material',
+    tenant_id: tenant.id,
+    category_id: 'picker-child',
+    material_code: 'QA-PICK-CHILD',
+    material_name: '验收参选物料',
+    basic_unit: '件',
+    base_unit_id: 'unit-piece',
+    purchase_unit_id: 'unit-piece',
+    baseUnitRecord: { unit_name: '件' },
+    purchaseUnit: { unit_name: '件' },
+    unit_conversions: []
+  }
+  await page.route('**/rest/v1/mdm_material_category?**', (route) =>
     route.fulfill({
-      json: request.lines.map((line) => ({
-        id: line.material_id,
-        tenant_id: tenant.id,
-        material_code: line.material_code,
-        material_name: line.material_description,
-        basic_unit: '件',
-        base_unit_id: 'unit-piece',
-        purchase_unit_id: 'unit-piece',
-        baseUnitRecord: { unit_name: '件' },
-        purchaseUnit: { unit_name: '件' },
-        unit_conversions: []
-      }))
+      json: [
+        { id: 'picker-root', category_code: 'ROOT', category_name: '验收参选父分类' },
+        {
+          id: 'picker-child',
+          parent_id: 'picker-root',
+          category_code: 'CHILD',
+          category_name: '验收参选子分类'
+        }
+      ]
     })
   )
+  await page.route('**/rest/v1/mdm_material?**', (route) => {
+    const params = new URL(route.request().url()).searchParams
+    const categories = params.get('category_id')
+    if (categories) {
+      categoryQueries.push({ categories, tenant: params.get('tenant_id') })
+      return route.fulfill({
+        json: [pickerMaterial],
+        headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' }
+      })
+    }
+    const rows = request.lines.map((line) => ({
+      id: line.material_id,
+      tenant_id: tenant.id,
+      material_code: line.material_code,
+      material_name: line.material_description,
+      basic_unit: '件',
+      base_unit_id: 'unit-piece',
+      purchase_unit_id: 'unit-piece',
+      baseUnitRecord: { unit_name: '件' },
+      purchaseUnit: { unit_name: '件' },
+      unit_conversions: []
+    }))
+    return route.fulfill({
+      json: [...rows, pickerMaterial],
+      headers: { 'content-range': '0-2/3', 'access-control-expose-headers': 'content-range' }
+    })
+  })
   await page.route('**/rest/v1/mdm_project?**', (route) =>
     route.fulfill({
       json: [{ id: 'project', tenant_id: tenant.id, project_code: 'PJ', project_name: '测试项目' }]
@@ -281,8 +347,57 @@ test('采购订单逐行批量操作、收料带入和参选布局', async ({ pa
     animations: 'disabled'
   })
   await page.setViewportSize({ width: 1024, height: 768 })
+  const type = dialog.locator('[data-art-form-item-key="header.documentTypeId"]')
+  await expect(type.getByText('暂无可用类型', { exact: true })).toBeVisible()
+  const help = type.getByText('在 MDM 启用单据类型，并关联「收料通知单」。', {
+    exact: true
+  })
+  await expect(help).toBeInViewport()
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
   await page.screenshot({ path: testInfo.outputPath('receipt-narrow.png'), animations: 'disabled' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await help.scrollIntoViewIfNeeded()
+  await expect(help).toBeInViewport({ ratio: 1 })
+  expect(
+    await help.evaluate((element) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      return range.getClientRects().length
+    })
+  ).toBe(1)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true
+  )
+  await dialog.screenshot({
+    path: testInfo.outputPath('receipt-missing-type-390.png'),
+    animations: 'disabled'
+  })
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await dialog.getByRole('button', { name: '参选物料', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: '参选物料', exact: true })
+  await picker.getByText('验收参选父分类', { exact: true }).click()
+  await expect
+    .poll(() => categoryQueries.at(-1))
+    .toEqual({
+      categories: 'in.(picker-root,picker-child)',
+      tenant: `eq.${tenant.id}`
+    })
+  await picker
+    .getByRole('row')
+    .filter({ hasText: 'QA-PICK-CHILD' })
+    .getByRole('checkbox')
+    .locator('..')
+    .click()
+  await expect(picker.getByText('共 1 条', { exact: true })).toBeVisible()
+  await picker.screenshot({
+    path: testInfo.outputPath('receipt-material-parent-selection.png'),
+    animations: 'disabled'
+  })
+  await picker.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(dialog.getByText('QA-PICK-CHILD · 验收参选物料', { exact: true })).toBeVisible()
+  await expect(
+    dialog.getByRole('spinbutton', { name: '明细行号', exact: true }).last()
+  ).toHaveValue('20')
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   expect(errors).toEqual([])
 })

@@ -50,7 +50,7 @@ for (const kind of ['客户', '地址'] as const) {
         await expect(dialog.getByText('待确认', { exact: true })).toBeVisible()
         await dialog.screenshot({ path: info.outputPath(`${kind}-invalid-coordinate.png`) })
       }
-      await dialog.getByRole('button', { name: '确定', exact: true }).click()
+      await dialog.getByRole('button', { name: `保存${kind}`, exact: true }).click()
       try {
         await expect.poll(() => writes.length, { timeout: 8000 }).toBe(index + 1)
       } catch {

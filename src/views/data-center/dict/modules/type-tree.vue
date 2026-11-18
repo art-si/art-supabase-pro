@@ -36,7 +36,7 @@
       </div>
     </template>
 
-    <div class="dict-type-tree__viewport" :aria-busy="tree.loading">
+    <div ref="treeViewportRef" class="dict-type-tree__viewport" :aria-busy="tree.loading">
       <ArtOverlayLoading
         v-if="tree.loading"
         loading
@@ -86,12 +86,22 @@
                 @drop.stop.prevent="handleNodeDrop(data, $event)"
                 @dragend.stop="handleNodeDragEnd"
               >
-                <div class="dict-type-tree__label">
+                <button
+                  :ref="(element) => registerNode(data.id, element)"
+                  type="button"
+                  class="dict-type-tree__label"
+                  :data-virtual-tree-key="data.id"
+                  :aria-current="getCurrentDictType?.id === data.id ? 'true' : undefined"
+                  :tabindex="tabStopKey === data.id ? 0 : -1"
+                  @focus="setFocusedKey(data.id)"
+                  @keydown="handleTreeNavigation($event, data.id)"
+                >
                   <ArtSvgIcon
                     class="dict-type-tree__node-icon"
                     :icon="data.nodeType === 'directory' ? 'ri:folder-3-line' : 'ri:book-2-line'"
+                    aria-hidden="true"
                   />
-                  <span class="dict-type-tree__name">{{ data.name }}</span>
+                  <span class="dict-type-tree__name" :title="data.name">{{ data.name }}</span>
                   <code
                     v-if="data.nodeType === 'dictionary'"
                     class="dict-type-tree__code"
@@ -99,7 +109,7 @@
                   >
                     {{ data.code }}
                   </code>
-                </div>
+                </button>
 
                 <div class="dict-type-tree__actions" @click.stop>
                   <ArtIconButton
@@ -195,6 +205,8 @@
   import { ElMessage, ElTreeV2, type NodeDropType, type TreeV2Instance } from 'element-plus'
   import { ElAutoResizer } from 'element-plus/es/components/table-v2/index.mjs'
   import { cloneDeep, uniq } from 'lodash-es'
+  import { useVirtualTreeTabStop } from '@/hooks/core/useVirtualTreeTabStop'
+  import { focusVirtualTreeNode } from '@/utils/ui/virtual-tree-focus'
   import TreeUtils, { TreeDataError } from '@/utils/tree'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
@@ -272,6 +284,7 @@
   })
 
   const treeRef = ref<TreeV2Instance>()
+  const treeViewportRef = ref<HTMLElement>()
   let loadSequence = 0
   const dictTypeDialogRef = ref<DictTypeDialogExpose>()
   const TREE_ROW_HEIGHT = 40
@@ -309,7 +322,7 @@
       ? { title: '排序已暂停', description: '清空搜索后可继续拖拽' }
       : { title: '拖拽排序', description: '调整目录层级与节点顺序' }
   })
-  const flatTree = computed(() => treeUtils.treeToList(tree.data))
+  const flatTree = computed(() => getFlatTreeNodes())
   const directoryCount = computed(
     () => flatTree.value.filter((item) => item.nodeType === 'directory').length
   )
@@ -398,16 +411,134 @@
     tree.selectionAnchorKey = undefined
   }
 
-  const getFlatTreeNodes = (nodes: DictTypeItem[] = tree.data): FlatDictTypeItem[] => {
+  function getFlatTreeNodes(nodes: DictTypeItem[] = tree.data): FlatDictTypeItem[] {
     return treeUtils.treeToList<FlatDictTypeItem>(nodes, {
       includeParentChain: true
+    })
+  }
+
+  const matchingNavigationKeys = computed(() => {
+    if (!tree.keyword.trim()) return undefined
+    const keys = new Set<string>()
+    for (const row of flatTree.value) {
+      if (!row.id || !filterNode(tree.keyword, row)) continue
+      keys.add(row.id)
+      row.__parentChain?.forEach((key) => keys.add(String(key)))
+    }
+    return keys
+  })
+
+  const getVisibleNavigationRows = (): FlatDictTypeItem[] => {
+    const matches = matchingNavigationKeys.value
+    const expanded = new Set(tree.expandedKeys)
+    return flatTree.value.filter(
+      ({ id, __parentChain }) =>
+        id &&
+        (!matches || matches.has(id)) &&
+        (__parentChain ?? []).every((parentKey) =>
+          matches ? treeRef.value?.getNode(parentKey)?.expanded : expanded.has(String(parentKey))
+        )
+    )
+  }
+
+  const { tabStopKey, registerNode, setFocusedKey } = useVirtualTreeTabStop(() =>
+    getVisibleNavigationRows().flatMap(({ id }) => (id ? [id] : []))
+  )
+
+  const handleTreeNavigation = async (
+    event: KeyboardEvent,
+    key: string | undefined
+  ): Promise<void> => {
+    const control = event.currentTarget
+    const instance = treeRef.value
+    if (
+      !key ||
+      !instance ||
+      !canInteract.value ||
+      !(control instanceof HTMLButtonElement) ||
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.altKey
+    )
+      return
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      event.stopPropagation()
+      // A native keyboard click does not carry the modifiers used by range selection.
+      if (!event.repeat) {
+        control.dispatchEvent(
+          new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            shiftKey: event.shiftKey
+          })
+        )
+      }
+      return
+    }
+
+    if (
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
+    )
+      return
+
+    event.preventDefault()
+    event.stopPropagation()
+    const node = instance.getNode(key)
+    const matches = matchingNavigationKeys.value
+    const visible = getVisibleNavigationRows()
+    const index = visible.findIndex(({ id }) => id === key)
+    if (!node || index === -1) return
+
+    const child = node.children?.find(
+      ({ key: childKey }) => !matches || matches.has(String(childKey))
+    )
+    let targetKey: string | undefined
+    switch (event.key) {
+      case 'ArrowDown':
+        targetKey = visible[index + 1]?.id
+        break
+      case 'ArrowUp':
+        targetKey = visible[index - 1]?.id
+        break
+      case 'Home':
+        targetKey = visible[0]?.id
+        break
+      case 'End':
+        targetKey = visible.at(-1)?.id
+        break
+      case 'ArrowLeft':
+        if (child && node.expanded) instance.collapseNode(node)
+        else if (node.parent) targetKey = String(node.parent.key)
+        break
+      case 'ArrowRight':
+        if (child) {
+          if (node.expanded) targetKey = String(child.key)
+          else instance.expandNode(node)
+        }
+        break
+    }
+    if (!targetKey || targetKey === key) return
+
+    const revision = loadSequence
+    await focusVirtualTreeNode({
+      tree: instance,
+      viewport: treeViewportRef.value,
+      key: targetKey,
+      isCurrent: () => revision === loadSequence
     })
   }
 
   const getVisibleSelectableNodes = (): DictTypeItem[] => {
     const expandedKeySet = new Set(tree.expandedKeys)
 
-    return getFlatTreeNodes()
+    return flatTree.value
       .filter((node) =>
         (node.__parentChain ?? []).every((parentKey) => expandedKeySet.has(String(parentKey)))
       )
@@ -975,6 +1106,11 @@
       border-radius: var(--el-border-radius-base);
     }
 
+    :deep(.el-tree-node__content:has(.dict-type-tree__label:focus-visible)) {
+      outline: 2px solid var(--el-color-primary);
+      outline-offset: -2px;
+    }
+
     :deep(.el-tree-node.is-drop-before > .el-tree-node__content) {
       box-shadow: inset 0 2px 0 var(--el-color-primary);
     }
@@ -1094,7 +1230,15 @@
       gap: 6px;
       align-items: center;
       min-width: 0;
+      height: 100%;
+      padding: 0;
       overflow: hidden;
+      color: inherit;
+      text-align: start;
+      cursor: inherit;
+      outline: 0;
+      background: transparent;
+      border: 0;
 
       .dict-type-tree__name {
         flex: 0 1 auto;
@@ -1102,6 +1246,11 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+
+      &:has(> .dict-type-tree__code) .dict-type-tree__name {
+        flex-shrink: 0;
+        max-width: 66%;
       }
     }
 

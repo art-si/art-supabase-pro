@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(90_000)
@@ -81,15 +82,39 @@ test('识别详情原文分类在窄暗可见，切页保留字段且重开复�
       }
     })
   )
-  for (const [theme, width] of [
-    ['light', 1440],
-    ['dark', 390]
+  for (const appearance of [
+    { theme: 'light', width: 1440, boxBorderMode: true },
+    { theme: 'dark', width: 390, boxBorderMode: false }
   ] as const) {
+    const { theme, width } = appearance
     await page.setViewportSize({ width, height: 900 })
+    await prepareAppearance(page, appearance)
     await page.goto(`/tests/e2e/fixtures/recognition-detail-reuse.html?theme=${theme}`)
+    await assertAppearance(page, appearance)
     await page.getByRole('button', { name: '查看测试识别', exact: true }).click()
     const root = page.locator('.art-drawer:visible')
     await expect(root.getByRole('tab')).toHaveCount(2)
+    const context = root.locator('.recognition-detail__context')
+    const tabs = root.locator('.art-overlay-tab-card')
+    await expect(context).toBeVisible()
+    await expect(tabs).toBeVisible()
+    await context.evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished))
+    })
+    const spacing = await context.evaluate((element) => {
+      const contextRect = element.getBoundingClientRect()
+      const tabsRect = element.nextElementSibling!.getBoundingClientRect()
+      return {
+        gap: tabsRect.top - contextRect.bottom,
+        contextBottom: contextRect.bottom,
+        tabsTop: tabsRect.top
+      }
+    })
+    await info.attach(`recognition-context-tabs-spacing-${theme}-${width}`, {
+      body: JSON.stringify(spacing, null, 2),
+      contentType: 'application/json'
+    })
+    expect(spacing.gap).toBeCloseTo(16, 0)
     await root.getByRole('tab', { name: '原始票据与文本', exact: true }).click()
     await expect(root.getByRole('textbox', { name: '识别结果原文', exact: true })).toHaveValue(
       /验收发票原文/

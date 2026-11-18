@@ -12,6 +12,8 @@ The UI audit rejects repeated `.value` reads on state belonging to template-boun
 
 `loading` covers the visible dialog body outside its scrollable content and disables the default footer buttons. Long content, scrolling, and fullscreen mode do not move the loading state away from the body viewport center. It is independent from the confirm button's `confirmLoading`.
 
+During confirmation, enabling `loading` preserves the rendered body's size and footer position. The minimum loading height applies to initial reads, so an existing small form does not expand while its confirmed operation is pending.
+
 Whole-dialog fetches bind `loading` on `ArtDialog`. A root `ArtAsyncState` inside it owns error, empty, and retry states; do not give that root state another loading mask. Local table or card fetches continue to use the corresponding shared component's loading state.
 
 ```vue
@@ -58,7 +60,7 @@ onOpen: async (_data, api) => {
 - 默认显示全屏切换按钮；特殊弹窗可通过 `:show-fullscreen-button="false"` 显式关闭
 - `#header-actions` 可在全屏按钮左侧放置弹窗级操作，图标操作需提供无障碍名称
 - 默认显示专注按钮，与全屏按钮并列于右上角关闭按钮左侧。含 `ArtForm` 时提示“专注填单”，其他内容提示“专注模式”；切换页签时按钮位置保持稳定。专注态全屏、隐藏副标题与 `ArtEntitySummary`、居中内容；表单采用紧凑的左侧标签，退出后恢复原全屏状态。业务辅助说明可标记 `data-art-dialog-focus-hide`，必填说明或风险提示应继续显示。
-- 默认宽度为 `50%`
+- 未指定宽度时，桌面使用 `50%`，窄屏（不超过 640px）使用可用宽度，左右保留 16px
 - 默认显示“取消”和“确定”按钮
 - 确认成功后默认自动关闭
 - 关闭完成后默认重置运行时数据和 Loading 状态
@@ -200,6 +202,14 @@ dialogRef.value?.handleOpen(data, {
 
 `onConfirm` 返回 `false` 时弹窗不会关闭，适合表单校验失败或接口提交失败的场景。若内容中的 `ElFormItem` 已显示校验错误，弹窗会在错误渲染后滚动并聚焦第一个错误字段；业务表单仍需配置 `prop` 和规则。自定义底部按钮绕过 `api.handleConfirm()` 时，请在校验失败分支调用 `focusFirstInvalidFormField`。
 
+## 弹层内容页签
+
+`ArtDialog` 和 `ArtDrawer` 的内容页签与对应正文使用同一张卡片。对未被内容卡片包裹的 `ElTabs`，使用 `class="art-card-xs art-overlay-tab-card"`，并把各页正文放进对应的 `ElTabPane`。记录摘要仍可放在卡片上方，底部操作仍由弹层承接。
+
+`ArtForm` 根据字段配置生成的页签在弹层内复用最近的标准内容卡片。尚无卡片时，页签和面板自成一张卡片。独立路由的导航页签沿用页面布局。普通正文滚动由弹层的 `ElScrollbar` 承接，表格或编辑器保留自己所需的滚动区。
+
+跨页签校验时，业务代码先将外层页签切到无效表单所在位置，再从 `onConfirm` 返回 `false`。弹层在面板渲染后统一滚动并聚焦第一个无效字段。
+
 ## 响应式尺寸预设
 
 普通业务弹窗优先使用 `size`，组件会自动限制为视口宽度，避免固定像素在窄屏溢出：
@@ -211,7 +221,7 @@ dialogRef.value?.handleOpen(data, {
 <ArtDialog size="xl" />
 ```
 
-对应默认宽度为 520、720、920、1120px；`size="full"` 用于接近全屏的工作流。旧的 `width` 仍然兼容并会自动套用视口上限。
+对应默认宽度为 520、720、920、1120px；`size="full"` 用于接近全屏的工作流。旧的 `width` 仍然兼容并会自动套用视口上限。窄屏时，标题、标题操作与默认底部操作可换行，正文保留独立滚动。
 
 ## 内容滚动高度
 
@@ -252,7 +262,7 @@ When the dialog enters fullscreen mode, `contentHeight` and `contentMaxHeight` s
 
   <template #footer="{ data, loading, api }">
     <ElButton @click="api.handleClose()">返回</ElButton>
-    <ElButton type="primary" :loading="loading" @click="api.handleConfirm()">
+    <ElButton type="primary" :loading="loading" @click="api.handleConfirm">
       保存
     </ElButton>
   </template>
@@ -322,20 +332,20 @@ dialogRef.value?.handleOpen(user, {
 
 ## Ref 方法
 
-| 方法                          | 说明                                    |
-| ----------------------------- | --------------------------------------- |
-| `handleOpen(data?, options?)` | 打开弹窗并传入本次数据和配置            |
-| `handleClose(force?)`         | 关闭弹窗；`force=true` 时跳过 `onClose` |
-| `handleConfirm()`             | 主动执行确认流程                        |
-| `handleReset()`               | 恢复打开时的数据并清除 Loading          |
-| `setLoading(value)`           | 设置内容区域 Loading                    |
-| `setConfirmLoading(value)`    | 设置确定按钮 Loading                    |
-| `setOptions(options)`         | 在弹窗打开期间增量修改配置              |
-| `setData(data)`               | 替换当前数据                            |
-| `updateData(data)`            | 浅合并当前对象数据                      |
-| `getData()`                   | 获取当前数据                            |
-| `getDialogInstance()`         | 获取底层 `ElDialog` 实例                |
-| `scrollTo(options)`           | 控制内容滚动位置                        |
+| 方法                          | 说明                                                       |
+| ----------------------------- | ---------------------------------------------------------- |
+| `handleOpen(data?, options?)` | 打开弹窗并传入本次数据和配置                               |
+| `handleClose(force?)`         | 关闭弹窗；`force=true` 时跳过 `onClose`                    |
+| `handleConfirm(event?)`       | 执行确认；自定义确认按钮传入点击事件，失败时可恢复键盘焦点 |
+| `handleReset()`               | 恢复打开时的数据并清除 Loading                             |
+| `setLoading(value)`           | 设置内容区域 Loading                                       |
+| `setConfirmLoading(value)`    | 设置确定按钮 Loading                                       |
+| `setOptions(options)`         | 在弹窗打开期间增量修改配置                                 |
+| `setData(data)`               | 替换当前数据                                               |
+| `updateData(data)`            | 浅合并当前对象数据                                         |
+| `getData()`                   | 获取当前数据                                               |
+| `getDialogInstance()`         | 获取底层 `ElDialog` 实例                                   |
+| `scrollTo(options)`           | 控制内容滚动位置                                           |
 
 ## 事件
 

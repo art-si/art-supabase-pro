@@ -36,6 +36,7 @@ test('页签分区保留公共字段、字段实例、输入值和业务插槽',
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await openFixture(page)
+  await expect(page.locator('.art-form__tabs--overlay')).toHaveCount(0)
   await expect(tab(page, '基本信息')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('textbox', { name: '单据编号', exact: true })).toHaveValue('DEMO-001')
   await expect(tab(page, '内部信息')).toHaveCount(0)

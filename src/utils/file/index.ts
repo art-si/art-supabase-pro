@@ -59,15 +59,15 @@ const calculateExcelColumnWidths = (
   columns: Array<Pick<ExcelColumn<object>, 'title' | 'width'>>,
   titles: string[]
 ): ColInfo[] => {
-  const sampleSize = Math.min(rows.length, 100)
+  const sample = rows.slice(0, 100)
 
   return titles.map((title) => {
     const configuredWidth = columns.find((column) => column.title === title)?.width
     if (configuredWidth) return { wch: configuredWidth }
 
-    const maxLength = Math.max(
-      title.length,
-      ...rows.slice(0, sampleSize).map((row) => String(row[title] || '').length)
+    const maxLength = sample.reduce(
+      (longest, row) => Math.max(longest, row[title]?.length ?? 0),
+      title.length
     )
     return { wch: Math.min(Math.max(maxLength + 2, 8), 50) }
   })
@@ -203,32 +203,27 @@ export const mapExcelRowsToRecords = <TRecord extends ExcelRecord>(
   rows: Array<Record<string, unknown>>,
   columns: ExcelColumn<TRecord>[]
 ): TRecord[] => {
-  return rows
-    .map((row) => {
-      const entries: Array<[string, unknown]> = []
+  const fields = columns.map(({ key, title, required }) => ({ key: String(key), title, required }))
+  const requiredKeys = fields.filter(({ required }) => required).map(({ key }) => key)
+  const records: TRecord[] = []
 
-      columns.forEach((column) => {
-        const key = String(column.key)
-        const titledValue = Object.prototype.hasOwnProperty.call(row, column.title)
-          ? row[column.title]
-          : undefined
-        const rawValue =
-          titledValue ?? (Object.prototype.hasOwnProperty.call(row, key) ? row[key] : undefined)
-        if (rawValue === undefined || rawValue === null) return
+  rows.forEach((row) => {
+    const entries: Array<[string, unknown]> = []
+    for (const { key, title } of fields) {
+      const titledValue = Object.hasOwn(row, title) ? row[title] : undefined
+      const rawValue = titledValue ?? (Object.hasOwn(row, key) ? row[key] : undefined)
+      if (rawValue === undefined || rawValue === null) continue
 
-        entries.push([key, typeof rawValue === 'string' ? rawValue.trim() : rawValue])
-      })
+      entries.push([key, typeof rawValue === 'string' ? rawValue.trim() : rawValue])
+    }
 
-      return Object.fromEntries(entries) as TRecord
-    })
-    .filter((row) =>
-      columns.every((column) => {
-        if (!column.required) return true
-        if (!Object.prototype.hasOwnProperty.call(row, String(column.key))) return false
-        const value = row[String(column.key)]
-        return value !== undefined && value !== null && String(value).trim() !== ''
-      })
-    )
+    const record = Object.fromEntries(entries)
+    if (requiredKeys.every((key) => Object.hasOwn(record, key) && String(record[key]).trim())) {
+      records.push(record as TRecord)
+    }
+  })
+
+  return records
 }
 
 export async function calcFileHash(file: File): Promise<string> {

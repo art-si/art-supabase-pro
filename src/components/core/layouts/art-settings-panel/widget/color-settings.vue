@@ -3,13 +3,13 @@
     <SectionTitle :title="$t('setting.color.title')" class="mt-10" />
     <div class="setting-colors">
       <button
-        v-for="color in configOptions.mainColors"
+        v-for="color in colors"
         :key="color"
         type="button"
         class="setting-colors__item"
         :class="{ 'is-active': color === systemThemeColor }"
         :style="{ '--setting-color': color }"
-        :aria-label="`选择主题色 ${color}`"
+        :aria-label="color === SILVER_MIST_ACCENT ? '选择主题色 苹果蓝' : `选择主题色 ${color}`"
         :aria-pressed="color === systemThemeColor"
         @click="colorHandlers.selectColor(color)"
       >
@@ -26,6 +26,7 @@
 <script setup lang="ts">
   import SectionTitle from './section-title.vue'
   import { useSettingStore } from '@/store/modules/setting'
+  import { SILVER_MIST_ACCENT, SILVER_MIST_LEGACY_ACCENT } from '@/config/setting'
   import { useSettingsConfig } from '../composables/useSettingsConfig'
   import { useSettingsHandlers } from '../composables/useSettingsHandlers'
   import { storeToRefs } from 'pinia'
@@ -34,6 +35,14 @@
   const { systemThemeColor } = storeToRefs(settingStore)
   const { configOptions } = useSettingsConfig()
   const { colorHandlers } = useSettingsHandlers()
+  const colors = computed(() =>
+    settingStore.workspaceAppearance === 'silver-mist'
+      ? [
+          SILVER_MIST_ACCENT,
+          ...configOptions.mainColors.filter((color) => color !== SILVER_MIST_LEGACY_ACCENT)
+        ]
+      : configOptions.mainColors
+  )
 </script>
 
 <style scoped lang="scss">

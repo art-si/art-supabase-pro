@@ -70,12 +70,14 @@
 
     &__title-row {
       display: flex;
+      flex-wrap: wrap;
       gap: var(--art-space-2);
       align-items: center;
       min-width: 0;
 
       h1 {
         min-width: 0;
+        max-width: 100%;
         margin: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -102,22 +104,26 @@
       gap: var(--art-space-2);
       align-items: center;
       justify-content: flex-end;
+      min-width: 0;
+
+      :deep(> .el-button + .el-button) {
+        margin-inline-start: 0;
+      }
     }
 
     @media (width <= 640px) {
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
       align-items: flex-start;
       padding: var(--art-space-4);
 
-      &__actions {
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        width: 100%;
-        padding-left: 44px;
+      &.has-back {
+        grid-template-columns: auto minmax(0, 1fr);
       }
 
-      &:not(.has-back) &__actions {
-        padding-left: 0;
+      &__actions {
+        grid-column: -2 / -1;
+        justify-content: flex-start;
       }
     }
   }

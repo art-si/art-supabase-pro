@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { ScmSalesDocument } from '../../modules/art-supabase-scm/src/api/sales-document.types'
 import {
   quotationActionLines,
+  resolveSingleTenantQuotationSelection,
   selectedQuotationDocuments
 } from '../../modules/art-supabase-scm/src/views/sales-document/quotation-selection'
 
@@ -46,6 +47,24 @@ function quotation(id: string): ScmSalesDocument {
     updatedAt: ''
   }
 }
+
+test('quotation action dialog selection only accepts a nonempty batch from one tenant', () => {
+  const first = quotation('a')
+  const second = { ...quotation('b'), status: 'effective' as const }
+  const sameTenant = [first, second]
+
+  assert.deepEqual(resolveSingleTenantQuotationSelection(first), {
+    record: first,
+    records: [first]
+  })
+  assert.equal(resolveSingleTenantQuotationSelection(sameTenant)?.record, first)
+  assert.equal(resolveSingleTenantQuotationSelection(sameTenant)?.records, sameTenant)
+  assert.equal(resolveSingleTenantQuotationSelection([]), undefined)
+  assert.equal(
+    resolveSingleTenantQuotationSelection([first, { ...second, tenantId: 'another-tenant' }]),
+    undefined
+  )
+})
 
 test('quotation detail selections keep identical line IDs isolated by document', () => {
   const documents = [quotation('a'), quotation('b')]

@@ -22,6 +22,24 @@ for (const mode of [
     test.setTimeout(180_000)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
+    const violationRoot = {
+      id: 'violation-root',
+      categoryName: '测试违章分类',
+      categoryCode: 'VC-ROOT',
+      status: 'enabled',
+      childCount: 1,
+      standardCount: 2
+    }
+    const archivedViolation = {
+      id: 'violation-history',
+      parentId: violationRoot.id,
+      categoryName: '历史违章分类',
+      categoryCode: 'VC-HISTORY',
+      status: 'disabled',
+      childCount: 0,
+      standardCount: 1
+    }
+    const violationScopes: unknown[] = []
     await page.addInitScript(() => {
       localStorage.setItem(
         'sb-ckbftoopuyophiebamwy-auth-token',
@@ -135,24 +153,34 @@ for (const mode of [
       if (endpoint === 'smis_list_violation_categories_secure')
         json = {
           records: [],
-          tree: [],
-          total: 0,
-          overview: { total: 0, enabled: 0, disabled: 0 }
-        }
-      if (endpoint === 'smis_list_anti_violation_standards_secure')
-        json = {
-          records: [1234.56789, 0].map((deductionPoints, index) => ({
-            id: `standard-${index}`,
-            standardCode: `STD-${index}`,
-            standardName: `测试扣分标准 ${index}`,
-            categoryName: '测试分类',
-            deductionPoints,
-            status: 'enabled',
-            sort: index
-          })),
+          tree: [violationRoot, archivedViolation],
           total: 2,
+          overview: { total: 2, enabled: 1, disabled: 1 }
+        }
+      if (endpoint === 'smis_list_anti_violation_standards_secure') {
+        const scope: unknown = route.request().postDataJSON().p_category_id
+        violationScopes.push(scope)
+        const records = [1234.56789, 0]
+          .map((deductionPoints, index) => {
+            const category = index === 0 ? violationRoot : archivedViolation
+            return {
+              id: `standard-${index}`,
+              standardCode: `STD-${index}`,
+              standardName: `测试扣分标准 ${index}`,
+              categoryId: category.id,
+              categoryName: category.categoryName,
+              deductionPoints,
+              status: 'enabled',
+              sort: index
+            }
+          })
+          .filter(({ categoryId }) => !scope || categoryId === scope)
+        json = {
+          records,
+          total: records.length,
           overview: { total: 2, enabled: 2, disabled: 0 }
         }
+      }
       await route.fulfill({
         json,
         headers: { 'content-range': '0-4/5', 'access-control-expose-headers': 'content-range' }
@@ -254,8 +282,32 @@ for (const mode of [
       await expect(page.getByText('EUR 0', { exact: true })).toBeVisible()
       await expect(page.getByText('0 件', { exact: true })).toBeVisible()
     } else if (mode === 'violation') {
-      await expect(page.getByText('1,234.568 分', { exact: true })).toBeVisible()
-      await expect(page.getByText('0 分', { exact: true })).toBeVisible()
+      const current = page.getByText('1,234.568 分', { exact: true })
+      const archived = page.getByText('0 分', { exact: true })
+      const navigator = page.locator('.violation-category-navigator')
+      const branch = navigator.getByRole('treeitem', { name: /^测试违章分类/ })
+      const leaf = navigator.getByRole('treeitem', { name: /^历史违章分类/ })
+      const all = navigator.getByRole('button', { name: /^全部分类/ })
+      await expect(current).toBeVisible()
+      await expect(archived).toBeVisible()
+      await expect(leaf).toContainText('已停用')
+      await branch.focus()
+      const initialRequests = violationScopes.length
+      await page.keyboard.press('ArrowRight')
+      await expect(leaf).toBeFocused()
+      expect(violationScopes).toHaveLength(initialRequests)
+      await page.keyboard.press('Enter')
+      await expect.poll(() => violationScopes.at(-1)).toBe(archivedViolation.id)
+      await expect(current).toHaveCount(0)
+      await expect(archived).toBeVisible()
+      await expect(leaf).toBeFocused()
+      await expect(leaf).toHaveClass(/\bis-current\b/)
+      await expect(page.getByRole('button', { name: /^(新增标准|编辑|删除)$/ })).toHaveCount(0)
+      await all.focus()
+      await page.keyboard.press('Space')
+      await expect.poll(() => violationScopes.at(-1)).toBeNull()
+      await expect(current).toBeVisible()
+      await expect(all).toBeFocused()
     } else {
       const downloadEvent = page.waitForEvent('download')
       await page.getByRole('button', { name: '导出测试会话' }).click()

@@ -4,10 +4,14 @@
 <template>
   <section
     :class="[
-      'art-form px-4 pb-0 pt-4 md:px-4 md:pt-4',
-      { 'art-form--custom-layout': customLayout },
-      { 'art-form--overlay-focus': overlayFocus?.focusMode.value },
-      { 'art-form--expanded': enableExpand && isExpanded },
+      'art-form pb-0',
+      {
+        'px-4 pt-4': !overlayTabsOnly,
+        'art-form--overlay-tabs-only': overlayTabsOnly,
+        'art-form--custom-layout': customLayout,
+        'art-form--overlay-focus': overlayFocus?.focusMode.value,
+        'art-form--expanded': enableExpand && isExpanded
+      },
       rootClass
     ]"
   >
@@ -25,12 +29,13 @@
     >
       <slot v-if="customLayout" :model-value="modelValue" />
       <DefineFields v-slot="{ items, actions }">
-        <ElRow class="flex flex-wrap" :gutter="effectiveGutter">
+        <ElRow class="art-form__field-row flex flex-wrap" :gutter="effectiveGutter">
           <ElCol
             v-for="item in items.filter(isRenderedField)"
             :key="item.key"
             :data-art-form-item-key="item.key"
             v-show="!isFormItemCollapsed(item)"
+            :style="getQueryColumnStyle(item)"
             :xs="getColSpan(getItemSpan(item), 'xs')"
             :sm="getColSpan(getItemSpan(item), 'sm')"
             :md="getColSpan(getItemSpan(item), 'md')"
@@ -72,20 +77,27 @@
               :label-width="getFormItemLabelWidth(item)"
             >
               <template #label v-if="item.label">
-                <span class="art-form-item__label">
+                <span
+                  class="art-form-item__label"
+                  :class="{
+                    'art-form-item__label--compact':
+                      useOverlayLabelLayout && typeof item.label === 'string'
+                  }"
+                  :title="enableExpand && typeof item.label === 'string' ? item.label : undefined"
+                >
                   <component v-if="typeof item.label !== 'string'" :is="item.label" />
                   <ArtTooltip
-                    v-else-if="overlayFocus?.focusMode.value"
+                    v-else-if="useOverlayLabelLayout"
                     :content="item.label"
-                    :visible="activeLabelTooltipKey === item.key"
+                    :visible="overlayLabelPreview.activeKey.value === item.key"
                     :enterable="false"
                     placement="top"
                     popper-class="art-form-item__label-tooltip"
                   >
                     <span
                       class="art-form-item__label-text"
-                      @mouseenter="showOverflowLabelTooltip($event, item.key)"
-                      @mouseleave="hideOverflowLabelTooltip(item.key)"
+                      @mouseenter="overlayLabelPreview.showOnHover(item.key, $event)"
+                      @mouseleave="overlayLabelPreview.hideOnHover(item.key)"
                     >
                       {{ item.label }}
                     </span>
@@ -102,7 +114,13 @@
                   </ArtTooltip>
                 </span>
               </template>
-              <div class="art-form-item__content">
+              <div
+                :ref="(element) => trackSelectTagField(item, element)"
+                class="art-form-item__content"
+                @focusin="overlayLabelPreview.showOnFocus(item.key, $event)"
+                @focusout="overlayLabelPreview.hideOnBlur(item.key, $event)"
+                @keydown.capture="handleFieldKeydown(item, $event)"
+              >
                 <slot
                   :name="item.key"
                   :item="item"
@@ -111,6 +129,7 @@
                   :value="getFieldValue(item.key)"
                   :setValue="createSlotSetValue(item)"
                   :clearValue="createSlotClearValue(item)"
+                  :descriptionId="getDescriptionId(item)"
                 >
                   <span
                     v-if="isTextItem(item)"
@@ -134,6 +153,12 @@
                   <component
                     v-else
                     :is="getComponent(item)"
+                    :ref="
+                      isQueryDateRange(item)
+                        ? (picker: Element | ComponentPublicInstance | null) =>
+                            queryDateRangeKeyboard.trackPicker(item.key, picker)
+                        : undefined
+                    "
                     :model-value="getFieldValue(item.key)"
                     @update:model-value="setFieldValue(item.key, $event, item)"
                     v-bind="getComponentProps(item)"
@@ -146,6 +171,7 @@
                           :disabled="option.disabled === true || Boolean(asyncLoadingMap[item.key])"
                           :created="option.created === true"
                           :label="option.label"
+                          :title="option.label"
                           :value="option.value"
                         >
                           <component :is="item.optionComponent" :option="option" />
@@ -155,6 +181,7 @@
                           :disabled="option.disabled === true || Boolean(asyncLoadingMap[item.key])"
                           :created="option.created === true"
                           :label="option.label"
+                          :title="option.label"
                           :value="option.value"
                         />
                       </template>
@@ -204,6 +231,12 @@
                     >
                       <ArtPickerEmpty loading />
                     </template>
+                    <template
+                      v-if="isNativeSelect(item) && !getSlots(item).label"
+                      #label="{ label }"
+                    >
+                      <span :title="label">{{ label }}</span>
+                    </template>
 
                     <!-- 动态插槽支持 -->
                     <template
@@ -236,27 +269,37 @@
                   error-title="选项加载失败"
                   @retry="fetchOptions(item)"
                 />
-                <div v-if="item.description" class="art-form-item__description">
+                <div
+                  v-if="item.description"
+                  :id="getDescriptionId(item)"
+                  class="art-form-item__description"
+                >
                   <component v-if="typeof item.description !== 'string'" :is="item.description" />
                   <span v-else class="whitespace-pre-line">{{ item.description }}</span>
                 </div>
+                <span v-for="part in getRangeNames(item)" :id="part.id" :key="part.id" hidden>
+                  {{ part.text }}
+                </span>
               </div>
             </ElFormItem>
           </ElCol>
           <ElCol
-            v-if="actions"
+            v-if="actions && (showReset || showSubmit || shouldShowExpandToggle)"
             :xs="getActionColSpan('xs')"
             :sm="getActionColSpan('sm')"
             :md="getActionColSpan('md')"
             :lg="getActionColSpan('lg')"
             :xl="getActionColSpan('xl')"
-            class="max-w-full"
+            class="art-form__actions-column max-w-full"
           >
             <div
-              class="mb-3 flex-c flex-wrap justify-end md:flex-row md:items-stretch md:gap-2"
+              class="art-form__actions mb-3 flex-c flex-wrap justify-end md:flex-row md:items-stretch md:gap-2"
               :style="actionButtonsStyle"
             >
-              <div class="flex gap-2 md:justify-center">
+              <div
+                v-if="showReset || showSubmit"
+                class="art-form__action-buttons flex gap-2 md:justify-center"
+              >
                 <ElButton
                   v-if="showReset"
                   class="reset-button"
@@ -276,7 +319,7 @@
                   class="submit-button"
                   @click="handleSubmit"
                   v-ripple
-                  :disabled="$props.disabled || disabledSubmit || hasBlockingFields"
+                  :disabled="!readyToSubmit"
                   :loading="submitLoading"
                 >
                   <ElIcon>
@@ -288,17 +331,19 @@
               <button
                 v-if="shouldShowExpandToggle"
                 type="button"
-                class="art-form__filter-toggle"
+                class="art-form__filter-toggle art-icon-label"
                 :aria-expanded="isExpanded"
+                :aria-label="retainedFilterLabel"
                 @click="toggleExpand"
               >
                 <span>{{ expandToggleText }}</span>
-                <div class="art-form__filter-toggle-icon">
-                  <ElIcon>
-                    <ArrowUpBold v-if="isExpanded" />
-                    <ArrowDownBold v-else />
-                  </ElIcon>
-                </div>
+                <span v-if="retainedFilterCount" class="art-form__filter-count" aria-hidden="true">
+                  {{ retainedFilterText }}
+                </span>
+                <ElIcon aria-hidden="true">
+                  <ArrowUpBold v-if="isExpanded" />
+                  <ArrowDownBold v-else />
+                </ElIcon>
               </button>
             </div>
           </ElCol>
@@ -315,7 +360,12 @@
         <ReuseFields v-if="!hasTabs" :items="visibleFormItems" :actions="true" />
         <template v-else>
           <ReuseFields v-if="commonFormItems.length" :items="commonFormItems" :actions="false" />
-          <ElTabs v-model="activeTab" class="art-form__tabs">
+          <ElTabs
+            ref="tabsRef"
+            v-model="activeTab"
+            class="art-form__tabs"
+            :class="{ 'art-form__tabs--overlay': overlayFocus }"
+          >
             <ElTabPane
               v-for="tab in formTabs"
               :key="tab.marker.key"
@@ -349,16 +399,24 @@
 </template>
 
 <script setup lang="ts">
-  import { createReusableTemplate, useAsyncState, useWindowSize } from '@vueuse/core'
+  import {
+    createReusableTemplate,
+    useAsyncState,
+    useResizeObserver,
+    useWindowSize
+  } from '@vueuse/core'
   import { useI18n } from 'vue-i18n'
   import { get, isEqual, minBy, unset } from 'lodash-es'
   import {
     inject,
+    normalizeClass,
     onMounted,
     onUnmounted,
     unref,
     watch,
     type Component,
+    type ComponentPublicInstance,
+    type h,
     type Ref,
     type VNodeChild
   } from 'vue'
@@ -370,12 +428,14 @@
     ElRadioButton,
     ElTabs,
     ElTabPane,
+    type DatePickerProps,
     type FormInstance,
     type FormValidateCallback,
     type FormValidateFailure,
     type FormItemProp,
     type FormItemProps,
-    type FormPropsPublic
+    type FormPropsPublic,
+    type TabsInstance
   } from 'element-plus'
   import {
     ArrowDownBold,
@@ -385,11 +445,17 @@
     Search
   } from '@element-plus/icons-vue'
   import { artFormFocusKey } from './focus'
+  import { useResponsiveTagLayout } from './use-responsive-tag-layout'
+  import { useTreePickerKeyboard } from './use-tree-picker-keyboard'
+  import { useQueryDateRangeKeyboard } from './use-query-date-range-keyboard'
+  import { useOverlayLabelPreview } from './use-overlay-label-preview'
+  import { useFieldAccessibility } from './use-field-accessibility'
   import type { ComponentMap } from './components'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtPickerEmpty from '@/components/core/feedback/art-picker-empty/index.vue'
   import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
+  import { useSettingStore } from '@/store/modules/setting'
   import {
     calculateActionSpan,
     calculateResponsiveSpan,
@@ -406,6 +472,7 @@
   } from './model-utils'
 
   defineOptions({ name: 'ArtForm' })
+  useTreePickerKeyboard()
 
   const componentLoadAttempts = ref(0)
   // A failed ES-module fetch is cached by the browser. The compiled retry entry
@@ -442,14 +509,51 @@
   const tabType = 'tab'
   const textType = 'text'
   const datePickerShortcutTypes = ['daterange', 'datetimerange', 'monthrange'] as const
+  const rangePopperOptions: DatePickerProps['popperOptions'] = {
+    modifiers: [{ name: 'preventOverflow', options: { altAxis: true, tether: false, padding: 8 } }]
+  }
+  const queryChoiceGroupTypes: readonly FormItemPresetType[] = [
+    'radioGroup',
+    'checkboxGroup',
+    'segment'
+  ]
+  const queryTextControlTypes: readonly FormItemPresetType[] = [
+    'input',
+    'autocomplete',
+    'inputTag',
+    'number',
+    'select',
+    'selectV2',
+    'tagStyleSelect',
+    'cascader',
+    'treeSelect',
+    'timePicker',
+    'timeSelect',
+    'dataSelect',
+    'userSelect',
+    'employeeSelect'
+  ]
 
   const { width } = useWindowSize()
   const { t } = useI18n()
+  const settingStore = useSettingStore()
   const { effectiveTenantId, defaultWriteTenantId, shouldExposeTenantField, isTenantScopeItem } =
     useTenantScopeFormPolicy()
   const isMobile = computed(() => width.value < 500)
 
   const formInstance = useTemplateRef<FormInstance>('formRef')
+  const tabsInstance = useTemplateRef<TabsInstance>('tabsRef')
+  const tabViewport = computed(() => {
+    const element = tabsInstance.value?.$el
+    return element instanceof HTMLElement
+      ? element.querySelector<HTMLElement>('.el-tabs__nav-scroll')
+      : null
+  })
+
+  // 翻页箭头出现后，真正可见的页签区域还会再次收窄。
+  useResizeObserver(tabViewport, () => {
+    void nextTick(() => tabsInstance.value?.tabNavRef?.scrollToActiveTab())
+  })
 
   export interface FormItemOption extends FormRecord {
     /** 选项显示文本 */
@@ -667,6 +771,8 @@
     defaultExpanded?: boolean
     /** 是否显示展开/收起按钮 */
     showExpand?: boolean
+    /** 受管查询传入当前结果采用的参数，暂无结果传 null；未传时提示表单中已填的值。 */
+    appliedSearchValues?: Readonly<Record<string, unknown>> | null
     /** 是否允许 divider 分区标题折叠其下方字段 */
     collapsibleSections?: boolean
     /** 提交时是否清洗空值 */
@@ -718,24 +824,12 @@
     { immediate: true }
   )
   const overlayFocus = inject(artFormFocusKey, undefined)
-  const activeLabelTooltipKey = ref<string | null>(null)
-  const showOverflowLabelTooltip = (event: MouseEvent, key: string): void => {
-    const label = event.currentTarget
-    if (label instanceof HTMLElement && label.scrollWidth > label.clientWidth) {
-      activeLabelTooltipKey.value = key
-    }
-  }
-  const hideOverflowLabelTooltip = (key: string): void => {
-    if (activeLabelTooltipKey.value === key) activeLabelTooltipKey.value = null
-  }
-  watch(
-    () => overlayFocus?.focusMode.value,
-    (focused) => {
-      if (!focused) activeLabelTooltipKey.value = null
-    }
+  const useOverlayLabelLayout = computed(
+    () => !props.enableExpand && overlayFocus?.focusMode.value && width.value >= 768
   )
+  const overlayLabelPreview = useOverlayLabelPreview(useOverlayLabelLayout)
   const effectiveLabelPosition = computed(() =>
-    overlayFocus?.focusMode.value && width.value >= 768 ? 'left' : props.labelPosition
+    useOverlayLabelLayout.value ? 'left' : props.labelPosition
   )
   const effectiveGutter = computed(() =>
     overlayFocus?.focusMode.value ? Math.min(props.gutter, 16) : props.gutter
@@ -774,6 +868,10 @@
           (asyncLoadingMap.value[item.key] || !!asyncErrorMap.value[item.key])
       )
   )
+  const readyToSubmit = computed(
+    () =>
+      !props.disabled && !props.submitLoading && !props.disabledSubmit && !hasBlockingFields.value
+  )
   const asyncRequestSignatureMap = ref<Record<string, string>>({})
 
   interface FormTabSection {
@@ -804,6 +902,9 @@
       .map((tab) => ({ ...tab, items: tab.items.filter(isRenderedField) }))
   )
   const commonFormItems = computed(() => tabStructure.value.common.filter(isRenderedField))
+  const overlayTabsOnly = computed(
+    () => Boolean(overlayFocus) && hasTabs.value && !commonFormItems.value.length
+  )
   const firstAvailableTab = () =>
     formTabs.value.find((tab) => getProps(tab.marker).disabled !== true)?.marker.key ?? ''
 
@@ -1172,6 +1273,17 @@
       defaults.type = itemType
     }
 
+    if (
+      (itemType === 'date' || defaults.type) &&
+      settingStore.workspaceAppearance === 'silver-mist'
+    ) {
+      const dateType = getProps(item).type ?? defaults.type
+      if (dateType === 'daterange' || dateType === 'datetimerange') {
+        // When compact ranges stack two months, the scrollable panel itself must stay in view.
+        defaults.popperOptions = rangePopperOptions
+      }
+    }
+
     if (isTextareaItem(item)) {
       Object.assign(defaults, {
         type: 'textarea',
@@ -1249,9 +1361,70 @@
 
   const getFormItemLabelWidth = (item: FormItem): string | number | undefined => {
     if (!item.label) return undefined
-    return overlayFocus?.focusMode.value && width.value >= 768
-      ? 112
-      : item.labelWidth || labelWidth.value
+    return useOverlayLabelLayout.value ? 112 : item.labelWidth || labelWidth.value
+  }
+
+  const isNativeSelect = (item: FormItem): boolean =>
+    !item.render &&
+    (item.type === 'select' || item.type === 'selectV2' || item.type === 'treeSelect')
+
+  const isMultipleSelect = (item: FormItem): boolean =>
+    isNativeSelect(item) && getProps(item).multiple === true
+
+  const selectTagLayout = useResponsiveTagLayout()
+  const queryDateRangeKeyboard = useQueryDateRangeKeyboard()
+  const isQueryDateRange = (item: FormItem): boolean =>
+    props.enableExpand &&
+    !item.render &&
+    (item.type === 'daterange' || (item.type === 'date' && getProps(item).type === 'daterange')) &&
+    getProps(item).clearable !== false
+
+  function handleFieldKeydown(item: FormItem, event: KeyboardEvent): void {
+    if (isQueryDateRange(item))
+      queryDateRangeKeyboard.clearOnEnter(item.key, getFieldValue(item.key), event)
+    overlayLabelPreview.dismissOnEscape(item.key, event)
+  }
+
+  const hasAdaptiveTags = (item: FormItem, config = getProps(item)): boolean =>
+    isNativeSelect(item) &&
+    !item.slots?.tag &&
+    config.multiple === true &&
+    config.collapseTags === true &&
+    typeof config.maxCollapseTags === 'number' &&
+    config.maxCollapseTags > 1
+
+  const trackSelectTagField = (
+    item: FormItem,
+    target: Element | ComponentPublicInstance | null
+  ) => {
+    selectTagLayout.track(
+      item.key,
+      target instanceof HTMLElement && hasAdaptiveTags(item) ? target : null
+    )
+  }
+
+  const getQueryEditorMin = (item: FormItem): string | undefined => {
+    if (item.render) return
+    if (isMultipleSelect(item) || queryChoiceGroupTypes.some((type) => type === item.type)) {
+      return '224px'
+    }
+    const isSingleDate =
+      item.type === 'date' && !datePickerShortcutTypes.some((type) => type === getProps(item).type)
+    if (isSingleDate || queryTextControlTypes.some((type) => type === item.type)) {
+      return '156px'
+    }
+  }
+
+  const getQueryColumnStyle = (item: FormItem) => {
+    if (!props.enableExpand) return
+
+    const width = effectiveLabelPosition.value === 'top' ? 0 : (getFormItemLabelWidth(item) ?? 0)
+    const cssWidth = /^\d+(\.\d+)?$/.test(String(width)) ? `${width}px` : width
+    return {
+      '--art-query-column-chrome': `calc(${cssWidth === 'auto' ? '80px' : cssWidth} + ${effectiveGutter.value}px)`,
+      // 选项组先留出多项并排所需的空间；宽列仍使用业务定义的 span。
+      '--art-query-editor-min': getQueryEditorMin(item)
+    }
   }
 
   const isFieldDisabled = (item: FormItem): boolean =>
@@ -1269,6 +1442,23 @@
     if (isFieldDisabled(item)) componentProps.disabled = true
     const options = getOptions(item)
 
+    if (
+      isNativeSelect(item) &&
+      (item.type === 'treeSelect' || (item.type === 'select' && !item.optionComponent))
+    ) {
+      componentProps.popperClass = normalizeClass([
+        componentProps.popperClass,
+        'art-form-picker-popper'
+      ])
+    }
+    if (hasAdaptiveTags(item, componentProps) && selectTagLayout.isCompact(item.key)) {
+      componentProps.maxCollapseTags = 1
+      componentProps.class = normalizeClass([
+        componentProps.class,
+        'art-form__select--compact-tags'
+      ])
+    }
+
     if (['select', 'selectV2', 'checkboxGroup', 'radioGroup'].includes(String(item.type))) {
       delete componentProps.options
     }
@@ -1283,6 +1473,10 @@
     }
     if (String(item.type) === 'treeSelect') {
       componentProps.data = componentProps.data ?? options
+      if (!item.render && !componentProps.renderContent && !item.slots?.default) {
+        componentProps.renderContent = (render: typeof h, { node }: { node: { label: string } }) =>
+          render('span', { title: node.label }, node.label)
+      }
     }
     if (String(item.type) === 'userSelect') {
       componentProps.options = options
@@ -1399,6 +1593,11 @@
   const filteredFormItems = computed(() => {
     return props.items.filter(isRenderedField)
   })
+  const { getDescriptionId, getRangeNames } = useFieldAccessibility(
+    formInstance,
+    filteredFormItems,
+    getProps
+  )
 
   const syncTenantScopeField = () => {
     const tenantItem = props.items.find((item) => item.type !== tabType && isTenantScopeItem(item))
@@ -1444,6 +1643,56 @@
       filteredFormItems.value.length > Math.floor(24 / props.span) - 1
     )
   })
+
+  const tracksAppliedFilters = computed(() => props.appliedSearchValues !== undefined)
+  const retainedFilterCount = computed(() => {
+    if (isExpanded.value || !shouldShowExpandToggle.value) return 0
+    const values = tracksAppliedFilters.value ? props.appliedSearchValues : modelValue.value
+    if (!values) return 0
+    const options = {
+      ...sanitizeOutputOptions.value,
+      removeEmptyString: true,
+      removeEmptyArray: true,
+      removeEmptyObject: true,
+      ...(tracksAppliedFilters.value && { keepZero: true, keepFalse: true })
+    }
+    return filteredFormItems.value.slice(visibleFormItems.value.length).filter((item) => {
+      if (isDividerItem(item) || isTextItem(item)) return false
+      const value = get(values, item.key)
+      // Only treat the declared “All” option as neutral; free-form text can use the same value.
+      if (
+        value === 'all' &&
+        item.type &&
+        optionComponentTypes.includes(item.type) &&
+        getOptions(item).some(
+          (option) =>
+            option.value === value &&
+            typeof option.label === 'string' &&
+            /^(全部|all\b)/i.test(option.label)
+        )
+      )
+        return false
+      return sanitizeFormValue(value, options) !== undefined
+    }).length
+  })
+  const retainedFilterText = computed(() =>
+    t(
+      tracksAppliedFilters.value
+        ? 'table.searchBar.appliedFilterCount'
+        : 'table.searchBar.filledFilterCount',
+      retainedFilterCount.value
+    )
+  )
+  const retainedFilterLabel = computed(() =>
+    retainedFilterCount.value
+      ? t(
+          tracksAppliedFilters.value
+            ? 'table.searchBar.expandAppliedFilters'
+            : 'table.searchBar.expandFilledFilters',
+          retainedFilterCount.value
+        )
+      : undefined
+  )
 
   const expandToggleText = computed(() => {
     return isExpanded.value ? t('table.searchBar.collapse') : t('table.searchBar.expand')
@@ -1492,8 +1741,7 @@
    * 处理提交事件
    */
   const handleSubmit = () => {
-    if (props.disabled || props.submitLoading || props.disabledSubmit || hasBlockingFields.value)
-      return
+    if (!readyToSubmit.value) return
     syncTenantScopeField()
     // 对外只抛出清洗后的结果，避免业务层重复过滤空值。
     emit('submit', getSanitizedOutput())
@@ -1686,10 +1934,8 @@
   defineExpose({
     ref: formInstance,
     controlsReady: formControlsReady,
-    readyToSubmit: computed(
-      () =>
-        !props.disabled && !props.submitLoading && !props.disabledSubmit && !hasBlockingFields.value
-    ),
+    readyToSubmit,
+    submit: handleSubmit,
     validate: async (...args: Parameters<FormInstance['validate']>) => {
       if (hasBlockingFields.value) {
         const invalidFields = Object.fromEntries(

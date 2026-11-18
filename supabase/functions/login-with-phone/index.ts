@@ -1,5 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2.119.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,6 +27,7 @@ Deno.serve(async (request: Request) => {
     const phone = String(body?.phone ?? '').trim()
     const password = String(body?.password ?? '')
     const captchaToken = String(body?.captchaToken ?? '').trim()
+    const shipperApp = body?.app === 'shipper'
     if (!looksLikePhone(phone) || !password) {
       return json({ code: 'invalid_credentials', error: '手机号或密码错误' }, 400)
     }
@@ -39,13 +40,32 @@ Deno.serve(async (request: Request) => {
     }
 
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
-    const { data: resolvedEmail, error: resolveError } = await admin.rpc(
+    const { data: staffEmail, error: resolveError } = await admin.rpc(
       'resolve_login_email_by_phone',
       { p_phone: phone }
     )
     if (resolveError) {
       console.error('phone login resolver failed', resolveError)
       return json({ code: 'phone_resolve_failed', error: '登录服务暂时不可用' }, 500)
+    }
+
+    let resolvedEmail = staffEmail
+    let shipperIdentity: string | null = null
+    if (shipperApp) {
+      const lookup = await admin.rpc('mobile_account_login_candidates', { p_app: 'shipper', p_identifier: phone })
+      if (lookup.error) return json({ code: 'phone_resolve_failed', error: '登录服务暂时不可用' }, 503)
+      const candidates: unknown = lookup.data
+      if (!Array.isArray(candidates)) return json({ code: 'phone_resolve_failed', error: '登录服务暂时不可用' }, 503)
+      if (candidates.length > 1) return json({ code: 'AMBIGUOUS_ACCOUNT', error: '手机号对应多个账号，请使用邮箱登录' }, 409)
+      const candidate: unknown = candidates[0]
+      if (candidate && typeof candidate === 'object' && 'email' in candidate && 'auth_user_id' in candidate &&
+        typeof candidate.email === 'string' && typeof candidate.auth_user_id === 'string') {
+        if (typeof staffEmail === 'string' && staffEmail && staffEmail.toLowerCase() !== candidate.email.toLowerCase()) {
+          return json({ code: 'AMBIGUOUS_ACCOUNT', error: '手机号对应多个账号，请使用邮箱登录' }, 409)
+        }
+        resolvedEmail = candidate.email
+        shipperIdentity = candidate.auth_user_id
+      }
     }
 
     const email =
@@ -62,23 +82,24 @@ Deno.serve(async (request: Request) => {
       return json({ code: 'invalid_credentials', error: '手机号或密码错误' }, 400)
     }
 
-    const accessResponse = await fetch(`${supabaseUrl}/functions/v1/check_user_status`, {
+    const accessResponse = await fetch(`${supabaseUrl}/functions/v1/${shipperIdentity ? 'tms-shipper' : 'check_user_status'}`, {
       method: 'POST',
       headers: {
         apikey: anonKey,
         authorization: `Bearer ${authData.session.access_token}`,
         'content-type': 'application/json'
       },
-      body: '{}'
+      body: shipperIdentity ? JSON.stringify({ action: 'profile' }) : '{}'
     })
-    if (!accessResponse.ok) {
-      const accessBody = await accessResponse.json().catch(() => null)
+    const accessBody = await accessResponse.json().catch(() => null)
+    if (!accessResponse.ok || (shipperIdentity ? authData.user.id !== shipperIdentity : accessBody?.allowed !== true)) {
+      await authClient.auth.signOut({ scope: 'local' })
       return json(
         {
           code: accessBody?.code || 'access_denied',
           error: accessBody?.error || '当前账号暂时无法登录'
         },
-        accessResponse.status
+        accessResponse.ok ? 403 : accessResponse.status
       )
     }
 

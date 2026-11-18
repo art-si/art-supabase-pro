@@ -4,6 +4,82 @@ import { prepareIsolatedSession } from './support/isolated-session'
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 test.setTimeout(90_000)
 
+test('BOM 分组键盘浏览、行内菜单与列表范围独立', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  const tenantId = '11111111-1111-4111-8111-111111111111'
+  const groups = [
+    { id: 'parent', name: '父分组', code: 'PARENT' },
+    { id: 'child', name: '子分组', code: 'CHILD', parent_id: 'parent' },
+    { id: 'other', name: '独立分组', code: 'OTHER' }
+  ].map((group, sort) => ({ tenant_id: tenantId, sort, enabled: true, ...group }))
+  const scopes: string[] = []
+  const writes: string[] = []
+  await page.route('**/rest/v1/**', (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/mdm_bom')) scopes.push(url.searchParams.get('group_id') ?? '')
+    if (
+      /\/rpc\/mdm_(save|delete)_bom/.test(url.pathname) ||
+      /^(PATCH|DELETE)$/.test(request.method())
+    )
+      writes.push(url.pathname)
+    const rows = url.pathname.endsWith('/mdm_master_group') ? groups : []
+    return route.fulfill({
+      headers: {
+        'content-range': `*/${rows.length}`,
+        'access-control-expose-headers': 'content-range'
+      },
+      json: rows
+    })
+  })
+  await page.goto('/tests/e2e/fixtures/bom-workspace-scope.html?scope=ordinary', {
+    waitUntil: 'domcontentloaded'
+  })
+  const panel = page.locator('.bom-group-panel')
+  const parent = panel.locator('[role="treeitem"][data-key="parent"]')
+  const child = panel.locator('[role="treeitem"][data-key="child"]')
+  const other = panel.locator('[role="treeitem"][data-key="other"]')
+  await expect(parent).toHaveAttribute('aria-expanded', 'true', { timeout: 60_000 })
+  await expect.poll(() => scopes.length).toBeGreaterThan(0)
+  const initialReads = scopes.length
+
+  await parent.press('ArrowLeft')
+  await expect(parent).toHaveAttribute('aria-expanded', 'false')
+  await parent.press('ArrowRight')
+  await expect(parent).toHaveAttribute('aria-expanded', 'true')
+  await parent.press('ArrowRight')
+  await expect(child).toBeFocused()
+  await child.press('ArrowLeft')
+  await expect(parent).toBeFocused()
+  expect(scopes.slice(initialReads)).toEqual([])
+
+  await parent.press('Enter')
+  await expect(parent).toHaveClass(/\bis-current\b/)
+  await expect.poll(() => scopes.slice(initialReads)).toEqual(['in.(parent,child)'])
+  const more = other.getByRole('button', { name: '更多操作', exact: true })
+  await more.press('Enter')
+  await expect(page.getByRole('menuitem', { name: '新增下级分组', exact: true })).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  const edit = page.getByRole('menuitem', { name: '编辑分组', exact: true })
+  await expect(edit).toBeFocused()
+  await page.keyboard.press('Enter')
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('textbox', { name: /分组编码/ })).toHaveValue('OTHER')
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(parent).toHaveClass(/\bis-current\b/)
+  expect(scopes.slice(initialReads)).toEqual(['in.(parent,child)'])
+
+  await page.evaluate(() => document.dispatchEvent(new Event('revoke-bom-group-delete')))
+  await expect(panel.getByRole('button', { name: '更多操作', exact: true })).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: '新增 BOM 分组', exact: true })).toHaveCount(0)
+  await child.press('Space')
+  await expect(child).toHaveClass(/\bis-current\b/)
+  await expect.poll(() => scopes.slice(initialReads)).toEqual(['in.(parent,child)', 'in.(child)'])
+  expect(writes).toEqual([])
+  await panel.screenshot({ path: info.outputPath('bom-group-keyboard.png') })
+})
+
 for (const state of [
   'child',
   'bom',
@@ -22,6 +98,10 @@ for (const state of [
     const id = '11111111-1111-4111-8111-111111111101'
     const childId = '11111111-1111-4111-8111-111111111102'
     const bomId = '11111111-1111-4111-8111-111111111103'
+    const dependencyReader =
+      state === 'permission'
+        ? 'get_record_delete_dependency_details'
+        : 'get_platform_record_delete_dependency_details'
     const events: string[] = []
     let deleted = false
     const groups = [
@@ -57,7 +137,7 @@ for (const state of [
     await page.route('**/rest/v1/**', (route) => {
       const url = new URL(route.request().url())
       const path = url.pathname
-      if (path.endsWith('/rpc/get_record_delete_dependency_details')) {
+      if (path.endsWith(`/rpc/${dependencyReader}`)) {
         events.push('inspect')
         expect(route.request().postDataJSON()).toMatchObject({
           p_table: 'mdm_master_group',

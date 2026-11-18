@@ -96,6 +96,12 @@ const dictionaryItems: Record<string, [string, string, string][]> = {
     ['other_out', '其他出库', 'warning'],
     ['transfer', '库存调拨', 'primary']
   ],
+  wmsInventoryMovementType: [
+    ['purchase_in', '采购入库', 'primary'],
+    ['sales_out', '销售出库', 'warning'],
+    ['production_issue', '生产领料', 'warning'],
+    ['inbound_purchase_inbound', '采购入库', 'primary']
+  ],
   mdmInventoryReservationStatus: [
     ['active', '预留中', 'primary'],
     ['released', '已释放', 'info']
@@ -381,19 +387,19 @@ function inventoryMenu() {
   }
 }
 
+type InventoryMenuNode = Omit<ReturnType<typeof inventoryMenu>, 'parentId' | 'children'> & {
+  parentId: string | null
+  children: InventoryMenuNode[]
+}
+
 async function installFixtures(page: Page): Promise<void> {
   await prepareIsolatedSession(page)
   const tenant = { id: tenantId, tenant_code: 'DEMO', tenant_name: '示例工厂' }
   const menu = inventoryMenu()
   const flat: object[] = []
-  const walk = (
-    node:
-      | typeof menu
-      | (typeof menu.children)[number]
-      | (typeof menu.children)[number]['children'][number]
-  ) => {
+  const walk = (node: InventoryMenuNode) => {
     flat.push({ ...node, children: undefined })
-    for (const child of node.children) walk(child as typeof menu)
+    for (const child of node.children) walk(child)
   }
   walk(menu)
   await page.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))

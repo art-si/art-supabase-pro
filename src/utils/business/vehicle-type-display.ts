@@ -1,5 +1,21 @@
 import { getDictionaryDisplayLabel } from '@/utils/form/option'
 
+export function formatVehicleTypeMetric(value: number | null | undefined, unit: string): string {
+  return value == null ? '未配置' : `${value} ${unit}`
+}
+
+export function vehicleTypeProfileLabel(profile: {
+  category: string
+  lengthM: number | null
+  loadTons: number | null
+}): string {
+  const byLoad = profile.category === '按载重'
+  const value = byLoad ? profile.loadTons : profile.lengthM
+  return value == null
+    ? profile.category
+    : `${profile.category} · ${formatVehicleTypeMetric(value, byLoad ? '吨' : '米')}`
+}
+
 /** Preserve older Chinese vehicle names without exposing mixed dictionary codes. */
 export function getVehicleTypeFallbackLabel(
   value?: string | null,

@@ -22,7 +22,6 @@
 
       <SidebarSubmenu
         :list="item.children"
-        :is-mobile="isMobile"
         :level="menuLevel + 1"
         :theme="theme"
         @close="closeMenu"
@@ -84,8 +83,6 @@
     list?: AppRouteRecord[]
     /** 主题配置 */
     theme?: MenuTheme
-    /** 是否为移动端模式 */
-    isMobile?: boolean
     /** 菜单层级 */
     level?: number
   }
@@ -99,7 +96,6 @@
     title: '',
     list: () => [],
     theme: () => ({}),
-    isMobile: false,
     level: 0
   })
 

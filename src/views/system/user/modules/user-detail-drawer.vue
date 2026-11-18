@@ -8,9 +8,7 @@
         <div class="user-detail__hero-copy">
           <div class="user-detail__title-row">
             <h2>{{ user.nickName || user.userName }}</h2>
-            <ElTag :type="user.status === '1' ? 'success' : 'info'" effect="light">
-              {{ user.status === '1' ? '启用' : '停用' }}
-            </ElTag>
+            <ArtDictDisplay dict-code="status" :value="user.status" display="tag" />
             <ElTag v-if="isCurrentUser" type="primary" effect="plain">当前账号</ElTag>
           </div>
           <p>@{{ user.userName }}</p>
@@ -20,7 +18,7 @@
         </div>
       </section>
 
-      <ElTabs v-model="activeTab" class="min-w-0">
+      <ElTabs v-model="activeTab" class="art-card-xs art-overlay-tab-card">
         <ElTabPane label="基本身份" name="identitySection" :lazy="false">
           <ArtDescriptions :data="user" :items="accountItems" :columns="2" :label-width="112" />
         </ElTabPane>
@@ -39,12 +37,12 @@
 <script setup lang="ts">
   import { ElTag, ElTabs, ElTabPane } from 'element-plus'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import { useUserStore } from '@/store/modules/user'
-  import { formatWithDayjs } from '@/utils/time'
 
   type UserListItem = Api.SystemManage.UserListItem
 
@@ -120,7 +118,9 @@
     {
       key: 'employmentStatus',
       label: '在职状态',
-      value: (row: UserListItem) => row.hrEmployee?.employmentStatus
+      field: 'hrEmployee.employmentStatus',
+      dictCode: 'hrEmploymentStatus',
+      dictDisplay: 'text'
     }
   ]
 
@@ -128,17 +128,9 @@
     { key: 'phone', label: '手机号', field: 'userPhone', copyable: true },
     { key: 'email', label: '邮箱', field: 'userEmail', copyable: true },
     { key: 'createdBy', label: '创建人', field: 'createBy' },
-    {
-      key: 'createdAt',
-      label: '创建时间',
-      value: (row: UserListItem) => formatWithDayjs(row.createTime) || '--'
-    },
+    { key: 'createdAt', label: '创建时间', field: 'createTime', format: 'datetime' },
     { key: 'updatedBy', label: '最后编辑人', field: 'updateBy' },
-    {
-      key: 'updatedAt',
-      label: '最后编辑时间',
-      value: (row: UserListItem) => formatWithDayjs(row.updateTime) || '--'
-    },
+    { key: 'updatedAt', label: '最后编辑时间', field: 'updateTime', format: 'datetime' },
     { key: 'id', label: '用户 ID', field: 'id', span: 2, copyable: true }
   ]
 

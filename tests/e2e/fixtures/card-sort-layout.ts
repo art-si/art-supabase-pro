@@ -1,6 +1,6 @@
-import { createApp, h } from 'vue'
+import { createApp, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { ElInput } from 'element-plus'
+import { ElButton, ElInput } from 'element-plus'
 import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
@@ -18,6 +18,7 @@ import '@styles/index.scss'
 const params = new URLSearchParams(location.search)
 document.documentElement.classList.toggle('dark', params.get('theme') === 'dark')
 document.documentElement.dataset.boxMode = params.get('box') ?? 'border-mode'
+const compactSearch = ref('')
 const app = createApp({
   render: () =>
     h(
@@ -62,6 +63,32 @@ const app = createApp({
                       style: { width: '231px' }
                     }),
                     h(ArtIconButton, { label: '查询岗位', icon: 'ri:search-line' })
+                  ]
+                }
+              ),
+              h(
+                ArtSectionCard,
+                {
+                  title: '岗位筛选',
+                  subtitle: '按组织与岗位检索',
+                  showMarker: false,
+                  showScrollbar: false,
+                  style: { width: '240px', maxWidth: '100%', marginTop: '16px' }
+                },
+                {
+                  default: () => '内容区域',
+                  actions: () => [
+                    h(ElInput, {
+                      'aria-label': '搜索岗位',
+                      placeholder: '岗位编码或名称',
+                      style: { width: '180px' },
+                      modelValue: compactSearch.value,
+                      'onUpdate:modelValue': (value: string) => {
+                        compactSearch.value = value
+                      }
+                    }),
+                    h(ElButton, { type: 'primary' }, () => '筛选岗位'),
+                    h(ElButton, {}, () => '查看全部')
                   ]
                 }
               )
