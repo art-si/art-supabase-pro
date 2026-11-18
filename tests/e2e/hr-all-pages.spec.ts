@@ -291,6 +291,8 @@ for (const name of pages) {
           if (endpoint === 'hr_performance_overview_secure') return route.fulfill({ json: {} })
           if (endpoint === 'hr_list_performance_options_secure') return route.fulfill({ json: [] })
           if (endpoint === 'material_unit_compatibility_options') return route.fulfill({ json: [] })
+          if (endpoint === 'get_table_column_runtime')
+            return route.fulfill({ json: { enabled: false, profiles: [] } })
           if (request.method() !== 'GET' && endpoint !== 'current_is_super')
             writes.push(request.url())
           return route.fallback()

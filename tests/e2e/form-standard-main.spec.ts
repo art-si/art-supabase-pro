@@ -69,6 +69,8 @@ async function mockRequests(page: Page, { ordinary = false } = {}): Promise<void
     const url = new URL(route.request().url())
     const table = url.pathname.split('/').pop()
     const method = route.request().method()
+    if (table === 'get_table_column_runtime')
+      return route.fulfill({ json: { enabled: false, profiles: [] } })
     if (table === 'configure_document_number_rule_for_tenants')
       return route.fulfill({ json: { created: 1, updated: 0 } })
     if (table === 'tms_save_geofence_config')
@@ -497,7 +499,9 @@ for (const feature of ['user-detail', 'menu-detail']) {
         if (
           request.method() !== 'GET' &&
           /\/(?:rest|functions)\/v1\//.test(request.url()) &&
-          !/\/rpc\/(?:current_is_super|material_unit_compatibility_options)$/.test(request.url())
+          !/\/rpc\/(?:current_is_super|material_unit_compatibility_options|get_table_column_runtime)$/.test(
+            request.url()
+          )
         )
           writes.push(request.url())
       })
