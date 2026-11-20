@@ -41,6 +41,7 @@
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { useWindowSize } from '@vueuse/core'
 
   import { saveMenuDefinition } from '@/api/system-manage'
@@ -98,6 +99,7 @@
 
   const emit = defineEmits<Emits>()
   const dialogRef = ref<ArtDialogExpose<MenuDialogOpenData>>()
+  const menuTreeSession = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const activeTab = ref('')
   const formRef = ref<InstanceType<typeof ArtForm>>()
 
@@ -451,9 +453,10 @@
   ): Promise<void> => {
     if (value !== 'folder' && value !== 'menu' && value !== 'button') return
 
+    const request = menuTreeSession.version.value
     syncComponentByType()
     await nextTick()
-    formRef.value?.clearValidate()
+    if (menuTreeSession.isCurrent(request)) formRef.value?.clearValidate()
   }
 
   const handleParentChange = (): void => {
@@ -464,13 +467,15 @@
    * 重置表单数据
    */
   const handleResetFields = async (): Promise<void> => {
+    const request = menuTreeSession.version.value
     await nextTick()
-    formRef.value?.clearValidate()
+    if (menuTreeSession.isCurrent(request)) formRef.value?.clearValidate()
   }
 
   const handleDialogOpened = async (): Promise<void> => {
+    const request = menuTreeSession.version.value
     await nextTick()
-    formRef.value?.clearValidate()
+    if (menuTreeSession.isCurrent(request)) formRef.value?.clearValidate()
   }
 
   /**
@@ -606,21 +611,26 @@
   }
 
   const loadMenuTree = async (): Promise<void> => {
-    if (!menuTreeLoader.value) return
+    const loader = menuTreeLoader.value
+    if (!loader || !unref(dialogRef.value?.visible)) return
+    const request = menuTreeSession.invalidate()
+    const menuId = form.value.id
     treeError.value = false
     dialogRef.value?.setLoading(true)
     try {
-      const tree = await menuTreeLoader.value()
+      const tree = await loader()
+      if (!menuTreeSession.isCurrent(request)) return
       sourceMenuTree.value = tree
-      select.value.menuTree = filterMenuParentTree(tree, form.value.id)
+      select.value.menuTree = filterMenuParentTree(tree, menuId)
     } catch {
-      treeError.value = true
+      if (menuTreeSession.isCurrent(request)) treeError.value = true
     } finally {
-      dialogRef.value?.setLoading(false)
+      if (menuTreeSession.isCurrent(request)) dialogRef.value?.setLoading(false)
     }
   }
 
   const handleReset = async (): Promise<void> => {
+    menuTreeSession.invalidate()
     Object.assign(form.value, createInitialForm())
     select.value = { menuTree: [] }
     sourceMenuTree.value = []
@@ -631,6 +641,7 @@
   }
 
   const handleOpen = async (data: MenuDialogOpenData = {}): Promise<void> => {
+    menuTreeSession.invalidate()
     activeTab.value = ''
     initializeForm(data)
     treeError.value = false
@@ -645,11 +656,17 @@
       loading: !data.menuTree?.length && Boolean(data.loadMenuTree),
       loadingText: '正在加载菜单层级…',
       onOpen: async () => {
-        await Promise.all([handleResetFields(), loadMenuTree()])
+        const loadingTree = loadMenuTree()
+        const request = menuTreeSession.version.value
+        await loadingTree
+        if (menuTreeSession.isCurrent(request)) await handleResetFields()
       },
       onConfirm: handleSubmit,
+      onClose: () => {
+        menuTreeSession.invalidate()
+      },
       onReset: () => {
-        handleReset()
+        void handleReset()
       }
     })
   }

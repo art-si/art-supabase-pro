@@ -4,7 +4,9 @@ import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
 import { setupGlobDirectives } from '@/directives'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import EquipmentPage from '@mdm/views/engineering/production-equipment/index.vue'
 import EquipmentDialog from '@mdm/views/engineering/production-equipment/modules/equipment-dialog.vue'
 import EsopPage from '@mdm/views/engineering/esop/index.vue'
@@ -12,6 +14,8 @@ import DocumentDialog from '@mdm/views/engineering/esop/modules/document-dialog.
 import CategoryDialog from '@mdm/views/engineering/esop/modules/category-dialog.vue'
 import GroupDialog from '@mdm/views/components/operational-master/modules/group-dialog.vue'
 import BomGroupDialog from '@mdm/views/engineering/bom-maintenance/modules/bom-group-dialog.vue'
+import BreakDialog from '@mdm/views/production/calendar/modules/break-dialog.vue'
+import type { ShiftBreak } from '@mdm/api'
 import BomPage from '@mdm/views/engineering/bom-maintenance/index.vue'
 import BomDialog from '@mdm/views/engineering/bom-maintenance/modules/bom-dialog.vue'
 import CatalogPage from '@mdm/views/components/catalog/index.vue'
@@ -20,17 +24,32 @@ import { resolveMasterConfig } from '@mdm/views/components/operational-master/mo
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
-const mode = new URLSearchParams(location.search).get('mode')
+const params = new URLSearchParams(location.search)
+const mode = params.get('mode')
 const equipment = ref<InstanceType<typeof EquipmentDialog>>()
 const documentDialog = ref<InstanceType<typeof DocumentDialog>>()
 const category = ref<InstanceType<typeof CategoryDialog>>()
 const group = ref<InstanceType<typeof GroupDialog>>()
 const bomGroup = ref<InstanceType<typeof BomGroupDialog>>()
+const breaks = ref<InstanceType<typeof BreakDialog>>()
+const savedBreaks = ref<ShiftBreak[] | null>(null)
 const bom = ref<InstanceType<typeof BomDialog>>()
 const formula = ref<InstanceType<typeof ActivityFormulaDialog>>()
 const tenantId = 'test-tenant'
 const tenantOptions = [{ label: '测试租户', value: tenantId }]
 const open = () => {
+  if (mode === 'break-times')
+    return breaks.value?.handleOpen(
+      {
+        name: '验收白班',
+        startTime: '08:00',
+        endTime: '17:00',
+        breaks: [{ startTime: '12:00', endTime: '13:00' }],
+        handoverAuto: true,
+        handoverMinutes: 0
+      },
+      (rows) => (savedBreaks.value = rows)
+    )
   if (mode === 'bom') {
     return bom.value?.handleOpen({
       tenantId,
@@ -127,19 +146,39 @@ const app = createApp({
               ? [h(EsopPage)]
               : [
                   h('button', { type: 'button', onClick: () => void open() }, '打开表单'),
-                  mode === 'bom'
-                    ? h(BomDialog, { ref: bom })
-                    : mode === 'equipment'
-                      ? h(EquipmentDialog, { ref: equipment })
-                      : mode === 'category'
-                        ? h(CategoryDialog, { ref: category })
-                        : mode === 'master-group'
-                          ? h(GroupDialog, { ref: group })
-                          : mode === 'bom-group'
-                            ? h(BomGroupDialog, { ref: bomGroup })
-                            : mode === 'activity-formula' || mode === 'formula-history'
-                              ? h(ActivityFormulaDialog, { ref: formula })
-                              : h(DocumentDialog, { ref: documentDialog })
+                  ...(mode === 'break-times'
+                    ? [
+                        h(BreakDialog, { ref: breaks }),
+                        h(
+                          'output',
+                          { 'data-testid': 'saved-break-times' },
+                          JSON.stringify(savedBreaks.value)
+                        ),
+                        h(
+                          'output',
+                          { 'data-testid': 'break-actor', hidden: true },
+                          JSON.stringify({
+                            tenantId: useUserStore(store).getUserInfo.tenantId,
+                            platformSuper: useUserStore(store).getUserInfo.platformSuper,
+                            permissions: useMenuStore(store).buttonList.map((item) => item.name)
+                          })
+                        )
+                      ]
+                    : [
+                        mode === 'bom'
+                          ? h(BomDialog, { ref: bom })
+                          : mode === 'equipment'
+                            ? h(EquipmentDialog, { ref: equipment })
+                            : mode === 'category'
+                              ? h(CategoryDialog, { ref: category })
+                              : mode === 'master-group'
+                                ? h(GroupDialog, { ref: group })
+                                : mode === 'bom-group'
+                                  ? h(BomGroupDialog, { ref: bomGroup })
+                                  : mode === 'activity-formula' || mode === 'formula-history'
+                                    ? h(ActivityFormulaDialog, { ref: formula })
+                                    : h(DocumentDialog, { ref: documentDialog })
+                      ])
                 ]
     )
 })
@@ -158,18 +197,29 @@ useUserStore(store).setUserInfo({
   platformSuper: false
 })
 useMenuStore(store).setButtonList(
-  [
-    'MdmProductionEquipment:View',
-    'MdmEsop:View',
-    'MdmEsop:Edit',
-    'MdmEsop:Copy',
-    'MdmActivityFormula:ManageParameter',
-    'MdmBomMaintenance:View'
-  ].map((name) => ({
+  (mode === 'break-times'
+    ? ['MdmFactoryCalendar:View', 'MdmFactoryCalendar:AddPattern']
+    : [
+        'MdmProductionEquipment:View',
+        'MdmEsop:View',
+        'MdmEsop:Edit',
+        'MdmEsop:Copy',
+        'MdmActivityFormula:ManageParameter',
+        'MdmBomMaintenance:View',
+        ...(params.get('errorAudit') === '1' ? ['MdmBomMaintenance:ManageGroup'] : [])
+      ]
+  ).map((name) => ({
     name,
     path: '',
     type: 'button',
     meta: { title: '测试权限' }
   }))
 )
+if (params.get('shadowAudit') === '1') {
+  initializeTheme()
+  document.documentElement.dataset.uiScope = 'workspace'
+  document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+    ? 'border-mode'
+    : 'shadow-mode'
+}
 app.mount('#engineering-dictionary-options')

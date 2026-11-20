@@ -341,3 +341,157 @@ for (const profile of [
     })
   })
 }
+
+test('能力中心异步读取归属：重开建立新请求，旧成功和失败不改当前快照与加载', async ({
+  page
+}, info) => {
+  await prepareIsolatedSession(page, { tenantId, platformSuper: false })
+  const writes: string[] = []
+  const readonlyRpc = new Set([
+    'current_is_super',
+    'get_organization_list_secure',
+    'get_login_default_language',
+    'current_user_role_names',
+    'get_table_column_runtime',
+    'material_unit_compatibility_options'
+  ])
+  await page.route('**/rest/v1/**', (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const name = url.pathname.split('/').at(-1) ?? ''
+    if (request.method() !== 'GET' && !(url.pathname.includes('/rpc/') && readonlyRpc.has(name))) {
+      writes.push(`${request.method()} ${url.pathname}`)
+      return route.fulfill({ status: 403, json: { message: '此用例只允许读取' } })
+    }
+    return route.fallback()
+  })
+  const reads: {
+    gate: ReturnType<typeof Promise.withResolvers<void>>
+    finished: ReturnType<typeof Promise.withResolvers<void>>
+    failure: boolean
+    version: string
+  }[] = []
+  await page.route('**/functions/v1/ai-project-assistant', async (route) => {
+    const request = route.request()
+    const body: unknown = request.postDataJSON()
+    if (
+      request.method() !== 'POST' ||
+      !body ||
+      typeof body !== 'object' ||
+      !('action' in body) ||
+      !('catalogAction' in body) ||
+      body.action !== 'catalog' ||
+      body.catalogAction !== 'capability_snapshot'
+    ) {
+      writes.push(`${request.method()} ${new URL(request.url()).pathname}`)
+      await route.fulfill({ status: 403, json: { message: '此用例只允许读取能力快照' } })
+      return
+    }
+    const read = {
+      gate: Promise.withResolvers<void>(),
+      finished: Promise.withResolvers<void>(),
+      failure: false,
+      version: '尚未返回的能力快照'
+    }
+    reads.push(read)
+    try {
+      await read.gate.promise
+      await route.fulfill(
+        read.failure
+          ? { status: 500, json: { message: '能力快照读取失败，请重试' } }
+          : {
+              json: {
+                data: { ...snapshot, database: { ...snapshot.database, version: read.version } }
+              }
+            }
+      )
+    } finally {
+      read.finished.resolve()
+    }
+  })
+  let completedCount = 0
+  const settle = async (id: number, failure: boolean, version: string, fromOpen = true) => {
+    const read = reads[id - 1]
+    if (!read) throw new Error(`能力快照请求 ${id} 尚未启动`)
+    read.failure = failure
+    read.version = version
+    read.gate.resolve()
+    await read.finished.promise
+    if (fromOpen)
+      await expect(page.getByTestId('capability-open-completed')).toHaveText(
+        String(++completedCount)
+      )
+  }
+  let requestCount = 1
+  const drawer = page.locator('.el-drawer:visible')
+  const viewport = drawer.locator('.art-drawer__viewport')
+  const summary = drawer.locator('.capability-center__summary')
+  try {
+    await open(page, 'capability', 'light')
+    await expect.poll(() => reads.length).toBe(1)
+    for (const order of ['pending', 'ready'] as const) {
+      for (const failure of [false, true]) {
+        if (requestCount > 1) {
+          await page.getByRole('button', { name: '打开公开入口', exact: true }).click()
+          requestCount++
+          await expect.poll(() => reads.length).toBe(requestCount)
+        }
+        const requestA = requestCount
+        await expect(viewport).toHaveAttribute('aria-busy', 'true')
+        await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+        await expect(drawer).toBeHidden()
+        await page.getByRole('button', { name: '打开公开入口', exact: true }).click()
+        const requestB = ++requestCount
+        await expect.poll(() => reads.length, '重开后的 B 必须启动自己的快照读取').toBe(requestB)
+        await expect(viewport).toHaveAttribute('aria-busy', 'true')
+        const currentVersion = `当前快照 B-${requestB}`
+        if (order === 'ready') {
+          await settle(requestB, false, currentVersion)
+          await expect(summary).toContainText(currentVersion)
+          await expect(viewport).toHaveAttribute('aria-busy', 'false')
+        }
+        await settle(requestA, failure, `旧快照 A-${requestA}`)
+        if (order === 'pending') {
+          await expect
+            .soft(viewport, `旧 ${failure ? '失败' : '成功'} 不能解除 B 的快照遮罩`)
+            .toHaveAttribute('aria-busy', 'true')
+          await expect.soft(page.locator('.el-message--error')).toHaveCount(0)
+          await settle(requestB, false, currentVersion)
+        }
+        await expect(summary).toContainText(currentVersion)
+        await expect(summary).not.toContainText(`旧快照 A-${requestA}`)
+        await expect(viewport).toHaveAttribute('aria-busy', 'false')
+        await expect(page.locator('.el-message--error')).toHaveCount(0)
+        await expect(
+          drawer.getByRole('button', { name: '刷新能力快照', exact: true })
+        ).toBeEnabled()
+        await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click()
+        await expect(drawer).toBeHidden()
+      }
+    }
+    await page.getByRole('button', { name: '打开公开入口', exact: true }).click()
+    const currentFailure = ++requestCount
+    await expect.poll(() => reads.length).toBe(currentFailure)
+    await settle(currentFailure, true, '当前失败快照')
+    await expect(page.locator('.el-message--error')).toBeVisible()
+    await expect(viewport).toHaveAttribute('aria-busy', 'false')
+    await drawer.getByRole('button', { name: '刷新能力快照', exact: true }).click()
+    const retry = ++requestCount
+    await expect.poll(() => reads.length).toBe(retry)
+    await expect(viewport).toHaveAttribute('aria-busy', 'true')
+    await settle(retry, false, '当前重试快照', false)
+    await expect(summary).toContainText('当前重试快照')
+    await expect(viewport).toHaveAttribute('aria-busy', 'false')
+    await expect(drawer.getByRole('button', { name: '刷新能力快照', exact: true })).toBeEnabled()
+    await drawer.screenshot({
+      path: info.outputPath('capability-read-context.png'),
+      animations: 'disabled'
+    })
+    await expect(page.getByTestId('analyze')).toBeEmpty()
+    await expect(page.getByTestId('successes')).toHaveText('0')
+    expect(writes).toEqual([])
+  } finally {
+    reads.forEach((read) => read.gate.resolve())
+    await Promise.all(reads.map((read) => read.finished.promise))
+  }
+})

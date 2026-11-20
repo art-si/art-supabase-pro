@@ -1,4 +1,12 @@
 import { normalizeOcrRawText } from './ai-ocr-text.ts'
+import {
+  isOcrRecord,
+  normalizeOcrConfidence,
+  normalizeOcrDate,
+  normalizeOcrNonNegativeNumber,
+  normalizeOcrStringArray,
+  normalizeOcrTextValue
+} from './ai-ocr-values.ts'
 
 export const AI_INVOICE_OCR_FIELDS = [
   'invoiceType',
@@ -66,24 +74,14 @@ export interface ContractValidationResult {
 
 const INVOICE_TYPES = new Set(['vat_special', 'vat_ordinary', 'electronic'])
 const MONEY_FIELDS = ['taxRate', 'amountExcludingTax', 'taxAmount', 'totalAmount'] as const
-const TEXT_FIELDS = [
-  'invoiceTitle',
-  'taxNumber',
-  'invoiceCode',
-  'invoiceNo',
-  'buyerName',
-  'buyerTaxNumber',
-  'sellerName',
-  'sellerTaxNumber'
-] as const
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
 function numericValue(value: unknown): unknown {
   if (typeof value !== 'string' || !value.trim()) return value
-  const parsed = Number(value.trim().replace(/[￥¥,，\s]/g, '').replace(/%$/, ''))
+  const parsed = Number(
+    value
+      .trim()
+      .replace(/[￥¥,，\s]/g, '')
+      .replace(/%$/, '')
+  )
   return Number.isFinite(parsed) ? parsed : value
 }
 
@@ -94,7 +92,7 @@ function hasInvoiceField(value: Record<string, unknown>): boolean {
 function unwrapInvoicePayload(payload: Record<string, unknown>): Record<string, unknown> {
   for (const key of ['result', 'data', 'output', 'response', 'expectedShape']) {
     const candidate = payload[key]
-    if (isRecord(candidate) && (isRecord(candidate.invoice) || hasInvoiceField(candidate))) {
+    if (isOcrRecord(candidate) && (isOcrRecord(candidate.invoice) || hasInvoiceField(candidate))) {
       return candidate
     }
   }
@@ -104,9 +102,9 @@ function unwrapInvoicePayload(payload: Record<string, unknown>): Record<string, 
 export function coerceAiInvoiceOcrProviderPayload(
   payload: unknown
 ): Record<string, unknown> | null {
-  if (!isRecord(payload)) return null
+  if (!isOcrRecord(payload)) return null
   const source = unwrapInvoicePayload(payload)
-  const invoiceSource = isRecord(source.invoice)
+  const invoiceSource = isOcrRecord(source.invoice)
     ? source.invoice
     : hasInvoiceField(source)
       ? source
@@ -122,7 +120,7 @@ export function coerceAiInvoiceOcrProviderPayload(
   }
 
   const fieldConfidence: Record<string, number> = {}
-  if (isRecord(source.fieldConfidence)) {
+  if (isOcrRecord(source.fieldConfidence)) {
     for (const field of AI_INVOICE_OCR_FIELDS) {
       const value = numericValue(source.fieldConfidence[field])
       if (typeof value === 'number') fieldConfidence[field] = value
@@ -144,72 +142,34 @@ export function coerceAiInvoiceOcrProviderPayload(
   }
 }
 
-function textValue(value: unknown, maxLength = 300): string | null {
-  if (typeof value !== 'string') return null
-  const normalized = value.trim()
-  return normalized ? normalized.slice(0, maxLength) : null
-}
-
-function numberValue(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null
-  const normalized = Number(value)
-  return Number.isFinite(normalized) && normalized >= 0 ? normalized : null
-}
-
-function confidenceValue(value: unknown): number {
-  return Math.min(1, Math.max(0, numberValue(value) ?? 0))
-}
-
-function stringArray(value: unknown, maxItems = 20): string[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .map((item) => textValue(item, 500))
-    .filter((item): item is string => Boolean(item))
-    .slice(0, maxItems)
-}
-
-function normalizeDate(value: unknown): string | null {
-  const source = textValue(value, 40)
-  if (!source) return null
-  const match = source.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/)
-  if (!match) return null
-  const month = match[2].padStart(2, '0')
-  const day = match[3].padStart(2, '0')
-  const normalized = `${match[1]}-${month}-${day}`
-  const date = new Date(`${normalized}T00:00:00Z`)
-  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== normalized
-    ? null
-    : normalized
-}
-
 function normalizeInvoiceType(value: unknown): string | null {
-  const source = textValue(value, 40)
+  const source = normalizeOcrTextValue(value, 40)
   if (!source) return null
   const aliases: Record<string, string> = {
-    '增值税专用发票': 'vat_special',
-    '增值税普通发票': 'vat_ordinary',
-    '电子发票': 'electronic'
+    增值税专用发票: 'vat_special',
+    增值税普通发票: 'vat_ordinary',
+    电子发票: 'electronic'
   }
   const normalized = aliases[source] ?? source
   return INVOICE_TYPES.has(normalized) ? normalized : null
 }
 
 function normalizeInvoiceNo(value: unknown): string | null {
-  const source = textValue(value, 100)?.replace(/\s+/g, '').toUpperCase()
+  const source = normalizeOcrTextValue(value, 100)?.replace(/\s+/g, '').toUpperCase()
   if (!source) return null
   return /^[A-Z0-9]{6,30}$/.test(source) ? source : null
 }
 
 export function validateAiInvoiceOcrProviderPayload(payload: unknown): ContractValidationResult {
   const errors: string[] = []
-  if (!isRecord(payload)) return { valid: false, errors: ['payload must be an object'] }
-  if (!isRecord(payload.invoice)) errors.push('invoice must be an object')
+  if (!isOcrRecord(payload)) return { valid: false, errors: ['payload must be an object'] }
+  if (!isOcrRecord(payload.invoice)) errors.push('invoice must be an object')
 
   const confidence = payload.confidence
   if (typeof confidence !== 'number' || confidence < 0 || confidence > 1) {
     errors.push('confidence must be between 0 and 1')
   }
-  if (!isRecord(payload.fieldConfidence)) {
+  if (!isOcrRecord(payload.fieldConfidence)) {
     errors.push('fieldConfidence must be an object')
   } else {
     for (const [key, value] of Object.entries(payload.fieldConfidence)) {
@@ -221,7 +181,7 @@ export function validateAiInvoiceOcrProviderPayload(payload: unknown): ContractV
     }
   }
 
-  if (isRecord(payload.invoice)) {
+  if (isOcrRecord(payload.invoice)) {
     for (const field of MONEY_FIELDS) {
       const value = payload.invoice[field]
       if (value !== null && value !== undefined && (typeof value !== 'number' || value < 0)) {
@@ -243,30 +203,30 @@ export function validateAiInvoiceOcrProviderPayload(payload: unknown): ContractV
 export function normalizeAiInvoiceOcrResponse(
   payload: Record<string, unknown>
 ): AiInvoiceOcrNormalizedResponse {
-  const source = isRecord(payload.invoice) ? payload.invoice : {}
-  const sourceInvoiceNo = textValue(source.invoiceNo, 100)
+  const source = isOcrRecord(payload.invoice) ? payload.invoice : {}
+  const sourceInvoiceNo = normalizeOcrTextValue(source.invoiceNo, 100)
   const invoice = {
     invoiceType: normalizeInvoiceType(source.invoiceType),
-    invoiceTitle: textValue(source.invoiceTitle),
-    taxNumber: textValue(source.taxNumber, 100),
-    invoiceCode: textValue(source.invoiceCode, 100),
+    invoiceTitle: normalizeOcrTextValue(source.invoiceTitle, 300),
+    taxNumber: normalizeOcrTextValue(source.taxNumber, 100),
+    invoiceCode: normalizeOcrTextValue(source.invoiceCode, 100),
     invoiceNo: normalizeInvoiceNo(source.invoiceNo),
-    issueDate: normalizeDate(source.issueDate),
-    taxRate: numberValue(source.taxRate),
-    amountExcludingTax: numberValue(source.amountExcludingTax),
-    taxAmount: numberValue(source.taxAmount),
-    totalAmount: numberValue(source.totalAmount),
-    buyerName: textValue(source.buyerName),
-    buyerTaxNumber: textValue(source.buyerTaxNumber, 100),
-    sellerName: textValue(source.sellerName),
-    sellerTaxNumber: textValue(source.sellerTaxNumber, 100)
+    issueDate: normalizeOcrDate(source.issueDate),
+    taxRate: normalizeOcrNonNegativeNumber(source.taxRate),
+    amountExcludingTax: normalizeOcrNonNegativeNumber(source.amountExcludingTax),
+    taxAmount: normalizeOcrNonNegativeNumber(source.taxAmount),
+    totalAmount: normalizeOcrNonNegativeNumber(source.totalAmount),
+    buyerName: normalizeOcrTextValue(source.buyerName, 300),
+    buyerTaxNumber: normalizeOcrTextValue(source.buyerTaxNumber, 100),
+    sellerName: normalizeOcrTextValue(source.sellerName, 300),
+    sellerTaxNumber: normalizeOcrTextValue(source.sellerTaxNumber, 100)
   } satisfies AiInvoiceOcrDraft
 
   const fieldConfidence: Partial<Record<AiInvoiceOcrField, number>> = {}
-  if (isRecord(payload.fieldConfidence)) {
+  if (isOcrRecord(payload.fieldConfidence)) {
     for (const field of AI_INVOICE_OCR_FIELDS) {
       if (payload.fieldConfidence[field] !== undefined) {
-        fieldConfidence[field] = confidenceValue(payload.fieldConfidence[field])
+        fieldConfidence[field] = normalizeOcrConfidence(payload.fieldConfidence[field])
       }
     }
   }
@@ -281,7 +241,7 @@ export function normalizeAiInvoiceOcrResponse(
     if (invoice[field] === null) missingFields.push(label)
   }
 
-  const warnings = stringArray(payload.warnings)
+  const warnings = normalizeOcrStringArray(payload.warnings)
   if (sourceInvoiceNo && !invoice.invoiceNo) {
     warnings.unshift('识别到的发票号码格式异常，已留空，请根据票面补录。')
   }
@@ -299,8 +259,9 @@ export function normalizeAiInvoiceOcrResponse(
 
   return {
     rawText: normalizeOcrRawText(payload.rawText),
-    summary: textValue(payload.summary, 500) ?? '已完成发票票面识别，请人工核对后应用。',
-    confidence: confidenceValue(payload.confidence),
+    summary:
+      normalizeOcrTextValue(payload.summary, 500) ?? '已完成发票票面识别，请人工核对后应用。',
+    confidence: normalizeOcrConfidence(payload.confidence),
     fieldConfidence,
     missingFields,
     warnings: [...new Set(warnings)],

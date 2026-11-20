@@ -1,5 +1,39 @@
 <template>
-  <main class="mx-auto min-w-0 max-w-5xl p-4">
+  <main v-if="nativeScroll" class="mx-auto min-w-0 max-w-5xl p-4">
+    <DefineNativeContent>
+      <div data-testid="native-content">
+        <div class="mb-4 flex flex-wrap gap-2">
+          <ElButton @click="nativeFlag = 'default'">默认自动定位</ElButton>
+          <ElButton @click="nativeFlag = 'on'">启用自动定位</ElButton>
+          <ElButton @click="nativeFlag = 'off'">关闭自动定位</ElButton>
+          <ElButton @click="nativeOptions = 'end'">末端定位</ElButton>
+          <ElButton @click="nativeOptions = 'boolean'">布尔末端定位</ElButton>
+          <ElButton @click="validateNative">校验滚动表单</ElButton>
+          <ElButton @click="nativeForm?.scrollToField('errorName')">手动定位联系人</ElButton>
+          <ElButton @click="nativeForm?.focusField('errorName')">手动聚焦联系人</ElButton>
+          <ElButton @click="resetNative">重置滚动表单</ElButton>
+        </div>
+        <output aria-label="滚动校验结果">{{ nativeValidation }}</output>
+        <output aria-label="滚动校验次数">{{ nativeValidations }}</output>
+        <ArtForm
+          ref="nativeForm"
+          v-model="nativeModel"
+          v-model:active-tab="nativeActiveTab"
+          :items="nativeItems"
+          :rules="nativeRules"
+          :span="24"
+          v-bind="nativeProps"
+        />
+      </div>
+    </DefineNativeContent>
+    <component v-if="nativeOverlay" :is="nativeOverlayComponent" ref="nativeOverlayRef">
+      <ReuseNativeContent />
+    </component>
+    <ElScrollbar v-else height="420" data-testid="native-scroll">
+      <div class="art-card-xs p-2"><ReuseNativeContent /></div>
+    </ElScrollbar>
+  </main>
+  <main v-else class="mx-auto min-w-0 max-w-5xl p-4">
     <h1 class="mb-2 text-xl font-semibold">横向页签表单</h1>
     <p class="mb-4 text-sm text-g-700">切换页签保留已填内容，提交时校验全部可见业务字段。</p>
     <div class="mb-4 flex flex-wrap gap-2" aria-label="验收操作">
@@ -48,9 +82,78 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, ref } from 'vue'
-  import { ElButton, ElInput, ElScrollbar, type FormRules } from 'element-plus'
+  import { computed, onMounted, ref, shallowRef } from 'vue'
+  import { createReusableTemplate } from '@vueuse/core'
+  import { ElButton, ElInput, ElScrollbar, type FormProps, type FormRules } from 'element-plus'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
+  import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
+  import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
+  import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
+
+  const params = new URLSearchParams(window.location.search)
+  const nativeScroll = params.has('native-scroll')
+  const nativeTabs = params.get('native-scroll') !== 'plain'
+  const nativeOverlay = params.get('overlay')
+  const nativeOverlayComponent = nativeOverlay === 'drawer' ? ArtDrawer : ArtDialog
+  const nativeOverlayRef = shallowRef<ArtDialogExpose<undefined> | ArtDrawerExpose<undefined>>()
+  const nativeForm = ref<InstanceType<typeof ArtForm>>()
+  const [DefineNativeContent, ReuseNativeContent] = createReusableTemplate()
+  const nativeFlag = ref(params.get('flag') || 'default')
+  const nativeOptions = ref(params.get('options') || 'default')
+  const nativeActiveTab = ref('general')
+  const nativeValidation = ref('尚未校验')
+  const nativeValidations = ref(0)
+  const nativeModel = ref({
+    name: '原始业务草稿',
+    history: '已登记业务记录。'.repeat(700),
+    errorName: '',
+    tail: '后续业务资料。'.repeat(700)
+  })
+  const nativeItems = computed<FormItem[]>(() => {
+    const items: FormItem[] = [
+      { key: 'general', label: '基础资料', type: 'tab' },
+      { key: 'name', label: '业务名称', type: 'input' },
+      { key: 'business', label: '联系资料', type: 'tab' },
+      { key: 'history', label: '已登记资料', type: 'text' },
+      { key: 'errorName', label: '待校验联系人', type: 'input' },
+      { key: 'tail', label: '后续资料', type: 'text' }
+    ]
+    return items.filter((item) => nativeTabs || item.type !== 'tab')
+  })
+  const nativeRules: FormRules = {
+    errorName: [{ required: true, message: '请填写待校验联系人', trigger: 'blur' }]
+  }
+  const nativeProps = computed<Partial<FormProps>>(() => ({
+    ...(nativeFlag.value === 'default' ? {} : { scrollToError: nativeFlag.value === 'on' }),
+    ...(nativeOptions.value === 'end'
+      ? { scrollIntoViewOptions: { block: 'end', behavior: 'smooth' } }
+      : nativeOptions.value === 'boolean'
+        ? { scrollIntoViewOptions: false }
+        : {})
+  }))
+  async function validateNative(): Promise<boolean> {
+    try {
+      const valid = (await nativeForm.value?.validate(() => undefined)) === true
+      nativeValidation.value = valid ? '校验通过' : '校验失败'
+      return valid
+    } finally {
+      nativeValidations.value++
+    }
+  }
+  function resetNative() {
+    nativeForm.value?.reset()
+    nativeValidation.value = '尚未校验'
+  }
+  onMounted(() => {
+    if (nativeScroll && nativeOverlay)
+      void nativeOverlayRef.value?.handleOpen(undefined, {
+        title: '表单定位参数验收',
+        confirmText: '确认校验',
+        ...(nativeOverlay === 'dialog' ? { contentHeight: 420 } : {}),
+        onConfirm: validateNative
+      })
+  })
 
   const form = ref<InstanceType<typeof ArtForm>>()
   const activeTab = ref('general')

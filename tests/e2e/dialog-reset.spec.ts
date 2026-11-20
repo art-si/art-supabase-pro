@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import {
+  installActionFeedbackHistory,
+  readActionFeedbackHistory
+} from './support/action-feedback-history'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
@@ -126,11 +130,21 @@ for (const scenario of ['mdm', 'pmis', 'smis'] as const) {
       expect(employeeListScans).toBeGreaterThan(0)
       await expect(dialog).toBeHidden()
       referenceFailure = true
+      await installActionFeedbackHistory(page)
       await page.getByRole('button', { name: '打开已有记录', exact: true }).click()
-      await expect(dialog).toBeVisible()
-      await expect(page.locator('.el-message--error')).toBeVisible()
+      await expect
+        .poll(async () => (await readActionFeedbackHistory(page)).map((item) => item.text))
+        .toContain('当前账号没有此操作权限')
+      await expect(dialog).toBeHidden()
       await expect(page.getByText('permission denied', { exact: false })).toHaveCount(0)
-      await expect(dialog.locator('.el-loading-mask:visible')).toHaveCount(0)
+      referenceFailure = false
+      await page.getByRole('button', { name: '新增记录', exact: true }).click()
+      await expect(dialog).toBeVisible()
+      await expect(dialog.locator('.art-overlay-loading')).toHaveCount(0)
+      await expect(dialog.getByRole('combobox', { name: /部门 \/ 产线/ })).toBeEnabled()
+      await expect(dialog.getByText('历史通知人员 · EMP-OLD', { exact: false })).toHaveCount(0)
+      await dialog.getByRole('button', { name: '取消', exact: true }).click()
+      await expect(dialog).toBeHidden()
     } else expect(employeeListScans).toBe(0)
     expect(errors).toEqual([])
   })

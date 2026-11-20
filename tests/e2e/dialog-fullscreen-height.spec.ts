@@ -41,14 +41,19 @@ for (const mode of ['data', 'compact', 'tree', 'resource', 'icon', 'catalog']) {
     await expect(content).toBeVisible()
     const originalHeight = (await content.boundingBox())!.height
     await dialog.getByRole('button', { name: '全屏', exact: true }).click()
-    await expect(dialog).toHaveClass(/is-fullscreen/)
+    await expect(dialog).toContainClass('is-fullscreen')
     await expect
       .poll(() =>
         content.evaluate((element) => {
           const body = element.closest('.el-dialog__body')!.getBoundingClientRect()
           const bounds = element.getBoundingClientRect()
-          const padding = getComputedStyle(element.closest('.art-dialog__content')!)
-          return Math.abs(body.bottom - bounds.bottom - parseFloat(padding.paddingBottom))
+          const contentStyle = getComputedStyle(element.closest('.art-dialog__content')!)
+          return Math.abs(
+            body.bottom -
+              bounds.bottom -
+              parseFloat(contentStyle.paddingBottom) -
+              parseFloat(contentStyle.borderBottomWidth)
+          )
         })
       )
       .toBeLessThan(2)
@@ -110,17 +115,76 @@ test('全屏长正文仍能滚动到底部，整体加载层覆盖可见正文',
 
 test('完工入库规则合并为一条提示并与表头保持间距', async ({ page }, info) => {
   await prepareIsolatedSession(page)
+  const references: Record<string, unknown> = {
+    sys_menu: { id: 'menu-test' },
+    mdm_organization: [
+      {
+        id: 'org-test',
+        tenant_id: 'tenant-test',
+        organization_code: 'ORG',
+        organization_name: '测试库存组织',
+        organization_type: 'company',
+        status: '1',
+        initialization: {
+          enabled_on: '2026-01-01',
+          initialization_closed_at: '2026-01-02',
+          is_default: true
+        }
+      }
+    ],
+    mdm_document_type: [
+      {
+        id: 'type-test',
+        tenant_id: 'tenant-test',
+        document_type_name: '完工入库',
+        is_default: true
+      }
+    ],
+    mdm_business_type: [
+      {
+        id: 'business-test',
+        tenant_id: 'tenant-test',
+        business_type_name: '完工入库',
+        is_default: true
+      }
+    ]
+  }
+  await page.route('**/rest/v1/**', (route) => {
+    const resource = new URL(route.request().url()).pathname.split('/').at(-1) || ''
+    const rows = references[resource] ?? []
+    return route.fulfill({
+      json: rows,
+      headers: Array.isArray(rows)
+        ? {
+            'content-range': rows.length ? `0-${rows.length - 1}/${rows.length}` : '*/0',
+            'access-control-expose-headers': 'content-range'
+          }
+        : undefined
+    })
+  })
   await page.goto('/tests/e2e/fixtures/wms-operation-retry.html?kind=finished_inbound')
   await page.getByRole('button', { name: '测试生产单据创建', exact: true }).click()
   const drawer = page.locator('.el-drawer:visible')
+  await expect(drawer.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+  await expect(drawer.getByText(/基础资料加载失败/)).toHaveCount(0)
   const notice = drawer.locator('.el-alert--info')
   await expect(notice).toHaveCount(1)
   await expect(notice).toContainText('同一工单首次实际入库后固定入库模式')
   await expect(notice).toContainText('可按工单、已确认排包单或物料带入')
   const summary = drawer.locator('.art-entity-summary')
-  const card = drawer.locator('.art-section-card').first()
+  const card = drawer.locator('.art-form__tabs--overlay')
+  await expect(card).toHaveCount(1)
+  await expect(card).toBeVisible()
+  await expect(card.getByRole('tab', { name: '单据信息', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await expect(card.locator('[data-art-form-tab="identity"]')).toBeVisible()
   for (const fullscreen of [false, true]) {
-    if (fullscreen) await drawer.getByRole('button', { name: '全屏', exact: true }).click()
+    if (fullscreen) {
+      await drawer.getByRole('button', { name: '全屏', exact: true }).click()
+      await expect(drawer).toContainClass('is-fullscreen')
+    }
     const summaryBounds = (await summary.boundingBox())!
     const noticeBounds = (await notice.boundingBox())!
     const cardBounds = (await card.boundingBox())!

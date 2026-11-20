@@ -12,6 +12,31 @@
 }
 
 .art-form {
+  .art-form-item__control-state[aria-busy='true']:has(> .art-form-control-skeleton) {
+    display: inline-flex;
+    align-items: center;
+    inline-size: 100%;
+
+    &:has(
+      > :is(
+        .art-form-control-skeleton--input,
+        .art-form-control-skeleton--number,
+        .art-form-control-skeleton--select,
+        .art-form-control-skeleton--switch
+      )
+    ) {
+      vertical-align: middle;
+    }
+
+    &:has(> :is(.art-form-control-skeleton--slider, .art-form-control-skeleton--checkbox-group)) {
+      display: block;
+    }
+
+    &:has(> .art-form-control-skeleton--textarea) {
+      vertical-align: bottom;
+    }
+  }
+
   :deep(.art-form__select--compact-tags > .el-select__wrapper) {
     @include compact-select-tags;
   }
@@ -20,6 +45,21 @@
     min-width: 0;
     max-width: 100%;
     overflow-x: clip;
+
+    // 共享栅格决定字段宽度，原生行内模式不应按内容收缩。
+    :deep(.el-form--inline .art-form__field-row > .el-col > .el-form-item) {
+      inline-size: 100%;
+    }
+
+    // 顶置标签的录入提示参与布局，为多行错误保留完整高度。
+    :deep(
+      .el-form-item--label-top:not(:where(.art-search-bar *))
+        > .el-form-item__content
+        > .el-form-item__error:not(.el-form-item__error--inline)
+    ) {
+      position: static;
+      inline-size: 100%;
+    }
 
     :deep(.el-date-editor.el-input),
     :deep(.el-date-editor.el-input__wrapper) {
@@ -37,7 +77,8 @@
     }
   }
 
-  // 弹层页签的阴影和长表单溢出交由外层滚动容器承接。
+  // 卡片和弹层页签的阴影交由外层滚动容器承接。
+  &:has(> .el-form :is(.art-card, .art-card-sm, .art-card-xs)),
   &:has(> .el-form > .art-form__tabs--overlay) {
     overflow: visible;
   }

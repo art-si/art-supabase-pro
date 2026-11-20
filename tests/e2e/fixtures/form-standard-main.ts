@@ -20,6 +20,7 @@ import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useSettingStore } from '@/store/modules/setting'
 import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
 import { SystemThemeEnum } from '@/enums/app-enum'
+import type { AppRouteRecord } from '@/types/router'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -27,6 +28,7 @@ const params = new URLSearchParams(location.search)
 const feature = params.get('feature') || 'tenant'
 const mode = params.get('mode') || 'edit'
 const menuMove = params.has('menuMove')
+const menuReadContext = params.has('menuReadContext')
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const recordId = '22222222-2222-4222-8222-222222222222'
 const components: Record<string, () => Promise<{ default: Component }>> = {
@@ -46,6 +48,7 @@ const components: Record<string, () => Promise<{ default: Component }>> = {
   'dict-type': () => import('@/views/data-center/dict/modules/dict-type-dialog.vue'),
   'user-detail': () => import('@/views/system/user/modules/user-detail-drawer.vue'),
   'menu-detail': () => import('@/views/system/menu/modules/menu-detail-drawer.vue'),
+  'menu-sort': () => import('@/views/system/menu/modules/menu-sort-dialog.vue'),
   'ai-run-detail': () => import('@/views/dashboard/ai-operations/modules/ai-run-detail-drawer.vue'),
   'workflow-detail': () =>
     import('@/views/workflow/workbench/modules/workflow-instance-drawer.vue'),
@@ -204,6 +207,35 @@ const rows: Record<string, Record<string, unknown>> = {
   }
 }
 
+type MenuReadOwner = 'A' | 'B'
+interface MenuReadGate {
+  id: number
+  owner: MenuReadOwner
+  resolve: (tree: AppRouteRecord[]) => void
+  reject: (error: Error) => void
+}
+const menuReadRow = (owner: MenuReadOwner): AppRouteRecord => ({
+  id: `read-menu-${owner}`,
+  parentId: `read-parent-${owner}`,
+  name: `ReadMenu${owner}`,
+  path: `/read/${owner}`,
+  component: '/system/fixture',
+  type: 'menu',
+  meta: { title: `读取菜单 ${owner}`, isEnable: true },
+  children: []
+})
+const menuReadTree = (owner: MenuReadOwner): AppRouteRecord[] => [
+  {
+    id: `read-parent-${owner}`,
+    name: `ReadParent${owner}`,
+    path: `/read-parent/${owner}`,
+    component: '/index/index',
+    type: 'folder',
+    meta: { title: `读取父级 ${owner}`, isEnable: true },
+    children: [menuReadRow(owner)]
+  }
+]
+
 function openArguments(): unknown[] {
   const editing = mode === 'edit'
   if (feature === 'role')
@@ -290,12 +322,46 @@ const app = createApp(
       const instance = shallowRef<ComponentPublicInstance>()
       const success = ref(0)
       const failure = ref('')
-      async function open(): Promise<void> {
+      const menuReadStarted = ref(0)
+      const menuReadOpenCompleted = ref(0)
+      const menuReadGates = shallowRef<MenuReadGate[]>([])
+      const loadMenuReadTree = (owner: MenuReadOwner): Promise<AppRouteRecord[]> => {
+        const id = ++menuReadStarted.value
+        return new Promise<AppRouteRecord[]>((resolve, reject) => {
+          menuReadGates.value = [...menuReadGates.value, { id, owner, resolve, reject }]
+        })
+      }
+      const settleMenuRead = (gate: MenuReadGate, fail = false): void => {
+        menuReadGates.value = menuReadGates.value.filter((item) => item.id !== gate.id)
+        if (fail) gate.reject(new Error('菜单层级读取失败，请重试'))
+        else gate.resolve(menuReadTree(gate.owner))
+      }
+      async function open(owner: MenuReadOwner = 'A'): Promise<void> {
         const current = instance.value
         const method: unknown = current
           ? Reflect.get(current, feature === 'payable' ? 'open' : 'handleOpen')
           : undefined
-        if (typeof method === 'function') await Reflect.apply(method, current, openArguments())
+        const args = menuReadContext
+          ? feature === 'menu'
+            ? [
+                {
+                  type: 'menu',
+                  row: menuReadRow(owner),
+                  menuTree: [],
+                  loadMenuTree: () => loadMenuReadTree(owner)
+                }
+              ]
+            : feature === 'menu-detail'
+              ? [menuReadRow(owner), [], () => loadMenuReadTree(owner)]
+              : [[], () => loadMenuReadTree(owner)]
+          : openArguments()
+        if (typeof method === 'function') {
+          try {
+            await Reflect.apply(method, current, args)
+          } finally {
+            if (menuReadContext) menuReadOpenCompleted.value++
+          }
+        }
       }
       onMounted(async () => {
         try {
@@ -321,6 +387,63 @@ const app = createApp(
                 },
                 [
                   h('button', { onClick: () => void open() }, '重新打开验收入口'),
+                  ...(menuReadContext
+                    ? [
+                        ...(['A', 'B'] as const).map((owner) =>
+                          h(
+                            'button',
+                            {
+                              type: 'button',
+                              'data-testid': `menu-read-open-${owner}`,
+                              onClick: () => void open(owner)
+                            },
+                            `打开读取菜单 ${owner}`
+                          )
+                        ),
+                        h(
+                          'output',
+                          { 'data-testid': 'menu-read-started' },
+                          String(menuReadStarted.value)
+                        ),
+                        h(
+                          'output',
+                          { 'data-testid': 'menu-read-open-completed' },
+                          String(menuReadOpenCompleted.value)
+                        ),
+                        h(
+                          'button',
+                          {
+                            type: 'button',
+                            'data-testid': 'menu-read-release-all',
+                            onClick: () =>
+                              menuReadGates.value.forEach((gate) => settleMenuRead(gate))
+                          },
+                          '释放剩余读取'
+                        ),
+                        ...menuReadGates.value.flatMap((gate) => [
+                          h(
+                            'button',
+                            {
+                              key: `release-${gate.id}`,
+                              type: 'button',
+                              'data-testid': `menu-read-release-${gate.id}`,
+                              onClick: () => settleMenuRead(gate)
+                            },
+                            `返回读取 ${gate.id}`
+                          ),
+                          h(
+                            'button',
+                            {
+                              key: `fail-${gate.id}`,
+                              type: 'button',
+                              'data-testid': `menu-read-fail-${gate.id}`,
+                              onClick: () => settleMenuRead(gate, true)
+                            },
+                            `拒绝读取 ${gate.id}`
+                          )
+                        ])
+                      ]
+                    : []),
                   h('output', { 'aria-label': '保存次数' }, String(success.value)),
                   failure.value ? h('p', { role: 'alert' }, failure.value) : null,
                   component.value

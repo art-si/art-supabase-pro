@@ -36,7 +36,8 @@ const params = new URLSearchParams(location.search),
   versions = ref<InstanceType<typeof Versions>>(),
   error = ref(''),
   analyzed = ref(''),
-  successes = ref(0)
+  successes = ref(0),
+  capabilityOpenCompleted = ref(0)
 const open = async () => {
   error.value = ''
   try {
@@ -47,6 +48,8 @@ const open = async () => {
       await versions.value?.handleOpen(input.definition, { canManage: true })
   } catch (cause) {
     error.value = String(cause)
+  } finally {
+    if (mode === 'capability') capabilityOpenCompleted.value++
   }
 }
 const app = createApp({
@@ -123,6 +126,15 @@ const app = createApp({
       h('output', { 'data-testid': 'open-error' }, error.value),
       h('output', { 'data-testid': 'analyze' }, analyzed.value),
       h('output', { 'data-testid': 'successes' }, String(successes.value)),
+      ...(mode === 'capability'
+        ? [
+            h(
+              'output',
+              { 'data-testid': 'capability-open-completed' },
+              String(capabilityOpenCompleted.value)
+            )
+          ]
+        : []),
       mode === 'capability'
         ? h(Capability, {
             ref: capability,

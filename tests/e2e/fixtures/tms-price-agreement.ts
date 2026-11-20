@@ -6,6 +6,8 @@ import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
 import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
@@ -51,4 +53,10 @@ app.use(store).use(router).use(language)
 setupGlobDirectives(app)
 await router.push('/edit/11111111-1111-4111-8111-111111111201')
 await router.isReady()
+if (new URLSearchParams(location.search).get('shadowAudit') === '1') {
+  const settings = useSettingStore(store)
+  initializeTheme()
+  document.documentElement.dataset.uiScope = 'workspace'
+  document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
+}
 app.mount('#tms-price-agreement')

@@ -146,10 +146,8 @@
       }
 
       small {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: var(--art-gray-500);
-        white-space: nowrap;
+        color: var(--el-text-color-regular);
+        overflow-wrap: anywhere;
       }
     }
 

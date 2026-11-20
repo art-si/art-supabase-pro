@@ -16,6 +16,7 @@ const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThem
 settings.setGlobalTheme(theme, theme)
 settings.boxBorderMode = params.get('box') !== 'shadow-mode'
 initializeTheme()
+if (params.has('native-scroll')) document.documentElement.dataset.uiScope = 'workspace'
 const router = createRouter({
   history: createMemoryHistory(),
   routes: [{ path: '/', component: {} }]

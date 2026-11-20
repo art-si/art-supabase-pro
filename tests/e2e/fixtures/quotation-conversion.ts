@@ -5,6 +5,8 @@ import { store } from '@/store'
 import { useMenuStore } from '@/store/modules/menu'
 import { useUserStore } from '@/store/modules/user'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import QuotationConversion from '../../../modules/art-supabase-scm/src/views/sales-document/modules/quotation-conversion-dialog.vue'
 import QuotationBom from '../../../modules/art-supabase-scm/src/views/sales-document/modules/quotation-bom-dialog.vue'
@@ -400,4 +402,25 @@ app.use(store)
 app.use(language)
 app.use(router)
 setupGlobDirectives(app)
+if (query.get('shadowAudit') === '1') {
+  const user = useUserStore(store)
+  user.setUserInfo({
+    userId: 'shadow-quotation-review',
+    tenantId: 'tenant-a',
+    platformSuper: false
+  })
+  user.setLoginStatus(true)
+  useMenuStore(store).setButtonList(
+    ['View', 'Add', 'Edit'].map((action) => ({
+      name: `ScmSalesQuotationDoc:${action}`,
+      type: 'button',
+      path: '',
+      meta: { title: action }
+    }))
+  )
+  const settings = useSettingStore(store)
+  initializeTheme()
+  document.documentElement.dataset.uiScope = 'workspace'
+  document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
+}
 app.mount('#quotation-preview')

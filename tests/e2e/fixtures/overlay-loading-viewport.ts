@@ -1,7 +1,7 @@
 import { createApp, defineComponent, h, ref } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { ElConfigProvider } from 'element-plus'
+import { ElButton, ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import language from '@/locales'
 import { store } from '@/store'
@@ -23,6 +23,15 @@ import WorkflowAnalyticsDialog from '@/views/workflow/monitor/modules/workflow-a
 import WorkflowHistoryDrawer from '@/components/business/workflow-business-history/workflow-business-history-drawer.vue'
 
 type OverlayKind = 'drawer' | 'dialog'
+const requestedHeaderCase = new URLSearchParams(location.search).get('header-case')
+const headerCase = ['prop', 'slot', 'custom', 'long'].find((value) => value === requestedHeaderCase)
+const headerDrawer =
+  headerCase === 'slot' && new URLSearchParams(location.search).get('header-kind') === 'drawer'
+const headerSubtitle = '调整节点归属、级联关系与展示设置'
+interface HeaderSlotProps {
+  data: { id: string }
+  api: Pick<ArtDialogExpose<{ id: string }>, 'getData' | 'updateData'>
+}
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const quotation: ScmSalesDocument = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -68,6 +77,11 @@ const Preview = defineComponent({
     const drawer = ref<ArtDrawerExpose>()
     const scmDrawer = ref<InstanceType<typeof ScmDocumentDetailDrawer>>()
     const dialog = ref<ArtDialogExpose>()
+    const headerOverlay = ref<ArtDialogExpose<{ id: string }> | ArtDrawerExpose<{ id: string }>>()
+    const subtitleMounts = ref(0)
+    const subtitleUnmounts = ref(0)
+    const headerApiCalls = ref(0)
+    const subtitleSlotVisible = ref(true)
     const analytics = ref<InstanceType<typeof WorkflowAnalyticsDialog>>()
     const history = ref<InstanceType<typeof WorkflowHistoryDrawer>>()
     const drawerLoading = ref(false)
@@ -90,6 +104,79 @@ const Preview = defineComponent({
       if (kind === 'drawer') drawerLoading.value = loading
       else dialogLoading.value = loading
     })
+    if (headerCase)
+      useEventListener(window, 'overlay-preview-header-subtitle', (event) => {
+        const { subtitle } = (event as CustomEvent<{ subtitle: string }>).detail
+        headerOverlay.value?.setOptions({ subtitle })
+      })
+    if (headerCase === 'slot')
+      useEventListener(window, 'overlay-preview-header-slot', (event) => {
+        subtitleSlotVisible.value = (event as CustomEvent<{ visible: boolean }>).detail.visible
+      })
+    const headerSlots = () => ({
+      default: () => h('p', { class: 'm-0' }, '头部验收正文'),
+      ...(headerCase === 'slot' && subtitleSlotVisible.value
+        ? {
+            subtitle: ({ data, api }: HeaderSlotProps) =>
+              h(
+                'span',
+                {
+                  key: 'subtitle-probe',
+                  'data-testid': 'header-subtitle-probe',
+                  'data-record-id': data.id,
+                  'data-api-record-id': api.getData().id,
+                  onVnodeMounted: () => subtitleMounts.value++,
+                  onVnodeUnmounted: () => subtitleUnmounts.value++
+                },
+                [headerSubtitle, h('span', { class: 'ml-1' }, `· ${data.id}`)]
+              )
+          }
+        : {}),
+      ...(headerCase === 'slot'
+        ? {
+            'header-actions': ({ api }: HeaderSlotProps) =>
+              h(
+                ElButton,
+                {
+                  size: 'small',
+                  onClick: () => {
+                    api.updateData({ id: 'header-updated' })
+                    headerApiCalls.value++
+                  }
+                },
+                () => '更新数据'
+              )
+          }
+        : {}),
+      ...(headerCase === 'custom'
+        ? {
+            header: () =>
+              h(
+                'div',
+                {
+                  'data-testid': 'custom-header-probe',
+                  class: 'flex min-w-0 items-center gap-2'
+                },
+                [
+                  h(
+                    'h2',
+                    {
+                      'data-testid': 'custom-header-title',
+                      class: 'm-0 min-w-0 text-base font-semibold'
+                    },
+                    '自定义标题'
+                  ),
+                  h('span', { class: 'shrink-0 whitespace-nowrap text-xs' }, '保留')
+                ]
+              )
+          }
+        : {}),
+      ...(headerCase === 'long'
+        ? {
+            'header-actions': () => h(ElButton, { size: 'small' }, () => '查看关联资料')
+          }
+        : {})
+    })
     const content = () =>
       h('div', { class: 'flex min-w-0 flex-col gap-4' }, [
         h('button', { type: 'button' }, '正文操作'),
@@ -99,6 +186,49 @@ const Preview = defineComponent({
       ])
     return () =>
       h('main', [
+        ...(headerCase
+          ? [
+              h(
+                'button',
+                {
+                  type: 'button',
+                  onClick: () => void headerOverlay.value?.handleOpen({ id: 'header-seed' })
+                },
+                headerDrawer ? '打开头部验收抽屉' : '打开头部验收弹窗'
+              ),
+              h(
+                'output',
+                { hidden: true, 'data-testid': 'header-subtitle-mounts' },
+                subtitleMounts.value
+              ),
+              h(
+                'output',
+                { hidden: true, 'data-testid': 'header-subtitle-unmounts' },
+                subtitleUnmounts.value
+              ),
+              h(
+                'output',
+                { hidden: true, 'data-testid': 'header-api-calls' },
+                headerApiCalls.value
+              ),
+              h(
+                headerDrawer ? ArtDrawer : ArtDialog,
+                {
+                  ref: headerOverlay,
+                  title:
+                    headerCase === 'long'
+                      ? '运输与结算业务资料维护 · DOC-2026-0000123456789'
+                      : headerCase === 'custom'
+                        ? '自定义标题'
+                        : '编辑字典目录',
+                  subtitle: headerCase === 'slot' ? '' : headerSubtitle,
+                  size: 'md',
+                  contentHeight: 180
+                },
+                headerSlots()
+              )
+            ]
+          : []),
         h(
           'button',
           { type: 'button', onClick: () => void scmDrawer.value?.handleOpen(quotation) },

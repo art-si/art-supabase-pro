@@ -27,7 +27,7 @@
       v-if="
         $slots.header ||
         options.headerIcon ||
-        hasSubtitle ||
+        hasSubtitle() ||
         options.showFormFocusButton ||
         options.showFullscreenButton ||
         showCloseButton
@@ -55,7 +55,7 @@
                 :aria-level="String(drawerBindings.headerAriaLevel ?? '2')"
                 >{{ drawerTitle }}</span
               >
-              <div v-if="hasSubtitle && !isFocusMode" class="art-drawer__subtitle">
+              <div v-if="hasSubtitle() && !isFocusMode" class="art-drawer__subtitle">
                 <slot name="subtitle" :data="openData" :api="exposedApi">
                   {{ drawerSubtitle }}
                 </slot>
@@ -72,7 +72,7 @@
             >{{ drawerTitle }}</span
           >
           <div
-            v-if="hasSubtitle && !isFocusMode && ($slots.header || !options.headerIcon)"
+            v-if="hasSubtitle() && !isFocusMode && ($slots.header || !options.headerIcon)"
             class="art-drawer__subtitle"
           >
             <slot name="subtitle" :data="openData" :api="exposedApi">
@@ -118,14 +118,7 @@
         :always="options.scrollbarAlways"
         :native="options.nativeScrollbar"
         class="art-drawer__scrollbar"
-        :class="{
-          'art-scroll-viewport-inset':
-            !options.nativeScrollbar &&
-            !(
-              options.showFooter &&
-              ($slots.footer || options.showCancelButton || options.showConfirmButton)
-            )
-        }"
+        :class="{ 'art-scroll-viewport-inset': usesViewportInset() }"
         :style="
           normalizedContentHeight
             ? {
@@ -139,6 +132,7 @@
         <div
           ref="contentRef"
           class="art-drawer__content"
+          :class="{ 'art-overlay-content-inset': usesViewportInset() }"
           :inert="contentLoading"
           :aria-hidden="contentLoading"
         >
@@ -188,6 +182,7 @@
 </template>
 
 <script setup lang="ts" generic="T = Record<string, unknown>">
+  import { identity } from 'lodash-es'
   import type { ScrollbarInstance } from 'element-plus'
   import type {
     ArtDrawerEmits,
@@ -203,12 +198,16 @@
   import {
     artOverlayRequestScopeKey,
     mergeOverlayRecords,
-    useArtOverlay
+    useArtOverlay,
+    type ArtOverlayApiBinder
   } from '@/hooks/core/useArtOverlay'
   import { focusFirstInvalidFormField } from '@/utils/form/validation'
   import { preventOverlayTabArrowScroll } from '@/utils/ui/overlay-tab-keyboard'
   import { handoffVerticalWheel } from '@/utils/ui/wheel-scroll'
-  import { artFormFocusKey } from '@/components/core/forms/art-form/focus'
+  import {
+    artFormFocusKey,
+    createArtFormValidationFocusScope
+  } from '@/components/core/forms/art-form/focus'
 
   defineOptions({
     name: 'ArtDrawer',
@@ -275,17 +274,6 @@
     return `${isFocusMode.value ? '退出' : '进入'}${mode}`
   })
 
-  provide(artFormFocusKey, {
-    focusMode: readonly(isFocusMode),
-    registerForm: () => {
-      formCount.value += 1
-      hadFormInSession.value = true
-      return () => {
-        formCount.value = Math.max(0, formCount.value - 1)
-      }
-    }
-  })
-
   const getDefaultOptions = (): ArtDrawerOptions<T> => ({
     title: props.title,
     headerIcon: props.headerIcon,
@@ -338,8 +326,9 @@
   const overlay = useArtOverlay<T, ArtDrawerExpose<T>, ArtDrawerOptions<T>>({
     getDefaultOptions,
     mergeOptions,
-    getApi: () => exposedApi,
+    getApi: (bind) => createApi(bind),
     emitConfirm: (data) => {
+      validationFocus.beginConfirmation()
       if (!props.onConfirm || options.value.onConfirm !== props.onConfirm)
         emit('confirm', data, exposedApi)
     },
@@ -347,7 +336,22 @@
       if (!props.onReset || options.value.onReset !== props.onReset) emit('reset', exposedApi)
     },
     emitError: (error) => emit('error', error),
-    onConfirmRejected: () => focusFirstInvalidFormField(contentRef)
+    onConfirmRejected: () => {
+      if (!validationFocus.hasHandledValidationFocus()) focusFirstInvalidFormField(contentRef)
+    }
+  })
+  const validationFocus = createArtFormValidationFocusScope(overlay.requestScope)
+
+  provide(artFormFocusKey, {
+    focusMode: readonly(isFocusMode),
+    captureValidationFocus: validationFocus.captureValidationFocus,
+    registerForm: () => {
+      formCount.value += 1
+      hadFormInSession.value = true
+      return () => {
+        formCount.value = Math.max(0, formCount.value - 1)
+      }
+    }
   })
 
   provide(artOverlayRequestScopeKey, overlay.requestScope)
@@ -410,7 +414,13 @@
   ])
   const drawerTitle = computed(() => String(options.value.title ?? attrs.title ?? ''))
   const drawerSubtitle = computed(() => String(options.value.subtitle ?? ''))
-  const hasSubtitle = computed(() => Boolean(slots.subtitle || drawerSubtitle.value))
+  const hasSubtitle = (): boolean => Boolean(slots.subtitle || drawerSubtitle.value)
+  const usesViewportInset = (): boolean => {
+    const { nativeScrollbar, showFooter, showCancelButton, showConfirmButton } = options.value
+    return (
+      !nativeScrollbar && !(showFooter && (slots.footer || showCancelButton || showConfirmButton))
+    )
+  }
   const isFullscreen = computed(() => Boolean(options.value.fullscreen))
   const fullscreenIcon = computed(() =>
     isFullscreen.value ? 'dashicons:fullscreen-exit-alt' : 'dashicons:fullscreen-alt'
@@ -555,7 +565,7 @@
     emit('closed')
   }
 
-  exposedApi = {
+  const createApi = (bind: ArtOverlayApiBinder = identity): ArtDrawerExpose<T> => ({
     visible: readonly(visible),
     loading: readonly(contentLoading),
     confirmLoading: readonly(confirmLoading),
@@ -565,23 +575,25 @@
     scrollbarRef: readonly(scrollbarRef),
     fullscreen: readonly(isFullscreen),
     focusMode: readonly(isFocusMode),
-    handleOpen,
-    handleClose,
-    handleConfirm,
-    handleReset,
-    setLoading,
-    setConfirmLoading,
-    setOptions,
-    setData,
-    updateData,
+    handleOpen: bind(handleOpen, async () => undefined),
+    handleClose: bind(handleClose, async () => false),
+    handleConfirm: bind(handleConfirm, async () => false),
+    handleReset: bind(handleReset),
+    setLoading: bind(setLoading),
+    setConfirmLoading: bind(setConfirmLoading),
+    setOptions: bind(setOptions),
+    setData: bind(setData),
+    updateData: bind(updateData),
     getData,
     getDrawerInstance,
-    setFullscreen,
-    toggleFullscreen,
-    setFocusMode,
-    toggleFocusMode,
-    scrollTo
-  }
+    setFullscreen: bind(setFullscreen),
+    toggleFullscreen: bind(toggleFullscreen),
+    setFocusMode: bind(setFocusMode),
+    toggleFocusMode: bind(toggleFocusMode),
+    scrollTo: bind(scrollTo)
+  })
+
+  exposedApi = createApi()
 
   defineExpose(exposedApi)
 </script>

@@ -73,6 +73,7 @@
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import type { AppRouteRecord } from '@/types/router'
   import { formatMenuTitle } from '@/utils/router'
   import TreeUtils from '@/utils/tree'
@@ -104,6 +105,7 @@
   const descendantCount = ref(0)
   const loadError = ref(false)
   const menuTreeLoader = shallowRef<(() => Promise<AppRouteRecord[]>) | undefined>()
+  const menuTreeSession = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
 
   const treeUtils = new TreeUtils({
     idKey: 'id',
@@ -270,15 +272,20 @@
   }
 
   const loadMenuTree = async (): Promise<void> => {
-    if (!menuTreeLoader.value || !menu.value) return
+    const loader = menuTreeLoader.value
+    const row = menu.value
+    if (!loader || !row || !unref(drawerRef.value?.visible)) return
+    const request = menuTreeSession.invalidate()
     loadError.value = false
     drawerRef.value?.setLoading(true)
     try {
-      updateHierarchy(menu.value, await menuTreeLoader.value())
+      const tree = await loader()
+      if (!menuTreeSession.isCurrent(request)) return
+      updateHierarchy(row, tree)
     } catch {
-      loadError.value = true
+      if (menuTreeSession.isCurrent(request)) loadError.value = true
     } finally {
-      drawerRef.value?.setLoading(false)
+      if (menuTreeSession.isCurrent(request)) drawerRef.value?.setLoading(false)
     }
   }
 
@@ -287,6 +294,7 @@
     menuTree: MenuRecord[],
     loadTree?: () => Promise<AppRouteRecord[]>
   ): Promise<void> => {
+    menuTreeSession.invalidate()
     activeTab.value = 'basicSection'
     menu.value = row
     loadError.value = false
@@ -305,7 +313,11 @@
         resizable: true
       },
       onOpen: loadMenuTree,
+      onClose: () => {
+        menuTreeSession.invalidate()
+      },
       onReset: () => {
+        menuTreeSession.invalidate()
         menu.value = undefined
         hierarchy.value = []
         descendantCount.value = 0

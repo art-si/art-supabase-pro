@@ -278,7 +278,7 @@
       }
 
       small {
-        color: var(--art-gray-500);
+        color: var(--el-text-color-regular);
         overflow-wrap: anywhere;
       }
 

@@ -165,7 +165,7 @@ function resolveModelProfile(id: string): ModelProfile {
       benchmarkable: false
     }
   }
-  if (/(^|[-_.\/])(vision|vl|vlm|image|omni)([-_.\/]|$)|fuyu|kosmos|neva|vila/i.test(id)) {
+  if (/(^|[-_./])(vision|vl|vlm|image|omni)([-_./]|$)|fuyu|kosmos|neva|vila/i.test(id)) {
     return {
       kind: 'vision',
       capability: '视觉理解',
@@ -240,7 +240,7 @@ class ProviderBenchmarkError extends Error {
 }
 
 function resolveParameterScale(id: string): { label: string | null; billions: number | null } {
-  const match = id.match(/(?:^|[-_.\/])(\d+(?:\.\d+)?)([bm])(?=[-_.\/]|$)/i)
+  const match = id.match(/(?:^|[-_./])(\d+(?:\.\d+)?)([bm])(?=[-_./]|$)/i)
   if (!match) return { label: null, billions: null }
   const value = Number(match[1])
   if (!Number.isFinite(value)) return { label: null, billions: null }
@@ -397,7 +397,10 @@ async function readProviderError(response: Response): Promise<string> {
   return raw
 }
 
-function createProviderBenchmarkError(status: number, providerMessage: string): ProviderBenchmarkError {
+function createProviderBenchmarkError(
+  status: number,
+  providerMessage: string
+): ProviderBenchmarkError {
   if (status === 410) {
     return new ProviderBenchmarkError(
       'model_retired',
@@ -502,7 +505,8 @@ async function benchmarkModel(
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return json({ code: 'method_not_allowed', message: 'Method not allowed' }, 405)
+  if (req.method !== 'POST')
+    return json({ code: 'method_not_allowed', message: 'Method not allowed' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
@@ -549,11 +553,21 @@ Deno.serve(async (req) => {
 
   if (body.action === 'benchmark') {
     const model = stringValue(body.model)
-    if (!model || model.length > 256 || /[\u0000-\u001f\u007f]/.test(model)) {
+    if (
+      !model ||
+      model.length > 256 ||
+      [...model].some((character) => {
+        const code = character.charCodeAt(0)
+        return code < 0x20 || code === 0x7f
+      })
+    ) {
       return json({ code: 'invalid_model', message: '请选择有效的模型 ID' }, 400)
     }
     if (!apiKey) {
-      return json({ code: 'provider_not_configured', message: 'AI 服务密钥尚未配置，无法测速' }, 503)
+      return json(
+        { code: 'provider_not_configured', message: 'AI 服务密钥尚未配置，无法测速' },
+        503
+      )
     }
     try {
       return json(await benchmarkModel(baseUrl, apiKey, model))
@@ -585,7 +599,7 @@ Deno.serve(async (req) => {
     Deno.env.get('AI_ORDER_MODEL'),
     Deno.env.get('AI_ORDER_VISION_MODEL'),
     Deno.env.get('AI_ORDER_FALLBACK_MODEL')
-  ]
+  ].map((model) => model ?? null)
 
   let remoteModels: ProviderModel[] = []
   let source: 'remote' | 'configured' = 'configured'
@@ -627,4 +641,3 @@ Deno.serve(async (req) => {
     warning
   })
 })
-

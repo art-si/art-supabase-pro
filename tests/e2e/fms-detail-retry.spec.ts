@@ -691,7 +691,10 @@ test('资金调拨详情区分请求失败、记录不存在并可重试', async
   await expect(drawer.getByText('暂无资金调拨详情')).toBeVisible()
   await drawer.getByRole('button', { name: '重新加载' }).click()
   await expect(drawer.getByText('测试账户 A')).toBeVisible()
+  await drawer.getByRole('tab', { name: '操作轨迹', exact: true }).click()
   await expect(drawer.getByText('暂无操作记录')).toBeVisible()
+  await drawer.getByRole('tab', { name: '调拨资料', exact: true }).click()
+  await expect(drawer.getByText('测试账户 A')).toBeVisible()
   expect(attempts).toBe(3)
   await expectNoViewportOverflow(page)
   await page.screenshot({

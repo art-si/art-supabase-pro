@@ -48,6 +48,7 @@ const productionKinds: WmsProductionMaterialKind[] = [
 ]
 const requestedKind = new URLSearchParams(location.search).get('kind')
 const productionKind = productionKinds.find((kind) => kind === requestedKind) || 'issue'
+const registryBoundary = new URLSearchParams(location.search).get('registryBoundary')
 
 const transfer: WmsTransferDocument = {
   id: 'transfer-test',
@@ -77,7 +78,7 @@ const transfer: WmsTransferDocument = {
   targetWarehouse: {
     warehouseCode: 'TEST-WH',
     warehouseName: '测试目标仓库',
-    enableLocations: true
+    enableLocations: registryBoundary !== 'warehouse'
   },
   targetOrganization: { organizationName: '测试目标组织' }
 }
@@ -178,6 +179,19 @@ const app = createApp(
           {
             default: () =>
               h('div', [
+                ...(registryBoundary
+                  ? [
+                      h(
+                        'output',
+                        { 'data-testid': 'registry-actor', hidden: true },
+                        JSON.stringify({
+                          tenantId: useUserStore(store).getUserInfo.tenantId,
+                          platformSuper: useUserStore(store).getUserInfo.platformSuper,
+                          permissions: useMenuStore(store).buttonList.map((item) => item.name)
+                        })
+                      )
+                    ]
+                  : []),
                 h(
                   'button',
                   { type: 'button', onClick: () => useUserStore(store).clearDictionaryCache() },
@@ -661,8 +675,19 @@ useTheme().switchThemeStyles(setting.systemThemeType)
 useUserStore(store).setUserInfo({
   userId: 'user-test',
   tenantId: 'tenant-test',
-  platformSuper: !new URLSearchParams(location.search).has('importPermission')
+  platformSuper: !registryBoundary && !new URLSearchParams(location.search).has('importPermission')
 })
+if (registryBoundary) {
+  document.documentElement.dataset.uiScope = 'workspace'
+  useMenuStore(store).setButtonList(
+    ['WmsTransfer:View', 'WmsTransfer:Receive'].map((name) => ({
+      name,
+      path: '',
+      type: 'button',
+      meta: { title: name }
+    }))
+  )
+}
 if (new URLSearchParams(location.search).get('importPermission') === 'allow') {
   useMenuStore(store).setButtonList(
     ['WmsCountGain:Import', 'WmsCountLoss:Import', 'WmsTransfer:Import'].map((name) => ({

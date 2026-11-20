@@ -1,5 +1,6 @@
-import { createApp, h, ref } from 'vue'
+import { cloneVNode, createApp, h, ref, shallowReactive, unref, type Component } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { ElConfigProvider, ElInput, type FormProps } from 'element-plus'
 import language from '@/locales'
 import { store } from '@/store'
 import { useSettingStore } from '@/store/modules/setting'
@@ -8,6 +9,8 @@ import { SystemThemeEnum } from '@/enums/app-enum'
 import { setupGlobDirectives } from '@/directives'
 import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
 import ArtSearchBar, { type SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
+import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
+import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -166,6 +169,815 @@ const app = createApp({
     setting.setGlobalTheme(theme, theme)
     setting.boxBorderMode = params.get('box') !== 'shadow-mode'
     initializeTheme()
+    if (params.has('registry-units')) {
+      document.documentElement.dataset.uiScope = 'workspace'
+      const values = ref<Record<string, unknown>>({
+        nativeName: '初始原生名称',
+        tagStyle: 'primary',
+        dynamicValue: '保留的动态字段值'
+      })
+      const showTagStyle = ref(false)
+      const showDynamic = ref(false)
+      // Mutate the same metadata object to exercise captured field/unit lifecycle callbacks.
+      const dynamicItem = shallowReactive<FormItem>({
+        key: 'dynamicValue',
+        label: '动态单位字段',
+        type: 'cascader',
+        hidden: () => !showDynamic.value,
+        options: [{ label: '一号库位', value: '保留的动态字段值' }]
+      })
+      const fields: FormItem[] = [
+        { key: 'nativeName', label: '原生名称', type: 'input' },
+        {
+          key: 'tagStyle',
+          label: '标签样式',
+          type: 'tagStyleSelect',
+          hidden: () => !showTagStyle.value
+        },
+        dynamicItem
+      ]
+      const rules = {
+        nativeName: [{ required: true, message: '请填写原生名称' }],
+        dynamicValue: [{ required: true, message: '请填写动态字段' }]
+      }
+      const form = ref<InstanceType<typeof ArtForm>>()
+      const validation = ref('尚未校验')
+      const submissions = ref(0)
+      const submitted = ref('尚未提交')
+      let validationSequence = 0
+      const validate = async () => {
+        if (!form.value) throw new Error('动态单位表单尚未挂载')
+        let valid = false
+        let keys: string[] = []
+        try {
+          await form.value.validate((result, fields) => {
+            valid = result
+            keys = Object.keys(fields ?? {})
+          })
+        } catch (error) {
+          keys = typeof error === 'object' && error !== null ? Object.keys(error) : []
+        }
+        validation.value = JSON.stringify({ sequence: ++validationSequence, valid, keys })
+      }
+      const button = (label: string, action: () => void) =>
+        h('button', { type: 'button', onClick: action }, label)
+      return () =>
+        h('main', { class: 'min-w-0 space-y-3 p-4' }, [
+          h('h1', { class: 'text-xl' }, '动态控件加载单位'),
+          h('nav', { class: 'flex flex-wrap gap-3', 'aria-label': '加载单位切换' }, [
+            button('显示标签控件', () => (showTagStyle.value = true)),
+            button('显示级联控件', () => (showDynamic.value = true)),
+            button('切换动态字段为原生', () => (dynamicItem.type = 'constructor')),
+            button('切回级联控件', () => (dynamicItem.type = 'cascader')),
+            button('单位回调校验', () => void validate())
+          ]),
+          h(ArtForm, {
+            ref: form,
+            modelValue: values.value,
+            'onUpdate:modelValue': (value) => (values.value = value),
+            items: fields,
+            span: 24,
+            showSubmit: true,
+            showReset: false,
+            submitText: '单位提交',
+            rules,
+            onSubmit: (value: Record<string, unknown>) => {
+              submitted.value = JSON.stringify(value)
+              submissions.value++
+            }
+          }),
+          h(
+            'output',
+            { 'data-testid': 'units-ready', hidden: true },
+            String(unref(form.value?.controlsReady))
+          ),
+          h('output', { 'data-testid': 'units-validation', hidden: true }, validation.value),
+          h(
+            'output',
+            { 'data-testid': 'units-values', hidden: true },
+            JSON.stringify(values.value)
+          ),
+          h(
+            'output',
+            { 'data-testid': 'units-submissions', hidden: true },
+            String(submissions.value)
+          ),
+          h('output', { 'data-testid': 'units-output', hidden: true }, submitted.value),
+          h('output', { 'data-testid': 'units-kind', hidden: true }, dynamicItem.type)
+        ])
+    }
+    if (params.has('placeholder-native')) {
+      document.documentElement.dataset.uiScope = 'workspace'
+      const requestedSize = params.get('size')
+      const size =
+        requestedSize === 'small' || requestedSize === 'large' ? requestedSize : 'default'
+      const emptySize = params.has('size-empty')
+      const inheritSize = params.has('size-provider') && !emptySize
+      const ownSmallSize = size === 'large' ? { size: 'small' } : {}
+      const values = ref<Record<string, unknown>>({
+        autocomplete: '验收设备',
+        number: 7,
+        select: 'east',
+        selectV2: 'west',
+        timeSelect: '09:30',
+        treeSelect: 'location-a',
+        radio: 'accept',
+        switch: true,
+        rate: 3,
+        slider: 35,
+        colorPicker: '#409EFF',
+        segment: 'day',
+        radioGroup: 'east',
+        checkboxGroup: ['east', 'west']
+      })
+      const options = [
+        { label: '华东区域', value: 'east' },
+        { label: '西部区域', value: 'west' }
+      ]
+      const groupOptions = [
+        { label: '华东仓储运输调度中心', value: 'east' },
+        { label: '西部区域配送协作中心', value: 'west' },
+        { label: '南部跨区运输协调中心', value: 'south' }
+      ]
+      const fields: FormItem[] = [
+        {
+          key: 'autocomplete',
+          label: '联想设备',
+          type: 'autocomplete',
+          props: { fetchSuggestions: [{ value: '验收设备' }], triggerOnFocus: false }
+        },
+        {
+          key: 'number',
+          label: '登记数量',
+          type: 'number',
+          props: { min: 0, controlsPosition: 'right', ...ownSmallSize }
+        },
+        { key: 'select', label: '所属区域', type: 'select', options, props: { multiple: false } },
+        {
+          key: 'selectV2',
+          label: '协作区域',
+          type: 'selectV2',
+          options,
+          formItemProps: size === 'small' ? { size: 'large' } : undefined,
+          props: { multiple: false }
+        },
+        {
+          key: 'timeSelect',
+          label: '班次时间',
+          type: 'timeSelect',
+          props: { start: '08:00', step: '00:30', end: '18:00' }
+        },
+        {
+          key: 'treeSelect',
+          label: '保管库位',
+          type: 'treeSelect',
+          options: [{ label: '一号库位', value: 'location-a' }],
+          props: { multiple: false, nodeKey: 'value', checkStrictly: true }
+        },
+        {
+          key: 'radio',
+          label: '单项确认',
+          type: 'radio',
+          props: { label: '确认登记', value: 'accept' }
+        },
+        { key: 'switch', label: '自动提醒', type: 'switch' },
+        { key: 'rate', label: '服务评分', type: 'rate' },
+        { key: 'slider', label: '完成进度', type: 'slider', props: { showTooltip: false } },
+        { key: 'colorPicker', label: '标识颜色', type: 'colorPicker' },
+        {
+          key: 'segment',
+          label: '统计周期',
+          type: 'segment',
+          options: [
+            { label: '每日', value: 'day' },
+            { label: '每周', value: 'week' },
+            { label: '每月', value: 'month' }
+          ],
+          props: { ...ownSmallSize }
+        },
+        { key: 'radioGroup', label: '主责中心', type: 'radioGroup', options: groupOptions },
+        {
+          key: 'checkboxGroup',
+          label: '协作中心',
+          type: 'checkboxGroup',
+          options: groupOptions,
+          props: emptySize ? { optionType: 'button' } : undefined
+        }
+      ]
+      const form = ref<InstanceType<typeof ArtForm>>()
+      const submissions = ref(0)
+      const resets = ref(0)
+      const submitted = ref('尚未提交')
+      const renderFieldRegistry = () => {
+        const nativeForm = unref(form.value?.ref)
+        return h(
+          'div',
+          {
+            hidden: true,
+            'data-testid': 'native-field-registry',
+            'data-field-count': String(nativeForm?.fields.length ?? 0)
+          },
+          fields.map((item) => {
+            const field = nativeForm?.getField(item.key)
+            return h('output', {
+              'data-native-field-key': item.key,
+              'data-input-ids': field?.inputIds.join(' ') ?? '',
+              'data-label-id': field?.labelId ?? '',
+              'data-declared-for': field?.for ?? ''
+            })
+          })
+        )
+      }
+      const renderForm = () =>
+        h(ArtForm, {
+          ref: form,
+          modelValue: values.value,
+          'onUpdate:modelValue': (value) => (values.value = value),
+          items: fields,
+          span: 24,
+          ...(inheritSize || emptySize ? {} : { size }),
+          showSubmit: true,
+          showReset: true,
+          submitText: '保存原生形状',
+          resetText: '重置原生形状',
+          onSubmit: (value: Record<string, unknown>) => {
+            submitted.value = JSON.stringify(value)
+            submissions.value++
+          },
+          onReset: () => resets.value++
+        })
+      return () =>
+        h('main', { class: 'mx-auto min-w-0 max-w-4xl p-4' }, [
+          h('h1', { class: 'mb-4 text-xl font-semibold' }, '原生控件占位形状清单'),
+          inheritSize ? h(ElConfigProvider, { size }, { default: renderForm }) : renderForm(),
+          renderFieldRegistry(),
+          h(
+            'output',
+            { 'data-testid': 'native-placeholder-values', hidden: true },
+            JSON.stringify(values.value)
+          ),
+          h(
+            'output',
+            { 'data-testid': 'native-placeholder-ready', hidden: true },
+            String(unref(form.value?.controlsReady))
+          ),
+          h(
+            'output',
+            { 'data-testid': 'native-placeholder-submissions', hidden: true },
+            String(submissions.value)
+          ),
+          h(
+            'output',
+            { 'data-testid': 'native-placeholder-resets', hidden: true },
+            String(resets.value)
+          ),
+          h('output', { 'data-testid': 'native-placeholder-output', hidden: true }, submitted.value)
+        ])
+    }
+    if (params.has('placeholder-geometry')) {
+      document.documentElement.dataset.uiScope = 'workspace'
+      const requestedSize = params.get('size')
+      const size =
+        requestedSize === 'small' || requestedSize === 'large' ? requestedSize : 'default'
+      const inheritSize = params.has('size-provider')
+      const values = ref<Record<string, unknown>>({
+        name: '保留的业务名称',
+        date: '2026-11-19',
+        acknowledged: true,
+        notes: '保留的多行说明\n第二行内容用于核对长文本控件高度。',
+        smallName: '字段级小号输入',
+        largeDate: '2026-11-20',
+        longAlias: '通过 input 类型配置的长文本\n字段类型覆盖后仍应使用多行高度。'
+      })
+      const form = ref<InstanceType<typeof ArtForm>>()
+      const submits = ref(0)
+      const resets = ref(0)
+      const submitted = ref('尚未提交')
+      const dateProps = { format: 'YYYY-MM-DD', valueFormat: 'YYYY-MM-DD', clearable: false }
+      const fields: FormItem[] = [
+        { key: 'name', label: '业务名称', type: 'input' },
+        { key: 'date', label: '业务日期', type: 'date', props: dateProps },
+        {
+          key: 'acknowledged',
+          label: '业务确认',
+          type: 'checkbox',
+          props: { label: '确认信息无误' }
+        },
+        { key: 'notes', label: '业务说明', type: 'textarea' },
+        { key: 'smallName', label: '小号字段', type: 'input', formItemProps: { size: 'small' } },
+        {
+          key: 'largeDate',
+          label: '大号字段日期',
+          type: 'date',
+          props: { ...dateProps, size: 'large' }
+        },
+        { key: 'longAlias', label: '覆盖类型长文本', type: 'input', props: { type: 'textarea' } }
+      ]
+      if (params.has('cascader-boundary')) {
+        const cascaderOptions = [
+          {
+            label: '华东仓储协同区域',
+            value: 'east',
+            children: [
+              { label: '跨区域物流园区首期运营一号仓库', value: 'warehouse-a' },
+              { label: '跨区域物流园区首期运营二号仓库', value: 'warehouse-b' }
+            ]
+          }
+        ]
+        Object.assign(values.value, {
+          cascaderPath: ['east', 'warehouse-a'],
+          cascaderSmall: ['east', 'warehouse-b'],
+          userSmall: 'reviewer',
+          cascaderAnchor: '级联边界后的原生锚点',
+          cascaderMulti: [
+            ['east', 'warehouse-a'],
+            ['east', 'warehouse-b']
+          ],
+          cascaderPrefix: ['east', 'warehouse-a']
+        })
+        fields.push(
+          {
+            key: 'cascaderPath',
+            label: '继承大号的单路径',
+            type: 'cascader',
+            options: cascaderOptions,
+            props: { props: { multiple: false, emitPath: true } }
+          },
+          {
+            key: 'cascaderSmall',
+            label: '显式小号的单路径',
+            type: 'cascader',
+            formItemProps: { size: 'large' },
+            options: cascaderOptions,
+            props: { size: 'small', props: { multiple: false, emitPath: true } }
+          },
+          {
+            key: 'userSmall',
+            label: '显式小号审批人',
+            type: 'userSelect',
+            formItemProps: { size: 'large' },
+            options: [{ label: '值班审核员', value: 'reviewer' }],
+            props: { size: 'small', multiple: false }
+          },
+          { key: 'cascaderAnchor', label: '单选后的原生锚点', type: 'input' },
+          {
+            key: 'cascaderMulti',
+            label: '多路径换行边界',
+            type: 'cascader',
+            options: cascaderOptions,
+            props: { collapseTags: false, props: { multiple: true, emitPath: true } }
+          },
+          {
+            key: 'cascaderPrefix',
+            label: '高前缀边界',
+            type: 'cascader',
+            options: cascaderOptions,
+            props: { props: { multiple: false, emitPath: true } },
+            slots: {
+              prefix: () =>
+                h(
+                  'span',
+                  {
+                    'data-testid': 'cascader-tall-prefix',
+                    style: { display: 'block', width: '48px', height: '64px', lineHeight: '64px' }
+                  },
+                  '前缀'
+                )
+            }
+          }
+        )
+      }
+      const renderForm = () =>
+        h(ArtForm, {
+          ref: form,
+          modelValue: values.value,
+          'onUpdate:modelValue': (value) => (values.value = value),
+          items: fields,
+          span: 24,
+          ...(inheritSize ? {} : { size }),
+          showSubmit: true,
+          showReset: true,
+          submitText: '保存布局表单',
+          resetText: '重置布局表单',
+          onSubmit: (value: Record<string, unknown>) => {
+            submitted.value = JSON.stringify(value)
+            submits.value++
+          },
+          onReset: () => resets.value++
+        })
+      return () =>
+        h('main', { class: 'mx-auto min-w-0 max-w-4xl p-4' }, [
+          h('h1', { class: 'mb-4 text-xl font-semibold' }, '表单控件加载布局'),
+          inheritSize ? h(ElConfigProvider, { size }, { default: renderForm }) : renderForm(),
+          h(
+            'output',
+            { 'data-testid': 'placeholder-values', hidden: true },
+            JSON.stringify(values.value)
+          ),
+          h(
+            'output',
+            { 'data-testid': 'placeholder-ready', hidden: true },
+            String(unref(form.value?.controlsReady))
+          ),
+          h(
+            'output',
+            { 'data-testid': 'placeholder-submissions', hidden: true },
+            String(submits.value)
+          ),
+          h('output', { 'data-testid': 'placeholder-resets', hidden: true }, String(resets.value)),
+          h('output', { 'data-testid': 'placeholder-output', hidden: true }, submitted.value)
+        ])
+    }
+    if (params.has('registry-boundary')) {
+      document.documentElement.dataset.uiScope = 'workspace'
+      const mode = params.get('registry-boundary')
+      const values = ref<Record<string, unknown>>({
+        name: '初始名称',
+        hiddenName: '初始隐藏值',
+        summary: '全部范围',
+        nestedName: '',
+        dividerName: '',
+        tabName: '',
+        advanced: '保留的高级值',
+        tenantId: ''
+      })
+      const boundaryForm = ref<InstanceType<typeof ArtForm>>()
+      const boundarySearch = ref<InstanceType<typeof ArtSearchBar>>()
+      const nativeShown = ref(false)
+      const slotMode = ref<'full' | 'absent' | 'empty'>('full')
+      const checked = ref('尚未校验')
+      const submitted = ref('尚未提交')
+      const submissionCount = ref(0)
+      const resetCount = ref(0)
+      const firstRefResult = ref('尚未取得函数ref')
+      let firstRefCaptured = false
+      const captureFirstRef = (instance: unknown) => {
+        if (mode !== 'fields' || !instance || firstRefCaptured) return
+        if (
+          typeof instance !== 'object' ||
+          !('controlsReady' in instance) ||
+          !('validate' in instance) ||
+          typeof instance.validate !== 'function'
+        )
+          throw new Error('首次函数ref未取得标准ArtForm公开接口')
+        firstRefCaptured = true
+        const ready = Boolean(unref(instance.controlsReady))
+        firstRefResult.value = JSON.stringify({ ready, pending: true })
+        void Promise.resolve(
+          instance.validate((valid: boolean, fields?: Record<string, unknown>) => {
+            firstRefResult.value = JSON.stringify({ ready, valid, keys: Object.keys(fields ?? {}) })
+          })
+        ).catch((error: unknown) => {
+          firstRefResult.value = JSON.stringify({
+            ready,
+            unexpected: true,
+            keys: typeof error === 'object' && error !== null ? Object.keys(error) : []
+          })
+        })
+      }
+      let validationCount = 0
+      const validate = async (callback: boolean) => {
+        const target = mode === 'query' ? boundarySearch.value : boundaryForm.value
+        if (!target) throw new Error('控件依赖边界表单尚未挂载')
+        let valid = false
+        let keys: string[] = []
+        try {
+          if (callback) {
+            await target.validate((result, fields) => {
+              valid = result
+              keys = Object.keys(fields ?? {})
+            })
+          } else valid = (await target.validate()) === true
+        } catch (error) {
+          keys = typeof error === 'object' && error !== null ? Object.keys(error) : []
+        }
+        checked.value = JSON.stringify({ sequence: ++validationCount, valid, keys })
+      }
+      const submit = (value: Record<string, unknown>) => {
+        submitted.value = JSON.stringify(value)
+        submissionCount.value++
+      }
+      const composite = (scope: { value: unknown; setValue: (value: unknown) => void }) => {
+        if (slotMode.value === 'empty') return []
+        return h(
+          'div',
+          { class: 'flex min-w-0 items-center gap-2', 'data-testid': 'boundary-composite' },
+          [
+            h(ElInput, {
+              class: 'min-w-0 flex-1',
+              modelValue: String(scope.value ?? ''),
+              'onUpdate:modelValue': scope.setValue,
+              ariaLabel: '组合名称',
+              'data-testid': 'boundary-composite-input'
+            }),
+            h(
+              'button',
+              {
+                type: 'button',
+                class: 'shrink-0 whitespace-nowrap',
+                onClick: () => scope.setValue('组合补全名称')
+              },
+              '补全名称'
+            )
+          ]
+        )
+      }
+      const mixedItems: FormItem[] = [
+        {
+          key: 'hiddenName',
+          label: '隐藏原生字段',
+          type: 'input',
+          hidden: () => !nativeShown.value
+        },
+        {
+          key: 'name',
+          label: '独立渲染名称',
+          type: 'input',
+          render: () =>
+            h(ElInput, {
+              modelValue: String(values.value.name ?? ''),
+              'onUpdate:modelValue': (value: string) => (values.value.name = value),
+              ariaLabel: '独立渲染名称'
+            })
+        },
+        { key: 'summary', label: '当前范围', type: 'text' },
+        { key: 'tenantId', label: '所属租户', type: 'select' }
+      ]
+      const hiddenItems: FormItem[] = [
+        {
+          key: 'hiddenName',
+          label: '隐藏原生字段',
+          type: 'input',
+          hidden: () => !nativeShown.value
+        }
+      ]
+      const slotItems: FormItem[] = [{ key: 'name', label: '名称', type: 'input' }]
+      const fieldItems: FormItem[] = [
+        ...(params.has('nested-layout')
+          ? ([
+              { key: 'overview', label: '概览', type: 'tab' },
+              { key: 'summary', label: '当前范围', type: 'text' },
+              { key: 'details', label: '详情', type: 'tab' },
+              {
+                key: 'compositionSection',
+                label: '组合分区',
+                type: 'divider',
+                props: { defaultCollapsed: true }
+              }
+            ] satisfies FormItem[])
+          : []),
+        { key: 'composition', label: '组合字段', type: 'slot' }
+      ]
+      const childItems: FormItem[] = [{ key: 'nestedName', label: '子业务名称', type: 'input' }]
+      const queryItems: FormItem[] = [
+        { key: 'name', label: '名称', type: 'input' },
+        { key: 'summary', label: '当前范围', type: 'text' },
+        { key: 'advanced', label: '高级关键词', type: 'input' }
+      ]
+      const mountedItems: FormItem[] = [
+        { key: 'overview', label: '概览', type: 'tab' },
+        { key: 'summary', label: '当前范围', type: 'text' },
+        { key: 'collapsed', label: '折叠分区', type: 'divider', props: { defaultCollapsed: true } },
+        { key: 'dividerName', label: '分区名称', type: 'input' },
+        { key: 'details', label: '详情', type: 'tab' },
+        { key: 'tabName', label: '页签名称', type: 'input' }
+      ]
+      const boundaryRules =
+        mode === 'fields'
+          ? { nestedName: [{ required: true, message: '请填写子业务名称' }] }
+          : mode === 'mounted'
+            ? {
+                dividerName: [{ required: true, message: '请填写分区名称' }],
+                tabName: [{ required: true, message: '请填写页签名称' }]
+              }
+            : mode === 'hidden'
+              ? { hiddenName: [{ required: true, message: '请填写隐藏字段' }] }
+              : { name: [{ required: true, message: '请填写名称' }] }
+      const button = (label: string, action: () => void) =>
+        h('button', { type: 'button', onClick: action }, label)
+      return () =>
+        h('main', { class: 'min-w-0 space-y-3 p-4' }, [
+          h('h1', { class: 'text-xl' }, '实际渲染控件依赖边界'),
+          h('nav', { class: 'flex flex-wrap gap-3', 'aria-label': '控件依赖边界切换' }, [
+            button('显示原生字段', () => (nativeShown.value = true)),
+            button('隐藏原生字段', () => (nativeShown.value = false)),
+            button('完整命名插槽', () => (slotMode.value = 'full')),
+            button('移除命名插槽', () => (slotMode.value = 'absent')),
+            button('命名插槽返回空', () => (slotMode.value = 'empty')),
+            button('修改隐藏值', () => (values.value.hiddenName = '修改后的隐藏草稿')),
+            button('Promise边界校验', () => void validate(false)),
+            button('回调边界校验', () => void validate(true))
+          ]),
+          mode === 'query'
+            ? h(
+                ArtSearchBar,
+                {
+                  ref: boundarySearch,
+                  modelValue: values.value,
+                  'onUpdate:modelValue': (value) => (values.value = value),
+                  items: queryItems,
+                  rules: boundaryRules,
+                  span: 8,
+                  onSearch: submit,
+                  onReset: () => resetCount.value++
+                },
+                { name: composite }
+              )
+            : cloneVNode(
+                h(
+                  ArtForm,
+                  {
+                    ref: boundaryForm,
+                    modelValue: values.value,
+                    'onUpdate:modelValue': (value) => (values.value = value),
+                    items:
+                      mode === 'mixed'
+                        ? mixedItems
+                        : mode === 'hidden'
+                          ? hiddenItems
+                          : mode === 'fields'
+                            ? fieldItems
+                            : mode === 'mounted'
+                              ? mountedItems
+                              : slotItems,
+                    rules: boundaryRules,
+                    tenantScopeMode: 'read',
+                    span: 24,
+                    showSubmit: true,
+                    showReset: true,
+                    submitText: '边界提交',
+                    resetText: '边界重置',
+                    onSubmit: submit,
+                    onReset: () => resetCount.value++
+                  },
+                  mode === 'fields'
+                    ? {
+                        composition: ({ fields }: { fields: Component }) =>
+                          h('div', { 'data-testid': 'boundary-sub-schema' }, [
+                            h('p', '组合中的独立子字段'),
+                            h(fields, { items: childItems, actions: false })
+                          ])
+                      }
+                    : mode === 'slot' && slotMode.value !== 'absent'
+                      ? { name: composite }
+                      : {}
+                ),
+                { ref: captureFirstRef },
+                true
+              ),
+          h(
+            'output',
+            { 'data-testid': 'boundary-values', hidden: true },
+            JSON.stringify(values.value)
+          ),
+          h('output', { 'data-testid': 'boundary-validation', hidden: true }, checked.value),
+          h('output', { 'data-testid': 'boundary-output', hidden: true }, submitted.value),
+          h(
+            'output',
+            { 'data-testid': 'boundary-submissions', hidden: true },
+            String(submissionCount.value)
+          ),
+          h('output', { 'data-testid': 'boundary-resets', hidden: true }, String(resetCount.value)),
+          h(
+            'output',
+            { 'data-testid': 'boundary-native-shown', hidden: true },
+            String(nativeShown.value)
+          ),
+          h('output', { 'data-testid': 'boundary-slot-mode', hidden: true }, slotMode.value),
+          h('output', { 'data-testid': 'boundary-first-ref', hidden: true }, firstRefResult.value),
+          h(
+            'output',
+            { 'data-testid': 'boundary-ready', hidden: true },
+            String(unref(boundaryForm.value?.controlsReady))
+          )
+        ])
+    }
+    if (params.has('native-display')) {
+      document.documentElement.dataset.uiScope = 'workspace'
+      type DisplayProps = Partial<
+        Pick<FormProps, 'size' | 'inline' | 'requireAsteriskPosition' | 'labelSuffix'>
+      >
+      const displayProps = ref<DisplayProps>({})
+      const values = ref<Record<string, unknown>>({ name: '业务草稿', alias: '显示草稿', code: '' })
+      const nativeValue = ref('原生尺寸参考')
+      const overlay = ref<ArtDialogExpose>()
+      const queryMode = params.has('query')
+      const fields: FormItem[] = [
+        {
+          key: 'name',
+          label: '业务名称',
+          help: '按现有业务名称填写。',
+          type: 'input',
+          formItemProps: { required: true }
+        },
+        {
+          key: 'alias',
+          label: () => h('span', { 'data-testid': 'component-label' }, '显示别名'),
+          help: '组件标签的填写提示。',
+          type: 'input',
+          formItemProps: { required: true }
+        }
+      ]
+      if (!queryMode)
+        fields.push(
+          { key: 'settings', label: '业务设置', type: 'divider', span: 24 },
+          {
+            key: 'code',
+            label: '跨组织业务名称显示方式',
+            help: '跨组织业务显示方式的填写提示。',
+            type: 'input',
+            span: 24
+          }
+        )
+      const presets: { label: string; props: DisplayProps }[] = [
+        { label: '删除原生展示属性', props: {} },
+        { label: '仅添加标签后缀', props: { labelSuffix: '：' } },
+        {
+          label: '小号行内右星标',
+          props: {
+            size: 'small',
+            inline: true,
+            requireAsteriskPosition: 'right',
+            labelSuffix: '：'
+          }
+        },
+        {
+          label: '大号非行内左星标',
+          props: { size: 'large', inline: false, requireAsteriskPosition: 'left', labelSuffix: '' }
+        },
+        {
+          label: '默认号行内右星标',
+          props: {
+            size: 'default',
+            inline: true,
+            requireAsteriskPosition: 'right',
+            labelSuffix: '：'
+          }
+        }
+      ]
+      const content = () => [
+        h(
+          'div',
+          { role: 'group', 'aria-label': '原生展示属性切换', class: 'mb-4 flex flex-wrap gap-2' },
+          presets.map((preset) =>
+            h(
+              'button',
+              { type: 'button', onClick: () => (displayProps.value = { ...preset.props }) },
+              preset.label
+            )
+          )
+        ),
+        h(ElInput, {
+          ...(displayProps.value.size ? { size: displayProps.value.size } : {}),
+          modelValue: nativeValue.value,
+          'onUpdate:modelValue': (value: string) => (nativeValue.value = value),
+          ariaLabel: '原生尺寸参考',
+          class: 'mb-4',
+          'data-testid': 'native-size-reference'
+        }),
+        queryMode
+          ? h(ArtSearchBar, {
+              ...displayProps.value,
+              modelValue: values.value,
+              'onUpdate:modelValue': (value) => (values.value = value),
+              items: fields,
+              span: 12,
+              labelWidth: 120,
+              showExpand: false,
+              onSearch: (value) => (output.value = JSON.stringify(value))
+            })
+          : h(ArtForm, {
+              ...displayProps.value,
+              modelValue: values.value,
+              'onUpdate:modelValue': (value: Record<string, unknown>) => (values.value = value),
+              items: fields,
+              span: 12
+            })
+      ]
+      return () =>
+        h('main', { class: 'p-4' }, [
+          ...(params.has('overlay')
+            ? [
+                h(
+                  'button',
+                  { type: 'button', onClick: () => void overlay.value?.handleOpen() },
+                  '打开展示属性弹窗'
+                ),
+                h(
+                  ArtDialog,
+                  { ref: overlay, title: '展示属性弹窗', showFooter: false },
+                  { default: content }
+                )
+              ]
+            : content()),
+          h(
+            'output',
+            { 'data-testid': 'native-display-values', hidden: true },
+            JSON.stringify(values.value)
+          ),
+          h('output', { 'data-testid': 'query-output', hidden: true }, output.value)
+        ])
+    }
     if (params.has('descriptions')) {
       const described = ref(true)
       const renderForm = (copy: string) => {

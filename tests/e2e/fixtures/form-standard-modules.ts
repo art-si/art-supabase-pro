@@ -5,6 +5,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
+import { useMenuStore } from '@/store/modules/menu'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useSettingStore } from '@/store/modules/setting'
 import { initializeTheme } from '@/hooks/core/useTheme'
@@ -34,6 +35,7 @@ const menuTree = [
 ]
 const params = new URLSearchParams(location.search)
 const valid = params.get('valid') === 'true'
+const ordinary = params.get('ordinary') === 'true'
 const material = {
   id,
   tenantId,
@@ -134,6 +136,33 @@ const entries: Record<string, Entry> = {
   'mdm-inventory-policy': {
     load: () => import('@mdm/views/inventory/storage/modules/inventory-policy-dialog.vue'),
     args: () => [{ tenantId, warehouseName: '验收仓库' }]
+  },
+  'mdm-package-placement': {
+    load: () => import('@mdm/views/inventory/storage/modules/package-placement-dialog.vue'),
+    args: () => [
+      {
+        warehouse: {
+          ...warehouse,
+          warehouseType: 'raw_material',
+          enableLocations: true,
+          singleSkuPerBin: false
+        },
+        pack: {
+          id,
+          tenantId,
+          packNo: 'PACK-TEST',
+          workOrderId: unitId,
+          workOrderNo: 'MO-TEST',
+          constructionNo: null,
+          materialId: null,
+          itemCount: 1,
+          pieceCount: 12,
+          placementId: null,
+          warehouseId: null,
+          binId: null
+        }
+      }
+    ]
   },
   'employee-profile': {
     page: true,
@@ -851,6 +880,7 @@ const app = createApp({
   setup() {
     const dialog = ref<{ handleOpen: (...args: unknown[]) => Promise<void> }>()
     const saved = ref('尚未保存')
+    const openCompletions = ref(0)
     return () =>
       h(ElConfigProvider, { locale: zhCn }, () =>
         entry.page
@@ -864,16 +894,25 @@ const app = createApp({
                 ElButton,
                 {
                   disabled: !dialog.value,
-                  onClick: () => {
+                  onClick: async () => {
                     const args = entry.args?.() ?? [common]
                     if (valid && entry.editRow)
                       args[0] = { ...(args[0] as Record<string, unknown>), row: entry.editRow }
-                    return dialog.value?.handleOpen(...args)
+                    try {
+                      await dialog.value?.handleOpen(...args)
+                    } finally {
+                      openCompletions.value++
+                    }
                   }
                 },
                 () => '打开真实业务入口'
               ),
               h('output', { 'data-testid': 'save-result' }, saved.value),
+              h(
+                'output',
+                { 'data-testid': 'open-completions', hidden: true },
+                String(openCompletions.value)
+              ),
               h(CurrentDialog, {
                 ...entry.props,
                 ref: dialog,
@@ -900,8 +939,17 @@ const user = useUserStore(store)
 user.setUserInfo({
   userId: 'form-standard-test',
   tenantId,
-  platformSuper: true
+  platformSuper: !ordinary
 } as Api.Auth.UserInfo)
+if (ordinary) {
+  const permissions =
+    params.get('entry') === 'mdm-package-placement'
+      ? ['MdmInventoryPackage:View', 'MdmInventoryPackage:Assign']
+      : ['MdmInventoryBatch:View', 'MdmInventoryBatch:Configure']
+  useMenuStore(store).setButtonList(
+    permissions.map((name) => ({ name, path: '', type: 'button', meta: { title: name } }))
+  )
+}
 const scope = useTenantScopeStore(store)
 scope.tenantOptions = [
   { id: tenantId, tenantCode: 'TEST', tenantName: '验收租户', builtinType: 'business' }
@@ -913,6 +961,9 @@ const settings = useSettingStore(store)
 const theme = params.get('theme') === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
 settings.setGlobalTheme(theme, theme)
 initializeTheme()
+document.documentElement.dataset.uiScope = 'workspace'
+document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
+document.documentElement.dataset.platformSuper = String(user.getUserInfo.platformSuper)
 await router.push({
   path: entry.page && params.get('recordId') ? `/employee/${params.get('recordId')}` : '/',
   query: entry.page

@@ -1,3 +1,4 @@
+import { normalizeAiInteger } from '../_shared/ai-runtime-config-policy.ts'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
@@ -10,13 +11,11 @@ import {
   resolveAiProviderEndpoints,
   type AiProviderEndpoint
 } from '../_shared/ai-provider-endpoints.ts'
-import {
-  extractAiProviderJson,
-  extractAiProviderText
-} from '../_shared/ai-provider-json.ts'
+import { extractAiProviderJson, extractAiProviderText } from '../_shared/ai-provider-json.ts'
 import { loadAiRuntimeConfig } from '../_shared/ai-runtime-config.ts'
 import { loadPublishedAiPrompt } from '../_shared/ai-prompt-template.ts'
 import { normalizeOcrRawText } from '../_shared/ai-ocr-text.ts'
+import { isOcrRecord } from '../_shared/ai-ocr-values.ts'
 
 const FEATURE = 'invoice_ocr'
 const ARTIFACT_TYPE = 'tms_invoice_draft'
@@ -67,10 +66,6 @@ function json(body: unknown, status = 200) {
   })
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
 function stringValue(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim()
@@ -79,13 +74,9 @@ function stringValue(value: unknown): string | null {
 
 function isUuid(value: string | null): value is string {
   return Boolean(
-    value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    value &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
   )
-}
-
-function integerValue(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.trunc(parsed))) : fallback
 }
 
 function getProviderModel(baseUrl: string): string {
@@ -120,7 +111,8 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return json({ code: 'method_not_allowed', message: 'Method not allowed' }, 405)
+  if (req.method !== 'POST')
+    return json({ code: 'method_not_allowed', message: 'Method not allowed' }, 405)
 
   let finishRun: (
     status: 'succeeded' | 'failed',
@@ -170,7 +162,12 @@ Deno.serve(async (req) => {
       const artifactId = stringValue(body.artifactId)
       const entityId = stringValue(body.entityId)
       const outcome = body.outcome
-      if (!isUuid(artifactId) || outcome !== 'applied' || !isUuid(entityId) || !isRecord(body.finalPayload)) {
+      if (
+        !isUuid(artifactId) ||
+        outcome !== 'applied' ||
+        !isUuid(entityId) ||
+        !isOcrRecord(body.finalPayload)
+      ) {
         return json({ code: 'invalid_input', message: 'AI 质量反馈参数无效' }, 400)
       }
       if (JSON.stringify(body.finalPayload).length > 20_000) {
@@ -188,7 +185,8 @@ Deno.serve(async (req) => {
         .eq('status', 'pending')
         .maybeSingle()
       if (artifactError) throw artifactError
-      if (!artifact) return json({ code: 'artifact_not_found', message: '识别记录不存在或已反馈' }, 404)
+      if (!artifact)
+        return json({ code: 'artifact_not_found', message: '识别记录不存在或已反馈' }, 404)
 
       const { data: invoice, error: invoiceError } = await admin
         .from('tms_invoice')
@@ -201,7 +199,7 @@ Deno.serve(async (req) => {
 
       const finalPayload = body.finalPayload
       const comparison = compareAiInvoiceOcrPayloads(
-        isRecord(artifact.proposed_payload) ? artifact.proposed_payload : {},
+        isOcrRecord(artifact.proposed_payload) ? artifact.proposed_payload : {},
         finalPayload
       )
       const { data: reviewed, error: reviewError } = await admin
@@ -238,25 +236,37 @@ Deno.serve(async (req) => {
     const direction = body.direction === 'input' ? 'input' : 'output'
     if (!imageUrls.length) return json({ code: 'invalid_input', message: '请先上传发票图片' }, 400)
 
-    const compatibleBaseUrl = (Deno.env.get('AI_BASE_URL') || 'https://api.openai.com/v1').replace(/\/$/, '')
+    const compatibleBaseUrl = (Deno.env.get('AI_BASE_URL') || 'https://api.openai.com/v1').replace(
+      /\/$/,
+      ''
+    )
     const runtimeConfig = await loadAiRuntimeConfig(admin, appUser.tenant_id, FEATURE, {
       enabled: true,
       provider: 'openai_compatible',
       model: getProviderModel(compatibleBaseUrl),
       visionModel: getProviderModel(compatibleBaseUrl),
       fallbackModel: Deno.env.get('AI_INVOICE_OCR_FALLBACK_MODEL') || null,
-      timeoutMs: integerValue(Deno.env.get('AI_INVOICE_OCR_TIMEOUT_MS'), DEFAULT_TIMEOUT_MS, 10_000, 120_000),
-      maxRetries: integerValue(Deno.env.get('AI_INVOICE_OCR_MAX_RETRIES'), 0, 0, 2),
+      timeoutMs: normalizeAiInteger(
+        Deno.env.get('AI_INVOICE_OCR_TIMEOUT_MS'),
+        DEFAULT_TIMEOUT_MS,
+        10_000,
+        120_000
+      ),
+      maxRetries: normalizeAiInteger(Deno.env.get('AI_INVOICE_OCR_MAX_RETRIES'), 0, 0, 2),
       temperature: 0,
       maxTokens: 3000,
-      rateLimitPerMinute: integerValue(Deno.env.get('AI_INVOICE_OCR_PER_MINUTE'), 6, 1, 60),
-      rateLimitPerDay: integerValue(Deno.env.get('AI_INVOICE_OCR_PER_DAY'), 100, 1, 5000),
+      rateLimitPerMinute: normalizeAiInteger(Deno.env.get('AI_INVOICE_OCR_PER_MINUTE'), 6, 1, 60),
+      rateLimitPerDay: normalizeAiInteger(Deno.env.get('AI_INVOICE_OCR_PER_DAY'), 100, 1, 5000),
       promptVersion: 'v1'
     })
-    if (!runtimeConfig.enabled) return json({ code: 'feature_disabled', message: '当前 AI 发票识别已停用' }, 503)
+    if (!runtimeConfig.enabled)
+      return json({ code: 'feature_disabled', message: '当前 AI 发票识别已停用' }, 503)
 
     const providerEndpoints = resolveAiProviderEndpoints(
-      { model: runtimeConfig.visionModel || runtimeConfig.model, fallbackModel: runtimeConfig.fallbackModel },
+      {
+        model: runtimeConfig.visionModel || runtimeConfig.model,
+        fallbackModel: runtimeConfig.fallbackModel
+      },
       { openAiModel: Deno.env.get('AI_INVOICE_OCR_OPENAI_MODEL') }
     )
     const openAiBaseUrl = (Deno.env.get('OPENAI_BASE_URL') || 'https://api.openai.com/v1').replace(
@@ -277,15 +287,29 @@ Deno.serve(async (req) => {
           )
       }
     )
-    if (!providerEndpoints.length) return json({ code: 'missing_secret', message: 'AI 服务尚未配置' }, 500)
+    if (!providerEndpoints.length)
+      return json({ code: 'missing_secret', message: 'AI 服务尚未配置' }, 500)
 
     const minuteAgo = new Date(Date.now() - 60_000).toISOString()
     const dayAgo = new Date(Date.now() - 86_400_000).toISOString()
     const [minuteResult, dayResult] = await Promise.all([
-      admin.from('ai_run').select('id', { count: 'exact', head: true }).eq('auth_user_id', user.id).eq('feature', FEATURE).gte('started_at', minuteAgo),
-      admin.from('ai_run').select('id', { count: 'exact', head: true }).eq('auth_user_id', user.id).eq('feature', FEATURE).gte('started_at', dayAgo)
+      admin
+        .from('ai_run')
+        .select('id', { count: 'exact', head: true })
+        .eq('auth_user_id', user.id)
+        .eq('feature', FEATURE)
+        .gte('started_at', minuteAgo),
+      admin
+        .from('ai_run')
+        .select('id', { count: 'exact', head: true })
+        .eq('auth_user_id', user.id)
+        .eq('feature', FEATURE)
+        .gte('started_at', dayAgo)
     ])
-    if ((minuteResult.count ?? 0) >= runtimeConfig.rateLimitPerMinute || (dayResult.count ?? 0) >= runtimeConfig.rateLimitPerDay) {
+    if (
+      (minuteResult.count ?? 0) >= runtimeConfig.rateLimitPerMinute ||
+      (dayResult.count ?? 0) >= runtimeConfig.rateLimitPerDay
+    ) {
       return json({ code: 'rate_limited', message: 'AI 发票识别次数已达到限额，请稍后重试' }, 429)
     }
 
@@ -393,11 +417,18 @@ Deno.serve(async (req) => {
     const requestProvider = (endpoint: AiProviderEndpoint) => {
       const remainingMs = deadline - Date.now()
       if (remainingMs <= 0) throw new ProviderTimeoutError(runtimeConfig.timeoutMs)
-      return fetchWithTimeout(`${endpoint.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${endpoint.apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      }, remainingMs)
+      return fetchWithTimeout(
+        `${endpoint.baseUrl}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${endpoint.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestBody)
+        },
+        remainingMs
+      )
     }
     const requestConfiguredModel = async (endpoint: AiProviderEndpoint, model: string) => {
       resolvedModel = model
@@ -406,12 +437,20 @@ Deno.serve(async (req) => {
       let errorText = ''
       for (let attempt = 0; !response.ok; attempt += 1) {
         errorText = await response.text()
-        if (response.status === 400 && 'response_format' in requestBody && /response_format|json_object|unsupported/i.test(errorText)) {
+        if (
+          response.status === 400 &&
+          'response_format' in requestBody &&
+          /response_format|json_object|unsupported/i.test(errorText)
+        ) {
           delete requestBody.response_format
           response = await requestProvider(endpoint)
           continue
         }
-        if (!((response.status === 429 || response.status >= 500) && attempt < runtimeConfig.maxRetries)) break
+        if (!(
+          (response.status === 429 || response.status >= 500) &&
+          attempt < runtimeConfig.maxRetries
+        ))
+          break
         response = await requestProvider(endpoint)
       }
       return { response, errorText }
@@ -421,7 +460,11 @@ Deno.serve(async (req) => {
     let providerResult: { response: Response; errorText: string } | null = null
     for (const endpoint of providerEndpoints) {
       let result = await requestConfiguredModel(endpoint, endpoint.model)
-      if (!result.response.ok && endpoint.fallbackModel && endpoint.fallbackModel !== resolvedModel) {
+      if (
+        !result.response.ok &&
+        endpoint.fallbackModel &&
+        endpoint.fallbackModel !== resolvedModel
+      ) {
         result = await requestConfiguredModel(endpoint, endpoint.fallbackModel)
       }
       providerResult = result
@@ -429,7 +472,12 @@ Deno.serve(async (req) => {
         activeEndpoint = endpoint
         break
       }
-      console.error('ai-invoice-ocr provider attempt failed', endpoint.label, result.response.status, result.errorText)
+      console.error(
+        'ai-invoice-ocr provider attempt failed',
+        endpoint.label,
+        result.response.status,
+        result.errorText
+      )
     }
 
     if (!providerResult?.response.ok) {
@@ -452,7 +500,8 @@ Deno.serve(async (req) => {
     const visionContent = content || (parsed ? JSON.stringify(parsed) : '')
     const normalizerEndpoint =
       normalizerEndpoints.find(
-        (endpoint) => endpoint.id === activeEndpoint.id && endpoint.baseUrl === activeEndpoint.baseUrl
+        (endpoint) =>
+          endpoint.id === activeEndpoint.id && endpoint.baseUrl === activeEndpoint.baseUrl
       ) ?? normalizerEndpoints[0]
 
     if (normalizerEndpoint && visionContent) {
@@ -503,7 +552,8 @@ Deno.serve(async (req) => {
 
         const normalizedPayload = await normalizedResult.response.json()
         usage = {
-          prompt_tokens: (usage?.prompt_tokens ?? 0) + (normalizedPayload?.usage?.prompt_tokens ?? 0),
+          prompt_tokens:
+            (usage?.prompt_tokens ?? 0) + (normalizedPayload?.usage?.prompt_tokens ?? 0),
           completion_tokens:
             (usage?.completion_tokens ?? 0) + (normalizedPayload?.usage?.completion_tokens ?? 0)
         }
@@ -553,7 +603,10 @@ Deno.serve(async (req) => {
         .join('; ')
         .slice(0, 2000)
       await finishRun('failed', usage, 'invalid_ai_response', message)
-      return json({ code: 'invalid_ai_response', message: 'AI 返回的发票识别结构无效，请重试' }, 502)
+      return json(
+        { code: 'invalid_ai_response', message: 'AI 返回的发票识别结构无效，请重试' },
+        502
+      )
     }
 
     const normalized = normalizeAiInvoiceOcrResponse(parsed)

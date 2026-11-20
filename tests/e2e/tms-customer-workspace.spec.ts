@@ -1054,7 +1054,7 @@ test('客户名称打开档案，子表独立编辑且关联页签锁定客户',
     (element) => element.getBoundingClientRect().height
   )
   await dialog.getByRole('button', { name: '全屏', exact: true }).click()
-  await expect(dialog.locator('.tms-customer-dialog')).toHaveClass(/is-fullscreen/)
+  await expect(dialog.locator('.tms-customer-dialog')).toContainClass('is-fullscreen')
   await expect
     .poll(() => financeCard.evaluate((element) => element.getBoundingClientRect().height))
     .toBeGreaterThan(standardCardHeight + 80)

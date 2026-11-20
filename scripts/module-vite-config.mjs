@@ -14,7 +14,7 @@ import { withSharedScssGlobals } from './scss-globals.mjs'
 import { hostedModuleSharedDependencies } from './hosted-module-dependencies.mjs'
 import { getElementPlusStyleDeps, matchElementPlusStyles } from './element-plus-style-chunks.mjs'
 
-function createSourceTransformPattern(...roots) {
+export function createSourceTransformPattern(...roots) {
   const rootPattern = roots
     .map((root) =>
       root

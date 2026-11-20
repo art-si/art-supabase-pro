@@ -1,4 +1,12 @@
 import { normalizeOcrRawText } from './ai-ocr-text.ts'
+import {
+  isOcrRecord,
+  normalizeOcrConfidence,
+  normalizeOcrDateTime,
+  normalizeOcrNonNegativeNumber,
+  normalizeOcrStringArray,
+  normalizeOcrTextValue
+} from './ai-ocr-values.ts'
 
 export const AI_WAYBILL_RECEIPT_FIELDS = [
   'waybillNo',
@@ -13,12 +21,7 @@ export const AI_WAYBILL_RECEIPT_FIELDS = [
 
 export type AiWaybillReceiptField = (typeof AI_WAYBILL_RECEIPT_FIELDS)[number]
 export type AiWaybillReceiptDeliveryResult =
-  | 'normal'
-  | 'damaged'
-  | 'shortage'
-  | 'refused'
-  | 'partial'
-  | 'unclear'
+  'normal' | 'damaged' | 'shortage' | 'refused' | 'partial' | 'unclear'
 export type AiWaybillReceiptRiskLevel = 'none' | 'medium' | 'high' | 'critical'
 
 export interface AiWaybillReceiptDraft {
@@ -78,50 +81,14 @@ const DELIVERY_RESULTS = new Set<AiWaybillReceiptDeliveryResult>([
 ])
 const NUMBER_FIELDS = ['signedQuantity', 'damagedQuantity', 'shortageQuantity'] as const
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
-function textValue(value: unknown, maxLength = 500): string | null {
-  if (typeof value !== 'string') return null
-  const normalized = value.trim()
-  return normalized ? normalized.slice(0, maxLength) : null
-}
-
-function numberValue(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null
-  const normalized = Number(value)
-  return Number.isFinite(normalized) && normalized >= 0 ? normalized : null
-}
-
-function confidenceValue(value: unknown): number {
-  const normalized = Number(value)
-  return Number.isFinite(normalized) ? Math.min(1, Math.max(0, normalized)) : 0
-}
-
-function stringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .map((item) => textValue(item))
-    .filter((item): item is string => Boolean(item))
-    .slice(0, 20)
-}
-
 function normalizedReference(value: unknown): string {
   return String(value ?? '')
     .toLocaleLowerCase('zh-CN')
     .replace(/[\s\-_/()（）]/g, '')
 }
 
-function normalizeDateTime(value: unknown): string | null {
-  const source = textValue(value, 80)
-  if (!source) return null
-  const normalized = new Date(source)
-  return Number.isNaN(normalized.getTime()) ? null : normalized.toISOString()
-}
-
 function normalizeDeliveryResult(value: unknown): AiWaybillReceiptDeliveryResult {
-  const source = textValue(value, 40) as AiWaybillReceiptDeliveryResult | null
+  const source = normalizeOcrTextValue(value, 40) as AiWaybillReceiptDeliveryResult | null
   return source && DELIVERY_RESULTS.has(source) ? source : 'unclear'
 }
 
@@ -129,12 +96,12 @@ export function validateAiWaybillReceiptProviderPayload(
   payload: unknown
 ): ContractValidationResult {
   const errors: string[] = []
-  if (!isRecord(payload)) return { valid: false, errors: ['payload must be an object'] }
-  if (!isRecord(payload.receipt)) errors.push('receipt must be an object')
+  if (!isOcrRecord(payload)) return { valid: false, errors: ['payload must be an object'] }
+  if (!isOcrRecord(payload.receipt)) errors.push('receipt must be an object')
   if (typeof payload.confidence !== 'number' || payload.confidence < 0 || payload.confidence > 1) {
     errors.push('confidence must be between 0 and 1')
   }
-  if (!isRecord(payload.fieldConfidence)) {
+  if (!isOcrRecord(payload.fieldConfidence)) {
     errors.push('fieldConfidence must be an object')
   } else {
     for (const [field, value] of Object.entries(payload.fieldConfidence)) {
@@ -145,9 +112,12 @@ export function validateAiWaybillReceiptProviderPayload(
       }
     }
   }
-  if (isRecord(payload.receipt)) {
+  if (isOcrRecord(payload.receipt)) {
     const result = payload.receipt.deliveryResult
-    if (typeof result !== 'string' || !DELIVERY_RESULTS.has(result as AiWaybillReceiptDeliveryResult)) {
+    if (
+      typeof result !== 'string' ||
+      !DELIVERY_RESULTS.has(result as AiWaybillReceiptDeliveryResult)
+    ) {
       errors.push('receipt.deliveryResult is invalid')
     }
     for (const field of NUMBER_FIELDS) {
@@ -163,22 +133,22 @@ export function validateAiWaybillReceiptProviderPayload(
 export function normalizeAiWaybillReceiptResponse(
   payload: Record<string, unknown>
 ): AiWaybillReceiptNormalizedResponse {
-  const source = isRecord(payload.receipt) ? payload.receipt : {}
+  const source = isOcrRecord(payload.receipt) ? payload.receipt : {}
   const receipt: AiWaybillReceiptDraft = {
-    waybillNo: textValue(source.waybillNo, 120),
-    signerName: textValue(source.signerName, 120),
-    signedAt: normalizeDateTime(source.signedAt),
+    waybillNo: normalizeOcrTextValue(source.waybillNo, 120),
+    signerName: normalizeOcrTextValue(source.signerName, 120),
+    signedAt: normalizeOcrDateTime(source.signedAt),
     deliveryResult: normalizeDeliveryResult(source.deliveryResult),
-    signedQuantity: numberValue(source.signedQuantity),
-    damagedQuantity: numberValue(source.damagedQuantity),
-    shortageQuantity: numberValue(source.shortageQuantity),
-    exceptionNote: textValue(source.exceptionNote, 1000)
+    signedQuantity: normalizeOcrNonNegativeNumber(source.signedQuantity),
+    damagedQuantity: normalizeOcrNonNegativeNumber(source.damagedQuantity),
+    shortageQuantity: normalizeOcrNonNegativeNumber(source.shortageQuantity),
+    exceptionNote: normalizeOcrTextValue(source.exceptionNote, 1000)
   }
   const fieldConfidence: Partial<Record<AiWaybillReceiptField, number>> = {}
-  if (isRecord(payload.fieldConfidence)) {
+  if (isOcrRecord(payload.fieldConfidence)) {
     for (const field of AI_WAYBILL_RECEIPT_FIELDS) {
       if (payload.fieldConfidence[field] !== undefined) {
-        fieldConfidence[field] = confidenceValue(payload.fieldConfidence[field])
+        fieldConfidence[field] = normalizeOcrConfidence(payload.fieldConfidence[field])
       }
     }
   }
@@ -188,11 +158,11 @@ export function normalizeAiWaybillReceiptResponse(
   if (!receipt.signedAt) missingFields.push('签收时间')
   return {
     rawText: normalizeOcrRawText(payload.rawText),
-    summary: textValue(payload.summary) ?? '回单识别完成，请核对后确认签收。',
-    confidence: confidenceValue(payload.confidence),
+    summary: normalizeOcrTextValue(payload.summary) ?? '回单识别完成，请核对后确认签收。',
+    confidence: normalizeOcrConfidence(payload.confidence),
     fieldConfidence,
     missingFields,
-    warnings: [...new Set(stringArray(payload.warnings))],
+    warnings: [...new Set(normalizeOcrStringArray(payload.warnings))],
     receipt
   }
 }
@@ -256,7 +226,7 @@ export function assessAiWaybillReceipt(
   const resultSignal = resultSignals[receipt.deliveryResult]
   if (resultSignal) signals.push(resultSignal)
 
-  const expectedQuantity = numberValue(expected.cargoQuantityTotal)
+  const expectedQuantity = normalizeOcrNonNegativeNumber(expected.cargoQuantityTotal)
   if (
     expectedQuantity !== null &&
     receipt.signedQuantity !== null &&
@@ -273,7 +243,11 @@ export function assessAiWaybillReceipt(
   if (receipt.signedAt && expected.plannedArrivalTime) {
     const signedAt = new Date(receipt.signedAt).getTime()
     const plannedAt = new Date(expected.plannedArrivalTime).getTime()
-    if (Number.isFinite(signedAt) && Number.isFinite(plannedAt) && signedAt < plannedAt - 86_400_000) {
+    if (
+      Number.isFinite(signedAt) &&
+      Number.isFinite(plannedAt) &&
+      signedAt < plannedAt - 86_400_000
+    ) {
       signals.push({
         type: 'signed_too_early',
         severity: 'medium',

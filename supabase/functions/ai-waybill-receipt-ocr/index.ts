@@ -77,7 +77,7 @@ const handler = createVisionOcrHandler({
   }),
   validate: validateAiWaybillReceiptProviderPayload,
   normalize: normalizeAiWaybillReceiptResponse,
-  proposedPayload: (result) => result.receipt,
+  proposedPayload: (result) => ({ ...result.receipt }),
   compare: compareAiWaybillReceiptPayloads,
   artifactMetadata: (_context, extraResponse) => ({
     summary: _context.result.summary,

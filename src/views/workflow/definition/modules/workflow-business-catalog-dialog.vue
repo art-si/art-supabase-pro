@@ -1,12 +1,12 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl" :use-scrollbar="false">
+  <ArtDialog ref="dialogRef" size="xl" content-height="min(78vh, calc(100dvh - 176px))">
     <div class="workflow-catalog">
       <ArtWorkspaceSplitter
         primary-size="264px"
         primary-min="240px"
         primary-max="380px"
         :breakpoint="900"
-        stacked-primary-size="300px"
+        stacked-primary-size="min(520px, calc(100dvh - 176px))"
       >
         <template #primary>
           <aside class="workflow-catalog__menu">
@@ -214,21 +214,27 @@
 
 <style scoped lang="scss">
   .workflow-catalog {
+    flex: 1;
     min-width: 0;
-    height: min(78vh, calc(100dvh - 176px));
+    height: 100%;
     min-height: 0;
 
     &__menu,
     &__content {
       min-width: 0;
       min-height: 0;
-      overflow: hidden;
+    }
+
+    &__menu {
+      overflow: clip;
+      overflow-clip-margin: var(--art-space-3);
     }
 
     &__content {
       display: flex;
       flex-direction: column;
       gap: 12px;
+      overflow: hidden;
     }
 
     &__summary,
@@ -335,7 +341,7 @@
       display: grid;
       gap: 12px;
       min-height: 100%;
-      padding-right: 8px;
+      padding: var(--art-space-3);
     }
 
     &__coverage,
@@ -544,9 +550,11 @@
     }
   }
 
-  :global(.workflow-catalog-dialog.is-fullscreen .workflow-catalog) {
-    flex: 1;
-    height: auto;
+  :global(
+    .workflow-catalog-dialog .art-dialog__scrollbar > .el-scrollbar__wrap > .el-scrollbar__view
+  ),
+  :global(.workflow-catalog-dialog .art-dialog__content) {
+    height: 100%;
   }
 
   @media only screen and (width <= 1080px) {
@@ -559,9 +567,19 @@
 
   @media (width <= 900px) {
     .workflow-catalog {
+      flex: none;
+      height: auto;
+
       &__grid {
         grid-template-columns: 1fr;
       }
+    }
+
+    :global(
+      .workflow-catalog-dialog .art-dialog__scrollbar > .el-scrollbar__wrap > .el-scrollbar__view
+    ),
+    :global(.workflow-catalog-dialog .art-dialog__content) {
+      height: auto;
     }
   }
 

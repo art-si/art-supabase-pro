@@ -5,13 +5,14 @@ import { mockApplicationMenus } from './support/menu-rpc'
 import type { SmisHiddenHazardGovernanceDetail } from '@smis/api'
 import { inspectionCategory, unit } from './fixtures/form-standard-smis-batch-two-data'
 import { rescuePlan } from './fixtures/form-standard-smis-batch-three-data'
-import { issuanceStandard, riskPosition } from './fixtures/form-standard-smis-batch-four-data'
-import { question, questionCategory } from './fixtures/form-standard-smis-batch-six-data'
+import { issuanceStandard, riskPosition, site } from './fixtures/form-standard-smis-batch-four-data'
+import { equipment, question, questionCategory } from './fixtures/form-standard-smis-batch-six-data'
 import {
   hazardGovernance,
   hiddenTaskDetail,
   longHazardSource,
   longRiskMeasure,
+  rectification,
   riskTaskDetail
 } from './fixtures/form-standard-smis-readonly-data'
 import {
@@ -33,6 +34,308 @@ import {
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 30_000 })
 test.setTimeout(90_000)
+
+for (const { entry, phase } of [
+  { entry: 'shift-calendar', phase: 'initial' },
+  { entry: 'inspection-rectification', phase: 'initial' },
+  { entry: 'violation-record', phase: 'initial' },
+  { entry: 'equipment', phase: 'detail' },
+  { entry: 'equipment', phase: 'selectedRows' }
+] as const) {
+  test(`异步读取只回填当前弹窗：${entry}${entry === 'equipment' ? `-${phase}` : ''}`, async ({
+    page
+  }, info) => {
+    await prepareIsolatedSession(page)
+    const ids = {
+      a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+      b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2'
+    }
+    const gaugeIds = {
+      a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4'
+    }
+    const valveIds = {
+      a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5',
+      b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6'
+    }
+    const writes: string[] = []
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    for (const oldFails of [false, true]) {
+      for (const currentReady of [false, true]) {
+        const oldGate = Promise.withResolvers<void>()
+        const currentGate = Promise.withResolvers<void>()
+        let owner: 'a' | 'b' = 'a'
+        let currentFailure = false
+        const pending = { a: 0, b: 0 }
+        await page.route('**/rest/v1/**', async (route) => {
+          const request = route.request()
+          const name = new URL(request.url()).pathname.split('/').at(-1) ?? ''
+          if (request.method() !== 'GET' && /^smis_(?!(?:get|list)_)/.test(name)) writes.push(name)
+          if (name === 'get_table_column_runtime')
+            return route.fulfill({ json: { enabled: false, profiles: [] } })
+          const targets = {
+            'shift-calendar': ['smis_get_employee_shift_calendar_secure'],
+            'inspection-rectification': ['smis_list_rectification_notices_secure'],
+            'violation-record': [
+              'smis_list_sites_secure',
+              'smis_list_anti_violation_standards_secure'
+            ],
+            equipment: ['smis_get_equipment_archive_secure']
+          }
+          if (!targets[entry].includes(name))
+            return route.fulfill({ json: name === 'sys_document_number_rule' ? null : [] })
+          const payload = request.postDataJSON()
+          const requestedId = payload?.p_equipment_id as string | undefined
+          const key =
+            entry === 'equipment'
+              ? Object.values({ id: ids.a, gauge: gaugeIds.a, valve: valveIds.a }).includes(
+                  requestedId || ''
+                )
+                ? 'a'
+                : 'b'
+              : owner
+          const accessory = entry === 'equipment' && requestedId !== ids[key]
+          const held = entry !== 'equipment' || (phase === 'selectedRows' ? accessory : !accessory)
+          if (held) {
+            pending[key]++
+            await (key === 'a' ? oldGate.promise : currentGate.promise)
+          }
+          if (key === 'b' && currentFailure && (entry !== 'equipment' || accessory))
+            return route.fulfill({
+              status: 503,
+              json: { code: 'XX000', message: '验收当前读取失败' }
+            })
+          if (key === 'a' && oldFails && held)
+            return route.fulfill({
+              status: 503,
+              json: { code: 'XX000', message: '验收旧读取失败' }
+            })
+          if (entry === 'shift-calendar')
+            return route.fulfill({
+              json: {
+                employeeId: ids[key],
+                employeeName: key === 'a' ? '旧人员甲' : '当前人员乙',
+                month: String(payload?.p_month || '2026-11-01').slice(0, 7),
+                assignments: [
+                  {
+                    id: ids[key],
+                    workDate: `${String(payload?.p_month || '2026-11-01').slice(0, 7)}-18`,
+                    assignmentStatus: 'scheduled',
+                    shiftCode: key.toUpperCase(),
+                    shiftName: key === 'a' ? '旧班次甲' : '当前班次乙',
+                    shiftType: 'day',
+                    startTime: '08:00',
+                    endTime: '16:00',
+                    crossDay: false
+                  }
+                ]
+              }
+            })
+          if (entry === 'inspection-rectification')
+            return route.fulfill({
+              json: {
+                records: [
+                  {
+                    ...rectification,
+                    id: ids[key],
+                    hazardNo: key === 'a' ? 'HG-OLD-A' : 'HG-CURRENT-B',
+                    status: 'rectifying'
+                  }
+                ],
+                total: 1
+              }
+            })
+          if (entry === 'violation-record')
+            return route.fulfill({
+              json:
+                name === 'smis_list_sites_secure'
+                  ? [{ ...site, id: ids[key], siteName: key === 'a' ? '旧场所甲' : '当前场所乙' }]
+                  : {
+                      records: [
+                        {
+                          id: ids[key],
+                          categoryId: itemId,
+                          categoryName: '验收分类',
+                          standardCode: key.toUpperCase(),
+                          standardName: key === 'a' ? '旧违章标准甲' : '当前违章标准乙',
+                          deductionPoints: 2,
+                          status: 'enabled'
+                        }
+                      ],
+                      total: 1
+                    }
+            })
+          const isGauge = requestedId === gaugeIds[key]
+          return route.fulfill({
+            json: {
+              ...equipment,
+              id: requestedId,
+              equipmentCode: `EQ-${key.toUpperCase()}`,
+              equipmentName: accessory
+                ? key === 'a'
+                  ? isGauge
+                    ? '旧压力表甲'
+                    : '旧安全阀甲'
+                  : isGauge
+                    ? '当前压力表乙'
+                    : '当前安全阀乙'
+                : key === 'a'
+                  ? '旧设备甲'
+                  : '当前设备乙',
+              profileType: accessory ? (isGauge ? 'pressure_gauge' : 'safety_valve') : 'general',
+              pressureGaugeIds: accessory ? [] : [gaugeIds[key]],
+              safetyValveIds: accessory ? [] : [valveIds[key]]
+            }
+          })
+        })
+        await page.goto(`/tests/e2e/fixtures/form-standard-smis.html?entry=${entry}&read-session=1`)
+        await page.evaluate(() => {
+          window.smisReadSessionRecord = 'a'
+        })
+        const open = page.getByRole('button', { name: '打开真实 SMIS 入口', exact: true })
+        await open.click()
+        const expectedPending =
+          entry === 'violation-record' || (entry === 'equipment' && phase === 'selectedRows')
+            ? 2
+            : 1
+        await expect.poll(() => pending.a).toBeGreaterThanOrEqual(expectedPending)
+        owner = 'b'
+        await page.evaluate(() => {
+          window.smisReadSessionRecord = 'b'
+        })
+        // 模拟父组件重开上下文；不代表加载遮罩下可以点击外部页面。
+        await open.evaluate((button: HTMLButtonElement) => button.click())
+        await expect.poll(() => pending.b).toBeGreaterThanOrEqual(expectedPending)
+        const dialogClass =
+          entry === 'equipment'
+            ? 'equipment-ledger-dialog'
+            : entry === 'shift-calendar'
+              ? 'shift-calendar'
+              : `${entry}-dialog`
+        const dialog = page.getByRole('dialog').filter({ has: page.locator(`.${dialogClass}`) })
+        const mask = dialog.locator('.art-overlay-loading')
+        if (currentReady) {
+          currentGate.resolve()
+          await expect(page.getByTestId('read-open-completions')).toHaveText('1')
+          await expect(mask).toBeHidden()
+        }
+        oldGate.resolve()
+        await expect(page.getByTestId('read-open-completions')).toHaveText(currentReady ? '2' : '1')
+        expect
+          .soft(await mask.isVisible(), `${phase}: 旧读取不得改变当前加载状态`)
+          .toBe(!currentReady)
+        expect
+          .soft(await dialog.locator('.el-alert--error').count(), `${phase}: 旧读取不覆盖当前错误`)
+          .toBe(0)
+        if (entry === 'equipment') {
+          expect.soft(await dialog.getByText('旧压力表甲', { exact: true }).count()).toBe(0)
+          expect.soft(await dialog.getByText('旧安全阀甲', { exact: true }).count()).toBe(0)
+          if (phase === 'selectedRows' || currentReady)
+            await expect
+              .soft(dialog.locator('[data-art-form-item-key="equipmentName"] input'))
+              .toHaveValue('当前设备乙')
+        }
+        if (!currentReady) {
+          currentGate.resolve()
+          await expect(page.getByTestId('read-open-completions')).toHaveText('2')
+        }
+        await expect(mask).toBeHidden()
+        if (entry === 'shift-calendar') {
+          await expect
+            .soft(dialog.locator('.shift-calendar__toolbar strong'))
+            .toHaveText('当前人员乙')
+          await expect.soft(dialog.getByText('当前班次乙', { exact: true })).toHaveCount(1)
+        } else if (entry === 'inspection-rectification') {
+          await expect
+            .soft(dialog.locator('.inspection-rectification-dialog__summary'))
+            .toContainText('HG-CURRENT-B')
+        } else if (entry === 'violation-record') {
+          await expect
+            .soft(dialog.locator('[data-art-form-item-key="situationDescription"] textarea'))
+            .toHaveValue('当前记录乙现场情况')
+          await dialog.locator('[data-art-form-item-key="siteId"] input').click()
+          const picker = page.getByRole('dialog', { name: '选择违章地点', exact: true })
+          await expect(picker).toBeVisible()
+          await expect.soft(picker.getByText('当前场所乙', { exact: true })).toHaveCount(1)
+          await expect.soft(picker.getByText('旧场所甲', { exact: true })).toHaveCount(0)
+          await picker.getByRole('button', { name: '取消', exact: true }).click()
+        } else {
+          await expect
+            .soft(dialog.locator('[data-art-form-item-key="equipmentName"] input'))
+            .toHaveValue('当前设备乙')
+          await dialog.getByRole('tab', { name: '档案资料', exact: true }).click()
+          await expect.soft(dialog.getByText('当前压力表乙', { exact: true })).toHaveCount(1)
+          await expect.soft(dialog.getByText('当前安全阀乙', { exact: true })).toHaveCount(1)
+        }
+        if (oldFails && currentReady && (entry !== 'equipment' || phase === 'selectedRows')) {
+          await dialog.getByRole('button', { name: /^关闭(弹窗|抽屉)$/ }).click()
+          await expect(dialog).toBeHidden()
+          currentFailure = true
+          await open.click()
+          await expect(page.getByTestId('read-open-completions')).toHaveText('3')
+          await expect(mask).toBeHidden()
+          currentFailure = false
+          if (entry === 'equipment') {
+            await expect(dialog.getByText('设备资料加载失败', { exact: true })).toBeVisible()
+            await dialog.getByRole('button', { name: '重新加载', exact: true }).click()
+            await expect(dialog.getByText('设备资料加载失败', { exact: true })).toHaveCount(0)
+            await expect(
+              dialog.locator('[data-art-form-item-key="equipmentName"] input')
+            ).toHaveValue('当前设备乙')
+            await dialog.getByRole('tab', { name: '档案资料', exact: true }).click()
+            await expect(dialog.getByText('当前压力表乙', { exact: true })).toHaveCount(1)
+            await expect(dialog.getByText('当前安全阀乙', { exact: true })).toHaveCount(1)
+          } else if (entry === 'shift-calendar') {
+            await expect(dialog.locator('.shift-calendar__assignment')).toHaveCount(0)
+            await dialog.getByRole('combobox', { name: '选择倒班月份', exact: true }).click()
+            await page
+              .locator('.el-month-table:visible')
+              .getByText('十二月', { exact: true })
+              .click()
+            await expect(dialog.getByText('当前班次乙', { exact: true })).toHaveCount(1)
+            await expect(mask).toBeHidden()
+          } else {
+            // 真实页面 loader 将 provider 失败映射为空候选；使用原有关闭、重开恢复读取。
+            if (entry === 'inspection-rectification')
+              await expect(dialog.locator('.inspection-rectification-dialog__summary')).toHaveCount(
+                0
+              )
+            await dialog.getByRole('button', { name: /^关闭(弹窗|抽屉)$/ }).click()
+            await expect(dialog).toBeHidden()
+            await open.click()
+            await expect(page.getByTestId('read-open-completions')).toHaveText('4')
+            await expect(mask).toBeHidden()
+            if (entry === 'inspection-rectification') {
+              await expect(
+                dialog.locator('.inspection-rectification-dialog__summary')
+              ).toContainText('HG-CURRENT-B')
+            } else {
+              await expect(
+                dialog.locator('[data-art-form-item-key="situationDescription"] textarea')
+              ).toHaveValue('当前记录乙现场情况')
+              await dialog.locator('[data-art-form-item-key="siteId"] input').click()
+              const picker = page.getByRole('dialog', { name: '选择违章地点', exact: true })
+              await expect(picker).toBeVisible()
+              await expect(picker.getByText('当前场所乙', { exact: true })).toHaveCount(1)
+              await picker.getByRole('button', { name: '取消', exact: true }).click()
+            }
+          }
+        }
+        await page.screenshot({
+          path: info.outputPath(
+            `${entry}-${phase}-${oldFails ? 'old-error' : 'old-success'}-${currentReady ? 'ready' : 'pending'}.png`
+          ),
+          animations: 'disabled'
+        })
+        await dialog.getByRole('button', { name: /^关闭(弹窗|抽屉)$/ }).click()
+        await expect(dialog).toBeHidden()
+      }
+    }
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
+  })
+}
 
 interface Write {
   path: string
@@ -73,6 +376,91 @@ const longInspectionItem = {
   remark:
     '现场发现输送装置检修门联锁接线松动，已由值班人员停止设备、挂牌隔离并通知维修班组；复核时应对照原始检查项逐点验证，保存整改前后记录，未经确认不得解除隔离。执行说明结束。',
   hazardNo: 'HAZARD-SMIS-ASSEMBLY-GUARD-INTERLOCK-2026-0000123456789-END'
+}
+
+for (const entry of [
+  'hazard-factor-category',
+  'operation-type',
+  'inspection-category',
+  'special-operation-catalog'
+]) {
+  test(`配置摘要完整显示租户范围：${entry}`, async ({ page }, info) => {
+    const tenantName = '华东智能装备制造园区生产运营与安全监督管理有限公司'
+    const writes: Write[] = []
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    const dialog = await open(page, entry, writes, `&tenantName=${encodeURIComponent(tenantName)}`)
+    const title = dialog.locator('.art-entity-summary__content strong').first()
+    await expect(title).toContainText(tenantName)
+    for (const appearance of [
+      { width: 1440, theme: 'light', boxBorderMode: true },
+      { width: 390, theme: 'dark', boxBorderMode: false },
+      { width: 320, theme: 'light', boxBorderMode: true }
+    ] as const) {
+      await page.setViewportSize({ width: appearance.width, height: 900 })
+      await page.emulateMedia({ colorScheme: appearance.theme })
+      await page.evaluate(async (appearance) => {
+        const { useTheme }: typeof import('../../src/hooks/core/useTheme') = await import(
+          new URL('/src/hooks/core/useTheme.ts', location.origin).href
+        )
+        const { SystemThemeEnum }: typeof import('../../src/enums/app-enum') = await import(
+          new URL('/src/enums/app-enum.ts', location.origin).href
+        )
+        const { useSettingStore }: typeof import('../../src/store/modules/setting') = await import(
+          new URL('/src/store/modules/setting.ts', location.origin).href
+        )
+        useTheme().switchThemeStyles(
+          appearance.theme === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+        )
+        useSettingStore().boxBorderMode = appearance.boxBorderMode
+        document.documentElement.dataset.boxMode = appearance.boxBorderMode
+          ? 'border-mode'
+          : 'shadow-mode'
+        await document.fonts.ready
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+      }, appearance)
+      await assertAppearance(page, appearance)
+      await title.scrollIntoViewIfNeeded()
+      const geometry = await title.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        const summary = element.closest('.art-entity-summary')!.getBoundingClientRect()
+        const dialog = element.closest('.art-dialog')!.getBoundingClientRect()
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        const rects = [...range.getClientRects()].filter((rect) => rect.width && rect.height)
+        const inside = (rect: DOMRect, container: DOMRect) =>
+          rect.left >= container.left - 1 &&
+          rect.right <= container.right + 1 &&
+          rect.top >= container.top - 1 &&
+          rect.bottom <= container.bottom + 1
+        return {
+          text: range.toString(),
+          textInside: rects.length > 0 && rects.every((rect) => inside(rect, bounds)),
+          titleInside: inside(bounds, summary),
+          summaryInside: inside(summary, dialog),
+          horizontalOverflow: document.documentElement.scrollWidth - innerWidth
+        }
+      })
+      await info.attach(`summary-${appearance.width}-geometry`, {
+        body: JSON.stringify(geometry, null, 2),
+        contentType: 'application/json'
+      })
+      await page.screenshot({
+        path: info.outputPath(`summary-${appearance.width}-${appearance.theme}.png`),
+        animations: 'disabled'
+      })
+      expect.soft(geometry.textInside, `${appearance.width}px租户名称应完整显示`).toBe(true)
+      expect.soft(geometry.titleInside).toBe(true)
+      expect.soft(geometry.summaryInside).toBe(true)
+      expect.soft(geometry.horizontalOverflow).toBeLessThanOrEqual(1)
+    }
+    await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
+  })
 }
 
 async function chooseColor(page: Page, key: string, value: string) {
@@ -474,6 +862,8 @@ async function open(page: Page, entry: string, writes: Write[], query = '') {
   if (
     ![
       'hazard-factor-category',
+      'inspection-category',
+      'special-operation-catalog',
       'hidden-task-execution',
       'risk-task-execution',
       'risk-task-cancel',

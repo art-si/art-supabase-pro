@@ -1,7 +1,7 @@
 <template>
   <div class="resource-panel h-full flex flex-col">
     <div class="flex flex-col justify-between gap-y-1 md:flex-row">
-      <div class="min-w-0 max-w-full overflow-x-auto">
+      <div ref="categoryViewport" class="min-w-0 max-w-full overflow-x-auto">
         <el-segmented
           v-model="segment.active"
           :options="segment.options"
@@ -79,7 +79,10 @@
 
     <div class="mt-2 min-h-0 flex-1">
       <component :is="resourceListContainer" v-if="loading || resources.length">
-        <div class="flex flex-wrap px-[2px] pt-[2px]">
+        <div
+          class="resource-panel__list flex flex-wrap"
+          :class="{ 'resource-panel__list--scrollable': props.internalScroll }"
+        >
           <el-space fill wrap :fill-ratio="9">
             <template v-for="resource in resources" :key="resource.id">
               <div
@@ -253,7 +256,7 @@
     getClipboardFiles
   } from '@/utils/file/clipboard'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
-  import { useDebounceFn, useTimeoutFn } from '@vueuse/core'
+  import { useDebounceFn, useResizeObserver, useTimeoutFn } from '@vueuse/core'
   import MasterDataDeleteGuard, {
     type MasterDataDeleteGuardOpenOptions
   } from '@/components/business/master-data-delete-guard/index.vue'
@@ -334,6 +337,16 @@
       }
     ] as FileType[]
   })
+
+  const categoryViewport = useTemplateRef<HTMLElement>('categoryViewport')
+  const revealActiveCategory = () => {
+    categoryViewport.value
+      ?.querySelector<HTMLInputElement>('input:checked')
+      ?.closest('label')
+      ?.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'nearest' })
+  }
+  useResizeObserver(categoryViewport, () => void nextTick(revealActiveCategory))
+  watch(() => segment.value.active, revealActiveCategory, { flush: 'post' })
 
   /**
    * 查询参数
@@ -1453,6 +1466,14 @@
     :deep(.el-button) {
       min-width: 72px;
       margin-left: 0;
+    }
+  }
+
+  .resource-panel__list {
+    padding: 2px 2px 0;
+
+    &--scrollable {
+      padding: var(--art-space-5);
     }
   }
 

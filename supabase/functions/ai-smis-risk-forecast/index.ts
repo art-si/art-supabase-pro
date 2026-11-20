@@ -1,3 +1,4 @@
+import { normalizeAiInteger } from '../_shared/ai-runtime-config-policy.ts'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import {
   authenticateAiEdgeRequest,
@@ -25,12 +26,6 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-function integerValue(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.min(max, Math.max(min, Math.trunc(parsed)))
-}
-
 function addDays(date: Date, days: number): Date {
   const result = new Date(date)
   result.setUTCDate(result.getUTCDate() + days)
@@ -39,10 +34,15 @@ function addDays(date: Date, days: number): Date {
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (request.method !== 'POST') return json({ code: 'method_not_allowed', message: 'Method not allowed' }, 405)
+  if (request.method !== 'POST')
+    return json({ code: 'method_not_allowed', message: 'Method not allowed' }, 405)
 
   const authentication = await authenticateAiEdgeRequest(request, '需要登录后使用隐患风险趋势分析')
-  if (!authentication.ok) return json({ code: authentication.code, message: authentication.message }, authentication.status)
+  if (!authentication.ok)
+    return json(
+      { code: authentication.code, message: authentication.message },
+      authentication.status
+    )
 
   const context = await authorizeAiEdgeAppUser(authentication, '当前账号不可使用隐患风险趋势分析')
   if (!context.ok) return json({ code: context.code, message: context.message }, context.status)
@@ -52,12 +52,13 @@ Deno.serve(async (request) => {
     p_permission: PERMISSION
   })
   if (permissionError || allowed !== true) {
-    if (permissionError) console.error('SMIS risk forecast permission failed', permissionError.message)
+    if (permissionError)
+      console.error('SMIS risk forecast permission failed', permissionError.message)
     return json({ code: 'forbidden', message: '当前账号无权使用隐患风险趋势分析' }, 403)
   }
 
   const body = (await request.json().catch(() => ({}))) as { lookbackDays?: unknown }
-  const lookbackDays = integerValue(body.lookbackDays, 30, 7, 90)
+  const lookbackDays = normalizeAiInteger(body.lookbackDays, 30, 7, 90)
   const runtimeConfig = await loadAiRuntimeConfig(admin, appUser.tenant_id, FEATURE, {
     enabled: true,
     provider: 'rule_engine',
@@ -72,20 +73,36 @@ Deno.serve(async (request) => {
     rateLimitPerDay: 200,
     promptVersion: 'rules-v1'
   })
-  if (!runtimeConfig.enabled) return json({ code: 'feature_disabled', message: '隐患风险趋势分析已由平台管理员停用' }, 503)
+  if (!runtimeConfig.enabled)
+    return json({ code: 'feature_disabled', message: '隐患风险趋势分析已由平台管理员停用' }, 503)
 
   const minuteAgo = new Date(Date.now() - 60_000).toISOString()
   const dayAgo = new Date(Date.now() - 86_400_000).toISOString()
   const [minuteResult, dayResult] = await Promise.all([
-    admin.from('ai_run').select('id', { count: 'exact', head: true }).eq('auth_user_id', user.id).eq('feature', FEATURE).gte('started_at', minuteAgo),
-    admin.from('ai_run').select('id', { count: 'exact', head: true }).eq('auth_user_id', user.id).eq('feature', FEATURE).gte('started_at', dayAgo)
+    admin
+      .from('ai_run')
+      .select('id', { count: 'exact', head: true })
+      .eq('auth_user_id', user.id)
+      .eq('feature', FEATURE)
+      .gte('started_at', minuteAgo),
+    admin
+      .from('ai_run')
+      .select('id', { count: 'exact', head: true })
+      .eq('auth_user_id', user.id)
+      .eq('feature', FEATURE)
+      .gte('started_at', dayAgo)
   ])
-  if ((minuteResult.count ?? 0) >= runtimeConfig.rateLimitPerMinute || (dayResult.count ?? 0) >= runtimeConfig.rateLimitPerDay) {
-    return json({ code: 'rate_limited', message: '隐患风险趋势分析次数已达到限额，请稍后重试' }, 429)
+  if (
+    (minuteResult.count ?? 0) >= runtimeConfig.rateLimitPerMinute ||
+    (dayResult.count ?? 0) >= runtimeConfig.rateLimitPerDay
+  ) {
+    return json(
+      { code: 'rate_limited', message: '隐患风险趋势分析次数已达到限额，请稍后重试' },
+      429
+    )
   }
 
   const startedAt = Date.now()
-  let runId = ''
   try {
     const asOf = new Date()
     const { data, error } = await userClient.rpc('smis_list_hidden_hazard_governance_secure', {
@@ -101,7 +118,9 @@ Deno.serve(async (request) => {
     })
     if (error) throw error
     const payload = data && typeof data === 'object' ? (data as Record<string, unknown>) : {}
-    const rows = Array.isArray(payload.records) ? (payload.records as Array<Record<string, unknown>>) : []
+    const rows = Array.isArray(payload.records)
+      ? (payload.records as Array<Record<string, unknown>>)
+      : []
     const observations: SmisHazardForecastObservation[] = rows.map((item) => ({
       status: typeof item.status === 'string' ? item.status : '',
       hazardLevel: typeof item.hazardLevel === 'string' ? item.hazardLevel : null,
@@ -141,10 +160,8 @@ Deno.serve(async (request) => {
       .select('id')
       .single()
     if (runError) throw runError
-    runId = run.id
-
     return json({
-      runId,
+      runId: run.id,
       model: MODEL,
       generatedAt: new Date().toISOString(),
       dataThrough: asOf.toISOString(),

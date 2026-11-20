@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { assertAppearance, prepareAppearance } from './support/appearance'
 import { prepareIsolatedSession } from './support/isolated-session'
@@ -12,6 +13,478 @@ async function setLoading(page: Page, kind: 'drawer' | 'dialog', loading: boolea
     { kind, loading }
   )
 }
+
+async function sampleDialogHeader(dialog: Locator, kind: 'dialog' | 'drawer' = 'dialog') {
+  return dialog.evaluate((root, kind) => {
+    const header = root.querySelector(`.art-${kind}__header`)
+    const main = header?.querySelector(`.art-${kind}__header-main`)
+    const title = header?.querySelector(
+      `.art-${kind}__title, .el-${kind}__title, [data-testid="custom-header-title"]`
+    )
+    const subtitle = header?.querySelector(`.art-${kind}__subtitle`)
+    const actions = header?.querySelector(`.art-${kind}__header-actions`)
+    const viewport = root.querySelector(`.art-${kind}__viewport`)
+    const footer = root.querySelector(`.art-${kind}__footer`)
+    const custom = header?.querySelector('[data-testid="custom-header-probe"]')
+    if (!header || !main || !title || !actions || !viewport || !footer)
+      throw new Error('共享弹窗头部结构未就绪')
+    const bounds = (element: Element) => {
+      const rect = element.getBoundingClientRect()
+      return {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        right: rect.right,
+        bottom: rect.bottom
+      }
+    }
+    const text = (element: Element) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      return {
+        value: element.textContent?.trim() ?? '',
+        bounds: bounds(element),
+        lines: [...range.getClientRects()].map((rect) => ({
+          x: rect.x,
+          y: rect.y,
+          right: rect.right,
+          bottom: rect.bottom
+        })),
+        overflow: element.scrollWidth - element.clientWidth
+      }
+    }
+    const subtitleProbe = subtitle?.querySelector('[data-testid="header-subtitle-probe"]')
+    return {
+      width: innerWidth,
+      dialog: bounds(root),
+      header: bounds(header),
+      main: { bounds: bounds(main), display: getComputedStyle(main).display },
+      title: text(title),
+      subtitle: subtitle ? text(subtitle) : null,
+      actions: bounds(actions),
+      buttons: [...actions.querySelectorAll('button')].map((button) => ({
+        name: button.getAttribute('aria-label') || button.textContent?.trim() || '',
+        ...text(button)
+      })),
+      viewport: bounds(viewport),
+      footer: bounds(footer),
+      custom: custom
+        ? {
+            display: getComputedStyle(custom).display,
+            bounds: bounds(custom),
+            children: [...custom.children].map((element) => text(element))
+          }
+        : null,
+      slot: subtitleProbe
+        ? {
+            recordId: subtitleProbe.getAttribute('data-record-id'),
+            apiRecordId: subtitleProbe.getAttribute('data-api-record-id')
+          }
+        : null,
+      overflow: {
+        page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        dialog: root.scrollWidth - root.clientWidth
+      },
+      pageScroll: { x: scrollX, y: scrollY }
+    }
+  }, kind)
+}
+
+async function settleOverlayHeader(overlay: Locator) {
+  const stable = await overlay.evaluate(async (root) => {
+    await document.fonts.ready
+    let previous = '',
+      frames = 0
+    for (let attempt = 0; attempt < 120 && frames < 6; attempt++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      const current = JSON.stringify(
+        [
+          ...root.querySelectorAll(
+            '.art-dialog__header, .art-dialog__header *, .art-dialog__viewport, .art-dialog__footer, .art-drawer__header, .art-drawer__header *, .art-drawer__viewport, .art-drawer__footer'
+          )
+        ].map((node) => node.getBoundingClientRect().toJSON())
+      )
+      frames = current === previous ? frames + 1 : 0
+      previous = current
+    }
+    return frames
+  })
+  expect(stable).toBe(6)
+}
+
+function expectDialogHeaderGeometry(
+  state: Awaited<ReturnType<typeof sampleDialogHeader>>,
+  standard: boolean,
+  hasSubtitle = true
+) {
+  const inside = (
+    inner: { x: number; y: number; right: number; bottom: number },
+    outer: { x: number; y: number; right: number; bottom: number }
+  ) =>
+    inner.x >= outer.x - 1 &&
+    inner.right <= outer.right + 1 &&
+    inner.y >= outer.y - 1 &&
+    inner.bottom <= outer.bottom + 1
+  const overlaps = (
+    first: { x: number; y: number; right: number; bottom: number },
+    second: { x: number; y: number; right: number; bottom: number }
+  ) =>
+    Math.min(first.right, second.right) - Math.max(first.x, second.x) > 1 &&
+    Math.min(first.bottom, second.bottom) - Math.max(first.y, second.y) > 1
+  expect.soft(state.overflow.page, '页面没有横向溢出').toBeLessThanOrEqual(1)
+  expect.soft(state.overflow.dialog, '弹窗没有横向溢出').toBeLessThanOrEqual(1)
+  expect.soft(state.header.bottom, '头部不覆盖正文').toBeLessThanOrEqual(state.viewport.y + 1)
+  expect.soft(state.viewport.bottom, '正文不覆盖页脚').toBeLessThanOrEqual(state.footer.y + 1)
+  expect.soft(inside(state.title.bounds, state.header), '标题在头部边界内').toBe(true)
+  for (const [name, item] of [
+    ['标题', state.title],
+    ...(state.subtitle ? ([['副标题', state.subtitle]] as const) : [])
+  ] as const) {
+    for (const line of item.lines) {
+      expect.soft(inside(line, item.bounds), `${name}完整显示`).toBe(true)
+      expect.soft(inside(line, state.header), `${name}文本在头部边界内`).toBe(true)
+    }
+  }
+  expect.soft(state.buttons.length, '共享标题操作仍存在').toBeGreaterThanOrEqual(3)
+  for (const [index, button] of state.buttons.entries()) {
+    expect.soft(button.name, '标题操作具有可识别名称').not.toBe('')
+    expect.soft(inside(button.bounds, state.header), `${button.name}在头部内`).toBe(true)
+    expect
+      .soft(
+        inside(button.bounds, { x: 0, y: 0, right: state.width, bottom: 844 }),
+        `${button.name}在视口内`
+      )
+      .toBe(true)
+    expect.soft(overlaps(button.bounds, state.title.bounds), `${button.name}不覆盖标题`).toBe(false)
+    for (const line of button.lines)
+      expect.soft(inside(line, button.bounds), `${button.name}内容不截断`).toBe(true)
+    for (const other of state.buttons.slice(index + 1))
+      expect.soft(overlaps(button.bounds, other.bounds), '标题操作之间不重叠').toBe(false)
+  }
+  if (!hasSubtitle) {
+    expect.soft(state.subtitle, '无副标题时不保留空wrapper').toBeNull()
+    expect
+      .soft(state.header.height, '无副标题时不保留空行')
+      .toBeLessThanOrEqual(
+        Math.max(state.title.bounds.bottom, state.actions.bottom) - state.header.y + 2
+      )
+  } else if (state.subtitle) {
+    expect.soft(state.subtitle.value, '副标题有可读内容').not.toBe('')
+    if (standard && state.width <= 640) {
+      expect
+        .soft(Math.abs(state.subtitle.bounds.x - state.header.x), '副标题从头部左边界开始')
+        .toBeLessThanOrEqual(2)
+      expect
+        .soft(Math.abs(state.subtitle.bounds.width - state.header.width), '副标题使用完整头部宽度')
+        .toBeLessThanOrEqual(2)
+      expect
+        .soft(state.subtitle.bounds.y, '副标题位于标题和操作之后')
+        .toBeGreaterThanOrEqual(Math.max(state.title.bounds.bottom, state.actions.bottom) - 1)
+    } else {
+      expect.soft(state.main.display, '桌面或custom header保留main包装布局').not.toBe('contents')
+      expect
+        .soft(state.subtitle.bounds.x, '副标题在main左边界内')
+        .toBeGreaterThanOrEqual(state.main.bounds.x - 1)
+      expect
+        .soft(state.subtitle.bounds.right, '副标题在main右边界内')
+        .toBeLessThanOrEqual(state.main.bounds.right + 1)
+    }
+  } else expect.soft(state.subtitle, '应显示副标题').not.toBeNull()
+  if (state.custom) {
+    expect.soft(state.custom.display, '自定义header的flex布局保留').toBe('flex')
+    for (const child of state.custom.children)
+      expect.soft(inside(child.bounds, state.custom.bounds), '自定义header子项不越界').toBe(true)
+    const [heading, badge] = state.custom.children
+    if (heading && badge)
+      expect
+        .soft(badge.bounds.x - heading.bounds.right, '自定义标题和状态保留8px间距')
+        .toBeCloseTo(8, 0)
+  }
+}
+
+for (const { headerCase, ...appearance } of [
+  { headerCase: 'prop', theme: 'dark', boxBorderMode: false },
+  { headerCase: 'slot', theme: 'dark', boxBorderMode: false },
+  { headerCase: 'custom', theme: 'dark', boxBorderMode: false },
+  { headerCase: 'long', theme: 'dark', boxBorderMode: false },
+  { headerCase: 'prop', theme: 'light', boxBorderMode: true }
+] as const) {
+  test(`共享弹窗窄屏头部 ${headerCase}/${appearance.theme} 保留可用宽度与原生交互`, async ({
+    page
+  }, info) => {
+    const errors: string[] = [],
+      warnings: string[] = [],
+      writes: string[] = []
+    await prepareIsolatedSession(page, { platformSuper: false })
+    await prepareAppearance(page, appearance)
+    await page.setViewportSize({ width: 390, height: 844 })
+    page.on('pageerror', (error) => errors.push(error.message))
+    page.on('console', (message) => {
+      if (
+        /maximum recursive updates|slot.+invoked outside|unhandled error during execution/i.test(
+          message.text()
+        )
+      )
+        warnings.push(message.text())
+    })
+    await page.route('**/rest/v1/**', (route) => {
+      const request = route.request(),
+        path = new URL(request.url()).pathname
+      if (
+        !['GET', 'HEAD', 'OPTIONS'].includes(request.method()) &&
+        ![
+          '/rest/v1/rpc/current_is_super',
+          '/rest/v1/rpc/material_unit_compatibility_options'
+        ].includes(path)
+      )
+        writes.push(request.url())
+      return route.fulfill({ json: [] })
+    })
+    await page.goto(`/tests/e2e/fixtures/overlay-loading-viewport.html?header-case=${headerCase}`, {
+      waitUntil: 'domcontentloaded'
+    })
+    await assertAppearance(page, appearance)
+    await page.addStyleTag({ path: 'tests/e2e/visual-stability.css' })
+    await page.getByRole('button', { name: '打开头部验收弹窗', exact: true }).click()
+    const dialog = page.locator('.art-dialog:visible')
+    await expect(dialog).toBeVisible()
+    const originalDialog = await dialog.elementHandle()
+    const originalProbe =
+      headerCase === 'slot'
+        ? await dialog.getByTestId('header-subtitle-probe').elementHandle()
+        : headerCase === 'custom'
+          ? await dialog.getByTestId('custom-header-probe').elementHandle()
+          : null
+    if (!originalDialog || ((headerCase === 'slot' || headerCase === 'custom') && !originalProbe))
+      throw new Error('头部验收节点未挂载')
+    const captures: { stage: string; geometry: Awaited<ReturnType<typeof sampleDialogHeader>> }[] =
+      []
+    const geometryPath = info.outputPath('narrow-dialog-header-geometry.json')
+    const capture = async (stage: string) => {
+      await settleOverlayHeader(dialog)
+      const geometry = await sampleDialogHeader(dialog)
+      captures.push({ stage, geometry })
+      await page.screenshot({
+        path: info.outputPath(`narrow-dialog-header-${stage}.png`),
+        animations: 'disabled'
+      })
+      await writeFile(
+        geometryPath,
+        JSON.stringify({ headerCase, appearance, captures, errors, warnings, writes }, null, 2),
+        'utf8'
+      )
+      return geometry
+    }
+    for (const width of [390, 320, 1440]) {
+      await page.setViewportSize({ width, height: 844 })
+      const state = await capture(String(width))
+      expectDialogHeaderGeometry(state, headerCase !== 'custom')
+      expect
+        .soft(state.title.value)
+        .toBe(
+          headerCase === 'custom'
+            ? '自定义标题'
+            : headerCase === 'long'
+              ? '运输与结算业务资料维护 · DOC-2026-0000123456789'
+              : '编辑字典目录'
+        )
+      expect.soft(state.subtitle?.value).toContain('调整节点归属、级联关系与展示设置')
+      for (const button of await dialog.locator('.art-dialog__header-actions button').all()) {
+        await button.focus()
+        await expect(button).toBeFocused()
+      }
+      await dialog.getByRole('button', { name: '取消', exact: true }).focus()
+      if (originalProbe) {
+        const probe = dialog.getByTestId(
+          headerCase === 'slot' ? 'header-subtitle-probe' : 'custom-header-probe'
+        )
+        expect(
+          await probe.evaluate((current, original) => current === original, originalProbe)
+        ).toBe(true)
+      }
+    }
+    if (headerCase === 'prop') {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.evaluate(() =>
+        window.dispatchEvent(
+          new CustomEvent('overlay-preview-header-subtitle', { detail: { subtitle: '' } })
+        )
+      )
+      expectDialogHeaderGeometry(await capture('without-subtitle'), true, false)
+      await page.evaluate(() =>
+        window.dispatchEvent(
+          new CustomEvent('overlay-preview-header-subtitle', {
+            detail: { subtitle: '调整节点归属、级联关系与展示设置' }
+          })
+        )
+      )
+      await dialog.getByRole('button', { name: '进入专注模式', exact: true }).click()
+      await expect(dialog).toHaveClass(/is-focus-mode/)
+      expectDialogHeaderGeometry(await capture('focused'), true, false)
+      await dialog.getByRole('button', { name: '退出专注模式', exact: true }).click()
+      await expect(dialog).not.toHaveClass(/is-focus-mode/)
+      const restored = await capture('focus-restored')
+      expectDialogHeaderGeometry(restored, true)
+      expect
+        .soft(
+          Math.abs(restored.header.height - captures[0].geometry.header.height),
+          '退出专注恢复原头部高度'
+        )
+        .toBeLessThanOrEqual(2)
+    }
+    if (headerCase === 'slot') {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await expect(page.getByTestId('header-subtitle-mounts')).toHaveText('1')
+      await expect(page.getByTestId('header-subtitle-unmounts')).toHaveText('0')
+      await dialog.getByRole('button', { name: '全屏', exact: true }).click()
+      await expect(dialog).toContainClass('is-fullscreen')
+      expectDialogHeaderGeometry(await capture('fullscreen'), true)
+      await dialog.getByRole('button', { name: '退出全屏', exact: true }).click()
+      await expect(dialog).not.toContainClass('is-fullscreen')
+      expectDialogHeaderGeometry(await capture('fullscreen-restored'), true)
+      const probe = dialog.getByTestId('header-subtitle-probe')
+      if (!originalProbe) throw new Error('缺少原副标题slot节点')
+      expect(await probe.evaluate((current, original) => current === original, originalProbe)).toBe(
+        true
+      )
+      await dialog.getByRole('button', { name: '更新数据', exact: true }).click()
+      const updated = await capture('slot-api-updated')
+      expectDialogHeaderGeometry(updated, true)
+      expect(updated.slot).toEqual({ recordId: 'header-updated', apiRecordId: 'header-updated' })
+      await expect(page.getByTestId('header-api-calls')).toHaveText('1')
+      expect(await probe.evaluate((current, original) => current === original, originalProbe)).toBe(
+        true
+      )
+      await page.evaluate(() =>
+        window.dispatchEvent(
+          new CustomEvent('overlay-preview-header-slot', { detail: { visible: false } })
+        )
+      )
+      expectDialogHeaderGeometry(await capture('slot-removed'), true, false)
+      await expect(probe).toHaveCount(0)
+      await expect(page.getByTestId('header-subtitle-unmounts')).toHaveText('1')
+      await page.evaluate(() =>
+        window.dispatchEvent(
+          new CustomEvent('overlay-preview-header-slot', { detail: { visible: true } })
+        )
+      )
+      const returned = await capture('slot-restored')
+      expectDialogHeaderGeometry(returned, true)
+      expect(returned.slot).toEqual({ recordId: 'header-updated', apiRecordId: 'header-updated' })
+      await expect(probe).toHaveCount(1)
+      expect(await probe.evaluate((current, original) => current !== original, originalProbe)).toBe(
+        true
+      )
+      await expect(page.getByTestId('header-subtitle-mounts')).toHaveText('2')
+      await expect(page.getByTestId('header-subtitle-unmounts')).toHaveText('1')
+    }
+    expect(await dialog.evaluate((current, original) => current === original, originalDialog)).toBe(
+      true
+    )
+    await info.attach('narrow-dialog-header-geometry', {
+      path: geometryPath,
+      contentType: 'application/json'
+    })
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
+    expect(warnings).toEqual([])
+  })
+}
+
+test('共享抽屉窄屏头部 条件slot移除和恢复不留下空行', async ({ page }, info) => {
+  const appearance = { theme: 'dark', boxBorderMode: false } as const
+  const writes: string[] = [],
+    errors: string[] = [],
+    warnings: string[] = []
+  await prepareIsolatedSession(page, { platformSuper: false })
+  await prepareAppearance(page, appearance)
+  await page.setViewportSize({ width: 390, height: 844 })
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
+    if (
+      /maximum recursive updates|slot.+invoked outside|unhandled error during execution/i.test(
+        message.text()
+      )
+    )
+      warnings.push(message.text())
+  })
+  await page.route('**/rest/v1/**', (route) => {
+    const request = route.request(),
+      path = new URL(request.url()).pathname
+    if (
+      !['GET', 'HEAD', 'OPTIONS'].includes(request.method()) &&
+      ![
+        '/rest/v1/rpc/current_is_super',
+        '/rest/v1/rpc/material_unit_compatibility_options'
+      ].includes(path)
+    )
+      writes.push(`${request.method()} ${path}`)
+    return route.fulfill({ json: [] })
+  })
+  await page.goto(
+    '/tests/e2e/fixtures/overlay-loading-viewport.html?header-case=slot&header-kind=drawer',
+    { waitUntil: 'domcontentloaded' }
+  )
+  await assertAppearance(page, appearance)
+  await page.addStyleTag({ path: 'tests/e2e/visual-stability.css' })
+  await page.getByRole('button', { name: '打开头部验收抽屉', exact: true }).click()
+  const drawer = page.locator('.art-drawer:visible')
+  await expect(drawer).toBeVisible()
+  const probe = drawer.getByTestId('header-subtitle-probe')
+  const originalProbe = await probe.elementHandle()
+  if (!originalProbe) throw new Error('抽屉副标题slot未挂载')
+  const captures: { stage: string; geometry: Awaited<ReturnType<typeof sampleDialogHeader>> }[] = []
+  const geometryPath = info.outputPath('narrow-drawer-header-slot-geometry.json')
+  const capture = async (stage: string) => {
+    await settleOverlayHeader(drawer)
+    const geometry = await sampleDialogHeader(drawer, 'drawer')
+    captures.push({ stage, geometry })
+    await page.screenshot({
+      path: info.outputPath(`narrow-drawer-header-slot-${stage}.png`),
+      animations: 'disabled'
+    })
+    await writeFile(
+      geometryPath,
+      JSON.stringify({ appearance, captures, writes, errors, warnings }, null, 2),
+      'utf8'
+    )
+    return geometry
+  }
+  const initial = await capture('initial')
+  expectDialogHeaderGeometry(initial, true)
+  expect(initial.slot).toEqual({ recordId: 'header-seed', apiRecordId: 'header-seed' })
+  await expect(page.getByTestId('header-subtitle-mounts')).toHaveText('1')
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent('overlay-preview-header-slot', { detail: { visible: false } })
+    )
+  )
+  expectDialogHeaderGeometry(await capture('removed'), true, false)
+  await expect(probe).toHaveCount(0)
+  await expect(page.getByTestId('header-subtitle-unmounts')).toHaveText('1')
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent('overlay-preview-header-slot', { detail: { visible: true } })
+    )
+  )
+  const restored = await capture('restored')
+  expectDialogHeaderGeometry(restored, true)
+  expect(restored.slot).toEqual(initial.slot)
+  await expect(probe).toHaveCount(1)
+  expect(await probe.evaluate((current, original) => current !== original, originalProbe)).toBe(
+    true
+  )
+  await expect(page.getByTestId('header-subtitle-mounts')).toHaveText('2')
+  await expect(page.getByTestId('header-subtitle-unmounts')).toHaveText('1')
+  await info.attach('narrow-drawer-header-slot-geometry', {
+    path: geometryPath,
+    contentType: 'application/json'
+  })
+  expect(writes).toEqual([])
+  expect(errors).toEqual([])
+  expect(warnings).toEqual([])
+})
 
 test('默认确认按钮跟随响应式就绪状态，并保留命令式禁用直到属性改变', async ({ page }) => {
   await page.goto('/tests/e2e/fixtures/overlay-loading-viewport.html')
@@ -150,7 +623,7 @@ test('长正文滚动后的整体加载始终位于可视正文中心', async ({
           animations: 'disabled'
         })
         await root.getByRole('button', { name: '全屏', exact: true }).click()
-        await expect(root).toHaveClass(/is-fullscreen/)
+        await expect(root).toContainClass('is-fullscreen')
         await expectViewportCentered(root, kind)
         await setLoading(page, kind, false)
         await expect(root.getByRole('button', { name: '确定', exact: true })).toBeEnabled()

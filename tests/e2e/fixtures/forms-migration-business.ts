@@ -11,6 +11,11 @@ import { SystemThemeEnum } from '@/enums/app-enum'
 import { setupGlobDirectives } from '@/directives'
 import { ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import {
+  useFinanceAccountSetPrerequisite,
+  type FinancePrerequisiteOverlay
+} from '../../../modules/art-supabase-fms/src/views/modules/use-finance-account-set-prerequisite'
+import { financeRouteNames } from '@/router/business-paths'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
@@ -21,11 +26,30 @@ declare global {
       permissions?: string[]
       admin?: boolean
       dicts?: Parameters<ReturnType<typeof useUserStore>['setDictMap']>[0]
+      prerequisiteAccountSetId?: string
     }
   }
 }
 const params = new URLSearchParams(location.search)
 const loaders: Record<string, () => Promise<{ default: Component }>> = {
+  'modules/art-supabase-fms/src/views/modules/fund-execution-dialog.vue': () =>
+    import('../../../modules/art-supabase-fms/src/views/modules/fund-execution-dialog.vue'),
+  'modules/art-supabase-mdm/src/views/purchase-master/supplier/modules/supplier-dialog.vue': () =>
+    import('../../../modules/art-supabase-mdm/src/views/purchase-master/supplier/modules/supplier-dialog.vue'),
+  'modules/art-supabase-mdm/src/views/engineering/production-equipment/modules/equipment-dialog.vue':
+    () =>
+      import('../../../modules/art-supabase-mdm/src/views/engineering/production-equipment/modules/equipment-dialog.vue'),
+  'modules/art-supabase-scm/src/views/sales-quotation/expense-definition/modules/expense-dialog.vue':
+    () =>
+      import('../../../modules/art-supabase-scm/src/views/sales-quotation/expense-definition/modules/expense-dialog.vue'),
+  'modules/art-supabase-mdm/src/views/purchase-master/supplier/modules/supplier-contact-dialog.vue':
+    () =>
+      import('../../../modules/art-supabase-mdm/src/views/purchase-master/supplier/modules/supplier-contact-dialog.vue'),
+  'modules/art-supabase-mdm/src/views/purchase-master/supplier/modules/supplier-bank-dialog.vue':
+    () =>
+      import('../../../modules/art-supabase-mdm/src/views/purchase-master/supplier/modules/supplier-bank-dialog.vue'),
+  'modules/art-supabase-pmis/src/views/components/repair-task-dialog.vue': () =>
+    import('../../../modules/art-supabase-pmis/src/views/components/repair-task-dialog.vue'),
   'modules/art-supabase-fms/src/views/accounting/voucher-template/modules/voucher-template-dialog.vue':
     () =>
       import('../../../modules/art-supabase-fms/src/views/accounting/voucher-template/modules/voucher-template-dialog.vue'),
@@ -175,6 +199,9 @@ const loaders: Record<string, () => Promise<{ default: Component }>> = {
   'modules/art-supabase-fms/src/views/specialized-accounting/fixed-asset/modules/fixed-asset-dialog.vue':
     () =>
       import('../../../modules/art-supabase-fms/src/views/specialized-accounting/fixed-asset/modules/fixed-asset-dialog.vue'),
+  'modules/art-supabase-fms/src/views/specialized-accounting/fixed-asset/modules/asset-depreciation-drawer.vue':
+    () =>
+      import('../../../modules/art-supabase-fms/src/views/specialized-accounting/fixed-asset/modules/asset-depreciation-drawer.vue'),
   'modules/art-supabase-fms/src/views/settlement/payment-application/modules/payment-application-dialog.vue':
     () =>
       import('../../../modules/art-supabase-fms/src/views/settlement/payment-application/modules/payment-application-dialog.vue'),
@@ -216,24 +243,103 @@ const input = window.formsMigrationInput || { args: [] }
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const app = createApp({
   setup() {
-    const component = shallowRef<{ handleOpen: (...args: unknown[]) => Promise<void> }>()
+    const component = shallowRef<
+      FinancePrerequisiteOverlay & {
+        handleOpen: (...args: unknown[]) => Promise<void>
+        handleOpenDeferred?: (
+          entity: Api.Hr.ComplianceRecordEntity,
+          action: Api.Hr.ComplianceAction | 'resolve',
+          loader: () => Promise<
+            Api.Hr.ComplianceContract | Api.Hr.ComplianceQualification | undefined
+          >
+        ) => Promise<void>
+      }
+    >()
     const successes = ref(0),
       error = ref('')
-    const open = async () => {
+    const completedOpens = ref(0)
+    const { runWithAccountSet } = useFinanceAccountSetPrerequisite()
+    const open = async (withPrerequisite = false) => {
       error.value = ''
       try {
-        await component.value?.handleOpen(...input.args)
+        const args = input.args
+        const openComponent = async () => {
+          if (path === 'modules/art-supabase-fms/src/views/modules/fund-execution-dialog.vue') {
+            await component.value?.handleOpen(...args, async () => {
+              throw new Error('隔离测试禁止提交资金执行')
+            })
+          } else await component.value?.handleOpen(...args)
+        }
+        if (
+          params.has('deferred') &&
+          path ===
+            'modules/art-supabase-hr/src/views/personnel/compliance/modules/compliance-action-dialog.vue'
+        ) {
+          const [entity, action, recordId] = input.args
+          if (
+            (entity !== 'contract' && entity !== 'qualification') ||
+            (action !== 'resolve' &&
+              action !== 'renew' &&
+              action !== 'comment' &&
+              action !== 'verify') ||
+            typeof recordId !== 'string' ||
+            !component.value?.handleOpenDeferred
+          )
+            throw new Error('无效的合规档案测试入口')
+          const { fetchComplianceDetail } = await import('@hr/api')
+          await component.value.handleOpenDeferred(
+            entity,
+            action,
+            async () => (await fetchComplianceDetail(entity, recordId)).data ?? undefined
+          )
+        } else if (withPrerequisite) {
+          await runWithAccountSet(
+            {
+              actionLabel: '财务前置检查验收',
+              available: !params.has('prerequisiteUnavailable'),
+              foundationRequired: !params.has('prerequisiteUnavailable'),
+              accountSetId: input.prerequisiteAccountSetId
+            },
+            openComponent,
+            component.value
+          )
+        } else await openComponent()
       } catch (cause) {
         error.value = String(cause)
+      } finally {
+        completedOpens.value++
       }
     }
-    onMounted(() => void open())
+    onMounted(() => void open(params.has('prerequisite')))
     return () =>
       h(ElConfigProvider, { locale: zhCn }, () =>
         h('main', { class: 'min-h-screen min-w-0 p-4' }, [
-          h('button', { 'data-testid': 'open-entry', onClick: open }, '重新打开当前业务入口'),
+          h(
+            'button',
+            { 'data-testid': 'open-entry', onClick: () => void open() },
+            '重新打开当前业务入口'
+          ),
+          ...(params.has('prerequisite')
+            ? [
+                h(
+                  'button',
+                  { 'data-testid': 'open-prerequisite-entry', onClick: () => void open(true) },
+                  '重新执行前置检查'
+                ),
+                h(
+                  'output',
+                  { 'data-testid': 'prerequisite-route', hidden: true },
+                  router.currentRoute.value.fullPath
+                )
+              ]
+            : []),
           h('output', { 'data-testid': 'successes' }, String(successes.value)),
           h('output', { 'data-testid': 'open-error' }, error.value),
+          h(
+            'output',
+            { 'data-testid': 'open-completions', hidden: true },
+            String(completedOpens.value)
+          ),
           h(target, { ref: component, onSuccess: () => successes.value++ })
         ])
       )
@@ -243,7 +349,16 @@ app.use(store)
 app.use(language)
 const router = createRouter({
   history: createMemoryHistory(),
-  routes: [{ path: '/', component: {} }]
+  routes: [
+    { path: '/', component: {} },
+    ...(params.has('prerequisite')
+      ? [
+          { path: '/accounting-subject', name: financeRouteNames.accountingSubject, component: {} },
+          { path: '/account-set', name: financeRouteNames.accountSet, component: {} },
+          { path: '/fund-account', name: financeRouteNames.fundAccount, component: {} }
+        ]
+      : [])
+  ]
 })
 app.use(router)
 setupGlobDirectives(app)

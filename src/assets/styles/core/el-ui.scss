@@ -7,6 +7,11 @@
   clip-path: inset(0 0 var(--art-scroll-viewport-inset, var(--art-space-4)));
 }
 
+// 末尾另留绘制空间，避免卡片底影与视窗留白的裁切线重合。
+.art-overlay-content-inset {
+  border-block-end: var(--art-scroll-viewport-inset, var(--art-space-4)) solid transparent;
+}
+
 :root {
   // 系统主色
   --main-color: var(--el-color-primary);

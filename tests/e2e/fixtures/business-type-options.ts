@@ -3,10 +3,14 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import language from '@/locales'
 import { store } from '@/store'
 import { useUserStore } from '@/store/modules/user'
+import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import { setupGlobDirectives } from '@/directives'
 import BusinessTypeDialog from '../../../modules/art-supabase-mdm/src/views/business-type/modules/business-type-dialog.vue'
 import '@styles/core/tailwind.css'
 import '@styles/index.scss'
+const errorAudit = new URLSearchParams(location.search).get('errorAudit') === '1'
 const app = createApp({
   setup() {
     const dialog = ref<InstanceType<typeof BusinessTypeDialog>>()
@@ -66,6 +70,21 @@ setupGlobDirectives(app)
 useUserStore(store).setUserInfo({
   userId: 'test-user',
   tenantId: 'test-tenant',
-  platformSuper: true
+  platformSuper: !errorAudit
 })
+if (errorAudit) {
+  useMenuStore(store).setButtonList(
+    ['MdmBusinessType:View', 'MdmBusinessType:Add'].map((name) => ({
+      name,
+      path: '',
+      type: 'button',
+      meta: { title: name }
+    }))
+  )
+  initializeTheme()
+  document.documentElement.dataset.uiScope = 'workspace'
+  document.documentElement.dataset.boxMode = useSettingStore(store).boxBorderMode
+    ? 'border-mode'
+    : 'shadow-mode'
+}
 app.mount('#preview')

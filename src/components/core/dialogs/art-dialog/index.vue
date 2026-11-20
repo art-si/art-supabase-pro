@@ -20,7 +20,7 @@
     <template
       v-if="
         $slots.header ||
-        hasSubtitle ||
+        hasSubtitle() ||
         $slots['header-actions'] ||
         options.showFormFocusButton ||
         options.showFullscreenButton ||
@@ -28,18 +28,18 @@
       "
       #header="{ titleId, titleClass }"
     >
-      <div class="art-dialog__header">
+      <div class="art-dialog__header" :class="{ 'art-dialog__header--standard': !$slots.header }">
         <div class="art-dialog__header-main">
           <slot v-if="$slots.header" name="header" :data="openData" :api="exposedApi" />
           <span
             v-else
             :id="titleId"
-            :class="titleClass"
+            :class="[titleClass, 'art-dialog__title']"
             role="heading"
             :aria-level="String(dialogBindings.headerAriaLevel ?? '2')"
             >{{ dialogTitle }}</span
           >
-          <div v-if="hasSubtitle && !isFocusMode" class="art-dialog__subtitle">
+          <div v-if="hasSubtitle() && !isFocusMode" class="art-dialog__subtitle">
             <slot name="subtitle" :data="openData" :api="exposedApi">
               {{ dialogSubtitle }}
             </slot>
@@ -94,19 +94,13 @@
         :always="options.scrollbarAlways"
         :native="options.nativeScrollbar"
         class="art-dialog__scrollbar"
-        :class="{
-          'art-scroll-viewport-inset':
-            !options.nativeScrollbar &&
-            !(
-              options.showFooter &&
-              ($slots.footer || options.showCancelButton || options.showConfirmButton)
-            )
-        }"
+        :class="{ 'art-scroll-viewport-inset': usesViewportInset() }"
         @wheel.capture="handleWheelBoundary"
       >
         <div
           ref="contentRef"
           class="art-dialog__content"
+          :class="{ 'art-overlay-content-inset': usesViewportInset() }"
           :inert="contentLoading"
           :aria-hidden="contentLoading"
         >
@@ -177,6 +171,7 @@
 </template>
 
 <script setup lang="ts" generic="T = Record<string, unknown>">
+  import { identity } from 'lodash-es'
   import type { DialogInstance, ScrollbarInstance } from 'element-plus'
   import type {
     ArtDialogEmits,
@@ -191,12 +186,16 @@
   import {
     artOverlayRequestScopeKey,
     mergeOverlayRecords,
-    useArtOverlay
+    useArtOverlay,
+    type ArtOverlayApiBinder
   } from '@/hooks/core/useArtOverlay'
   import { focusFirstInvalidFormField } from '@/utils/form/validation'
   import { preventOverlayTabArrowScroll } from '@/utils/ui/overlay-tab-keyboard'
   import { handoffVerticalWheel } from '@/utils/ui/wheel-scroll'
-  import { artFormFocusKey } from '@/components/core/forms/art-form/focus'
+  import {
+    artFormFocusKey,
+    createArtFormValidationFocusScope
+  } from '@/components/core/forms/art-form/focus'
 
   defineOptions({
     name: 'ArtDialog',
@@ -267,17 +266,6 @@
     return `${isFocusMode.value ? '退出' : '进入'}${mode}`
   })
 
-  provide(artFormFocusKey, {
-    focusMode: readonly(isFocusMode),
-    registerForm: () => {
-      formCount.value += 1
-      hadFormInSession.value = true
-      return () => {
-        formCount.value = Math.max(0, formCount.value - 1)
-      }
-    }
-  })
-
   const getDefaultOptions = (): ArtDialogOptions<T> => ({
     title: props.title,
     subtitle: props.subtitle,
@@ -332,8 +320,9 @@
   const overlay = useArtOverlay<T, ArtDialogExpose<T>, ArtDialogOptions<T>>({
     getDefaultOptions,
     mergeOptions,
-    getApi: () => exposedApi,
+    getApi: (bind) => createApi(bind),
     emitConfirm: (data) => {
+      validationFocus.beginConfirmation()
       if (!props.onConfirm || options.value.onConfirm !== props.onConfirm)
         emit('confirm', data, exposedApi)
     },
@@ -341,7 +330,22 @@
       if (!props.onReset || options.value.onReset !== props.onReset) emit('reset', exposedApi)
     },
     emitError: (error) => emit('error', error),
-    onConfirmRejected: () => focusFirstInvalidFormField(contentRef)
+    onConfirmRejected: () => {
+      if (!validationFocus.hasHandledValidationFocus()) focusFirstInvalidFormField(contentRef)
+    }
+  })
+  const validationFocus = createArtFormValidationFocusScope(overlay.requestScope)
+
+  provide(artFormFocusKey, {
+    focusMode: readonly(isFocusMode),
+    captureValidationFocus: validationFocus.captureValidationFocus,
+    registerForm: () => {
+      formCount.value += 1
+      hadFormInSession.value = true
+      return () => {
+        formCount.value = Math.max(0, formCount.value - 1)
+      }
+    }
   })
 
   provide(artOverlayRequestScopeKey, overlay.requestScope)
@@ -424,7 +428,13 @@
 
   const dialogTitle = computed(() => String(options.value.title ?? attrs.title ?? ''))
   const dialogSubtitle = computed(() => String(options.value.subtitle ?? ''))
-  const hasSubtitle = computed(() => Boolean(slots.subtitle || dialogSubtitle.value))
+  const hasSubtitle = (): boolean => Boolean(slots.subtitle || dialogSubtitle.value)
+  const usesViewportInset = (): boolean => {
+    const { nativeScrollbar, showFooter, showCancelButton, showConfirmButton } = options.value
+    return (
+      !nativeScrollbar && !(showFooter && (slots.footer || showCancelButton || showConfirmButton))
+    )
+  }
   const fullscreenIcon = computed(() =>
     isFullscreen.value ? 'dashicons:fullscreen-exit-alt' : 'dashicons:fullscreen-alt'
   )
@@ -583,7 +593,7 @@
     emit('closed')
   }
 
-  exposedApi = {
+  const createApi = (bind: ArtOverlayApiBinder = identity): ArtDialogExpose<T> => ({
     visible: readonly(visible),
     loading: readonly(contentLoading),
     confirmLoading: readonly(confirmLoading),
@@ -593,23 +603,25 @@
     options: readonly(options) as Readonly<Ref<ArtDialogOptions<T>>>,
     dialogRef: readonly(dialogRef),
     scrollbarRef: readonly(scrollbarRef),
-    handleOpen,
-    handleClose,
-    handleConfirm,
-    handleReset,
-    setLoading,
-    setConfirmLoading,
-    setFullscreen,
-    toggleFullscreen,
-    setFocusMode,
-    toggleFocusMode,
-    setOptions,
-    setData,
-    updateData,
+    handleOpen: bind(handleOpen, async () => undefined),
+    handleClose: bind(handleClose, async () => false),
+    handleConfirm: bind(handleConfirm, async () => false),
+    handleReset: bind(handleReset),
+    setLoading: bind(setLoading),
+    setConfirmLoading: bind(setConfirmLoading),
+    setFullscreen: bind(setFullscreen),
+    toggleFullscreen: bind(toggleFullscreen),
+    setFocusMode: bind(setFocusMode),
+    toggleFocusMode: bind(toggleFocusMode),
+    setOptions: bind(setOptions),
+    setData: bind(setData),
+    updateData: bind(updateData),
     getData,
     getDialogInstance,
-    scrollTo
-  }
+    scrollTo: bind(scrollTo)
+  })
+
+  exposedApi = createApi()
 
   defineExpose(exposedApi)
 </script>
@@ -682,6 +694,11 @@
     flex: 1;
     flex-direction: column;
     min-height: 0;
+  }
+
+  // 公共滚动承接长正文时，末尾绘制空间需要跟随正文完整高度。
+  :global(.art-dialog.is-fullscreen .art-dialog__content.art-overlay-content-inset) {
+    flex: 1 0 auto;
   }
 
   :global(.art-dialog.is-focus-mode .art-dialog__content) {
@@ -829,6 +846,23 @@
 
     .art-dialog__header-main {
       flex-basis: min(100%, 8rem);
+    }
+
+    .art-dialog__header--standard {
+      .art-dialog__header-main {
+        display: contents;
+      }
+
+      .art-dialog__title {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      .art-dialog__subtitle {
+        flex: 0 0 100%;
+        order: 1;
+        margin-top: 0;
+      }
     }
   }
 

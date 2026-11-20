@@ -4,6 +4,8 @@ import { effectScope } from 'vue'
 import {
   cloneOverlayData,
   useArtOverlay,
+  type ArtOverlayApiBinder,
+  type ArtOverlayExpose,
   type ArtOverlayOptions
 } from '../../src/hooks/core/useArtOverlay'
 
@@ -246,23 +248,44 @@ interface TestData {
   id?: string
 }
 
-type TestOptions = ArtOverlayOptions<TestData, { setLoading: (value: boolean) => void }>
+type TestOptions = ArtOverlayOptions<TestData, TestApi>
+
+interface TestApi extends ArtOverlayExpose<TestData, TestOptions> {
+  handleOpen: (data?: TestData, options?: Partial<TestOptions>) => Promise<void>
+}
+
+const identityBinder = <TArgs extends unknown[], TResult>(action: (...args: TArgs) => TResult) =>
+  action
 
 const createOverlay = (
   emitError: (error: unknown) => void = () => undefined,
   onConfirmRejected?: () => void
 ) => {
-  let setLoading: (value: boolean) => void = () => undefined
-  const overlay = useArtOverlay<TestData, { setLoading: (value: boolean) => void }, TestOptions>({
+  const overlay = useArtOverlay<TestData, TestApi, TestOptions>({
     getDefaultOptions: () => ({ autoClose: true, resetOnClose: true }),
     mergeOptions: (base, override) => ({ ...base, ...override }),
-    getApi: () => ({ setLoading }),
+    getApi: (bind: ArtOverlayApiBinder = identityBinder): TestApi => ({
+      visible: overlay.visible,
+      loading: overlay.loading,
+      confirmLoading: overlay.confirmLoading,
+      data: overlay.openData,
+      options: overlay.options,
+      handleOpen: bind(overlay.handleOpen, async () => undefined),
+      handleClose: bind(overlay.handleClose, async () => false),
+      handleConfirm: bind(overlay.handleConfirm, async () => false),
+      handleReset: bind(overlay.handleReset),
+      setLoading: bind(overlay.setLoading),
+      setConfirmLoading: bind(overlay.setConfirmLoading),
+      setOptions: bind(overlay.setOptions),
+      setData: bind(overlay.setData),
+      updateData: bind(overlay.updateData),
+      getData: overlay.getData
+    }),
     emitConfirm: () => undefined,
     emitReset: () => undefined,
     emitError,
     onConfirmRejected
   })
-  setLoading = overlay.setLoading
   return overlay
 }
 
@@ -556,4 +579,188 @@ test('rejected validation requests focus unless the overlay closes on error', as
   assert.equal(overlay.visible.value, false)
   assert.equal(overlay.confirmLoading.value, false)
   assert.deepEqual(errors, [failure, failure])
+})
+
+for (const operation of ['open', 'confirm'] as const) {
+  test(`a stale ${operation} callback API cannot release the new session or overwrite its data`, async () => {
+    const overlay = createOverlay()
+    let finishOld!: () => void
+    const oldWork = new Promise<void>((resolve) => (finishOld = resolve))
+    const oldCallback = async (_data: TestData, api: TestApi) => {
+      await oldWork
+      api.setLoading(false)
+      api.setConfirmLoading(false)
+      api.setOptions({ loading: false, confirmText: 'old callback' })
+      api.setData({ id: 'old replacement' })
+      api.updateData({ id: 'old merge' })
+    }
+    let pendingOld: Promise<void | boolean>
+    if (operation === 'open') {
+      pendingOld = overlay.handleOpen({ id: 'first' }, { onOpen: oldCallback })
+      await Promise.resolve()
+    } else {
+      await overlay.handleOpen({ id: 'first' }, { onConfirm: oldCallback })
+      pendingOld = overlay.handleConfirm()
+    }
+    let currentApi: TestApi | undefined
+    let finishCurrent!: () => void
+    const currentWork = new Promise<void>((resolve) => (finishCurrent = resolve))
+    await overlay.handleOpen(
+      { id: 'second' },
+      {
+        confirmText: 'current callback',
+        onOpen: (_data, api) => {
+          currentApi = api
+        },
+        onConfirm: async (_data, api) => {
+          api.setLoading(true)
+          await currentWork
+          return false
+        }
+      }
+    )
+    const pendingCurrent = overlay.handleConfirm()
+    finishOld()
+    await pendingOld
+    try {
+      assert.equal(overlay.visible.value, true)
+      assert.equal(overlay.loading.value, true)
+      assert.equal(overlay.confirmLoading.value, true)
+      assert.equal(overlay.options.value.confirmText, 'current callback')
+      assert.equal(overlay.getData().id, 'second')
+      assert.ok(currentApi)
+      currentApi.setOptions({ confirmText: 'current update' })
+      assert.equal(overlay.options.value.confirmText, 'current update')
+    } finally {
+      currentApi?.setLoading(false)
+      finishCurrent()
+      await pendingCurrent
+    }
+    assert.equal(overlay.loading.value, false)
+    assert.equal(overlay.confirmLoading.value, false)
+    assert.equal(overlay.visible.value, true)
+  })
+}
+
+for (const invalidation of ['reset', 'close', 'dispose'] as const) {
+  test(`${invalidation} invalidates retained callback commands without starting another session`, async () => {
+    const scope = effectScope()
+    const overlay = scope.run(() => createOverlay())!
+    let api!: TestApi
+    let obsoleteOpenCalls = 0
+    let resetCalls = 0
+    await overlay.handleOpen(
+      { id: 'original' },
+      {
+        confirmText: 'original action',
+        onOpen: (_data, callbackApi) => {
+          api = callbackApi
+        },
+        onReset: () => resetCalls++
+      }
+    )
+    if (invalidation === 'reset') overlay.handleReset()
+    else if (invalidation === 'close') await overlay.handleClose(true)
+    else scope.stop()
+    const expectedResetCalls = resetCalls
+
+    api.setLoading(true)
+    api.setConfirmLoading(true)
+    api.setOptions({ confirmText: 'obsolete action' })
+    api.setData({ id: 'obsolete replacement' })
+    api.updateData({ id: 'obsolete merge' })
+    const confirmResult = await api.handleConfirm()
+    const closeResult = await api.handleClose(true)
+    api.handleReset()
+    await api.handleOpen(
+      { id: 'obsolete open' },
+      {
+        onOpen: () => {
+          obsoleteOpenCalls++
+        }
+      }
+    )
+
+    assert.equal(confirmResult, false)
+    assert.equal(closeResult, false)
+    assert.equal(overlay.visible.value, invalidation === 'reset')
+    assert.equal(overlay.loading.value, false)
+    assert.equal(overlay.confirmLoading.value, false)
+    assert.equal(overlay.options.value.confirmText, 'original action')
+    assert.equal(overlay.getData().id, 'original')
+    assert.equal(resetCalls, expectedResetCalls)
+    assert.equal(obsoleteOpenCalls, 0)
+    scope.stop()
+  })
+}
+
+test('a rejected close keeps its callback API current and the public API usable', async () => {
+  const overlay = createOverlay()
+  let api!: TestApi
+  await overlay.handleOpen(
+    { id: 'original' },
+    {
+      onClose: (_data, callbackApi) => {
+        api = callbackApi
+        return false
+      }
+    }
+  )
+  assert.equal(await overlay.handleClose(), false)
+  api.setLoading(true)
+  api.setOptions({ confirmText: 'keep editing' })
+  api.updateData({ id: 'updated' })
+  assert.equal(overlay.visible.value, true)
+  assert.equal(overlay.loading.value, true)
+  assert.equal(overlay.options.value.confirmText, 'keep editing')
+  assert.equal(overlay.getData().id, 'updated')
+  overlay.setLoading(false)
+  assert.equal(overlay.loading.value, false)
+})
+
+test('a current callback can open a new session while its retained API then becomes stale', async () => {
+  const overlay = createOverlay()
+  let api!: TestApi
+  await overlay.handleOpen(
+    { id: 'first' },
+    {
+      onOpen: (_data, callbackApi) => {
+        api = callbackApi
+      }
+    }
+  )
+  await api.handleOpen({ id: 'second' }, { loading: true })
+  api.setLoading(false)
+  assert.equal(overlay.loading.value, true)
+  assert.equal(overlay.visible.value, true)
+  assert.equal(api.getData().id, 'second')
+  assert.equal(api.data.value.id, 'second')
+  overlay.setLoading(false)
+  assert.equal(overlay.loading.value, false)
+})
+
+test('the new reset callback API remains usable when the overlay has already closed', async () => {
+  const overlay = createOverlay()
+  let openingApi!: TestApi
+  await overlay.handleOpen(
+    { id: 'original' },
+    {
+      onOpen: (_data, api) => {
+        openingApi = api
+      },
+      onReset: (api) => {
+        api.setOptions({ confirmText: 'reset action' })
+        api.setLoading(true)
+      }
+    }
+  )
+  assert.equal(await overlay.handleClose(true), true)
+  overlay.handleClosed()
+  openingApi.setLoading(false)
+  openingApi.setOptions({ confirmText: 'obsolete action' })
+  assert.equal(overlay.visible.value, false)
+  assert.equal(overlay.loading.value, true)
+  assert.equal(overlay.options.value.confirmText, 'reset action')
+  overlay.setLoading(false)
+  assert.equal(overlay.loading.value, false)
 })

@@ -1,7 +1,180 @@
 import { expect, test } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
+
+for (const outcome of ['success-first', 'failure-first', 'success-last'] as const) {
+  test(`折旧初始读取 ${outcome} 不改写同账套重开后的会话`, async ({ page }, info) => {
+    test.setTimeout(120_000)
+    page.setDefaultTimeout(15_000)
+    const accountId = 'cccccccc-cccc-4ccc-accc-cccccccccccc'
+    const narrow = info.project.name === 'mobile-390'
+    const appearance = {
+      theme: narrow ? ('dark' as const) : ('light' as const),
+      boxBorderMode: !narrow
+    }
+    await prepareIsolatedSession(page, { platformSuper: false })
+    await prepareAppearance(page, appearance)
+    await page.addInitScript((id) => {
+      window.formsMigrationInput = {
+        args: [id],
+        admin: false,
+        permissions: ['FinanceFixedAsset:View', 'FinanceFixedAsset:Depreciation']
+      }
+    }, accountId)
+    const firstGate = Promise.withResolvers<void>()
+    const secondGate = Promise.withResolvers<void>()
+    let accountRequests = 0
+    let periodRequests = 0
+    let runRequests = 0
+    const unexpectedWrites: string[] = []
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await page.route('**/rest/v1/**', async (route) => {
+      const request = route.request()
+      const url = new URL(request.url())
+      const name = url.pathname.split('/').at(-1)
+      if (name === 'fms_list_account_set_options_secure') {
+        expect(request.method()).toBe('POST')
+        const attempt = ++accountRequests
+        if (attempt === 1) await firstGate.promise
+        if (attempt === 2) await secondGate.promise
+        if ((attempt === 1 && outcome === 'failure-first') || attempt === 3)
+          return route.fulfill({
+            status: 503,
+            json: { code: 'XX000', message: 'database unavailable' }
+          })
+        return route.fulfill({
+          json: {
+            total: 1,
+            records: [
+              {
+                id: accountId,
+                accountSetCode: 'QA',
+                accountSetName: attempt === 1 ? '过期账套名称甲' : '当前账套名称乙',
+                status: 'active'
+              }
+            ]
+          }
+        })
+      }
+      if (name === 'fms_accounting_period') {
+        expect(request.method()).toBe('GET')
+        expect(url.searchParams.get('account_set_id')).toBe(`eq.${accountId}`)
+        periodRequests++
+        return route.fulfill({
+          json: [10, 11].map((month) => ({
+            id: `period-${month}`,
+            account_set_id: accountId,
+            fiscal_year: 2026,
+            period_no: month,
+            start_date: `2026-${month}-01`,
+            end_date: `2026-${month}-${month === 11 ? 30 : 31}`,
+            status: 'open'
+          }))
+        })
+      }
+      if (name === 'fms_list_asset_depreciation_runs_secure') {
+        expect(request.postDataJSON().p_account_set_id).toBe(accountId)
+        runRequests++
+        return route.fulfill({ json: { records: [], fieldAccess: { assetValues: 'edit' } } })
+      }
+      if (name === 'get_table_column_runtime')
+        return route.fulfill({ json: { enabled: false, profiles: [] } })
+      if (name === 'current_is_super') return route.fulfill({ json: false })
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+        unexpectedWrites.push(url.pathname)
+        return route.fulfill({
+          status: 403,
+          json: { code: '42501', message: '隔离测试阻止未预期写请求' }
+        })
+      }
+      return route.fulfill({ json: [] })
+    })
+    const entry =
+      'modules/art-supabase-fms/src/views/specialized-accounting/fixed-asset/modules/asset-depreciation-drawer.vue'
+    try {
+      await page.goto(
+        `/tests/e2e/fixtures/forms-migration-business.html?entry=${encodeURIComponent(entry)}&theme=${appearance.theme}`
+      )
+      await assertAppearance(page, appearance)
+      const drawer = page.getByRole('dialog', { name: '固定资产折旧管理', exact: true })
+      const viewport = drawer.locator('.art-drawer__viewport')
+      const content = drawer.locator('.art-drawer__content')
+      const account = drawer.locator('[data-art-form-item-key="accountSetId"]')
+      const period = drawer.locator('[data-art-form-item-key="periodId"]')
+      const close = drawer.getByRole('button', { name: '关闭抽屉', exact: true })
+      const open = page.getByTestId('open-entry')
+      const completedOpens = page.getByTestId('open-completions')
+      const accountResponse = () =>
+        page.waitForResponse((response) =>
+          new URL(response.url()).pathname.endsWith('/fms_list_account_set_options_secure')
+        )
+      await expect(drawer).toBeVisible({ timeout: 60_000 })
+      await expect.poll(() => accountRequests).toBe(1)
+      await close.click()
+      await expect(drawer).toBeHidden()
+      await open.click()
+      await expect(drawer).toBeVisible()
+      await expect.poll(() => accountRequests).toBe(2)
+      await expect(viewport).toHaveAttribute('aria-busy', 'true')
+      const completed = accountResponse()
+      if (outcome === 'success-last') secondGate.resolve()
+      else firstGate.resolve()
+      await (await completed).finished()
+      await expect(completedOpens).toHaveText('1')
+      if (outcome === 'success-last') {
+        await expect(viewport).toHaveAttribute('aria-busy', 'false')
+        await expect(account).toContainText('当前账套名称乙')
+        await period.locator('.el-select').click()
+        await page
+          .getByRole('option', { name: '2026 年第 11 期 · 2026-11-01 至 2026-11-30', exact: true })
+          .click()
+        await expect(period).toContainText('2026 年第 11 期')
+        const before = { periodRequests, runRequests }
+        const oldCompleted = accountResponse()
+        firstGate.resolve()
+        await (await oldCompleted).finished()
+        await expect(completedOpens).toHaveText('2')
+        await expect.poll(() => account.textContent()).not.toContain('过期账套名称甲')
+        await expect(account).toContainText('当前账套名称乙')
+        await expect(period).toContainText('2026 年第 11 期')
+        expect({ periodRequests, runRequests }).toEqual(before)
+      } else {
+        await expect.soft(viewport).toHaveAttribute('aria-busy', 'true')
+        await expect.soft(content).toHaveJSProperty('inert', true)
+        await expect.soft(drawer.locator('.art-overlay-loading')).toHaveCount(1)
+        await expect.soft(drawer.getByText('折旧数据加载失败', { exact: true })).toHaveCount(0)
+        expect.soft(periodRequests).toBe(0)
+        expect.soft(runRequests).toBe(0)
+        const currentCompleted = accountResponse()
+        secondGate.resolve()
+        await (await currentCompleted).finished()
+        await expect(completedOpens).toHaveText('2')
+        await expect(viewport).toHaveAttribute('aria-busy', 'false')
+        await expect(account).toContainText('当前账套名称乙')
+      }
+      await expect(drawer.getByText('database unavailable', { exact: false })).toHaveCount(0)
+      await expect(drawer.getByText('折旧数据加载失败', { exact: true })).toHaveCount(0)
+      await page.screenshot({ path: info.outputPath(`depreciation-session-${outcome}.png`) })
+      await close.click()
+      await expect(drawer).toBeHidden()
+      await open.click()
+      await expect(drawer.getByText('折旧数据加载失败', { exact: true })).toBeVisible()
+      await drawer.getByRole('button', { name: '重新加载', exact: true }).click()
+      await expect(viewport).toHaveAttribute('aria-busy', 'false')
+      await expect(account).toContainText('当前账套名称乙')
+      await expect(drawer.getByText('折旧数据加载失败', { exact: true })).toHaveCount(0)
+      expect(accountRequests).toBe(4)
+      expect(unexpectedWrites).toEqual([])
+      expect(pageErrors).toEqual([])
+    } finally {
+      firstGate.resolve()
+      secondGate.resolve()
+    }
+  })
+}
 
 test('折旧批次与两条明细加载失败后原位重试', async ({ page }, info) => {
   test.setTimeout(120_000)
@@ -128,13 +301,23 @@ test('折旧批次与两条明细加载失败后原位重试', async ({ page }, 
     periodField.locator('.el-select').boundingBox(),
     calculate.boundingBox()
   ])
-  expect(
-    Math.abs(
-      periodControlBounds!.y +
-        periodControlBounds!.height / 2 -
-        (actionBounds!.y + actionBounds!.height / 2)
-    )
-  ).toBeLessThanOrEqual(2)
+  if ((page.viewportSize()?.width ?? 1440) <= 767) {
+    const descriptionBounds = await periodRange.boundingBox()
+    expect(descriptionBounds).not.toBeNull()
+    const gap = actionBounds!.y - (descriptionBounds!.y + descriptionBounds!.height)
+    expect(gap).toBeGreaterThanOrEqual(8)
+    expect(gap).toBeLessThanOrEqual(24)
+    expect(Math.abs(actionBounds!.x - periodControlBounds!.x)).toBeLessThanOrEqual(2)
+    expect(Math.abs(actionBounds!.width - periodControlBounds!.width)).toBeLessThanOrEqual(2)
+  } else {
+    expect(
+      Math.abs(
+        periodControlBounds!.y +
+          periodControlBounds!.height / 2 -
+          (actionBounds!.y + actionBounds!.height / 2)
+      )
+    ).toBeLessThanOrEqual(2)
+  }
   await drawer.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(drawer.getByRole('button', { name: 'QA-ZJ-2', exact: true })).toBeVisible()
   expect(batchRequests).toBe(2)

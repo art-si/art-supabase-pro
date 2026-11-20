@@ -1,6 +1,8 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { writeFile } from 'node:fs/promises'
+import { expect, test, type Locator, type Page, type Request, type Route } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { formStandardDictionaries } from './fixtures/form-standard-modules-data'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 30_000 })
 test.setTimeout(90_000)
@@ -54,7 +56,7 @@ interface Write {
   method?: string
   query?: string
 }
-async function open(page: Page, entry: string, query = '', writes?: Write[]) {
+async function prepareModuleEntry(page: Page, writes?: Write[]) {
   page.on('pageerror', (error) => console.error('business fixture pageerror:', error.message))
   await prepareIsolatedSession(page)
   await page.route('**/rest/v1/**', async (route) => {
@@ -130,6 +132,10 @@ async function open(page: Page, entry: string, query = '', writes?: Write[]) {
     }
     return route.fallback()
   })
+}
+
+async function open(page: Page, entry: string, query = '', writes?: Write[]) {
+  await prepareModuleEntry(page, writes)
   await page.goto(`/tests/e2e/fixtures/form-standard-modules.html?entry=${entry}${query}`)
   await page.getByRole('button', { name: '打开真实业务入口', exact: true }).click()
   const dialog = page.getByRole('dialog').last()
@@ -146,6 +152,409 @@ function field(dialog: Locator, label: string) {
   return dialog
     .getByText(label, { exact: true })
     .locator('xpath=ancestor::div[contains(@class,"el-form-item")][1]')
+}
+
+test('组件类型必要标签样式模块首次失败后显式重试并唯一保存', async ({ page }, info) => {
+  test.setTimeout(180_000)
+  const scriptPath = '/src/components/core/forms/art-tag-style-select/index.vue'
+  const requests: string[] = []
+  const writes: Write[] = []
+  const errors: string[] = []
+  const warnings: string[] = []
+  const isControlEntry = (request: Request) => {
+    const url = new URL(request.url())
+    return (
+      request.resourceType() === 'script' &&
+      url.pathname === scriptPath &&
+      !url.searchParams.has('vue')
+    )
+  }
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
+    if (
+      /maximum recursive updates|slot.+invoked outside|unhandled error during execution/i.test(
+        message.text()
+      )
+    )
+      warnings.push(message.text())
+  })
+  await page.route('**/src/components/core/forms/art-tag-style-select/index.vue*', (route) => {
+    if (!isControlEntry(route.request())) return route.continue()
+    const url = new URL(route.request().url())
+    requests.push(url.pathname + url.search)
+    return requests.length === 1
+      ? route.fulfill({ status: 503, contentType: 'text/javascript', body: 'unavailable' })
+      : route.continue()
+  })
+  try {
+    const dialog = await open(page, 'component', '&valid=true', writes)
+    const style = dialog.locator('[data-art-form-item-key="tagStyle"]')
+    const save = dialog.getByRole('button', { name: '保存更改', exact: true })
+    const loadError = style.getByText('表单控件加载失败，请重试', { exact: true })
+    await expect(loadError).toBeVisible({ timeout: 60_000 })
+    expect(requests).toHaveLength(1)
+    await save.click()
+    await expect(dialog).toBeVisible()
+    await expect(page.getByTestId('save-result')).toHaveText('尚未保存')
+    expect(writes).toEqual([])
+    expect(requests).toHaveLength(1)
+
+    await page.screenshot({
+      path: info.outputPath('real-mdm-tag-style-error.png'),
+      fullPage: true,
+      animations: 'disabled'
+    })
+    await style.getByRole('button', { name: '重新加载', exact: true }).click()
+    // Count the actual failed child entry, not merely a fresh parent registry URL.
+    await expect.poll(() => requests.length, { timeout: 60_000 }).toBe(2)
+    await expect(style.locator('.art-async-state')).toHaveCount(0, { timeout: 60_000 })
+    await expect(loadError).toHaveCount(0)
+    const select = style.getByRole('combobox')
+    await expect(select).toBeVisible()
+    await expect(
+      style.locator('.el-select__selected-item').filter({ hasText: '主要' })
+    ).toBeVisible()
+    await expect(field(dialog, '组件类型编码').getByRole('textbox')).toHaveValue('OUTER_PANEL')
+    await expect(field(dialog, '组件类型').getByRole('textbox')).toHaveValue('验收外板')
+    await style.locator('.el-select__wrapper').click()
+    await page.getByRole('option').filter({ hasText: 'success' }).click()
+    await expect(
+      style.locator('.el-select__selected-item').filter({ hasText: '成功' })
+    ).toBeVisible()
+    await page.screenshot({
+      path: info.outputPath('real-mdm-tag-style-recovered.png'),
+      fullPage: true,
+      animations: 'disabled'
+    })
+    await save.click()
+    await expect(page.getByTestId('save-result')).toHaveText('已保存')
+    expect(writes).toHaveLength(1)
+    expect(writes[0].method).toBe('PATCH')
+    expect(writes[0].path).toBe('/rest/v1/mdm_component_type')
+    expect(new URLSearchParams(writes[0].query).get('id')).toBe(
+      'eq.22222222-2222-4222-8222-222222222222'
+    )
+    expect(writes[0].payload).toMatchObject({
+      tenant_id: '11111111-1111-4111-8111-111111111111',
+      group_id: '22222222-2222-4222-8222-222222222222',
+      component_type_code: 'OUTER_PANEL',
+      component_type_name: '验收外板',
+      tag_style: 'success'
+    })
+    expect(requests).toHaveLength(2)
+    expect(errors).toEqual([])
+    expect(warnings).toEqual([])
+  } finally {
+    await info.attach('needed-tag-style-module-retry', {
+      contentType: 'application/json',
+      body: JSON.stringify({ requests, writes, errors, warnings }, null, 2)
+    })
+  }
+})
+
+async function sampleTagStyle(dialog: Locator, loaded: boolean) {
+  return dialog.evaluate((root, loaded) => {
+    const form = root.querySelector('.art-form')
+    const tag = form?.querySelector('[data-art-form-item-key="tagStyle"]')
+    const content = tag?.querySelector('.art-form-item__content')
+    const nativeContent = tag?.querySelector('.el-form-item__content')
+    const label = tag?.querySelector('.el-form-item__label')
+    const control = tag?.querySelector(loaded ? '.art-tag-style-select' : '.art-async-state')
+    const wrapper = control?.querySelector(
+      loaded ? '.el-select__wrapper' : '.art-form-control-skeleton, .el-skeleton'
+    )
+    const remarkLabel = form?.querySelector(
+      '[data-art-form-item-key="remark"] .el-form-item__label'
+    )
+    const footer = root.querySelector('.art-dialog__footer-actions')
+    const scroll = root.querySelector('.art-dialog__scrollbar > .el-scrollbar__wrap')
+    if (
+      !form ||
+      !tag ||
+      !content ||
+      !nativeContent ||
+      !label ||
+      !control ||
+      !wrapper ||
+      !remarkLabel ||
+      !footer ||
+      !scroll
+    )
+      throw new Error('真实组件类型的标签样式布局尚未就绪')
+    const bounds = (element: Element) => {
+      const rect = element.getBoundingClientRect()
+      return {
+        x: rect.x + scrollX,
+        y: rect.y + scrollY,
+        width: rect.width,
+        height: rect.height,
+        bottom: rect.bottom + scrollY
+      }
+    }
+    const inViewport = (element: Element, container?: Element) => {
+      const rect = element.getBoundingClientRect()
+      const frame = container?.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      return (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.left >= Math.max(0, frame?.left ?? 0) - 1 &&
+        rect.right <= Math.min(innerWidth, frame?.right ?? innerWidth) + 1 &&
+        rect.top >= Math.max(0, frame?.top ?? 0) - 1 &&
+        rect.bottom <= Math.min(innerHeight, frame?.bottom ?? innerHeight) + 1
+      )
+    }
+    const value = (key: string) => {
+      const input = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+        `[data-art-form-item-key="${key}"] input, [data-art-form-item-key="${key}"] textarea`
+      )
+      if (!input) throw new Error(`${key} 原生控件未就绪`)
+      return input.value
+    }
+    return {
+      content: bounds(content),
+      nativeContent: bounds(nativeContent),
+      control: bounds(control),
+      wrapper: bounds(wrapper),
+      label: bounds(label),
+      form: bounds(form),
+      remarkLabel: bounds(remarkLabel),
+      targetVisible: {
+        tag: inViewport(tag, scroll),
+        control: inViewport(control, scroll),
+        remarkLabel: inViewport(remarkLabel, scroll)
+      },
+      footer: bounds(footer),
+      footerVisible: inViewport(footer),
+      footerButtons: [...footer.querySelectorAll('button')].map((button) => ({
+        text: button.textContent?.trim(),
+        bounds: bounds(button),
+        visible: inViewport(button)
+      })),
+      scroll: {
+        top: scroll.scrollTop,
+        left: scroll.scrollLeft,
+        height: scroll.scrollHeight,
+        client: scroll.clientHeight,
+        width: scroll.scrollWidth,
+        clientWidth: scroll.clientWidth,
+        bounds: bounds(scroll)
+      },
+      overflow: {
+        page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        dialog: root.scrollWidth - root.clientWidth
+      },
+      baseline: {
+        contentLineHeight: getComputedStyle(content).lineHeight,
+        nativeLineHeight: getComputedStyle(nativeContent).lineHeight,
+        controlDisplay: getComputedStyle(control).display,
+        controlVerticalAlign: getComputedStyle(control).verticalAlign
+      },
+      nativeValues: {
+        componentTypeCode: value('componentTypeCode'),
+        componentTypeName: value('componentTypeName'),
+        sortOrder: value('sortOrder'),
+        remark: value('remark'),
+        enabled: form.querySelector<HTMLInputElement>('[data-art-form-item-key="enabled"] input')
+          ?.checked,
+        groupLabel: form
+          .querySelector('[data-art-form-item-key="groupId"] .el-select__selected-item')
+          ?.textContent?.trim()
+      }
+    }
+  }, loaded)
+}
+
+for (const profile of [
+  { width: 1440, height: 1000, theme: 'light', boxBorderMode: false },
+  { width: 390, height: 844, theme: 'dark', boxBorderMode: true }
+] as const) {
+  test(`真实MDM标签样式加载几何 ${profile.width}/${profile.theme}/${profile.boxBorderMode ? 'border' : 'shadow'}`, async ({
+    page
+  }, info) => {
+    test.setTimeout(180_000)
+    const writes: Write[] = [],
+      requests: string[] = [],
+      errors: string[] = [],
+      warnings: string[] = []
+    const held: Route[] = []
+    await prepareModuleEntry(page, writes)
+    await prepareAppearance(page, profile)
+    await page.setViewportSize({ width: profile.width, height: profile.height })
+    page.on('pageerror', (error) => errors.push(error.message))
+    page.on('console', (message) => {
+      if (
+        /maximum recursive updates|slot.+invoked outside|unhandled error during execution/i.test(
+          message.text()
+        )
+      )
+        warnings.push(message.text())
+    })
+    const scriptPath = '/src/components/core/forms/art-tag-style-select/index.vue'
+    await page.route('**/src/components/core/forms/art-tag-style-select/index.vue*', (route) => {
+      const request = route.request(),
+        url = new URL(request.url())
+      if (
+        request.resourceType() !== 'script' ||
+        url.pathname !== scriptPath ||
+        url.searchParams.has('vue')
+      )
+        return route.continue()
+      requests.push(url.pathname + url.search)
+      held.push(route)
+    })
+    try {
+      await page.goto(
+        `/tests/e2e/fixtures/form-standard-modules.html?entry=component&valid=true&theme=${profile.theme}`,
+        { waitUntil: 'domcontentloaded' }
+      )
+      await page.getByRole('button', { name: '打开真实业务入口', exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: '编辑组件类型', exact: true })
+      await expect(dialog).toBeVisible()
+      await expect(page.getByTestId('open-completions')).toHaveText('1')
+      await expect(dialog.locator('.art-dialog__viewport')).toHaveAttribute('aria-busy', 'false')
+      await assertAppearance(page, profile)
+      await expect(page.locator('html')).toHaveAttribute('data-ui-scope', 'workspace')
+      const form = dialog.locator('.art-form')
+      const tag = form.locator('[data-art-form-item-key="tagStyle"]')
+      const remark = form.locator('[data-art-form-item-key="remark"]')
+      await expect.poll(() => held.length, { timeout: 60_000 }).toBe(1)
+      await expect(form.locator('.art-async-state[aria-busy="true"]')).toHaveCount(1, {
+        timeout: 60_000
+      })
+      await expect(form.locator('.art-async-state')).toHaveCount(1)
+      await expect(tag.locator('.art-async-state[aria-busy="true"]')).toBeVisible()
+      await expect(form.locator('[data-art-form-item-key="componentTypeCode"] input')).toHaveValue(
+        'OUTER_PANEL'
+      )
+      await expect(form.locator('[data-art-form-item-key="componentTypeName"] input')).toHaveValue(
+        '验收外板'
+      )
+      await expect(remark.locator('textarea')).toHaveValue('')
+      await expect(form.locator('.el-form-item__error')).toHaveCount(0)
+      await page.addStyleTag({ path: 'tests/e2e/visual-stability.css' })
+      // Position the target once before both samples; keep the same scroll position after release.
+      await dialog.locator('.art-dialog__scrollbar > .el-scrollbar__wrap').evaluate((node) => {
+        node.scrollTop = 0
+      })
+      await tag.scrollIntoViewIfNeeded()
+      const originalForm = await form.elementHandle(),
+        originalTag = await tag.elementHandle(),
+        originalRemark = await remark.elementHandle()
+      if (!originalForm || !originalTag || !originalRemark) throw new Error('真实表单结构未挂载')
+      const settle = async () => {
+        const stable = await dialog.evaluate(async (root) => {
+          await document.fonts.ready
+          let previous = '',
+            frames = 0
+          for (let attempt = 0; attempt < 120 && frames < 6; attempt++) {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+            const current = JSON.stringify(
+              [
+                ...root.querySelectorAll(
+                  '.art-form, [data-art-form-item-key="tagStyle"], [data-art-form-item-key="remark"], .art-dialog__footer-actions'
+                )
+              ].map((node) => node.getBoundingClientRect().toJSON())
+            )
+            frames = current === previous ? frames + 1 : 0
+            previous = current
+          }
+          return frames
+        })
+        expect(stable).toBe(6)
+      }
+      await settle()
+      const loading = await sampleTagStyle(dialog, false)
+      await page.screenshot({
+        path: info.outputPath('real-mdm-tag-style-loading.png'),
+        fullPage: true,
+        animations: 'disabled'
+      })
+      const pending = held.shift()
+      if (!pending) throw new Error('标签样式脚本没有待放行请求')
+      await pending.continue()
+      await expect(tag.locator('.art-async-state')).toHaveCount(0, { timeout: 60_000 })
+      await expect(tag.locator('.art-tag-style-select')).toBeVisible()
+      await expect(
+        tag.locator('.el-select__selected-item').filter({ hasText: '主要' })
+      ).toBeVisible()
+      await expect(form.locator('.el-form-item__error')).toHaveCount(0)
+      await settle()
+      const loaded = await sampleTagStyle(dialog, true)
+      await page.screenshot({
+        path: info.outputPath('real-mdm-tag-style-loaded.png'),
+        fullPage: true,
+        animations: 'disabled'
+      })
+      const geometryPath = info.outputPath('real-mdm-tag-style-geometry.json')
+      await writeFile(
+        geometryPath,
+        JSON.stringify(
+          { profile, originalTagStyleSeed: 'primary', requests, loading, loaded },
+          null,
+          2
+        ),
+        'utf8'
+      )
+      await info.attach('real-mdm-tag-style-geometry', {
+        path: geometryPath,
+        contentType: 'application/json'
+      })
+
+      for (const [name, delta] of [
+        ['字段内容自然高度', loading.content.height - loaded.content.height],
+        ['原生FormItem内容高度', loading.nativeContent.height - loaded.nativeContent.height],
+        ['控件外框高度', loading.control.height - loaded.control.height],
+        ['控件wrapper高度', loading.wrapper.height - loaded.wrapper.height],
+        [
+          '标签到控件距离',
+          loading.control.y - loading.label.bottom - (loaded.control.y - loaded.label.bottom)
+        ],
+        [
+          '备注标签相对表单位置',
+          loading.remarkLabel.y - loading.form.y - (loaded.remarkLabel.y - loaded.form.y)
+        ],
+        ['可视操作区位置', loading.footer.y - loaded.footer.y],
+        ['滚动内容自然高度', loading.scroll.height - loaded.scroll.height],
+        ['滚动视口高度', loading.scroll.client - loaded.scroll.client]
+      ] as const)
+        expect.soft(Math.abs(delta), name).toBeLessThanOrEqual(2)
+      expect.soft(loaded.scroll.top, '保留采样滚动位置').toBe(loading.scroll.top)
+      expect(loaded.scroll.left).toBe(loading.scroll.left)
+      expect(loaded.nativeValues).toEqual(loading.nativeValues)
+      for (const state of [loading, loaded]) {
+        expect.soft(state.targetVisible.control, '截图中的标签样式控件完整可见').toBe(true)
+        expect.soft(state.targetVisible.remarkLabel, '截图中的后续备注标签可见').toBe(true)
+        expect.soft(state.footerVisible, '操作区可视').toBe(true)
+        expect(state.footerButtons.map(({ text }) => text)).toEqual(['取消', '保存更改'])
+        for (const button of state.footerButtons)
+          expect.soft(button.visible, `${button.text} 可视`).toBe(true)
+        expect.soft(state.overflow.page, '页面横向溢出').toBeLessThanOrEqual(1)
+        expect.soft(state.overflow.dialog, '弹窗横向溢出').toBeLessThanOrEqual(1)
+        expect
+          .soft(state.scroll.width - state.scroll.clientWidth, '滚动区域横向溢出')
+          .toBeLessThanOrEqual(1)
+      }
+      expect(await form.evaluate((current, original) => current === original, originalForm)).toBe(
+        true
+      )
+      expect(await tag.evaluate((current, original) => current === original, originalTag)).toBe(
+        true
+      )
+      expect(
+        await remark.evaluate((current, original) => current === original, originalRemark)
+      ).toBe(true)
+      await expect(page.getByTestId('save-result')).toHaveText('尚未保存')
+      expect(writes).toEqual([])
+      expect(requests).toHaveLength(1)
+      expect(errors).toEqual([])
+      expect(warnings).toEqual([])
+    } finally {
+      for (const pending of held.splice(0)) await pending.continue()
+    }
+  })
 }
 
 async function tabs(dialog: Locator) {

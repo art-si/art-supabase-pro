@@ -120,6 +120,7 @@
   import type { AppRouteRecord } from '@/types/router'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import TreeUtils from '@/utils/tree'
@@ -162,6 +163,7 @@
   const treeRef = ref<InstanceType<typeof ElTree>>()
   const loadError = ref(false)
   const menuTreeLoader = shallowRef<(() => Promise<AppRouteRecord[]>) | undefined>()
+  const menuTreeSession = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const tree = reactive<TreeState>({
     keyword: '',
     loading: false,
@@ -283,18 +285,27 @@
   }
 
   const loadMenuTree = async (): Promise<void> => {
-    if (!menuTreeLoader.value) return
+    const loader = menuTreeLoader.value
+    if (!unref(dialogRef.value?.visible)) return
+    const request = menuTreeSession.invalidate()
+    if (!loader) {
+      await nextTick()
+      if (menuTreeSession.isCurrent(request)) treeRef.value?.filter(tree.keyword)
+      return
+    }
     loadError.value = false
     dialogRef.value?.setLoading(true)
     try {
-      tree.data = cloneDeep(await menuTreeLoader.value())
+      const result = await loader()
+      if (!menuTreeSession.isCurrent(request)) return
+      tree.data = cloneDeep(result)
       tree.expandedKeys = tree.data.map(getNodeKey).filter((item): item is string => !!item)
       await nextTick()
-      treeRef.value?.filter(tree.keyword)
+      if (menuTreeSession.isCurrent(request)) treeRef.value?.filter(tree.keyword)
     } catch {
-      loadError.value = true
+      if (menuTreeSession.isCurrent(request)) loadError.value = true
     } finally {
-      dialogRef.value?.setLoading(false)
+      if (menuTreeSession.isCurrent(request)) dialogRef.value?.setLoading(false)
     }
   }
 
@@ -302,6 +313,7 @@
     menuTree: AppRouteRecord[],
     loadTree?: () => Promise<AppRouteRecord[]>
   ): Promise<void> => {
+    menuTreeSession.invalidate()
     tree.keyword = ''
     tree.loading = false
     loadError.value = false
@@ -317,11 +329,12 @@
       showFooter: false,
       loading: Boolean(menuTreeLoader.value),
       loadingText: '正在加载菜单层级…',
-      onOpen: async () => {
-        await Promise.all([nextTick(), loadMenuTree()])
-        treeRef.value?.filter(tree.keyword)
+      onOpen: loadMenuTree,
+      onClose: () => {
+        menuTreeSession.invalidate()
       },
       onReset: () => {
+        menuTreeSession.invalidate()
         tree.keyword = ''
         tree.data = []
         tree.expandedKeys = []

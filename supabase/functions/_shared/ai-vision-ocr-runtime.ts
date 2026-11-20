@@ -1,3 +1,4 @@
+import { normalizeAiInteger } from './ai-runtime-config-policy.ts'
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { resolveAiProviderEndpoints, type AiProviderEndpoint } from './ai-provider-endpoints.ts'
@@ -5,6 +6,7 @@ import { extractAiProviderJson, extractAiProviderText } from './ai-provider-json
 import { loadAiRuntimeConfig } from './ai-runtime-config.ts'
 import { loadPublishedAiPrompt } from './ai-prompt-template.ts'
 import { normalizeOcrRawText } from './ai-ocr-text.ts'
+import { isOcrRecord } from './ai-ocr-values.ts'
 
 export interface VisionOcrReviewRequest {
   action?: 'analyze' | 'review'
@@ -25,6 +27,7 @@ export interface VisionOcrNormalizedResult {
 
 export interface VisionOcrRuntimeContext<TInput, TResult extends VisionOcrNormalizedResult> {
   admin: SupabaseClient
+  userClient: SupabaseClient
   appUser: { tenant_id: string; user_email: string }
   userId: string
   input: TInput
@@ -59,7 +62,10 @@ export interface VisionOcrConfig<TInput, TResult extends VisionOcrNormalizedResu
   defaultPrompt: string
   expectedShape: Record<string, unknown>
   defaultMaxTokens?: number
-  modelRequestOptions?: (endpoint: AiProviderEndpoint, model: string) => {
+  modelRequestOptions?: (
+    endpoint: AiProviderEndpoint,
+    model: string
+  ) => {
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'max'
     chat_template_kwargs?: { enable_thinking?: boolean }
   }
@@ -98,7 +104,8 @@ export interface VisionOcrConfig<TInput, TResult extends VisionOcrNormalizedResu
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-art-tenant-scope',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-art-tenant-scope',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 }
 
@@ -116,10 +123,6 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
 function stringValue(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim()
@@ -131,11 +134,6 @@ function isUuid(value: string | null): value is string {
     value &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
   )
-}
-
-function integerValue(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.trunc(parsed))) : fallback
 }
 
 async function loadImageDataUrl(url: string): Promise<string | null> {
@@ -270,7 +268,7 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
           !isUuid(artifactId) ||
           body.outcome !== 'applied' ||
           !isUuid(entityId) ||
-          !isRecord(body.finalPayload)
+          !isOcrRecord(body.finalPayload)
         ) {
           return json({ code: 'invalid_input', message: 'AI 质量反馈参数无效' }, 400)
         }
@@ -304,7 +302,7 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
 
         const finalPayload = body.finalPayload
         const comparison = config.compare(
-          isRecord(artifact.proposed_payload) ? artifact.proposed_payload : {},
+          isOcrRecord(artifact.proposed_payload) ? artifact.proposed_payload : {},
           finalPayload
         )
         const { data: reviewed, error: reviewError } = await admin
@@ -338,10 +336,13 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
 
       const imageUrls = (Array.isArray(body.imageUrls) ? body.imageUrls : [])
         .map(stringValue)
-        .filter((item): item is string => Boolean(
-          item && item.length <= 500 &&
-          (config.imageInputMode === 'private_path' || /^https?:\/\//i.test(item))
-        ))
+        .filter((item): item is string =>
+          Boolean(
+            item &&
+            item.length <= 500 &&
+            (config.imageInputMode === 'private_path' || /^https?:\/\//i.test(item))
+          )
+        )
         .slice(0, 3)
       if (!imageUrls.length) {
         return json({ code: 'invalid_input', message: config.labels.invalidImages }, 400)
@@ -371,22 +372,27 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
         model,
         visionModel: model,
         fallbackModel: Deno.env.get(`AI_${config.envPrefix}_FALLBACK_MODEL`) || null,
-        timeoutMs: integerValue(
+        timeoutMs: normalizeAiInteger(
           Deno.env.get(`AI_${config.envPrefix}_TIMEOUT_MS`),
           60_000,
           10_000,
           120_000
         ),
-        maxRetries: integerValue(Deno.env.get(`AI_${config.envPrefix}_MAX_RETRIES`), 0, 0, 2),
+        maxRetries: normalizeAiInteger(Deno.env.get(`AI_${config.envPrefix}_MAX_RETRIES`), 0, 0, 2),
         temperature: 0,
         maxTokens: config.defaultMaxTokens ?? 1400,
-        rateLimitPerMinute: integerValue(
+        rateLimitPerMinute: normalizeAiInteger(
           Deno.env.get(`AI_${config.envPrefix}_PER_MINUTE`),
           6,
           1,
           60
         ),
-        rateLimitPerDay: integerValue(Deno.env.get(`AI_${config.envPrefix}_PER_DAY`), 100, 1, 5000),
+        rateLimitPerDay: normalizeAiInteger(
+          Deno.env.get(`AI_${config.envPrefix}_PER_DAY`),
+          100,
+          1,
+          5000
+        ),
         promptVersion: 'v1'
       })
       if (!runtimeConfig.enabled) {
@@ -509,7 +515,11 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
       const userContent = [
         {
           type: 'text',
-          text: JSON.stringify({ context: inputMetadata, expectedShape: config.expectedShape }, null, 2)
+          text: JSON.stringify(
+            { context: inputMetadata, expectedShape: config.expectedShape },
+            null,
+            2
+          )
         },
         ...providerImageUrls.map((url) => ({ type: 'image_url', image_url: { url } }))
       ]
@@ -653,6 +663,7 @@ export function createVisionOcrHandler<TInput, TResult extends VisionOcrNormaliz
       const proposedPayload = config.proposedPayload(result)
       const runtimeContext = {
         admin,
+        userClient,
         appUser,
         userId: user.id,
         input,

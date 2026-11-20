@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { formStandardDictionaries } from './fixtures/form-standard-modules-data'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.setTimeout(120_000)
@@ -11,6 +12,173 @@ const organizationId = '66666666-6666-4666-8666-666666666666'
 const positionId = '77777777-7777-4777-8777-777777777777'
 const common = { id: recordId, tenantId, status: 'draft' }
 const employee = { id: employeeId, tenantId, name: '验收员工', code: 'EMP-001' }
+
+test('合规延迟读取只回填当前操作，当前失败可以重新加载', async ({ page }, info) => {
+  await prepareIsolatedSession(page)
+  const ids = {
+    a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+    b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2'
+  }
+  await page.addInitScript(
+    ({ id, contractTypes }) => {
+      window.formsMigrationInput = {
+        args: ['contract', 'resolve', id],
+        dicts: { hrContractType: contractTypes }
+      }
+    },
+    { id: ids.a, contractTypes: formStandardDictionaries.hrContractType }
+  )
+  const writes: string[] = []
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  for (const scenario of [
+    { oldFails: false, currentReady: false, crossEntity: false },
+    { oldFails: false, currentReady: true, crossEntity: false },
+    { oldFails: true, currentReady: false, crossEntity: false },
+    { oldFails: true, currentReady: true, crossEntity: false },
+    { oldFails: false, currentReady: true, crossEntity: true }
+  ]) {
+    const oldGate = Promise.withResolvers<void>()
+    const currentGate = Promise.withResolvers<void>()
+    const pending = { a: 0, b: 0 }
+    let currentFailure = false
+    await page.route('**/rest/v1/**', async (route) => {
+      const request = route.request()
+      const name = new URL(request.url()).pathname.split('/').at(-1) ?? ''
+      if (request.method() !== 'GET' && /^hr_(?!(?:get|list)_)/.test(name)) writes.push(name)
+      if (name !== 'hr_get_compliance_detail_secure') return route.fulfill({ json: [] })
+      const payload = request.postDataJSON()
+      const key = payload.p_id === ids.a ? 'a' : 'b'
+      pending[key]++
+      await (key === 'a' ? oldGate.promise : currentGate.promise)
+      if ((key === 'a' && scenario.oldFails) || (key === 'b' && currentFailure))
+        return route.fulfill({
+          status: 503,
+          json: { code: 'XX000', message: key === 'a' ? '旧合规读取失败' : '当前合规读取失败' }
+        })
+      const employee: Api.Hr.ComplianceReference = {
+        id: employeeId,
+        employeeNo: key === 'a' ? 'EMP-OLD-A' : 'EMP-CURRENT-B',
+        employeeName: key === 'a' ? '旧员工甲' : '当前员工乙'
+      }
+      const record: Api.Hr.ComplianceContract | Api.Hr.ComplianceQualification =
+        payload.p_kind === 'qualification'
+          ? {
+              id: ids[key],
+              tenantId,
+              employeeId,
+              employee,
+              qualificationType: 'professional',
+              qualificationName: '当前资质乙',
+              certificateNo: 'CERT-CURRENT-B',
+              status: 'active',
+              reminderDays: 30,
+              verificationStatus: 'verified'
+            }
+          : {
+              id: ids[key],
+              tenantId,
+              employeeId,
+              employee,
+              contractNo: key === 'a' ? 'CONTRACT-OLD-A' : 'CONTRACT-CURRENT-B',
+              contractType: 'fixed_term',
+              contractStatus: key === 'a' ? 'active' : 'renewing',
+              startDate: '2026-01-01',
+              endDate: '2026-12-31',
+              renewalReminderDays: 30,
+              renewalDecision: key === 'a' ? 'not_started' : 'pending'
+            }
+      return route.fulfill({ json: record })
+    })
+    await page.goto(
+      '/tests/e2e/fixtures/forms-migration-business.html?deferred=1&entry=' +
+        encodeURIComponent(
+          'modules/art-supabase-hr/src/views/personnel/compliance/modules/compliance-action-dialog.vue'
+        )
+    )
+    await expect.poll(() => pending.a).toBe(1)
+    const currentEntity = scenario.crossEntity ? 'qualification' : 'contract'
+    await page.evaluate(
+      ({ entity, id }) => {
+        window.formsMigrationInput!.args = [entity, 'resolve', id]
+      },
+      { entity: currentEntity, id: ids.b }
+    )
+    // 模拟父组件的真实 handleOpenDeferred 上下文重开，不绕过业务输入或提交权限。
+    await page.getByTestId('open-entry').evaluate((button: HTMLButtonElement) => button.click())
+    await expect.poll(() => pending.b).toBe(1)
+    const dialog = page
+      .getByRole('dialog')
+      .filter({ has: page.locator('.compliance-action-dialog') })
+    const mask = dialog.locator('.art-overlay-loading')
+    const subject = dialog.locator('.compliance-action-dialog__subject strong')
+    const contractNo = dialog.locator('[data-art-form-item-key="contractNo"] input')
+    const expectedSubject = scenario.crossEntity ? '当前资质乙' : 'CONTRACT-CURRENT-B'
+    const expectedConfirm = scenario.crossEntity ? '添加说明' : '创建续签合同'
+    if (scenario.currentReady) {
+      currentGate.resolve()
+      await expect(page.getByTestId('open-completions')).toHaveText('1')
+      await expect(mask).toBeHidden()
+      await expect(subject).toHaveText(expectedSubject)
+      if (!scenario.crossEntity) {
+        await expect(contractNo).toBeEditable()
+        await contractNo.fill('CURRENT-NEW-CONTRACT-B')
+      }
+    }
+    oldGate.resolve()
+    await expect(page.getByTestId('open-completions')).toHaveText(scenario.currentReady ? '2' : '1')
+    expect.soft(await mask.isVisible(), '旧档案读取不改变当前加载状态').toBe(!scenario.currentReady)
+    expect
+      .soft(await dialog.locator('.el-alert--error').count(), '旧失败不覆盖当前错误状态')
+      .toBe(0)
+    expect
+      .soft(await subject.textContent(), '旧档案不得成为当前操作对象')
+      .not.toContain('CONTRACT-OLD-A')
+    if (scenario.currentReady && !scenario.crossEntity) {
+      expect.soft(await contractNo.count(), '当前续签字段仍然存在').toBe(1)
+      if (await contractNo.count())
+        await expect.soft(contractNo).toHaveValue('CURRENT-NEW-CONTRACT-B')
+    }
+    if (!scenario.currentReady) {
+      currentGate.resolve()
+      await expect(page.getByTestId('open-completions')).toHaveText('2')
+    }
+    await expect(mask).toBeHidden()
+    await expect.soft(subject).toHaveText(expectedSubject)
+    if (!scenario.crossEntity)
+      await expect(dialog.locator('[data-art-form-item-key="contractType"]')).toContainText(
+        '固定期限'
+      )
+    await expect
+      .soft(dialog.getByRole('button', { name: expectedConfirm, exact: true }))
+      .toHaveCount(1)
+    await page.screenshot({
+      path: info.outputPath(
+        `compliance-read-${scenario.oldFails ? 'old-error' : 'old-success'}-${scenario.currentReady ? 'ready' : 'pending'}-${currentEntity}.png`
+      ),
+      animations: 'disabled'
+    })
+    if (scenario.oldFails && scenario.currentReady) {
+      currentFailure = true
+      await page.getByTestId('open-entry').evaluate((button: HTMLButtonElement) => button.click())
+      await expect(page.getByTestId('open-completions')).toHaveText('3')
+      await expect(dialog.locator('.el-alert--error')).toBeVisible()
+      await expect(mask).toBeHidden()
+      currentFailure = false
+      await dialog.getByRole('button', { name: '重新加载', exact: true }).click()
+      await expect(dialog.locator('.el-alert--error')).toHaveCount(0)
+      await expect(mask).toBeHidden()
+      await expect(subject).toHaveText(expectedSubject)
+      await expect(dialog.getByRole('button', { name: expectedConfirm, exact: true })).toBeEnabled()
+    }
+    await dialog.getByRole('button', { name: /^关闭(弹窗|抽屉)$/ }).click()
+    await expect(dialog).toBeHidden()
+    expect(await page.getByTestId('successes').textContent()).toBe('0')
+  }
+  expect(writes).toEqual([])
+  expect(errors).toEqual([])
+})
+
 const compensationItems = [1, 2, 3].map((index) => ({
   componentId: '88888888-8888-4888-8888-88888888888' + index,
   componentCode: 'COMP-' + index,

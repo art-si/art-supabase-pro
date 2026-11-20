@@ -1,6 +1,7 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Route } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
 import { expectCompactOverlayLabel } from './support/overlay-label-layout'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 import {
   formStandardDictionaries,
   formStandardCompensationPlan
@@ -16,13 +17,18 @@ async function openFixture(
   page: Page,
   entry: string,
   query: Record<string, string> = {},
-  profile?: object
+  profile?: object,
+  intercept?: (route: Route) => Promise<boolean>
 ) {
-  await prepareIsolatedSession(page)
+  await prepareIsolatedSession(
+    page,
+    query.ordinary === 'true' ? { tenantId, platformSuper: false } : undefined
+  )
   const writes: string[] = []
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.route('**/rest/v1/**', async (route) => {
+    if (await intercept?.(route)) return
     const request = route.request()
     const url = new URL(request.url())
     if (
@@ -410,3 +416,316 @@ test('HR工单分派普通字段配置保留必填校验', async ({ page }, info
   expect(writes).toEqual([])
   expect(errors).toEqual([])
 })
+
+for (const feature of [
+  {
+    entry: 'mdm-inventory-policy',
+    title: '配置呆滞库存口径',
+    readPath: '/rest/v1/wms_inventory_policy',
+    writePath: '/rest/v1/wms_inventory_policy',
+    conflict: 'tenant_id',
+    errorTitle: '库存口径加载失败'
+  },
+  {
+    entry: 'mdm-package-placement',
+    title: '垛包落位',
+    readPath: '/rest/v1/mdm_warehouse_bin',
+    writePath: '/rest/v1/wms_package_placement',
+    conflict: 'tenant_id,pack_id',
+    errorTitle: '库位加载失败'
+  }
+] as const) {
+  for (const outcome of ['success', 'error'] as const) {
+    test(`${feature.entry} 同键重开隔离旧${outcome}加载并保留当前编辑与重试`, async ({
+      page
+    }, info) => {
+      const policy = feature.entry === 'mdm-inventory-policy'
+      const narrow = info.project.name === 'mobile-390'
+      const appearance = {
+        theme: narrow ? ('dark' as const) : ('light' as const),
+        boxBorderMode: !narrow
+      }
+      await prepareAppearance(page, appearance)
+      await page.setViewportSize({ width: narrow ? 390 : 1440, height: narrow ? 844 : 900 })
+      const gates = Array.from({ length: 4 }, () => Promise.withResolvers<void>())
+      const readRequests: Array<{ path: string; query: Record<string, string> }> = []
+      const mutations: Array<{ path: string; query: Record<string, string>; body: unknown }> = []
+      const unexpected: Array<{ method: string; path: string }> = []
+      const warehouseId = employeeId
+      const binResponses = Array.from({ length: 4 }, (_, read) =>
+        Array.from({ length: 2 }, (_, option) => ({
+          id: `44444444-4444-4444-8444-${String(read * 2 + option + 1).padStart(12, '0')}`,
+          tenant_id: tenantId,
+          warehouse_id: warehouseId,
+          zone_id: null,
+          parent_id: null,
+          bin_code: `LOAD-${read + 1}-${option + 1}`,
+          bin_name: `第${read + 1}次${option === 0 ? '候选' : '保留'}库位`,
+          bin_type: 'floor',
+          shelf_code: null,
+          level_no: null,
+          column_no: null,
+          max_weight_kg: null,
+          max_area_sqm: null,
+          max_quantity: null,
+          fixed_material_id: null,
+          allow_mix: false,
+          supports_serial: false,
+          status: 'available',
+          sort: option,
+          remark: null
+        }))
+      )
+      const expectedReadQuery = policy
+        ? { select: 'stale_days,auto_reserve_on_release', tenant_id: `eq.${tenantId}` }
+        : { select: '*', warehouse_id: `eq.${warehouseId}`, order: 'sort.asc,bin_code.asc' }
+      try {
+        const { writes, errors } = await openFixture(
+          page,
+          feature.entry,
+          { ordinary: 'true', theme: appearance.theme },
+          undefined,
+          async (route) => {
+            const request = route.request()
+            const url = new URL(request.url())
+            if (request.method() === 'GET' && url.pathname === feature.readPath) {
+              const read =
+                readRequests.push({
+                  path: url.pathname,
+                  query: Object.fromEntries(url.searchParams)
+                }) - 1
+              const gate = gates[read]
+              if (!gate) {
+                unexpected.push({ method: request.method(), path: url.pathname })
+                await route.fulfill({
+                  status: 500,
+                  json: { code: 'P0001', message: '隔离测试收到额外加载请求' }
+                })
+                return true
+              }
+              await gate.promise
+              await route.fulfill(
+                outcome === 'error' && (read === 0 || read === 2)
+                  ? {
+                      status: 403,
+                      json: { code: '42501', message: '本次仓储配置读取暂未完成，请重试' }
+                    }
+                  : {
+                      json: policy
+                        ? { stale_days: (read + 1) * 111, auto_reserve_on_release: read % 2 === 1 }
+                        : binResponses[read]
+                    }
+              )
+              return true
+            }
+            if (request.method() === 'POST' && url.pathname === feature.writePath) {
+              mutations.push({
+                path: url.pathname,
+                query: Object.fromEntries(url.searchParams),
+                body: request.postDataJSON()
+              })
+              await route.fulfill({
+                json: policy ? [{ tenant_id: tenantId }] : [{ id: warehouseId }]
+              })
+              return true
+            }
+            if (request.method() === 'POST' && url.pathname === '/rest/v1/rpc/current_is_super') {
+              await route.fulfill({ json: false })
+              return true
+            }
+            if (
+              request.method() === 'POST' &&
+              url.pathname === '/rest/v1/rpc/get_table_column_runtime'
+            ) {
+              await route.fulfill({ json: { enabled: false, profiles: [] } })
+              return true
+            }
+            if (
+              request.method() === 'POST' &&
+              url.pathname === '/rest/v1/rpc/get_organization_list_secure'
+            ) {
+              await route.fulfill({ json: [] })
+              return true
+            }
+            if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+              unexpected.push({ method: request.method(), path: url.pathname })
+              await route.fulfill({
+                status: 403,
+                json: { code: '42501', message: '隔离测试已阻止未预期的写请求' }
+              })
+              return true
+            }
+            return false
+          }
+        )
+        const dialog = page.getByRole('dialog', { name: feature.title, exact: true })
+        const viewport = dialog.locator('.art-dialog__viewport')
+        const content = dialog.locator('.art-dialog__content')
+        const days = dialog.locator('[data-art-form-item-key="staleDays"] input')
+        const reserve = dialog.locator(
+          '[data-art-form-item-key="autoReserveOnRelease"] [role="switch"]'
+        )
+        const selection = dialog.locator('[data-art-form-item-key="binId"] .el-select')
+        const primary = policy
+          ? days
+          : dialog.locator('[data-art-form-item-key="binId"] input').first()
+        await assertAppearance(page, appearance)
+        await expect(page.locator('html')).toHaveAttribute('data-ui-scope', 'workspace')
+        await expect(page.locator('html')).toHaveAttribute('data-platform-super', 'false')
+        await expect(dialog).toBeVisible({ timeout: 60_000 })
+        await expect.poll(() => readRequests.length).toBe(1)
+        await expect(viewport).toHaveAttribute('aria-busy', 'true')
+        await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
+        await expect(dialog).toBeHidden()
+        await page.getByRole('button', { name: '打开真实业务入口', exact: true }).click()
+        await expect.poll(() => readRequests.length).toBe(2)
+        await expect(dialog).toBeVisible()
+        await expect(viewport).toHaveAttribute('aria-busy', 'true')
+        const waitingValue = await primary.inputValue()
+        const waitingReserve = policy ? await reserve.isChecked() : false
+        gates[0].resolve()
+        await expect(page.getByTestId('open-completions')).toHaveText('1')
+        await expect.soft(viewport).toHaveAttribute('aria-busy', 'true')
+        await expect.soft(content).toHaveJSProperty('inert', true)
+        await expect.soft(dialog.locator('.art-overlay-loading')).toHaveCount(1)
+        await expect.soft(dialog.locator('.el-alert')).toHaveCount(0)
+        expect.soft(await primary.inputValue()).toBe(waitingValue)
+        if (policy) expect.soft(await reserve.isChecked()).toBe(waitingReserve)
+        expect
+          .soft(
+            await primary.evaluate((element: HTMLElement) => {
+              element.focus()
+              return document.activeElement === element
+            })
+          )
+          .toBe(false)
+        gates[1].resolve()
+        await expect(page.getByTestId('open-completions')).toHaveText('2')
+        await expect(viewport).toHaveAttribute('aria-busy', 'false')
+        await expect.soft(dialog.locator('.el-alert')).toHaveCount(0)
+        if (policy) await expect(days).toHaveValue('222')
+        else {
+          await selection.click()
+          await page
+            .getByRole('option', {
+              name: `${binResponses[1][0].bin_code} · ${binResponses[1][0].bin_name}`,
+              exact: true
+            })
+            .click()
+        }
+        await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
+        await expect(dialog).toBeHidden()
+        await page.getByRole('button', { name: '打开真实业务入口', exact: true }).click()
+        await expect.poll(() => readRequests.length).toBe(3)
+        if (outcome === 'success') {
+          await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click()
+          await expect(dialog).toBeHidden()
+          await page.getByRole('button', { name: '打开真实业务入口', exact: true }).click()
+          await expect.poll(() => readRequests.length).toBe(4)
+          gates[3].resolve()
+          await expect(page.getByTestId('open-completions')).toHaveText('3')
+        } else {
+          gates[2].resolve()
+          await expect(page.getByTestId('open-completions')).toHaveText('3')
+          await expect(viewport).toHaveAttribute('aria-busy', 'false')
+          await expect(dialog.getByText(feature.errorTitle, { exact: true })).toBeVisible()
+          await dialog.getByRole('button', { name: '确定', exact: true }).click()
+          await expect(dialog.getByRole('button', { name: '确定', exact: true })).toBeEnabled()
+          expect(mutations).toEqual([])
+          await dialog.getByRole('button', { name: '重新加载', exact: true }).click()
+          await expect.poll(() => readRequests.length).toBe(4)
+          await expect(viewport).toHaveAttribute('aria-busy', 'true')
+          gates[3].resolve()
+        }
+        await expect(viewport).toHaveAttribute('aria-busy', 'false')
+        await expect(dialog.locator('.el-alert')).toHaveCount(0)
+        if (policy) {
+          await expect(days).toHaveValue('444')
+          await days.fill('445')
+          await days.blur()
+          await expect(reserve).toBeChecked()
+          await dialog.locator('[data-art-form-item-key="autoReserveOnRelease"] .el-switch').click()
+          await expect(reserve).not.toBeChecked()
+        } else {
+          await selection.click()
+          await page
+            .getByRole('option', {
+              name: `${binResponses[3][1].bin_code} · ${binResponses[3][1].bin_name}`,
+              exact: true
+            })
+            .click()
+        }
+        if (outcome === 'success') {
+          gates[2].resolve()
+          await expect(page.getByTestId('open-completions')).toHaveText('4')
+          await expect.soft(viewport).toHaveAttribute('aria-busy', 'false')
+          await expect.soft(dialog.locator('.el-alert')).toHaveCount(0)
+          if (policy) {
+            await expect.soft(days).toHaveValue('445')
+            await expect.soft(reserve).not.toBeChecked()
+          } else {
+            await selection.click()
+            await expect
+              .soft(
+                page.getByRole('option', {
+                  name: `${binResponses[3][1].bin_code} · ${binResponses[3][1].bin_name}`,
+                  exact: true
+                })
+              )
+              .toBeVisible()
+            await expect
+              .soft(
+                page.getByRole('option', {
+                  name: `${binResponses[2][0].bin_code} · ${binResponses[2][0].bin_name}`,
+                  exact: true
+                })
+              )
+              .toHaveCount(0)
+            await page.keyboard.press('Escape')
+            await expect
+              .soft(
+                selection.getByText(
+                  `${binResponses[3][1].bin_code} · ${binResponses[3][1].bin_name}`,
+                  { exact: true }
+                )
+              )
+              .toBeVisible()
+          }
+        }
+        await page.screenshot({
+          path: info.outputPath(
+            `${feature.entry}-${outcome}-${narrow ? 'dark390' : 'light1440'}.png`
+          )
+        })
+        await dialog.getByRole('button', { name: '确定', exact: true }).click()
+        await expect(page.getByTestId('save-result')).toHaveText('已保存')
+        await expect(dialog).toBeHidden()
+        expect(mutations).toEqual([
+          {
+            path: feature.writePath,
+            query: { on_conflict: feature.conflict, select: policy ? 'tenant_id' : 'id' },
+            body: policy
+              ? { tenant_id: tenantId, stale_days: 445, auto_reserve_on_release: false }
+              : {
+                  tenant_id: tenantId,
+                  pack_id: warehouseId,
+                  warehouse_id: warehouseId,
+                  bin_id: binResponses[3][1].id
+                }
+          }
+        ])
+        expect(readRequests).toEqual(
+          Array.from({ length: 4 }, () => ({ path: feature.readPath, query: expectedReadQuery }))
+        )
+        expect(unexpected).toEqual([])
+        expect(writes).toEqual([])
+        expect(errors).toEqual([])
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+        ).toBeLessThanOrEqual(1)
+      } finally {
+        gates.forEach((gate) => gate.resolve())
+      }
+    })
+  }
+}

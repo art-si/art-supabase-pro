@@ -1,5 +1,6 @@
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import {
+  normalizeAiInteger,
   disableAiRuntimeConfig,
   type AiRuntimeConfig
 } from './ai-runtime-config-policy.ts'
@@ -21,12 +22,6 @@ interface AiFeatureConfigRow {
   rate_limit_per_minute: number
   rate_limit_per_day: number
   prompt_version: string
-}
-
-function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.min(max, Math.max(min, Math.trunc(parsed)))
 }
 
 function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
@@ -83,17 +78,17 @@ export async function loadAiRuntimeConfig(
     model: optionalText(row.model) ?? defaults.model,
     visionModel: optionalText(row.vision_model),
     fallbackModel: optionalText(row.fallback_model),
-    timeoutMs: clampInteger(row.timeout_ms, defaults.timeoutMs, 5000, 120000),
-    maxRetries: clampInteger(row.max_retries, defaults.maxRetries, 0, 2),
+    timeoutMs: normalizeAiInteger(row.timeout_ms, defaults.timeoutMs, 5000, 120000),
+    maxRetries: normalizeAiInteger(row.max_retries, defaults.maxRetries, 0, 2),
     temperature: clampNumber(row.temperature, defaults.temperature, 0, 2),
-    maxTokens: clampInteger(row.max_tokens, defaults.maxTokens, 100, 4096),
-    rateLimitPerMinute: clampInteger(
+    maxTokens: normalizeAiInteger(row.max_tokens, defaults.maxTokens, 100, 4096),
+    rateLimitPerMinute: normalizeAiInteger(
       row.rate_limit_per_minute,
       defaults.rateLimitPerMinute,
       1,
       60
     ),
-    rateLimitPerDay: clampInteger(row.rate_limit_per_day, defaults.rateLimitPerDay, 1, 5000),
+    rateLimitPerDay: normalizeAiInteger(row.rate_limit_per_day, defaults.rateLimitPerDay, 1, 5000),
     promptVersion: optionalText(row.prompt_version) ?? defaults.promptVersion
   }
 }

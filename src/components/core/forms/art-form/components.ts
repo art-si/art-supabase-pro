@@ -19,18 +19,10 @@ import {
   ElTimeSelect,
   ElTreeSelect
 } from 'element-plus'
-import ArtCascader from '@/components/core/forms/art-cascader/index.vue'
-import ArtIconPicker from '@/components/core/forms/art-icon-picker/index.vue'
-import ArtTagStyleSelect from '@/components/core/forms/art-tag-style-select/index.vue'
-import ArtDataSelect from '@/components/core/forms/art-data-select/index.vue'
-import ArtUserSelect from '@/components/core/forms/art-user-select/index.vue'
-import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
-import ArtUploadFile from '@/components/core/forms/art-upload-file/index.vue'
-import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
-import ArtSignaturePad from '@/components/core/forms/art-signature-pad/index.vue'
+import type { Component } from 'vue'
+import type { ArtComponentType } from './component-loaders'
 
-// Custom-layout forms do not need these controls or their styles. ArtForm loads this
-// registry only when its schema contains a field that uses a preset component.
+// Keep native aliases in one loading unit; business controls have separate loaders.
 const componentMap = {
   input: ElInput,
   autocomplete: ElAutocomplete,
@@ -39,7 +31,6 @@ const componentMap = {
   number: ElInputNumber,
   select: ElSelect,
   selectV2: ElSelectV2,
-  tagStyleSelect: ArtTagStyleSelect,
   segment: ElSegmented,
   switch: ElSwitch,
   colorPicker: ElColorPicker,
@@ -53,18 +44,16 @@ const componentMap = {
   monthrange: ElDatePicker,
   rate: ElRate,
   slider: ElSlider,
-  cascader: ArtCascader,
   timePicker: ElTimePicker,
   timeSelect: ElTimeSelect,
-  treeSelect: ElTreeSelect,
-  iconPicker: ArtIconPicker,
-  dataSelect: ArtDataSelect,
-  userSelect: ArtUserSelect,
-  employeeSelect: ArtEmployeeSelect,
-  uploadFile: ArtUploadFile,
-  uploadImage: ArtUploadImage,
-  signature: ArtSignaturePad
+  treeSelect: ElTreeSelect
 }
 
-export type ComponentMap = typeof componentMap
+const isNativeComponentType = (type: string): type is keyof typeof componentMap =>
+  Object.hasOwn(componentMap, type)
+
+export const resolveNativeComponent = (type: string): Component =>
+  componentMap[isNativeComponentType(type) ? type : 'input']
+
+export type ComponentMap = typeof componentMap & Record<ArtComponentType, Component>
 export default componentMap

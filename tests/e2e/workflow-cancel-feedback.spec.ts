@@ -1,9 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { assertAppearance, prepareAppearance } from './support/appearance'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
 test('终止原因校验与服务拒绝分别给出一次反馈', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
+  await prepareAppearance(page, { theme: 'light', boxBorderMode: true })
   await page.addInitScript(() => {
     localStorage.setItem(
       'sb-ckbftoopuyophiebamwy-auth-token',
@@ -34,6 +36,77 @@ test('终止原因校验与服务拒绝分别给出一次反馈', async ({ page 
   await page.getByRole('button', { name: '打开终止审批弹窗' }).click()
   const dialog = page.getByRole('dialog', { name: '终止审批流程' })
   await expect(dialog).toBeVisible()
+  const target = dialog.locator('.workflow-cancel__summary small')
+  await expect(target).toHaveText(
+    '华东物流园区仓储设备年度维护与安全升级采购申请 CGSQ-2026-1108-017'
+  )
+  await expect(dialog.getByRole('textbox', { name: '终止原因' })).toBeEditable()
+  for (const appearance of [
+    { width: 390, theme: 'dark', boxBorderMode: false },
+    { width: 320, theme: 'light', boxBorderMode: true },
+    { width: 1440, theme: 'light', boxBorderMode: true }
+  ] as const) {
+    await page.setViewportSize({ width: appearance.width, height: 900 })
+    await page.emulateMedia({ colorScheme: appearance.theme })
+    await page.evaluate(async (appearance) => {
+      const { useTheme }: typeof import('../../src/hooks/core/useTheme') = await import(
+        new URL('/src/hooks/core/useTheme.ts', location.origin).href
+      )
+      const { SystemThemeEnum }: typeof import('../../src/enums/app-enum') = await import(
+        new URL('/src/enums/app-enum.ts', location.origin).href
+      )
+      const { useSettingStore }: typeof import('../../src/store/modules/setting') = await import(
+        new URL('/src/store/modules/setting.ts', location.origin).href
+      )
+      useTheme().switchThemeStyles(
+        appearance.theme === 'dark' ? SystemThemeEnum.DARK : SystemThemeEnum.LIGHT
+      )
+      useSettingStore().boxBorderMode = appearance.boxBorderMode
+      document.documentElement.dataset.boxMode = appearance.boxBorderMode
+        ? 'border-mode'
+        : 'shadow-mode'
+      await document.fonts.ready
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+    }, appearance)
+    await assertAppearance(page, appearance)
+    const geometry = await target.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      const summary = element.closest('.workflow-cancel__summary')!.getBoundingClientRect()
+      const dialog = element.closest('.art-dialog')!.getBoundingClientRect()
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      const rects = [...range.getClientRects()].filter((rect) => rect.width && rect.height)
+      return {
+        text: range.toString(),
+        lineCount: rects.length,
+        textInside:
+          rects.length > 0 &&
+          rects.every(
+            (rect) =>
+              rect.left >= bounds.left - 1 &&
+              rect.right <= bounds.right + 1 &&
+              rect.top >= bounds.top - 1 &&
+              rect.bottom <= bounds.bottom + 1
+          ),
+        summaryInside: summary.left >= dialog.left && summary.right <= dialog.right,
+        horizontalOverflow: document.documentElement.scrollWidth - innerWidth
+      }
+    })
+    await page.screenshot({
+      path: testInfo.outputPath(`cancel-target-${appearance.width}-${appearance.theme}.png`),
+      animations: 'disabled'
+    })
+    await testInfo.attach(`cancel-target-geometry-${appearance.width}`, {
+      body: JSON.stringify(geometry, null, 2),
+      contentType: 'application/json'
+    })
+    expect.soft(geometry.textInside, '终止目标标题全文在摘要内可读').toBe(true)
+    expect.soft(geometry.summaryInside, '目标摘要在弹窗内').toBe(true)
+    expect.soft(geometry.horizontalOverflow).toBeLessThanOrEqual(1)
+  }
+  expect(requests).toBe(0)
 
   await dialog.getByRole('button', { name: '确认终止' }).click()
   await expect(dialog.getByText('请填写终止原因')).toBeVisible()
@@ -58,4 +131,7 @@ test('终止原因校验与服务拒绝分别给出一次反馈', async ({ page 
     path: `.artifacts/workflow-cancel-${testInfo.project.name}-error.png`,
     animations: 'disabled'
   })
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(requests).toBe(1)
 })

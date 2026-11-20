@@ -90,11 +90,12 @@ export interface VmsVehicleDocumentOcrResponse {
 export function validateVmsVehicleDocumentOcrPayload(payload: unknown) {
   const errors: string[] = []
   if (!isOcrRecord(payload)) return { valid: false, errors: ['payload must be an object'] }
-  if (!isOcrRecord(payload.document)) {
+  const document = payload.document
+  if (!isOcrRecord(document)) {
     errors.push('document must be an object')
   } else if (
     !VMS_VEHICLE_DOCUMENT_FIELDS.some(
-      (field) => typeof payload.document[field] === 'string' && payload.document[field].trim()
+      (field) => typeof document[field] === 'string' && document[field].trim()
     )
   ) {
     errors.push('document_fields_missing')
@@ -128,8 +129,7 @@ export function normalizeVmsVehicleDocumentOcrResponse(
   }
   return {
     rawText: normalizeOcrRawText(payload.rawText),
-    summary:
-      normalizeOcrTextValue(payload.summary, 500) ?? '证照识别完成，请核对后应用。',
+    summary: normalizeOcrTextValue(payload.summary, 500) ?? '证照识别完成，请核对后应用。',
     confidence: normalizeOcrConfidence(payload.confidence),
     fieldConfidence,
     missingFields: normalizeOcrStringArray(payload.missingFields),

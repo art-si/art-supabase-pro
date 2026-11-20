@@ -1,3 +1,4 @@
+import { normalizeAiInteger } from '../_shared/ai-runtime-config-policy.ts'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
@@ -140,12 +141,6 @@ function temperatureValue(value: unknown): number | null {
 
 function booleanValue(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null
-}
-
-function integerValue(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.min(max, Math.max(min, Math.trunc(parsed)))
 }
 
 function stringArray(value: unknown): string[] {
@@ -557,11 +552,11 @@ Deno.serve(async (req) => {
       visionModel: getProviderModel(compatibleBaseUrl, true),
       fallbackModel: Deno.env.get('AI_ORDER_FALLBACK_MODEL') || null,
       timeoutMs: getProviderTimeoutMs(),
-      maxRetries: integerValue(Deno.env.get('AI_ORDER_MAX_RETRIES'), 0, 0, 2),
+      maxRetries: normalizeAiInteger(Deno.env.get('AI_ORDER_MAX_RETRIES'), 0, 0, 2),
       temperature: action === 'generate_example' ? 0.9 : 0,
       maxTokens: action === 'generate_example' ? 800 : 1200,
-      rateLimitPerMinute: integerValue(Deno.env.get('AI_ORDER_PER_MINUTE'), 6, 1, 60),
-      rateLimitPerDay: integerValue(Deno.env.get('AI_ORDER_PER_DAY'), 60, 1, 5000),
+      rateLimitPerMinute: normalizeAiInteger(Deno.env.get('AI_ORDER_PER_MINUTE'), 6, 1, 60),
+      rateLimitPerDay: normalizeAiInteger(Deno.env.get('AI_ORDER_PER_DAY'), 60, 1, 5000),
       promptVersion: 'v1'
     })
     if (!runtimeConfig.enabled) {
@@ -996,4 +991,3 @@ Deno.serve(async (req) => {
     )
   }
 })
-

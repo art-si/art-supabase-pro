@@ -1,5 +1,6 @@
 import { createApp, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { ElConfigProvider } from 'element-plus'
 import { setupGlobDirectives } from '@/directives'
 import language from '@/locales'
 import { store } from '@/store'
@@ -10,6 +11,7 @@ import '@styles/index.scss'
 
 const fixtureParams = new URLSearchParams(location.search)
 const mode = fixtureParams.get('mode')
+const appearanceEnabled = fixtureParams.has('appearance')
 const globalFocusEnabled = fixtureParams.has('global-focus')
 const { default: Page } =
   mode === 'designer'
@@ -35,6 +37,7 @@ const router = createRouter({
   history: createMemoryHistory(),
   routes: [{ path: '/:pathMatch(.*)*', component: {} }]
 })
+const renderPage = () => (mode === 'designer' ? h(Page, { definitionId: 'definition-a' }) : h(Page))
 const app = createApp({
   render: () =>
     h(
@@ -51,10 +54,24 @@ const app = createApp({
           '--art-full-height': 'calc(100vh - 48px)'
         }
       },
-      [mode === 'designer' ? h(Page, { definitionId: 'definition-a' }) : h(Page)]
+      [appearanceEnabled ? h(ElConfigProvider, { size: 'default' }, renderPage) : renderPage()]
     )
 })
 app.use(store)
+if (appearanceEnabled) {
+  const { useSettingStore } = await import('@/store/modules/setting')
+  const { initializeTheme } = await import('@/hooks/core/useTheme')
+  const settingStore = useSettingStore(store)
+  if (fixtureParams.get('appearance') === 'studio-flow') {
+    settingStore.setElementTheme('#EC4899')
+    settingStore.setCustomRadius('1')
+  }
+  initializeTheme()
+  document.documentElement.dataset.uiScope = 'workspace'
+  document.documentElement.dataset.boxMode = settingStore.boxBorderMode
+    ? 'border-mode'
+    : 'shadow-mode'
+}
 if (globalFocusEnabled) {
   setLocalGlobalFocusPreference(true)
   Object.assign(window, { setGlobalFocusPreference: setLocalGlobalFocusPreference })

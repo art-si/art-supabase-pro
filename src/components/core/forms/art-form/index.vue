@@ -23,7 +23,8 @@
       :label-position="effectiveLabelPosition"
       :disabled="$props.disabled"
       :validate-on-rule-change="$props.validateOnRuleChange"
-      v-bind="{ ...$attrs }"
+      v-bind="{ ...getNativeFormProps(), ...$attrs }"
+      :scroll-to-error="false"
       @validate="handleValidate"
       @submit.prevent="handleSubmit"
     >
@@ -83,12 +84,18 @@
                     'art-form-item__label--compact':
                       useOverlayLabelLayout && typeof item.label === 'string'
                   }"
-                  :title="enableExpand && typeof item.label === 'string' ? item.label : undefined"
+                  :title="
+                    enableExpand && typeof item.label === 'string'
+                      ? getLabelText(item.label)
+                      : undefined
+                  "
                 >
-                  <component v-if="typeof item.label !== 'string'" :is="item.label" />
+                  <span v-if="typeof item.label !== 'string'"
+                    ><component :is="item.label" />{{ props.labelSuffix }}</span
+                  >
                   <ArtTooltip
                     v-else-if="useOverlayLabelLayout"
-                    :content="item.label"
+                    :content="getLabelText(item.label)"
                     :visible="overlayLabelPreview.activeKey.value === item.key"
                     :enterable="false"
                     placement="top"
@@ -99,10 +106,10 @@
                       @mouseenter="overlayLabelPreview.showOnHover(item.key, $event)"
                       @mouseleave="overlayLabelPreview.hideOnHover(item.key)"
                     >
-                      {{ item.label }}
+                      {{ getLabelText(item.label) }}
                     </span>
                   </ArtTooltip>
-                  <span v-else>{{ item.label }}</span>
+                  <span v-else>{{ getLabelText(item.label) }}</span>
                   <ArtTooltip v-if="item.help" placement="top" effect="dark">
                     <template #content>
                       <component v-if="typeof item.help !== 'string'" :is="item.help" />
@@ -139,17 +146,28 @@
                     {{ getTextDisplayValue(item) }}
                   </span>
                   <ArtAsyncState
-                    v-else-if="!item.render && !componentMap"
+                    v-else-if="!item.render && !getComponent(item)"
+                    v-bind="getPresetFallbackBindings(item.key, String(item.type))"
                     size="compact"
                     loading-mode="skeleton"
                     :skeleton-rows="1"
-                    :min-height="36"
-                    :loading="componentsLoading"
-                    :error="componentLoadErrorMessage"
+                    :min-height="getControlSkeletonShape(item) ? 0 : 36"
+                    class="art-form-item__control-state"
                     error-title="控件加载失败"
-                    :retryable="componentLoadAttempts < 2"
-                    @retry="loadFormComponents()"
-                  />
+                  >
+                    <template v-if="getControlSkeletonShape(item)" #loading>
+                      <ArtFormControlSkeleton
+                        :shape="getControlSkeletonShape(item)"
+                        :class="normalizeClass(getProps(item).class)"
+                        :control-size="getProps(item).size"
+                        :control-style="getProps(item).style"
+                        :label="getControlSkeletonLabel(item)"
+                        :labels="getControlSkeletonLabels(item)"
+                        :option-type="getProps(item).optionType"
+                        :count="getProps(item).max"
+                      />
+                    </template>
+                  </ArtAsyncState>
                   <component
                     v-else
                     :is="getComponent(item)"
@@ -399,15 +417,11 @@
 </template>
 
 <script setup lang="ts">
-  import {
-    createReusableTemplate,
-    useAsyncState,
-    useResizeObserver,
-    useWindowSize
-  } from '@vueuse/core'
+  import { createReusableTemplate, useResizeObserver, useWindowSize } from '@vueuse/core'
   import { useI18n } from 'vue-i18n'
-  import { get, isEqual, minBy, unset } from 'lodash-es'
+  import { get, isEqual, kebabCase, minBy, omit, pick, unset } from 'lodash-es'
   import {
+    getCurrentInstance,
     inject,
     normalizeClass,
     onMounted,
@@ -418,6 +432,7 @@
     type ComponentPublicInstance,
     type h,
     type Ref,
+    type VNode,
     type VNodeChild
   } from 'vue'
   import {
@@ -428,6 +443,7 @@
     ElRadioButton,
     ElTabs,
     ElTabPane,
+    formProps,
     type DatePickerProps,
     type FormInstance,
     type FormValidateCallback,
@@ -444,13 +460,16 @@
     RefreshLeft,
     Search
   } from '@element-plus/icons-vue'
-  import { artFormFocusKey } from './focus'
+  import { artFormFocusKey, type ArtFormValidationFocusCapture } from './focus'
+  import { getScrollIntoViewOptions } from '@/utils/ui/scroll'
   import { useResponsiveTagLayout } from './use-responsive-tag-layout'
   import { useTreePickerKeyboard } from './use-tree-picker-keyboard'
   import { useQueryDateRangeKeyboard } from './use-query-date-range-keyboard'
   import { useOverlayLabelPreview } from './use-overlay-label-preview'
   import { useFieldAccessibility } from './use-field-accessibility'
   import type { ComponentMap } from './components'
+  import { usePresetComponents } from './use-preset-components'
+  import ArtFormControlSkeleton, { type ControlSkeletonShape } from './control-skeleton.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtPickerEmpty from '@/components/core/feedback/art-picker-empty/index.vue'
   import ArtOverlayLoading from '@/components/core/feedback/art-overlay-loading/index.vue'
@@ -474,36 +493,12 @@
   defineOptions({ name: 'ArtForm' })
   useTreePickerKeyboard()
 
-  const componentLoadAttempts = ref(0)
-  // A failed ES-module fetch is cached by the browser. The compiled retry entry
-  // gives one explicit retry a fresh URL without reloading or losing the model.
-  const retryComponentRegistry = import.meta.glob<{ default: ComponentMap }>('./components.ts', {
-    query: '?form-controls-retry'
-  })
   const {
-    state: componentMap,
-    isLoading: componentsLoading,
-    error: componentsError,
-    execute: loadFormComponents
-  } = useAsyncState<ComponentMap | undefined>(
-    async () => {
-      componentLoadAttempts.value++
-      const module =
-        componentLoadAttempts.value === 1
-          ? await import('./components')
-          : await retryComponentRegistry['./components.ts']()
-      return module.default
-    },
-    undefined,
-    { immediate: false, resetOnExecute: false, onError: () => undefined }
-  )
-  const componentLoadErrorMessage = computed(() =>
-    componentsError.value
-      ? componentLoadAttempts.value < 2
-        ? '表单控件加载失败，请重试'
-        : '表单控件暂时无法加载，请保留已填内容后刷新页面'
-      : null
-  )
+    getComponent: getPresetComponent,
+    getFallbackBindings: getPresetFallbackBindings,
+    controlsReady: formControlsReady,
+    pendingFields: pendingPresetFields
+  } = usePresetComponents()
 
   const dividerType = 'divider'
   const tabType = 'tab'
@@ -804,25 +799,26 @@
     collapsibleSections: true,
     sanitizeOutput: () => ({})
   })
-  const needsComponentRegistry = computed(
-    () =>
-      !props.customLayout &&
-      props.items.some(
-        (item) =>
-          item.type !== dividerType &&
-          item.type !== tabType &&
-          item.type !== textType &&
-          !item.render
-      )
+  const instance = getCurrentInstance()
+  const nativeFormPropKeys = Object.keys(
+    omit(formProps, [
+      'model',
+      'rules',
+      'labelPosition',
+      'labelWidth',
+      'disabled',
+      'validateOnRuleChange',
+      'scrollToError'
+    ])
   )
-  const formControlsReady = computed(() => !needsComponentRegistry.value || !!componentMap.value)
-  watch(
-    needsComponentRegistry,
-    (needed) => {
-      if (needed && !componentMap.value && !componentsLoading.value) void loadFormComponents()
-    },
-    { immediate: true }
-  )
+  const hasNativeFormProp = (key: string): boolean => {
+    const supplied = instance?.vnode.props ?? {}
+    return Object.hasOwn(supplied, key) || Object.hasOwn(supplied, kebabCase(key))
+  }
+  // Read presence on each render: Vue casts an omitted Boolean to false, unlike native defaults.
+  const getNativeFormProps = (): Partial<FormPropsPublic> =>
+    pick(props, nativeFormPropKeys.filter(hasNativeFormProp))
+  const getLabelText = (label: string): string => `${label}${props.labelSuffix ?? ''}`
   const overlayFocus = inject(artFormFocusKey, undefined)
   const useOverlayLabelLayout = computed(
     () => !props.enableExpand && overlayFocus?.focusMode.value && width.value >= 768
@@ -858,15 +854,16 @@
   const asyncErrorMap = shallowRef<Record<string, Error | undefined>>({})
   const optionRequestVersions: Record<string, number> = {}
   let optionsActive = true
+  const blockedOptionItems = computed(() =>
+    visibleFormItems.value.filter(
+      (item) =>
+        item.api &&
+        isOptionComponent(item) &&
+        (asyncLoadingMap.value[item.key] || !!asyncErrorMap.value[item.key])
+    )
+  )
   const hasBlockingFields = computed(
-    () =>
-      !formControlsReady.value ||
-      visibleFormItems.value.some(
-        (item) =>
-          item.api &&
-          isOptionComponent(item) &&
-          (asyncLoadingMap.value[item.key] || !!asyncErrorMap.value[item.key])
-      )
+    () => !formControlsReady.value || blockedOptionItems.value.length > 0
   )
   const readyToSubmit = computed(
     () =>
@@ -1191,12 +1188,7 @@
     return key ? results[0] : results
   }
 
-  const getProps = (item: FormItem): FormRecord => {
-    if (item.props) return item.props
-    const props: FormRecord = { ...item }
-    rootProps.forEach((key) => delete props[key])
-    return props
-  }
+  const getProps = (item: FormItem): FormRecord => item.props ?? omit({ ...item }, rootProps)
 
   const getOptions = (item: FormItem): FormRecord[] => {
     if (asyncOptionsMap.value[item.key]) return asyncOptionsMap.value[item.key]
@@ -1299,6 +1291,115 @@
 
   const isTextareaItem = (item: FormItem): boolean => {
     return String(item.type) === 'textarea' || getProps(item).type === 'textarea'
+  }
+
+  const getControlSkeletonShape = (item: FormItem): ControlSkeletonShape | undefined => {
+    if (isTextareaItem(item)) return 'textarea'
+    const controlProps = getProps(item)
+    switch (item.type) {
+      case 'checkbox':
+        return 'checkbox'
+      case 'radio':
+        return controlProps.border ||
+          Object.keys(getSlots(item)).length ||
+          getControlSkeletonLabel(item) === undefined
+          ? undefined
+          : 'radio'
+      case 'number':
+        return 'number'
+      case 'select':
+      case 'selectV2':
+      case 'treeSelect':
+      case 'tagStyleSelect':
+      case 'userSelect':
+        return controlProps.multiple || controlProps.multiple === '' ? undefined : 'select'
+      case 'cascader':
+        return get(controlProps, 'props.multiple') || getSlots(item).prefix ? undefined : 'input'
+      case 'timeSelect':
+        return 'select'
+      case 'switch':
+        return (controlProps.width !== undefined && controlProps.width !== '') ||
+          [
+            'inlinePrompt',
+            'inline-prompt',
+            'activeText',
+            'active-text',
+            'inactiveText',
+            'inactive-text',
+            'activeIcon',
+            'active-icon',
+            'inactiveIcon',
+            'inactive-icon'
+          ].some((key) => controlProps[key]) ||
+          Object.keys(getSlots(item)).length
+          ? undefined
+          : 'switch'
+      case 'rate':
+        return ['showText', 'show-text', 'showScore', 'show-score'].some((key) => controlProps[key])
+          ? undefined
+          : 'rate'
+      case 'colorPicker':
+        return 'colorPicker'
+      case 'slider':
+        return controlProps.vertical ||
+          controlProps.showInput ||
+          controlProps['show-input'] ||
+          controlProps.marks ||
+          controlProps.range
+          ? undefined
+          : 'slider'
+      case 'radioGroup':
+        return getControlSkeletonLabels(item) ? 'radio-group' : undefined
+      case 'checkboxGroup':
+        return getControlSkeletonLabels(item) ? 'checkbox-group' : undefined
+      case 'segment':
+        return getControlSkeletonLabels(item) ? 'segment' : undefined
+      default:
+        return ['input', 'autocomplete', 'date', 'timePicker', ...datePickerShortcutTypes].includes(
+          String(item.type)
+        )
+          ? 'input'
+          : undefined
+    }
+  }
+
+  const getControlSkeletonLabel = (item: FormItem): string | undefined => {
+    const label = getProps(item).label ?? getPlainTextLabel(item)
+    return typeof label === 'string' || typeof label === 'number' || typeof label === 'boolean'
+      ? String(label)
+      : undefined
+  }
+
+  const getControlSkeletonLabels = (item: FormItem): string[] | undefined => {
+    if (!['radioGroup', 'checkboxGroup', 'segment'].includes(String(item.type))) return
+    const controlProps = getProps(item)
+    if (
+      item.labelFn ||
+      item.optionComponent ||
+      Object.keys(getSlots(item)).length ||
+      controlProps.class ||
+      controlProps.style ||
+      controlProps.props ||
+      controlProps.block ||
+      controlProps.direction === 'vertical' ||
+      (controlProps.tag && controlProps.tag !== 'div')
+    )
+      return
+    const options = getOptions(item)
+    const layoutKeys = ['size', 'border', 'style', 'class', 'slots', 'ref', 'checked', 'tag']
+    if (
+      !options.length ||
+      options.some(
+        (option) =>
+          (typeof option.label !== 'string' && typeof option.label !== 'number') ||
+          (item.type === 'checkboxGroup' &&
+            controlProps.optionType === 'button' &&
+            !option.label) ||
+          layoutKeys.some((key) => option[key] !== undefined)
+      )
+    )
+      return
+    return options.map((option) => String(option.label))
   }
 
   const isDividerItem = (item: FormItem): boolean => String(item.type) === dividerType
@@ -1540,7 +1641,7 @@
     }
     // 使用 type 获取预定义组件
     const { type } = item
-    return componentMap.value?.[type as keyof ComponentMap] || componentMap.value?.input
+    return getPresetComponent(String(type))
   }
 
   /**
@@ -1754,14 +1855,35 @@
   }
   const resolveFieldItem = (prop: FormItemProp): FormItem | undefined => {
     const fieldKey = Array.isArray(prop) ? prop.join('.') : String(prop)
-    const ownerKey = resolveFieldElement(prop)?.closest<HTMLElement>('[data-art-form-item-key]')
-      ?.dataset.artFormItemKey
-    return (
-      filteredFormItems.value.find((item) => item.key === fieldKey) ??
-      filteredFormItems.value.find((item) => item.key === ownerKey)
+    const items = filteredFormItems.value
+    const field = items.find((item) => item.key === fieldKey)
+    if (field) return field
+    for (
+      let owner = resolveFieldElement(prop)?.closest<HTMLElement>('[data-art-form-item-key]');
+      owner;
+      owner = owner.parentElement?.closest<HTMLElement>('[data-art-form-item-key]')
+    ) {
+      const ownerKey = owner.dataset.artFormItemKey
+      const item = items.find((item) => item.key === ownerKey)
+      if (item) return item
+    }
+    return undefined
+  }
+  const scrollField = (prop: FormItemProp): void => {
+    resolveFieldElement(prop)?.scrollIntoView(
+      getScrollIntoViewOptions(props.scrollIntoViewOptions, {
+        behavior: 'auto',
+        block: 'start',
+        inline: 'nearest'
+      })
     )
   }
-  const revealField = async (prop: FormItemProp, scroll = true): Promise<void> => {
+  const revealField = async (
+    prop: FormItemProp,
+    scroll = true,
+    capture?: ArtFormValidationFocusCapture
+  ): Promise<void> => {
+    if (capture && !capture.isCurrent()) return
     const fieldItem = resolveFieldItem(prop)
     const tab = fieldItem ? tabStructure.value.owners.get(fieldItem.key) : undefined
     if (tab && !isOwnHidden(tab.marker)) activeTab.value = tab.marker.key
@@ -1777,15 +1899,37 @@
       collapsedSectionKeys.value = nextKeys
     }
     await nextTick()
-    if (scroll) formInstance.value?.scrollToField(prop)
+    if (scroll && (!capture || capture.isCurrent())) scrollField(prop)
   }
-  const focusField = async (prop: FormItemProp): Promise<void> => {
-    await revealField(prop, false)
+  const positionField = async (
+    prop: FormItemProp,
+    scroll: boolean,
+    capture?: ArtFormValidationFocusCapture
+  ): Promise<void> => {
+    await revealField(prop, false, capture)
+    if (capture && !capture.isCurrent()) return
     const fieldElement = resolveFieldElement(prop)
-    if (fieldElement) focusFirstInvalidFormField(shallowRef(fieldElement), '.el-form-item__content')
-    else formInstance.value?.scrollToField(prop)
+    if (fieldElement)
+      focusFirstInvalidFormField(shallowRef(fieldElement), '.el-form-item__content', {
+        scroll,
+        scrollIntoViewOptions: props.scrollIntoViewOptions
+      })
+    else if (scroll) scrollField(prop)
   }
-  const revealInvalidFields = async (fields?: FormValidateFailure['fields']): Promise<void> => {
+  const focusField = (prop: FormItemProp): Promise<void> => positionField(prop, true)
+  const shouldScrollOnValidation = (): boolean =>
+    !hasNativeFormProp('scrollToError') || props.scrollToError !== false
+  const managesValidation = (): boolean =>
+    hasTabLayout.value ||
+    props.scrollToError === true ||
+    (!!overlayFocus &&
+      ((hasNativeFormProp('scrollToError') && props.scrollToError !== undefined) ||
+        (hasNativeFormProp('scrollIntoViewOptions') && props.scrollIntoViewOptions !== undefined)))
+  const revealInvalidFields = async (
+    fields?: FormValidateFailure['fields'],
+    capture?: ArtFormValidationFocusCapture
+  ): Promise<void> => {
+    if (capture && !capture.isCurrent()) return
     const first = minBy(Object.keys(fields ?? {}), (prop) => {
       const item = resolveFieldItem(prop)
       const index = item ? filteredFormItems.value.indexOf(item) : -1
@@ -1799,14 +1943,19 @@
           : Number.MAX_SAFE_INTEGER)
       )
     })
-    if (first) await focusField(first)
+    if (!first) return
+    if (hasTabLayout.value || overlayFocus)
+      await positionField(first, shouldScrollOnValidation(), capture)
+    else await revealField(first, true, capture)
+    capture?.markHandled()
   }
   const handleValidate = (prop: FormItemProp, isValid: boolean, message: string) => {
     if (!isValid && validationBatch === 0 && !hasTabLayout.value) {
       const fieldKey = Array.isArray(prop) ? prop.join('.') : String(prop)
       const fieldItem = filteredFormItems.value.find((item) => item.key === fieldKey)
       const divider = fieldItem ? findOwningDivider(fieldItem) : undefined
-      if (divider && isSectionCollapsed(divider.key)) void revealField(prop)
+      if (divider && isSectionCollapsed(divider.key))
+        void revealField(prop, shouldScrollOnValidation(), overlayFocus?.captureValidationFocus?.())
     }
     emit('validate', prop, isValid, message)
   }
@@ -1815,6 +1964,7 @@
     fields?: Parameters<FormInstance['validateField']>[0],
     callback?: FormValidateCallback
   ): Promise<boolean> => {
+    const capture = overlayFocus?.captureValidationFocus?.()
     validationBatch++
     let invalidFields: FormValidateFailure['fields'] | undefined
     try {
@@ -1822,7 +1972,7 @@
         (await formInstance.value?.validateField(fields, (_valid, errors) => {
           invalidFields = errors
         })) === true
-      if (!valid) await revealInvalidFields(invalidFields)
+      if (!valid) await revealInvalidFields(invalidFields, capture)
       await callback?.(valid, invalidFields)
       if (!valid && !callback && invalidFields) throw invalidFields
       return valid
@@ -1938,44 +2088,40 @@
     submit: handleSubmit,
     validate: async (...args: Parameters<FormInstance['validate']>) => {
       if (hasBlockingFields.value) {
-        const invalidFields = Object.fromEntries(
-          visibleFormItems.value
-            .filter(
-              (item) =>
-                (!formControlsReady.value && !isDividerItem(item) && !isTextItem(item)) ||
-                (item.api &&
-                  isOptionComponent(item) &&
-                  (asyncLoadingMap.value[item.key] || !!asyncErrorMap.value[item.key]))
-            )
-            .map((item) => [
-              item.key,
-              [
-                {
-                  field: item.key,
-                  message: !formControlsReady.value
-                    ? (componentLoadErrorMessage.value ?? '表单控件正在加载，请稍候')
-                    : (asyncErrorMap.value[item.key]?.message ?? '选项正在加载，请稍候')
-                }
-              ]
-            ])
-        )
-        if (hasTabLayout.value) await revealInvalidFields(invalidFields)
+        const invalidFields: FormValidateFailure['fields'] = Object.fromEntries([
+          ...blockedOptionItems.value.map((item) => [
+            item.key,
+            [
+              {
+                field: item.key,
+                message: asyncErrorMap.value[item.key]?.message ?? '选项正在加载，请稍候'
+              }
+            ]
+          ]),
+          ...Object.entries(pendingPresetFields.value).map(([key, message]) => [
+            key,
+            [{ field: key, message }]
+          ])
+        ])
+        if (managesValidation())
+          await revealInvalidFields(invalidFields, overlayFocus?.captureValidationFocus?.())
         if (args[0]) {
           await args[0](false, invalidFields)
           return false
         }
         throw invalidFields
       }
-      return hasTabLayout.value
+      return managesValidation()
         ? validateWithReveal(undefined, args[0])
         : formInstance.value?.validate(...args)
     },
     validateField: (...args: Parameters<FormInstance['validateField']>) =>
-      hasTabLayout.value ? validateWithReveal(...args) : formInstance.value?.validateField(...args),
+      managesValidation()
+        ? validateWithReveal(...args)
+        : formInstance.value?.validateField(...args),
     clearValidate: (...args: Parameters<FormInstance['clearValidate']>) =>
       formInstance.value?.clearValidate(...args),
-    scrollToField: (...args: Parameters<FormInstance['scrollToField']>) =>
-      hasTabLayout.value ? revealField(...args) : formInstance.value?.scrollToField(...args),
+    scrollToField: (...args: Parameters<FormInstance['scrollToField']>) => revealField(...args),
     focusField,
     reset: handleReset,
     fetchOptions,

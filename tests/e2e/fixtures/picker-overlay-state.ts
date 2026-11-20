@@ -1,6 +1,7 @@
-import { createApp, h, ref } from 'vue'
+import { createApp, defineComponent, h, ref } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { ElConfigProvider } from 'element-plus'
 import { store } from '@/store'
 import language from '@/locales'
 import { useUserStore } from '@/store/modules/user'
@@ -16,8 +17,9 @@ import '@styles/index.scss'
 
 const query = new URLSearchParams(location.search)
 const mode = query.get('mode')
+const appearanceEnabled = query.has('appearance')
 const canReadMenuFixtureResource = mode === 'resource' && query.has('menu-read')
-const app = createApp({
+const Root = defineComponent({
   setup() {
     const visible = ref(false)
     const address = ref<InstanceType<typeof ArtAddressPicker>>()
@@ -137,7 +139,25 @@ const app = createApp({
       ])
   }
 })
+const app = createApp({
+  render: () =>
+    appearanceEnabled ? h(ElConfigProvider, { size: 'default' }, () => h(Root)) : h(Root)
+})
 app.use(store)
+if (appearanceEnabled) {
+  const { useSettingStore } = await import('@/store/modules/setting')
+  const { initializeTheme } = await import('@/hooks/core/useTheme')
+  const settingStore = useSettingStore(store)
+  if (query.get('appearance') === 'studio-flow') {
+    settingStore.setElementTheme('#EC4899')
+    settingStore.setCustomRadius('1')
+  }
+  initializeTheme()
+  document.documentElement.dataset.uiScope = 'workspace'
+  document.documentElement.dataset.boxMode = settingStore.boxBorderMode
+    ? 'border-mode'
+    : 'shadow-mode'
+}
 app.use(language)
 app.use(
   createRouter({

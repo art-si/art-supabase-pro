@@ -5,6 +5,9 @@ import language from '@/locales'
 import { store } from '@/store'
 import { useTenantScopeStore } from '@/store/modules/tenant-scope'
 import { useUserStore } from '@/store/modules/user'
+import { useMenuStore } from '@/store/modules/menu'
+import { useSettingStore } from '@/store/modules/setting'
+import { initializeTheme } from '@/hooks/core/useTheme'
 import PurchaseWorkspace from '@scm/views/purchase-document/purchase-workspace.vue'
 import PurchaseDialog from '@scm/views/purchase-document/modules/purchase-dialog.vue'
 import type { ScmPurchaseDocument } from '@scm/api'
@@ -12,6 +15,7 @@ import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 document.documentElement.style.setProperty('--art-full-height', 'calc(100dvh - 32px)')
+const shadowAudit = new URLSearchParams(location.search).get('shadowAudit') === '1'
 
 const kind =
   new URLSearchParams(location.search).get('kind') === 'receipt_notice'
@@ -145,7 +149,7 @@ const user = useUserStore(store)
 user.setUserInfo({
   userId: 'purchase-preview-user',
   tenantId: '11111111-1111-4111-8111-111111111111',
-  platformSuper: true
+  platformSuper: !shadowAudit
 })
 user.setLoginStatus(true)
 useTenantScopeStore(store).selectedTenantId = '11111111-1111-4111-8111-111111111111'
@@ -156,4 +160,18 @@ if (importMode)
   ]
 await router.push('/')
 await router.isReady()
+if (shadowAudit) {
+  useMenuStore(store).setButtonList(
+    ['View', 'Add', 'Edit'].map((action) => ({
+      name: `ScmPurchaseOrder:${action}`,
+      type: 'button',
+      path: '',
+      meta: { title: action }
+    }))
+  )
+  const settings = useSettingStore(store)
+  initializeTheme()
+  document.documentElement.dataset.uiScope = 'workspace'
+  document.documentElement.dataset.boxMode = settings.boxBorderMode ? 'border-mode' : 'shadow-mode'
+}
 app.mount('#purchase-inbound-preview')

@@ -191,9 +191,7 @@ for (const kind of ['弹窗', '抽屉']) {
     await page.getByRole('button', { name: `打开${kind}`, exact: true }).click()
     const overlay = page.getByRole('dialog', { name: `关闭检查${kind}`, exact: true })
     await expect(overlay).toBeVisible()
-    const closeButton = overlay.locator(
-      '.el-dialog__headerbtn:not(.art-dialog__fullscreen-button), .el-drawer__close-btn'
-    )
+    const closeButton = overlay.getByRole('button', { name: `关闭${kind}`, exact: true })
     await expect(closeButton).toHaveCount(0)
     await page.keyboard.press('Escape')
     await expect(overlay).toBeVisible()

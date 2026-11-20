@@ -29,7 +29,13 @@ const readEntry =
         ? { name: 'HrSelfService', permission: 'Hr:SelfService:View' }
         : page === 'talent/performance'
           ? { name: 'HrPerformance', permission: 'Hr:Performance:View' }
-          : undefined
+          : page === 'talent/development'
+            ? { name: 'HrTalentDevelopment', permission: 'Hr:Talent:View' }
+            : page === 'talent/internal-mobility'
+              ? { name: 'HrInternalMobility', permission: 'Hr:InternalMobility:View' }
+              : page === 'talent/succession'
+                ? { name: 'HrSuccession', permission: 'Hr:Succession:View' }
+                : undefined
 const loader = pages[`../../../modules/art-supabase-hr/src/views/${page}/index.vue`]
 if (!page || !loader) throw new Error('Unknown HR page fixture')
 document.documentElement.style.setProperty('--art-full-height', 'calc(100vh - 32px)')
@@ -122,7 +128,13 @@ userStore.setUserInfo({
   tenantId: '11111111-1111-4111-8111-111111111111',
   platformSuper: !ordinary
 })
-if (page === 'operations/self-service' || page === 'talent/performance')
+if (
+  page === 'operations/self-service' ||
+  page === 'talent/performance' ||
+  page === 'talent/development' ||
+  page === 'talent/internal-mobility' ||
+  page === 'talent/succession'
+)
   await userStore.fetchDictList()
 if (ordinary && readEntry) {
   useMenuStore(store).setButtonList([

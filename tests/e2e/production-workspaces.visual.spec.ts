@@ -32,6 +32,13 @@ const pages = [
 ] as const
 
 async function installFixtures(page: Page) {
+  const displayReads: string[] = []
+  const routeDictionaries = [
+    { code: 'mdmProcessRouteType', value: 'standard', label: '标准路线', status: '1' },
+    { code: 'mdmProcessRouteType', value: 'rework', label: '历史返工路线', status: '0' },
+    { code: 'mdmProcessRouteSource', value: 'manual', label: '手工维护', status: '1' },
+    { code: 'mdmProcessRouteSource', value: 'imported', label: '历史导入', status: '0' }
+  ]
   const root = {
     id: 'visual-mdm-root',
     parentId: null,
@@ -84,6 +91,29 @@ async function installFixtures(page: Page) {
     remark: ''
   }
   const responses: Record<string, unknown> = {
+    mdm_process_route: [
+      ['standard', 'manual'],
+      ['rework', 'imported'],
+      ['', ''],
+      ['unresolved-route-type', 'unresolved-route-source']
+    ].map(([routeType, source], index) => ({
+      id: `00000000-0000-4000-8000-${String(501 + index).padStart(12, '0')}`,
+      tenant_id: department.tenant_id,
+      code: `DICT-ROUTE-${index + 1}`,
+      name: `字典验收工艺路线${index + 1}`,
+      route_type: routeType,
+      source,
+      allocation_mode: 'quantity',
+      version: 'V1.0',
+      path: '装配 → 检验',
+      batch_to: 100,
+      is_default: false,
+      enabled: true,
+      material_id: '00000000-0000-4000-8000-000000000502',
+      material: { material_code: 'MAT-001', material_name: '成品组件' },
+      department,
+      update_time: '2026-09-01T08:00:00Z'
+    })),
     mdm_production_department: [department],
     mdm_production_personnel: [
       {
@@ -168,6 +198,7 @@ async function installFixtures(page: Page) {
     const body = responses[table] ?? []
     await route.fulfill({
       headers: {
+        'access-control-expose-headers': 'content-range',
         'content-range':
           Array.isArray(body) && body.length ? `0-${body.length - 1}/${body.length}` : '*/0'
       },
@@ -175,15 +206,31 @@ async function installFixtures(page: Page) {
     })
   })
   await page.route('**/rest/v1/sys_dictionary?*', (route) => {
-    const code = new URL(route.request().url()).searchParams.get('dict_type_table.code')
+    const query = new URL(route.request().url()).searchParams
+    const code = query.get('dict_type_table.code')?.replace(/^eq\./, '')
+    const value = query.get('value')?.replace(/^eq\./, '')
+    if (value !== undefined) {
+      expect(query.has('status')).toBe(false)
+      displayReads.push(`${code}:${value}`)
+    } else expect(query.get('status')).toBe('eq.1')
     return route.fulfill({
       json:
-        code === 'eq.commonBoolean'
+        code === 'commonBoolean'
           ? [
               { label: '是', value: 'true', status: '1' },
               { label: '否', value: 'false', status: '1' }
             ]
-          : []
+          : routeDictionaries
+              .filter(
+                (item) =>
+                  (!code || item.code === code) &&
+                  (value === undefined ? item.status === '1' : item.value === value)
+              )
+              .map((item) => ({
+                ...item,
+                id: `${item.code}-${item.value}`,
+                dict_type_table: { code: item.code, name: item.code }
+              }))
     })
   })
   await page.route('**/rest/v1/rpc/mdm_production_reference_list', async (route) => {
@@ -360,17 +407,47 @@ async function installFixtures(page: Page) {
       }
     })
   )
+  return { displayReads }
 }
 
 test('production master-data workspaces share the SMIS visual system', async ({
   page
 }, testInfo) => {
   test.setTimeout(180_000)
-  await page.clock.setFixedTime(new Date(`${scheduleDate}T10:00:00+08:00`))
+  await page.clock.install({ time: new Date(`${scheduleDate}T10:00:00+08:00`) })
   await prepareIsolatedSession(page)
-  await installFixtures(page)
+  const { displayReads } = await installFixtures(page)
   const pageErrors: string[] = []
+  const unexpectedWrites: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
+  if (process.env.MDM_E2E_PAGE === 'process-route')
+    await page.route('**/rest/v1/**', (route) => {
+      const request = route.request()
+      const url = new URL(request.url())
+      const endpoint = url.pathname.split('/').at(-1) ?? ''
+      if (endpoint === 'get_login_default_language') return route.fulfill({ json: 'zh' })
+      if (endpoint === 'current_user_role_names') return route.fulfill({ json: [] })
+      const readRpcs = [
+        'current_is_super',
+        'get_accessible_applications',
+        'get_menus_for_current_applications',
+        'get_current_user_button_permissions',
+        'get_table_column_runtime',
+        'get_organization_list_secure',
+        'material_unit_compatibility_options',
+        'mdm_process_route_material_options',
+        'mdm_process_route_references',
+        'mdm_production_reference_list'
+      ]
+      if (
+        request.method() !== 'GET' &&
+        !(url.pathname.includes('/rpc/') && readRpcs.includes(endpoint))
+      ) {
+        unexpectedWrites.push(`${request.method()} ${url.pathname}`)
+        return route.fulfill({ status: 403, json: { message: '测试不允许业务写入' } })
+      }
+      return route.fallback()
+    })
 
   const selectedPages = process.env.MDM_E2E_PAGE
     ? pages.filter(([path]) => path === process.env.MDM_E2E_PAGE)
@@ -504,6 +581,38 @@ test('production master-data workspaces share the SMIS visual system', async ({
       await expect(page.locator('.business-workspace-header')).toBeVisible()
     }
     if (path === 'process-route') {
+      const table = page.locator('.art-table-query .el-table').first()
+      await expect(table.locator('tbody tr')).toHaveCount(4)
+      await expect(page.locator('.art-table-query .el-pagination__total')).toHaveText(/共\s*4\s*条/)
+      for (const field of [
+        {
+          label: '类型',
+          code: 'mdmProcessRouteType',
+          historical: 'rework',
+          expected: ['标准路线', '历史返工路线', '未识别类型', '未识别类型']
+        },
+        {
+          label: '来源',
+          code: 'mdmProcessRouteSource',
+          historical: 'imported',
+          expected: ['手工维护', '历史导入', '未识别来源', '未识别来源']
+        }
+      ]) {
+        const header = table.getByRole('columnheader', { name: field.label, exact: true })
+        const column = await header.evaluate(
+          (element) => (element as HTMLTableCellElement).cellIndex
+        )
+        for (const [index, label] of field.expected.entries()) {
+          const cell = table.locator('tbody tr').nth(index).locator('td').nth(column)
+          await cell.scrollIntoViewIfNeeded()
+          await expect.soft(cell).toHaveText(label)
+        }
+        expect.soft(displayReads).toContain(`${field.code}:${field.historical}`)
+      }
+      await page.screenshot({
+        path: testInfo.outputPath('process-route-dictionary-display.png'),
+        animations: 'disabled'
+      })
       await page.getByRole('button', { name: '新增路线', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await expect(dialog.getByText('新工艺路线', { exact: true })).toBeVisible()
@@ -511,7 +620,35 @@ test('production master-data workspaces share the SMIS visual system', async ({
         'aria-selected',
         'true'
       )
+      const routeType = dialog.getByRole('combobox', { name: '路线类型', exact: true })
+      await routeType.click()
+      await expect(
+        page
+          .locator('.el-select-dropdown:visible')
+          .getByRole('option', { name: '标准路线', exact: true })
+      ).toBeVisible()
+      await expect(
+        page
+          .locator('.el-select-dropdown:visible')
+          .getByRole('option', { name: '历史返工路线', exact: true })
+      ).toHaveCount(0)
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeVisible()
+      await expect(page.locator('.el-select-dropdown:visible')).toHaveCount(0)
+      await expect(routeType).toHaveAttribute('aria-expanded', 'false')
       await dialog.getByRole('tab', { name: '策略与状态' }).click()
+      await dialog.getByRole('combobox', { name: '来源', exact: true }).click()
+      await expect(
+        page
+          .locator('.el-select-dropdown:visible')
+          .getByRole('option', { name: '手工维护', exact: true })
+      ).toBeVisible()
+      await expect(
+        page
+          .locator('.el-select-dropdown:visible')
+          .getByRole('option', { name: '历史导入', exact: true })
+      ).toHaveCount(0)
+      await page.keyboard.press('Escape')
       const enabledStatus = dialog.locator('.el-form-item').filter({ hasText: '启用状态' })
       await expect(enabledStatus.getByText('是', { exact: true })).toBeVisible()
       await expect(enabledStatus.getByText('否', { exact: true })).toBeVisible()
@@ -527,4 +664,5 @@ test('production master-data workspaces share the SMIS visual system', async ({
   }
 
   expect(pageErrors).toEqual([])
+  expect(unexpectedWrites).toEqual([])
 })

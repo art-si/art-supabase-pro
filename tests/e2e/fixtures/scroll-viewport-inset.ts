@@ -1,6 +1,7 @@
 import { createApp, defineComponent, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { store } from '@/store'
+import { useUserStore } from '@/store/modules/user'
 import language from '@/locales'
 import { setupGlobDirectives } from '@/directives'
 import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
@@ -16,6 +17,19 @@ import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 
 const params = new URLSearchParams(location.search)
+const user = useUserStore(store)
+user.setDictMap({
+  ...user.getDictMap,
+  vehicleCertificateType: [
+    {
+      name: '车辆证件类型',
+      code: 'driver_license',
+      value: 'driver_license',
+      label: '驾驶证',
+      status: '1'
+    }
+  ]
+})
 document.documentElement.classList.toggle('dark', params.get('theme') === 'dark')
 document.documentElement.dataset.boxMode = params.get('box') || 'border-mode'
 const records: DashboardCertificateRisk[] = Array.from(

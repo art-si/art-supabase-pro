@@ -47,7 +47,7 @@ test('承运商详情在弹窗与全屏模式中按页签展示', async ({ page 
   })
 
   await dialog.locator('.art-dialog__fullscreen-button').click()
-  await expect(dialog).toHaveClass(/is-fullscreen/)
+  await expect(dialog).toContainClass('is-fullscreen')
   await expect(dialog.getByText('车辆管理')).toBeVisible()
   await page.screenshot({
     path: info.outputPath('carrier-detail-fullscreen.png'),

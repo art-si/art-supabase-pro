@@ -1,5 +1,6 @@
 import { normalizeOcrRawText } from './ai-ocr-text.ts'
 import {
+  isOcrRecord,
   normalizeOcrConfidence,
   normalizeOcrDate,
   normalizeOcrNonNegativeNumber,
@@ -65,10 +66,6 @@ export interface ContractValidationResult {
 
 const PAYMENT_METHODS = new Set(['bank_transfer', 'cash', 'wechat', 'alipay', 'other'])
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
 function normalizePaymentMethod(value: unknown): AiCashVoucherDraft['paymentMethod'] {
   const source = normalizeOcrTextValue(value, 40)
   return source && PAYMENT_METHODS.has(source)
@@ -88,12 +85,12 @@ function roundMoney(value: number): number {
 
 export function validateAiCashVoucherProviderPayload(payload: unknown): ContractValidationResult {
   const errors: string[] = []
-  if (!isRecord(payload)) return { valid: false, errors: ['payload must be an object'] }
-  if (!isRecord(payload.voucher)) errors.push('voucher must be an object')
+  if (!isOcrRecord(payload)) return { valid: false, errors: ['payload must be an object'] }
+  if (!isOcrRecord(payload.voucher)) errors.push('voucher must be an object')
   if (typeof payload.confidence !== 'number' || payload.confidence < 0 || payload.confidence > 1) {
     errors.push('confidence must be between 0 and 1')
   }
-  if (!isRecord(payload.fieldConfidence)) {
+  if (!isOcrRecord(payload.fieldConfidence)) {
     errors.push('fieldConfidence must be an object')
   } else {
     for (const [field, value] of Object.entries(payload.fieldConfidence)) {
@@ -104,7 +101,7 @@ export function validateAiCashVoucherProviderPayload(payload: unknown): Contract
       }
     }
   }
-  if (isRecord(payload.voucher)) {
+  if (isOcrRecord(payload.voucher)) {
     const amount = payload.voucher.amount
     if (amount !== null && amount !== undefined && (typeof amount !== 'number' || amount < 0)) {
       errors.push('voucher.amount must be a non-negative number or null')
@@ -120,7 +117,7 @@ export function validateAiCashVoucherProviderPayload(payload: unknown): Contract
 export function normalizeAiCashVoucherResponse(
   payload: Record<string, unknown>
 ): AiCashVoucherNormalizedResponse {
-  const source = isRecord(payload.voucher) ? payload.voucher : {}
+  const source = isOcrRecord(payload.voucher) ? payload.voucher : {}
   const voucher: AiCashVoucherDraft = {
     payerName: normalizeOcrTextValue(source.payerName, 300),
     payeeName: normalizeOcrTextValue(source.payeeName, 300),
@@ -130,7 +127,7 @@ export function normalizeAiCashVoucherResponse(
     paymentMethod: normalizePaymentMethod(source.paymentMethod)
   }
   const fieldConfidence: Partial<Record<AiCashVoucherField, number>> = {}
-  if (isRecord(payload.fieldConfidence)) {
+  if (isOcrRecord(payload.fieldConfidence)) {
     for (const field of AI_CASH_VOUCHER_FIELDS) {
       if (payload.fieldConfidence[field] !== undefined) {
         fieldConfidence[field] = normalizeOcrConfidence(payload.fieldConfidence[field])

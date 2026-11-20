@@ -165,6 +165,7 @@
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import type {
     ProjectCapabilitySnapshot,
     ProjectEdgeFunctionResult
@@ -200,6 +201,12 @@
   const edgeFunctions = ref<ProjectEdgeFunctionResult | null>(null)
   const loading = ref(false)
   const activeTab = ref('products')
+  const snapshotSession = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
+
+  const invalidateSnapshot = (): void => {
+    snapshotSession.invalidate()
+    loading.value = false
+  }
 
   const capabilityCards = computed<CapabilityCard[]>(() => {
     if (!snapshot.value) return []
@@ -374,18 +381,24 @@
   }
 
   async function loadSnapshot(): Promise<void> {
-    if (loading.value) return
+    if (loading.value || !unref(drawerRef.value?.visible)) return
+    const request = snapshotSession.invalidate()
     loading.value = true
     drawerRef.value?.setLoading(true)
     try {
-      snapshot.value = await fetchProjectCatalog({
+      const result = await fetchProjectCatalog({
         catalogAction: 'capability_snapshot'
       })
+      if (!snapshotSession.isCurrent(request)) return
+      snapshot.value = result
     } catch (error) {
-      ElMessage.error(getFriendlySupabaseErrorMessage(error, 'Supabase 能力快照加载失败'))
+      if (snapshotSession.isCurrent(request))
+        ElMessage.error(getFriendlySupabaseErrorMessage(error, 'Supabase 能力快照加载失败'))
     } finally {
-      loading.value = false
-      drawerRef.value?.setLoading(false)
+      if (snapshotSession.isCurrent(request)) {
+        loading.value = false
+        drawerRef.value?.setLoading(false)
+      }
     }
   }
 
@@ -395,6 +408,7 @@
   }
 
   async function handleOpen(data: OpenData): Promise<void> {
+    invalidateSnapshot()
     activeTab.value = 'products'
     edgeFunctions.value = data.edgeFunctions
     await drawerRef.value?.handleOpen(data, {
@@ -407,9 +421,9 @@
         class: 'project-capability-drawer',
         resizable: true
       },
-      onOpen: async () => {
-        await loadSnapshot()
-      }
+      onOpen: loadSnapshot,
+      onClose: invalidateSnapshot,
+      onReset: invalidateSnapshot
     })
   }
 

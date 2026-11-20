@@ -12,6 +12,14 @@ import { initializeTheme, useTheme } from '@/hooks/core/useTheme'
 import { SystemThemeEnum } from '@/enums/app-enum'
 import { setupGlobDirectives } from '@/directives'
 import {
+  fetchAntiViolationStandardList,
+  fetchEquipmentLedgerDetail,
+  fetchRectificationNoticeList,
+  fetchSiteList,
+  type SmisPersonnelChecklistRecord,
+  type SmisViolationRecord
+} from '@smis/api'
+import {
   controlOptions,
   controlPoint,
   dictionaries,
@@ -32,6 +40,7 @@ import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 import {
   category,
+  inspectionCategory,
   hazardSource,
   inspection,
   material,
@@ -76,6 +85,24 @@ import {
 } from './form-standard-smis-batch-six-data'
 
 const params = new URLSearchParams(location.search)
+declare global {
+  interface Window {
+    smisReadSessionRecord?: 'a' | 'b'
+  }
+}
+const readSessionIds = {
+  a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+  b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2'
+}
+const readGaugeIds = {
+  a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+  b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4'
+}
+const readValveIds = {
+  a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5',
+  b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6'
+}
+const tenantName = params.get('tenantName') || '验收租户'
 type Entry = {
   load: () => Promise<{ default: Component }>
   data: unknown
@@ -83,12 +110,80 @@ type Entry = {
   embedded?: boolean
 }
 const entries: Record<string, Entry> = {
+  'shift-calendar': {
+    load: () =>
+      import('@smis/views/dual-control-system/dual-control-checklist/personnel-dual-control-checklist/modules/shift-calendar-dialog.vue'),
+    get data() {
+      const key = window.smisReadSessionRecord ?? 'a'
+      const employee: SmisPersonnelChecklistRecord = {
+        id: readSessionIds[key],
+        employeeNo: `EMP-${key.toUpperCase()}`,
+        employeeName: key === 'a' ? '旧人员甲' : '当前人员乙',
+        organizationName: '验收安全部',
+        positionName: '巡检员',
+        riskCount: 1,
+        inspectionCount: 1,
+        hazardCount: 0,
+        scheduleCount: 1
+      }
+      return { employee, month: '2026-11' }
+    }
+  },
+  'inspection-rectification': {
+    load: () =>
+      import('@smis/views/dual-control-system/hidden-hazard-governance/hidden-hazard-inspection-rectification/modules/inspection-rectification-dialog.vue'),
+    get data() {
+      const key = window.smisReadSessionRecord ?? 'a'
+      return {
+        records: [],
+        selectedId: readSessionIds[key],
+        loadRecords: async () =>
+          (await fetchRectificationNoticeList({ rectifiableOnly: true, from: 0, to: 999 })).data
+      }
+    }
+  },
+  'violation-record': {
+    load: () =>
+      import('@smis/views/safety-production/anti-violation-management/violation-record/modules/violation-record-dialog.vue'),
+    get data() {
+      const key = window.smisReadSessionRecord ?? 'a'
+      const row: SmisViolationRecord = {
+        id: readSessionIds[key],
+        tenantId,
+        recordNo: `VIOLATION-${key.toUpperCase()}`,
+        violationTime: '2026-11-18 10:00:00',
+        siteId: readSessionIds[key],
+        siteName: key === 'a' ? '旧场所甲' : '当前场所乙',
+        checkerEmployeeId: readSessionIds[key],
+        checkerName: key === 'a' ? '旧检查人甲' : '当前检查人乙',
+        deductionPoints: 0,
+        fineAmount: 0,
+        situationDescription: key === 'a' ? '旧记录甲现场情况' : '当前记录乙现场情况',
+        imageUrls: [],
+        violators: [],
+        items: []
+      }
+      return {
+        mode: 'edit',
+        row,
+        sites: [],
+        standards: [],
+        loadOptions: async () => {
+          const [sites, standards] = await Promise.all([
+            fetchSiteList(),
+            fetchAntiViolationStandardList({ status: 'enabled', from: 0, to: 999 })
+          ])
+          return { sites: sites.data ?? [], standards: standards.data }
+        }
+      }
+    }
+  },
   'hazard-factor-category': {
     load: () =>
       import('@smis/views/dual-control-system/risk-control/hazard-factor-category/modules/hazard-factor-category-dialog.vue'),
     data: {
       tenantId,
-      tenantName: '验收租户',
+      tenantName,
       row: {
         id: itemId,
         tenantId,
@@ -100,6 +195,27 @@ const entries: Record<string, Entry> = {
         textColor: '#409EFF',
         tagStyle: 'primary'
       }
+    }
+  },
+  'inspection-category': {
+    load: () =>
+      import('@smis/views/basic-data/inspection-category/modules/inspection-category-dialog.vue'),
+    data: { row: inspectionCategory, tenantId, tenantName }
+  },
+  'special-operation-catalog': {
+    load: () =>
+      import('@smis/views/special-operation-management/shared/special-operation-catalog-dialog.vue'),
+    data: {
+      operationTypes: [operationType],
+      presetOperationTypeId: operationType.id,
+      tenantId,
+      tenantName
+    },
+    props: {
+      catalogKind: 'hazard_factor',
+      title: '特殊作业危害因素',
+      singular: '危害因素',
+      itemLabel: '危害因素名称'
     }
   },
   'risk-map-properties': {
@@ -291,7 +407,25 @@ const entries: Record<string, Entry> = {
   equipment: {
     load: () =>
       import('@smis/views/equipment-ledger/equipment-ledger/modules/equipment-ledger-dialog.vue'),
-    data: { row: equipment, categoryTree: [equipmentCategory], locationTree: [] }
+    get data() {
+      if (!params.has('read-session'))
+        return { row: equipment, categoryTree: [equipmentCategory], locationTree: [] }
+      const key = window.smisReadSessionRecord ?? 'a'
+      const row = {
+        ...equipment,
+        id: readSessionIds[key],
+        equipmentCode: `EQ-${key.toUpperCase()}`,
+        equipmentName: key === 'a' ? '旧设备甲' : '当前设备乙',
+        pressureGaugeIds: [readGaugeIds[key]],
+        safetyValveIds: [readValveIds[key]]
+      }
+      return {
+        row,
+        loadDetail: async () => (await fetchEquipmentLedgerDetail(row.id)).data || row,
+        categoryTree: [equipmentCategory],
+        locationTree: []
+      }
+    }
   },
   'accident-report': {
     load: () =>
@@ -392,7 +526,7 @@ const entries: Record<string, Entry> = {
   'operation-type': {
     load: () =>
       import('@smis/views/special-operation-management/operation-type/modules/operation-type-dialog.vue'),
-    data: { row: operationType, tenantId, tenantName: '验收租户' }
+    data: { row: operationType, tenantId, tenantName }
   },
   'issuance-standard': {
     load: () => import('@smis/views/safety-production/shared/issuance-standard-dialog.vue'),
@@ -534,16 +668,26 @@ const app = createApp({
   setup() {
     const dialog = ref<{ handleOpen: (data: unknown) => Promise<void> }>()
     const saved = ref('尚未保存')
+    const completedOpens = ref(0)
+    const open = async () => {
+      try {
+        await dialog.value?.handleOpen(entry.data)
+      } finally {
+        completedOpens.value++
+      }
+    }
     return () =>
       h(ElConfigProvider, { locale: zhCn }, () =>
         h('main', { class: 'art-page-view p-4', style: '--art-full-height: calc(100dvh - 32px)' }, [
           !entry.embedded &&
-            h(
-              ElButton,
-              { disabled: !dialog.value, onClick: () => dialog.value?.handleOpen(entry.data) },
-              () => '打开真实 SMIS 入口'
-            ),
+            h(ElButton, { disabled: !dialog.value, onClick: open }, () => '打开真实 SMIS 入口'),
           h('output', { 'data-testid': 'save-result' }, saved.value),
+          params.has('read-session') &&
+            h(
+              'output',
+              { 'data-testid': 'read-open-completions', hidden: true },
+              String(completedOpens.value)
+            ),
           h(CurrentDialog, {
             ...entry.props,
             ref: dialog,
@@ -585,7 +729,7 @@ if (params.has('ordinary'))
     }))
   )
 const scope = useTenantScopeStore(store)
-scope.tenantOptions = [{ id: tenantId, tenantCode: 'TEST', tenantName: '验收租户' }]
+scope.tenantOptions = [{ id: tenantId, tenantCode: 'TEST', tenantName }]
 scope.scopeOwnerUserId = 'form-standard-test'
 scope.setTenantScope(tenantId)
 user.setDictMap(dictionaries)

@@ -11,4 +11,6 @@ export interface ModuleViteConfigOptions {
   authSessionMode?: 'client' | 'server'
 }
 
+export function createSourceTransformPattern(...roots: string[]): RegExp
+
 export function createModuleViteConfig(options: ModuleViteConfigOptions): Promise<UserConfig>

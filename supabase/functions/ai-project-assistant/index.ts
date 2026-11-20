@@ -1,10 +1,12 @@
-import { AiProviderRequestError, requestAiProviderWithFallback, getAiProviderFailure } from '../_shared/ai-provider-request.ts'
+import { normalizeAiInteger } from '../_shared/ai-runtime-config-policy.ts'
+import {
+  AiProviderRequestError,
+  requestAiProviderWithFallback,
+  getAiProviderFailure
+} from '../_shared/ai-provider-request.ts'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
-import {
-  loadAiRuntimeConfig,
-  type AiRuntimeConfig
-} from '../_shared/ai-runtime-config.ts'
+import { loadAiRuntimeConfig, type AiRuntimeConfig } from '../_shared/ai-runtime-config.ts'
 import {
   resolveAiProviderEndpoints,
   type AiProviderEndpoint
@@ -183,14 +185,21 @@ const edgeFunctionManifest = [
   ['ai-provider-catalog', true],
   ['ai-run-diagnosis', true],
   ['ai-project-assistant', true]
-].map(([slug, verifyJwt]) => ({ slug, name: slug, status: 'ACTIVE', verifyJwt, source: 'manifest' }))
+].map(([slug, verifyJwt]) => ({
+  slug,
+  name: slug,
+  status: 'ACTIVE',
+  verifyJwt,
+  source: 'manifest'
+}))
 
 const tools = [
   {
     type: 'function',
     function: {
       name: 'get_project_overview',
-      description: '查询当前 Supabase 项目的数据库版本以及 schema、表、视图、函数、触发器、RLS 策略和索引数量。',
+      description:
+        '查询当前 Supabase 项目的数据库版本以及 schema、表、视图、函数、触发器、RLS 策略和索引数量。',
       parameters: { type: 'object', properties: {}, additionalProperties: false }
     }
   },
@@ -285,7 +294,8 @@ const tools = [
     type: 'function',
     function: {
       name: 'get_auth_overview',
-      description: '获取 Supabase Auth 聚合状态，只返回用户数、已确认数和近 30 天活跃数，不返回用户身份。',
+      description:
+        '获取 Supabase Auth 聚合状态，只返回用户数、已确认数和近 30 天活跃数，不返回用户身份。',
       parameters: { type: 'object', properties: {}, additionalProperties: false }
     }
   },
@@ -342,17 +352,11 @@ function textValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function integerValue(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.min(max, Math.max(min, Math.trunc(parsed)))
-}
-
 function safeJsonParse(value: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value)
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : {}
   } catch {
     return {}
@@ -377,10 +381,17 @@ function quoteLiteral(value: string): string {
 
 function isAbortLikeError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
-  return error.name === 'AbortError' || /aborted|aborterror|signal|timeout|timed out/i.test(error.message)
+  return (
+    error.name === 'AbortError' ||
+    /aborted|aborterror|signal|timeout|timed out/i.test(error.message)
+  )
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -407,16 +418,21 @@ async function requestProvider(
         stream: false,
         messages
       }
-      if (allowTools) Object.assign(body, { tools, tool_choice: 'auto', parallel_tool_calls: false })
+      if (allowTools)
+        Object.assign(body, { tools, tool_choice: 'auto', parallel_tool_calls: false })
       try {
-        const response = await fetchWithTimeout(`${endpoint.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${endpoint.apiKey}`,
-            'Content-Type': 'application/json'
+        const response = await fetchWithTimeout(
+          `${endpoint.baseUrl}/chat/completions`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${endpoint.apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
           },
-          body: JSON.stringify(body)
-        }, config.timeoutMs)
+          config.timeoutMs
+        )
         if (!response.ok) {
           lastError = new AiProviderRequestError(response.status)
           if (response.status < 500 && response.status !== 429) break
@@ -438,7 +454,6 @@ async function requestProvider(
   throw lastError
 }
 
-
 async function listEdgeFunctions(): Promise<Record<string, unknown>> {
   const accessToken = Deno.env.get('SUPABASE_ACCESS_TOKEN')
   if (!accessToken) {
@@ -446,7 +461,8 @@ async function listEdgeFunctions(): Promise<Record<string, unknown>> {
       projectRef: PROJECT_REF,
       functions: edgeFunctionManifest,
       source: 'bundled_manifest',
-      warning: '未配置 SUPABASE_ACCESS_TOKEN，当前展示随应用发布的函数清单；源码读取将在后续安全配置完成后开放。'
+      warning:
+        '未配置 SUPABASE_ACCESS_TOKEN，当前展示随应用发布的函数清单；源码读取将在后续安全配置完成后开放。'
     }
   }
   try {
@@ -556,21 +572,22 @@ async function listConversationHistory(
   const conversationIds = (conversations ?? []).map((item) => item.id)
   if (!conversationIds.length) return { conversations: [], total: 0 }
 
-  const [{ data: messages, error: messageError }, { data: runs, error: runError }] = await Promise.all([
-    admin
-      .from('ai_message')
-      .select('conversation_id,role,content,create_time')
-      .in('conversation_id', conversationIds)
-      .order('create_time', { ascending: false })
-      .limit(limit * 12),
-    admin
-      .from('ai_run')
-      .select('id,conversation_id,status,model,input_tokens,output_tokens,latency_ms,started_at')
-      .in('conversation_id', conversationIds)
-      .eq('feature', FEATURE)
-      .order('started_at', { ascending: false })
-      .limit(limit * 4)
-  ])
+  const [{ data: messages, error: messageError }, { data: runs, error: runError }] =
+    await Promise.all([
+      admin
+        .from('ai_message')
+        .select('conversation_id,role,content,create_time')
+        .in('conversation_id', conversationIds)
+        .order('create_time', { ascending: false })
+        .limit(limit * 12),
+      admin
+        .from('ai_run')
+        .select('id,conversation_id,status,model,input_tokens,output_tokens,latency_ms,started_at')
+        .in('conversation_id', conversationIds)
+        .eq('feature', FEATURE)
+        .order('started_at', { ascending: false })
+        .limit(limit * 4)
+    ])
   if (messageError) throw messageError
   if (runError) throw runError
 
@@ -614,21 +631,24 @@ async function getConversationHistory(
   if (error) throw error
   if (!conversation) return null
 
-  const [{ data: messages, error: messageError }, { data: runs, error: runError }] = await Promise.all([
-    admin
-      .from('ai_message')
-      .select('id,role,content,usage,create_time')
-      .eq('conversation_id', conversationId)
-      .order('create_time', { ascending: true })
-      .limit(100),
-    admin
-      .from('ai_run')
-      .select('id,status,model,prompt_version,input_tokens,output_tokens,latency_ms,tool_calls,error_code,error_message,started_at,finished_at')
-      .eq('conversation_id', conversationId)
-      .eq('feature', FEATURE)
-      .order('started_at', { ascending: true })
-      .limit(50)
-  ])
+  const [{ data: messages, error: messageError }, { data: runs, error: runError }] =
+    await Promise.all([
+      admin
+        .from('ai_message')
+        .select('id,role,content,usage,create_time')
+        .eq('conversation_id', conversationId)
+        .order('create_time', { ascending: true })
+        .limit(100),
+      admin
+        .from('ai_run')
+        .select(
+          'id,status,model,prompt_version,input_tokens,output_tokens,latency_ms,tool_calls,error_code,error_message,started_at,finished_at'
+        )
+        .eq('conversation_id', conversationId)
+        .eq('feature', FEATURE)
+        .order('started_at', { ascending: true })
+        .limit(50)
+    ])
   if (messageError) throw messageError
   if (runError) throw runError
   return { conversation, messages: messages ?? [], runs: runs ?? [] }
@@ -666,7 +686,8 @@ async function writeToolAudit(
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return json({ code: 'method_not_allowed', message: 'Method not allowed' }, 405)
+  if (req.method !== 'POST')
+    return json({ code: 'method_not_allowed', message: 'Method not allowed' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
@@ -680,8 +701,12 @@ Deno.serve(async (req) => {
     auth: { autoRefreshToken: false, persistSession: false }
   })
   const token = authHeader.replace(/^Bearer\s+/i, '')
-  const { data: { user }, error: authError } = await authClient.auth.getUser(token)
-  if (authError || !user) return json({ code: 'unauthorized', message: 'Invalid or expired session' }, 401)
+  const {
+    data: { user },
+    error: authError
+  } = await authClient.auth.getUser(token)
+  if (authError || !user)
+    return json({ code: 'unauthorized', message: 'Invalid or expired session' }, 401)
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false }
@@ -699,13 +724,14 @@ Deno.serve(async (req) => {
   if (appUserError || !appUser?.tenant_id || appUser.status === '0') {
     return json({ code: 'forbidden', message: '仅已启用的系统用户可使用 Supabase AI 助手' }, 403)
   }
-  const { data: platformSuperData, error: platformSuperError } = await userClient.rpc('current_is_super')
+  const { data: platformSuperData, error: platformSuperError } =
+    await userClient.rpc('current_is_super')
   const isPlatformSuper = !platformSuperError && platformSuperData === true
 
   let runId = ''
   const startedAt = Date.now()
   try {
-    const body = await req.json() as AssistantRequest
+    const body = (await req.json()) as AssistantRequest
     if (body.action === 'capabilities') {
       return json({
         version: CONTRACT_VERSION,
@@ -763,32 +789,44 @@ Deno.serve(async (req) => {
         return json({ code: 'forbidden', message: '仅平台超级管理员可修改数据库对象说明' }, 403)
       }
       if (body.safetyMode !== 'controlled_write' || body.confirmed !== true) {
-        return json({ code: 'confirmation_required', message: '请先进入受控变更模式并确认本次操作' }, 409)
+        return json(
+          { code: 'confirmation_required', message: '请先进入受控变更模式并确认本次操作' },
+          409
+        )
       }
 
       const schema = textValue(body.schema)
       const name = textValue(body.name)
       const objectType = textValue(body.objectType)
-      const description = typeof body.description === 'string'
-        ? body.description.trim().slice(0, 500)
-        : ''
+      const description =
+        typeof body.description === 'string' ? body.description.trim().slice(0, 500) : ''
       const objectKeyword = {
         table: 'TABLE',
         view: 'VIEW',
         materialized_view: 'MATERIALIZED VIEW'
       }[objectType]
       if (!schema || !name || !objectKeyword) {
-        return json({ code: 'invalid_input', message: '当前仅支持修改表、视图和物化视图的对象说明' }, 400)
+        return json(
+          { code: 'invalid_input', message: '当前仅支持修改表、视图和物化视图的对象说明' },
+          400
+        )
       }
       if (schema !== 'public') {
-        return json({ code: 'protected_schema', message: '受控变更模式当前仅允许修改 public schema' }, 403)
+        return json(
+          { code: 'protected_schema', message: '受控变更模式当前仅允许修改 public schema' },
+          403
+        )
       }
 
-      const objectDetail = await executeCatalog('object_detail', {
-        objectType,
-        schema,
-        name
-      }, userClient) as { notFound?: boolean }
+      const objectDetail = (await executeCatalog(
+        'object_detail',
+        {
+          objectType,
+          schema,
+          name
+        },
+        userClient
+      )) as { notFound?: boolean }
       if (objectDetail?.notFound) {
         return json({ code: 'not_found', message: '数据库对象不存在或已被删除' }, 404)
       }
@@ -826,7 +864,12 @@ Deno.serve(async (req) => {
       }
       return json({
         ok: true,
-        object: { schemaName: schema, objectName: name, objectType, description: description || null },
+        object: {
+          schemaName: schema,
+          objectName: name,
+          objectType,
+          description: description || null
+        },
         audit: { commandTag: executionResult?.command_tag ?? 'COMMENT' }
       })
     }
@@ -843,18 +886,26 @@ Deno.serve(async (req) => {
       if (!body.runId || (body.rating !== -1 && body.rating !== 1)) {
         return json({ code: 'invalid_feedback', message: 'Run ID and rating are required' }, 400)
       }
-      const { data: ownedRun } = await admin.from('ai_run').select('id')
-        .eq('id', body.runId).eq('auth_user_id', user.id).eq('feature', FEATURE).maybeSingle()
+      const { data: ownedRun } = await admin
+        .from('ai_run')
+        .select('id')
+        .eq('id', body.runId)
+        .eq('auth_user_id', user.id)
+        .eq('feature', FEATURE)
+        .maybeSingle()
       if (!ownedRun) return json({ code: 'not_found', message: 'AI run was not found' }, 404)
-      const { error } = await admin.from('ai_feedback').upsert({
-        run_id: body.runId,
-        auth_user_id: user.id,
-        tenant_id: appUser.tenant_id,
-        rating: body.rating,
-        comment: textValue(body.comment).slice(0, 1000) || null,
-        create_by: appUser.user_email,
-        update_by: appUser.user_email
-      }, { onConflict: 'run_id,auth_user_id' })
+      const { error } = await admin.from('ai_feedback').upsert(
+        {
+          run_id: body.runId,
+          auth_user_id: user.id,
+          tenant_id: appUser.tenant_id,
+          rating: body.rating,
+          comment: textValue(body.comment).slice(0, 1000) || null,
+          create_by: appUser.user_email,
+          update_by: appUser.user_email
+        },
+        { onConflict: 'run_id,auth_user_id' }
+      )
       if (error) throw error
       return json({ ok: true })
     }
@@ -865,7 +916,7 @@ Deno.serve(async (req) => {
         user.id,
         appUser.tenant_id,
         textValue(body.query).slice(0, 80),
-        integerValue(body.limit, 30, 1, 50)
+        normalizeAiInteger(body.limit, 30, 1, 50)
       )
       return json(data)
     }
@@ -884,7 +935,10 @@ Deno.serve(async (req) => {
       const conversationId = textValue(body.conversationId)
       const title = textValue(body.title).replace(/\s+/g, ' ').slice(0, 80)
       if (!conversationId || !title) {
-        return json({ code: 'invalid_input', message: 'Conversation ID and title are required' }, 400)
+        return json(
+          { code: 'invalid_input', message: 'Conversation ID and title are required' },
+          400
+        )
       }
       const { data, error } = await admin
         .from('ai_conversation')
@@ -901,19 +955,28 @@ Deno.serve(async (req) => {
     }
 
     if (body.action && body.action !== 'chat') {
-      return json({
-        code: 'unsupported_action',
-        message: `当前助手不支持操作：${body.action}`,
-        version: CONTRACT_VERSION
-      }, 400)
+      return json(
+        {
+          code: 'unsupported_action',
+          message: `当前助手不支持操作：${body.action}`,
+          version: CONTRACT_VERSION
+        },
+        400
+      )
     }
 
     const messages = (body.messages ?? [])
-      .filter((item): item is AssistantMessage => Boolean(item)
-        && (item.role === 'user' || item.role === 'assistant')
-        && Boolean(textValue(item.content)))
+      .filter(
+        (item): item is AssistantMessage =>
+          Boolean(item) &&
+          (item.role === 'user' || item.role === 'assistant') &&
+          Boolean(textValue(item.content))
+      )
       .slice(-MAX_HISTORY_MESSAGES)
-      .map((item) => ({ role: item.role, content: textValue(item.content).slice(0, MAX_MESSAGE_LENGTH) }))
+      .map((item) => ({
+        role: item.role,
+        content: textValue(item.content).slice(0, MAX_MESSAGE_LENGTH)
+      }))
     const latestUserMessage = [...messages].reverse().find((item) => item.role === 'user')
     if (!latestUserMessage) return json({ code: 'invalid_input', message: '请输入问题' }, 400)
 
@@ -924,15 +987,21 @@ Deno.serve(async (req) => {
       model: Deno.env.get('AI_PROJECT_ASSISTANT_MODEL') || sharedModel,
       visionModel: null,
       fallbackModel: Deno.env.get('AI_PROJECT_ASSISTANT_FALLBACK_MODEL') || null,
-      timeoutMs: integerValue(Deno.env.get('AI_PROJECT_ASSISTANT_TIMEOUT_MS'), 30_000, 5_000, 120_000),
-      maxRetries: integerValue(Deno.env.get('AI_PROJECT_ASSISTANT_MAX_RETRIES'), 0, 0, 2),
+      timeoutMs: normalizeAiInteger(
+        Deno.env.get('AI_PROJECT_ASSISTANT_TIMEOUT_MS'),
+        30_000,
+        5_000,
+        120_000
+      ),
+      maxRetries: normalizeAiInteger(Deno.env.get('AI_PROJECT_ASSISTANT_MAX_RETRIES'), 0, 0, 2),
       temperature: 0.1,
       maxTokens: 1200,
       rateLimitPerMinute: 8,
       rateLimitPerDay: 100,
       promptVersion: 'v1'
     })
-    if (!runtimeConfig.enabled) return json({ code: 'feature_disabled', message: 'Supabase 管理助手当前已停用' }, 503)
+    if (!runtimeConfig.enabled)
+      return json({ code: 'feature_disabled', message: 'Supabase 管理助手当前已停用' }, 503)
     const providerEndpoints = resolveAiProviderEndpoints(runtimeConfig, {
       openAiModel: Deno.env.get('AI_PROJECT_ASSISTANT_OPENAI_MODEL')
     })
@@ -947,50 +1016,85 @@ Deno.serve(async (req) => {
     const minuteAgo = new Date(Date.now() - 60_000).toISOString()
     const dayAgo = new Date(Date.now() - 86_400_000).toISOString()
     const [minuteResult, dayResult] = await Promise.all([
-      admin.from('ai_run').select('id', { count: 'exact', head: true }).eq('auth_user_id', user.id).gte('started_at', minuteAgo),
-      admin.from('ai_run').select('id', { count: 'exact', head: true }).eq('auth_user_id', user.id).gte('started_at', dayAgo)
+      admin
+        .from('ai_run')
+        .select('id', { count: 'exact', head: true })
+        .eq('auth_user_id', user.id)
+        .gte('started_at', minuteAgo),
+      admin
+        .from('ai_run')
+        .select('id', { count: 'exact', head: true })
+        .eq('auth_user_id', user.id)
+        .gte('started_at', dayAgo)
     ])
-    if ((minuteResult.count ?? 0) >= runtimeConfig.rateLimitPerMinute
-      || (dayResult.count ?? 0) >= runtimeConfig.rateLimitPerDay) {
+    if (
+      (minuteResult.count ?? 0) >= runtimeConfig.rateLimitPerMinute ||
+      (dayResult.count ?? 0) >= runtimeConfig.rateLimitPerDay
+    ) {
       return json({ code: 'rate_limited', message: 'AI 调用次数已达到限额，请稍后再试' }, 429)
     }
 
-    const context: AssistantContext = body.context && typeof body.context === 'object' ? body.context : {}
-    const requestedSafetyMode = body.safetyMode === 'controlled_write' && isPlatformSuper
-      ? 'controlled_write'
-      : 'read_only'
-    const conversationContext = { ...context, assistantMode: 'project', safetyMode: requestedSafetyMode }
+    const context: AssistantContext =
+      body.context && typeof body.context === 'object' ? body.context : {}
+    const requestedSafetyMode =
+      body.safetyMode === 'controlled_write' && isPlatformSuper ? 'controlled_write' : 'read_only'
+    const conversationContext = {
+      ...context,
+      assistantMode: 'project',
+      safetyMode: requestedSafetyMode
+    }
     let conversationId = textValue(body.conversationId)
     if (conversationId) {
-      const { data: ownedConversation } = await admin.from('ai_conversation').select('id')
-        .eq('id', conversationId).eq('auth_user_id', user.id).eq('tenant_id', appUser.tenant_id).maybeSingle()
-      if (!ownedConversation) return json({ code: 'not_found', message: 'Conversation was not found' }, 404)
-      await admin.from('ai_conversation').update({ context: conversationContext, update_by: appUser.user_email }).eq('id', conversationId)
+      const { data: ownedConversation } = await admin
+        .from('ai_conversation')
+        .select('id')
+        .eq('id', conversationId)
+        .eq('auth_user_id', user.id)
+        .eq('tenant_id', appUser.tenant_id)
+        .maybeSingle()
+      if (!ownedConversation)
+        return json({ code: 'not_found', message: 'Conversation was not found' }, 404)
+      await admin
+        .from('ai_conversation')
+        .update({ context: conversationContext, update_by: appUser.user_email })
+        .eq('id', conversationId)
     } else {
-      const { data, error } = await admin.from('ai_conversation').insert({
-        auth_user_id: user.id,
-        tenant_id: appUser.tenant_id,
-        title: latestUserMessage.content.replace(/\s+/g, ' ').slice(0, 40),
-        context: conversationContext,
-        create_by: appUser.user_email,
-        update_by: appUser.user_email
-      }).select('id').single()
+      const { data, error } = await admin
+        .from('ai_conversation')
+        .insert({
+          auth_user_id: user.id,
+          tenant_id: appUser.tenant_id,
+          title: latestUserMessage.content.replace(/\s+/g, ' ').slice(0, 40),
+          context: conversationContext,
+          create_by: appUser.user_email,
+          update_by: appUser.user_email
+        })
+        .select('id')
+        .single()
       if (error) throw error
       conversationId = data.id
     }
 
     let resolvedModel = runtimeConfig.model
-    const { data: run, error: runError } = await admin.from('ai_run').insert({
-      conversation_id: conversationId,
-      auth_user_id: user.id,
-      tenant_id: appUser.tenant_id,
-      feature: FEATURE,
-      model: resolvedModel,
-      prompt_version: publishedPrompt.version,
-      metadata: { context: conversationContext, safetyMode: 'read_only', promptSource: publishedPrompt.source },
-      create_by: appUser.user_email,
-      update_by: appUser.user_email
-    }).select('id').single()
+    const { data: run, error: runError } = await admin
+      .from('ai_run')
+      .insert({
+        conversation_id: conversationId,
+        auth_user_id: user.id,
+        tenant_id: appUser.tenant_id,
+        feature: FEATURE,
+        model: resolvedModel,
+        prompt_version: publishedPrompt.version,
+        metadata: {
+          context: conversationContext,
+          safetyMode: 'read_only',
+          promptSource: publishedPrompt.source
+        },
+        create_by: appUser.user_email,
+        update_by: appUser.user_email
+      })
+      .select('id')
+      .single()
     if (runError) throw runError
     runId = run.id
 
@@ -1006,12 +1110,18 @@ Deno.serve(async (req) => {
     if (userMessageError) throw userMessageError
 
     const providerMessages: ProviderMessage[] = [
-      { role: 'system', content: `${publishedPrompt.content}\n当前页面上下文：${JSON.stringify(conversationContext)}` },
+      {
+        role: 'system',
+        content: `${publishedPrompt.content}\n当前页面上下文：${JSON.stringify(conversationContext)}`
+      },
       ...messages.map((item) => ({ role: item.role, content: item.content }))
     ]
     let inputTokens = 0
     let outputTokens = 0
-    const initialProviderResponse = await requestAiProviderWithFallback(providerEndpoints, (endpoint) => requestProvider(endpoint, providerMessages, true, runtimeConfig))
+    const initialProviderResponse = await requestAiProviderWithFallback(
+      providerEndpoints,
+      (endpoint) => requestProvider(endpoint, providerMessages, true, runtimeConfig)
+    )
     const activeProvider = initialProviderResponse.endpoint
     let response = initialProviderResponse.result
     resolvedModel = response.model
@@ -1021,18 +1131,26 @@ Deno.serve(async (req) => {
     const toolExecutionContext: ToolExecutionContext = {}
     let toolRound = 0
     let totalToolCalls = 0
-    while ((response.message.tool_calls?.length ?? 0) > 0
-      && toolRound < MAX_TOOL_ROUNDS
-      && totalToolCalls < MAX_TOOL_CALLS) {
+    while (
+      (response.message.tool_calls?.length ?? 0) > 0 &&
+      toolRound < MAX_TOOL_ROUNDS &&
+      totalToolCalls < MAX_TOOL_CALLS
+    ) {
       providerMessages.push(response.message)
-      const requestedCalls = (response.message.tool_calls ?? [])
-        .slice(0, MAX_TOOL_CALLS - totalToolCalls)
+      const requestedCalls = (response.message.tool_calls ?? []).slice(
+        0,
+        MAX_TOOL_CALLS - totalToolCalls
+      )
       for (const call of requestedCalls) {
         totalToolCalls += 1
         const started = Date.now()
         const args = safeJsonParse(call.function.arguments)
         if (!isToolName(call.function.name)) {
-          providerMessages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ error: 'Unsupported tool' }) })
+          providerMessages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({ error: 'Unsupported tool' })
+          })
           continue
         }
         try {
@@ -1045,19 +1163,40 @@ Deno.serve(async (req) => {
           const latencyMs = Date.now() - started
           executedTools.push({ name: call.function.name, status: 'succeeded', latencyMs })
           await writeToolAudit(admin, {
-            runId, userId: user.id, tenantId: appUser.tenant_id, email: appUser.user_email,
-            name: call.function.name, args, status: 'succeeded', latencyMs
+            runId,
+            userId: user.id,
+            tenantId: appUser.tenant_id,
+            email: appUser.user_email,
+            name: call.function.name,
+            args,
+            status: 'succeeded',
+            latencyMs
           })
-          providerMessages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 24_000) })
+          providerMessages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify(result).slice(0, 24_000)
+          })
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Tool execution failed'
           const latencyMs = Date.now() - started
           executedTools.push({ name: call.function.name, status: 'failed', latencyMs })
           await writeToolAudit(admin, {
-            runId, userId: user.id, tenantId: appUser.tenant_id, email: appUser.user_email,
-            name: call.function.name, args, status: 'failed', error: message, latencyMs
+            runId,
+            userId: user.id,
+            tenantId: appUser.tenant_id,
+            email: appUser.user_email,
+            name: call.function.name,
+            args,
+            status: 'failed',
+            error: message,
+            latencyMs
           })
-          providerMessages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ error: message }) })
+          providerMessages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({ error: message })
+          })
         }
       }
       toolRound += 1
@@ -1086,16 +1225,19 @@ Deno.serve(async (req) => {
       update_by: appUser.user_email
     })
     if (assistantMessageError) throw assistantMessageError
-    await admin.from('ai_run').update({
-      status: 'succeeded',
-      model: resolvedModel,
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      latency_ms: latencyMs,
-      tool_calls: executedTools,
-      finished_at: new Date().toISOString(),
-      update_by: appUser.user_email
-    }).eq('id', runId)
+    await admin
+      .from('ai_run')
+      .update({
+        status: 'succeeded',
+        model: resolvedModel,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        latency_ms: latencyMs,
+        tool_calls: executedTools,
+        finished_at: new Date().toISOString(),
+        update_by: appUser.user_email
+      })
+      .eq('id', runId)
     return json({
       conversationId,
       runId,
@@ -1113,19 +1255,26 @@ Deno.serve(async (req) => {
     const providerTimedOut = isAbortLikeError(error)
     console.error('ai-project-assistant error', message)
     if (runId) {
-      await admin.from('ai_run').update({
-        status: 'failed',
-        latency_ms: Date.now() - startedAt,
-        error_code: providerTimedOut ? 'provider_timeout' : providerFailure?.code ?? 'server_error',
-        error_message: message.slice(0, 2000),
-        finished_at: new Date().toISOString(),
-        update_by: appUser.user_email
-      }).eq('id', runId)
+      await admin
+        .from('ai_run')
+        .update({
+          status: 'failed',
+          latency_ms: Date.now() - startedAt,
+          error_code: providerTimedOut
+            ? 'provider_timeout'
+            : (providerFailure?.code ?? 'server_error'),
+          error_message: message.slice(0, 2000),
+          finished_at: new Date().toISOString(),
+          update_by: appUser.user_email
+        })
+        .eq('id', runId)
     }
     return json(
       {
-        code: providerTimedOut ? 'provider_timeout' : providerFailure?.code ?? 'server_error',
-        message: providerTimedOut ? '模型响应超时，请稍后重试' : providerFailure?.message ?? '助手服务暂时不可用，请稍后重试'
+        code: providerTimedOut ? 'provider_timeout' : (providerFailure?.code ?? 'server_error'),
+        message: providerTimedOut
+          ? '模型响应超时，请稍后重试'
+          : (providerFailure?.message ?? '助手服务暂时不可用，请稍后重试')
       },
       providerTimedOut ? 504 : 500
     )

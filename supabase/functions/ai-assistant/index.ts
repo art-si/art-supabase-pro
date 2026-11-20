@@ -1,4 +1,9 @@
-import { AiProviderRequestError, requestAiProviderWithFallback, getAiProviderFailure } from '../_shared/ai-provider-request.ts'
+import { normalizeAiInteger } from '../_shared/ai-runtime-config-policy.ts'
+import {
+  AiProviderRequestError,
+  requestAiProviderWithFallback,
+  getAiProviderFailure
+} from '../_shared/ai-provider-request.ts'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import {
@@ -248,7 +253,8 @@ const tools = [
     type: 'function',
     function: {
       name: 'search_smis_safety_knowledge',
-      description: '从当前用户有权查看的岗位风险、排查标准、特殊作业措施、应急预案和事故案例中检索安全知识。',
+      description:
+        '从当前用户有权查看的岗位风险、排查标准、特殊作业措施、应急预案和事故案例中检索安全知识。',
       parameters: {
         type: 'object',
         properties: {
@@ -289,12 +295,6 @@ function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function integerValue(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.min(max, Math.max(min, Math.trunc(parsed)))
-}
-
 function safeJsonParse(value: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value)
@@ -322,7 +322,8 @@ function addDays(date: Date, days: number): Date {
 
 function groupCounts<T extends object>(rows: readonly T[], key: string): Record<string, number> {
   return rows.reduce<Record<string, number>>((result, row) => {
-    const value = stringValue(Object.entries(row).find(([entryKey]) => entryKey === key)?.[1]) || 'unknown'
+    const value =
+      stringValue(Object.entries(row).find(([entryKey]) => entryKey === key)?.[1]) || 'unknown'
     result[value] = (result[value] ?? 0) + 1
     return result
   }, {})
@@ -335,7 +336,7 @@ function numberValue(value: unknown): number {
 
 function parseRequestedDays(content: string, fallback: number): number {
   const matched = content.match(/(?:近|未来|最近)?\s*(\d{1,3})\s*天/)
-  return integerValue(matched?.[1], fallback, 1, 180)
+  return normalizeAiInteger(matched?.[1], fallback, 1, 180)
 }
 
 function resolveDirectTool(content: string, context: AssistantContext): DirectToolRequest | null {
@@ -366,16 +367,16 @@ function resolveDirectTool(content: string, context: AssistantContext): DirectTo
       args: {
         query:
           query ||
-          stringValue(context.pageTitle).replace(/(管理|台账|列表|申请)/g, '').slice(0, 120) ||
+          stringValue(context.pageTitle)
+            .replace(/(管理|台账|列表|申请)/g, '')
+            .slice(0, 120) ||
           '安全',
         limit: 10
       }
     }
   }
   if (
-    /(隐患).*(概览|统计|汇总|待办|风险|整改|验收)|(概览|统计|汇总|待办).*(隐患)/.test(
-      normalized
-    ) ||
+    /(隐患).*(概览|统计|汇总|待办|风险|整改|验收)|(概览|统计|汇总|待办).*(隐患)/.test(normalized) ||
     (isSmisContext && /(当前|最近|近期).*(安全风险|风险提醒)/.test(normalized))
   ) {
     return {
@@ -393,7 +394,9 @@ function resolveDirectTool(content: string, context: AssistantContext): DirectTo
       args: { days: parseRequestedDays(normalized, 30), limit: 10 }
     }
   }
-  if (/(安全培训|培训).*(概览|统计|完成率|出勤率|未完成)|(概览|统计).*(安全培训)/.test(normalized)) {
+  if (
+    /(安全培训|培训).*(概览|统计|完成率|出勤率|未完成)|(概览|统计).*(安全培训)/.test(normalized)
+  ) {
     return {
       name: 'get_smis_training_overview',
       args: { days: parseRequestedDays(normalized, 90) }
@@ -524,7 +527,7 @@ function formatDirectToolResponse(name: ToolName, result: Record<string, unknown
   }
 
   if (name === 'get_transport_overview') {
-    const days = integerValue(result.days, 30, 1, 90)
+    const days = normalizeAiInteger(result.days, 30, 1, 90)
     return [
       `近 ${days} 天运输概览：`,
       '',
@@ -595,9 +598,12 @@ function formatDirectToolResponse(name: ToolName, result: Record<string, unknown
     const records = Array.isArray(result.records)
       ? (result.records as Array<Record<string, unknown>>)
       : []
-    const keyItems = records.slice(0, 8).map((item, index) =>
-      `${index + 1}. ${stringValue(item.permitNo) || '未编号'}｜${stringValue(item.operationTypeName) || '作业类型未设置'}｜${stringValue(item.workContent) || '内容未填写'}｜${formatDate(item.workStartTime)}`
-    )
+    const keyItems = records
+      .slice(0, 8)
+      .map(
+        (item, index) =>
+          `${index + 1}. ${stringValue(item.permitNo) || '未编号'}｜${stringValue(item.operationTypeName) || '作业类型未设置'}｜${stringValue(item.workContent) || '内容未填写'}｜${formatDate(item.workStartTime)}`
+      )
     return [
       `近 ${numberValue(result.days)} 天特殊作业概览：`,
       '',
@@ -629,7 +635,16 @@ function formatDirectToolResponse(name: ToolName, result: Record<string, unknown
       `- 培训时长：${numberValue(overview.trainingHours)} 小时`,
       `- 未闭环计划：${numberValue(overview.outstandingCount)} 个`,
       ...(outstanding.length
-        ? ['', '优先关注：', ...outstanding.slice(0, 6).map((item, index) => `${index + 1}. ${stringValue(item.subject) || '未命名计划'}｜截止 ${formatDate(item.plannedEndAt)}`)]
+        ? [
+            '',
+            '优先关注：',
+            ...outstanding
+              .slice(0, 6)
+              .map(
+                (item, index) =>
+                  `${index + 1}. ${stringValue(item.subject) || '未命名计划'}｜截止 ${formatDate(item.plannedEndAt)}`
+              )
+          ]
         : [])
     ].join('\n')
   }
@@ -644,10 +659,12 @@ function formatDirectToolResponse(name: ToolName, result: Record<string, unknown
     return [
       `找到 ${items.length} 条“${stringValue(result.query)}”相关安全知识：`,
       '',
-      ...items.map((item, index) => [
-        `${index + 1}. 【${stringValue(item.sourceLabel)}】${stringValue(item.title)}`,
-        `   ${stringValue(item.content).slice(0, 360)}`
-      ].join('\n')),
+      ...items.map((item, index) =>
+        [
+          `${index + 1}. 【${stringValue(item.sourceLabel)}】${stringValue(item.title)}`,
+          `   ${stringValue(item.content).slice(0, 360)}`
+        ].join('\n')
+      ),
       '',
       '内容来自当前系统台账，现场执行前仍应核对最新制度、作业票和责任人要求。'
     ].join('\n')
@@ -663,27 +680,37 @@ function formatDirectToolResponse(name: ToolName, result: Record<string, unknown
     const knowledge = Array.isArray(result.knowledge)
       ? (result.knowledge as Array<Record<string, unknown>>)
       : []
-    const hazardLines = hazards.slice(0, 5).map((item) =>
-      `- ${stringValue(item.description) || '未描述隐患'}（${stringValue(item.location) || '位置待确认'}）`
-    )
-    const permitLines = permits.slice(0, 5).map((item) =>
-      `- ${stringValue(item.operationTypeName) || '特殊作业'}：${stringValue(item.workContent) || '作业内容待确认'}，地点 ${stringValue(item.workLocation) || '待确认'}`
-    )
-    const knowledgeLines = knowledge.slice(0, 6).map((item) =>
-      `- ${stringValue(item.title)}：${stringValue(item.content).slice(0, 220)}`
-    )
+    const hazardLines = hazards
+      .slice(0, 5)
+      .map(
+        (item) =>
+          `- ${stringValue(item.description) || '未描述隐患'}（${stringValue(item.location) || '位置待确认'}）`
+      )
+    const permitLines = permits
+      .slice(0, 5)
+      .map(
+        (item) =>
+          `- ${stringValue(item.operationTypeName) || '特殊作业'}：${stringValue(item.workContent) || '作业内容待确认'}，地点 ${stringValue(item.workLocation) || '待确认'}`
+      )
+    const knowledgeLines = knowledge
+      .slice(0, 6)
+      .map((item) => `- ${stringValue(item.title)}：${stringValue(item.content).slice(0, 220)}`)
     return [
       `安全交底提纲｜${stringValue(result.topic) || '当前安全作业'}`,
       `数据范围：截至 ${formatDate(result.asOf)}，回看近 ${numberValue(result.days)} 天。`,
       '',
       '一、今日作业与环境确认',
-      ...(permitLines.length ? permitLines : ['- 当前权限范围未查到近期特殊作业票；现场仍需逐项确认当日作业。']),
+      ...(permitLines.length
+        ? permitLines
+        : ['- 当前权限范围未查到近期特殊作业票；现场仍需逐项确认当日作业。']),
       '',
       '二、近期隐患提醒',
       ...(hazardLines.length ? hazardLines : ['- 当前权限范围未查到近期未闭环隐患。']),
       '',
       '三、关键控制要求',
-      ...(knowledgeLines.length ? knowledgeLines : ['- 未召回匹配知识，请按岗位规程、作业票和现场风险辨识结果交底。']),
+      ...(knowledgeLines.length
+        ? knowledgeLines
+        : ['- 未召回匹配知识，请按岗位规程、作业票和现场风险辨识结果交底。']),
       '',
       '四、交底闭环',
       '- 明确负责人、监护人、作业人员与应急联络方式。',
@@ -736,7 +763,12 @@ function formatDirectToolResponse(name: ToolName, result: Record<string, unknown
 }
 
 function getProviderTimeoutMs(): number {
-  return integerValue(Deno.env.get('AI_ASSISTANT_TIMEOUT_MS'), DEFAULT_TIMEOUT_MS, 10_000, 120_000)
+  return normalizeAiInteger(
+    Deno.env.get('AI_ASSISTANT_TIMEOUT_MS'),
+    DEFAULT_TIMEOUT_MS,
+    10_000,
+    120_000
+  )
 }
 
 async function fetchWithTimeout(
@@ -829,7 +861,6 @@ async function requestProvider(
   throw lastError
 }
 
-
 async function executeTool(
   name: ToolName,
   args: Record<string, unknown>,
@@ -848,7 +879,7 @@ async function executeTool(
   }
 
   if (name === 'get_recent_orders') {
-    const limit = integerValue(args.limit, 8, 1, 20)
+    const limit = normalizeAiInteger(args.limit, 8, 1, 20)
     const { data, error } = await userClient.rpc('tms_list_orders_secure', {
       p_scope: 'dashboard',
       p_from: 0,
@@ -863,7 +894,7 @@ async function executeTool(
   }
 
   if (name === 'get_transport_overview') {
-    const days = integerValue(args.days, 30, 1, 90)
+    const days = normalizeAiInteger(args.days, 30, 1, 90)
     const since = addDays(new Date(), -days).toISOString()
     const { data, error } = await userClient.rpc('tms_list_orders_secure', {
       p_scope: 'dashboard',
@@ -898,8 +929,8 @@ async function executeTool(
   }
 
   if (name === 'get_transport_anomalies') {
-    const staleHours = integerValue(args.stale_hours, 24, 1, 168)
-    const limit = integerValue(args.limit, 20, 1, 50)
+    const staleHours = normalizeAiInteger(args.stale_hours, 24, 1, 168)
+    const limit = normalizeAiInteger(args.limit, 20, 1, 50)
     const { data, error } = await userClient
       .from('tms_order')
       .select(
@@ -924,8 +955,8 @@ async function executeTool(
   }
 
   if (name === 'get_smis_hazard_overview') {
-    const days = integerValue(args.days, 30, 1, 180)
-    const limit = integerValue(args.limit, 10, 1, 20)
+    const days = normalizeAiInteger(args.days, 30, 1, 180)
+    const limit = normalizeAiInteger(args.limit, 10, 1, 20)
     const { data, error } = await userClient.rpc('smis_list_hidden_hazard_governance_secure', {
       p_from: 0,
       p_to: limit - 1,
@@ -943,8 +974,8 @@ async function executeTool(
   }
 
   if (name === 'get_smis_special_operation_overview') {
-    const days = integerValue(args.days, 30, 1, 180)
-    const limit = integerValue(args.limit, 10, 1, 20)
+    const days = normalizeAiInteger(args.days, 30, 1, 180)
+    const limit = normalizeAiInteger(args.limit, 10, 1, 20)
     const { data, error } = await userClient.rpc('smis_list_special_operation_permits_secure', {
       p_from: 0,
       p_to: limit - 1,
@@ -963,7 +994,7 @@ async function executeTool(
   }
 
   if (name === 'get_smis_training_overview') {
-    const days = integerValue(args.days, 90, 1, 365)
+    const days = normalizeAiInteger(args.days, 90, 1, 365)
     const { data, error } = await userClient.rpc('smis_safety_training_report_secure', {
       p_start_date: toIsoDate(addDays(new Date(), -days)),
       p_end_date: toIsoDate(new Date()),
@@ -976,8 +1007,9 @@ async function executeTool(
 
   if (name === 'search_smis_safety_knowledge') {
     const query = stringValue(args.query).slice(0, 120)
-    const limit = integerValue(args.limit, 10, 1, 20)
-    if (!query) return { query: '', total: 0, items: [], retrievalMode: 'permission_scoped_lexical_v1' }
+    const limit = normalizeAiInteger(args.limit, 10, 1, 20)
+    if (!query)
+      return { query: '', total: 0, items: [], retrievalMode: 'permission_scoped_lexical_v1' }
     const { data, error } = await userClient.rpc('smis_search_ai_knowledge_secure', {
       p_query: query,
       p_limit: limit
@@ -989,13 +1021,15 @@ async function executeTool(
   }
 
   if (name === 'generate_smis_safety_briefing') {
-    const days = integerValue(args.days, 30, 1, 90)
+    const days = normalizeAiInteger(args.days, 30, 1, 90)
     const topic = stringValue(args.topic).slice(0, 120) || '当前安全作业'
     const knowledgeQuery =
       topic
         .replace(/(生成|帮我|当前|页面|相关|安全交底|班前交底|作业前交底|交底|提纲|的)/g, '')
         .trim() ||
-      stringValue(context.pageTitle).replace(/(管理|台账|列表|申请)/g, '').trim() ||
+      stringValue(context.pageTitle)
+        .replace(/(管理|台账|列表|申请)/g, '')
+        .trim() ||
       '安全'
     const [hazardResult, permitResult, knowledgeResult] = await Promise.allSettled([
       executeTool('get_smis_hazard_overview', { days, limit: 10 }, userClient, context),
@@ -1034,8 +1068,8 @@ async function executeTool(
     }
   }
 
-  const withinDays = integerValue(args.within_days, 30, 1, 180)
-  const limit = integerValue(args.limit, 10, 1, 30)
+  const withinDays = normalizeAiInteger(args.within_days, 30, 1, 180)
+  const limit = normalizeAiInteger(args.limit, 10, 1, 30)
   const today = new Date()
   const until = toIsoDate(addDays(today, withinDays))
 
@@ -1201,11 +1235,11 @@ Deno.serve(async (req) => {
         visionModel: null,
         fallbackModel: Deno.env.get('AI_ASSISTANT_FALLBACK_MODEL') || null,
         timeoutMs: getProviderTimeoutMs(),
-        maxRetries: integerValue(Deno.env.get('AI_ASSISTANT_MAX_RETRIES'), 0, 0, 2),
+        maxRetries: normalizeAiInteger(Deno.env.get('AI_ASSISTANT_MAX_RETRIES'), 0, 0, 2),
         temperature: 0.2,
-        maxTokens: integerValue(Deno.env.get('AI_ASSISTANT_MAX_TOKENS'), 800, 200, 2000),
-        rateLimitPerMinute: integerValue(Deno.env.get('AI_ASSISTANT_PER_MINUTE'), 8, 1, 60),
-        rateLimitPerDay: integerValue(Deno.env.get('AI_ASSISTANT_PER_DAY'), 100, 1, 5000),
+        maxTokens: normalizeAiInteger(Deno.env.get('AI_ASSISTANT_MAX_TOKENS'), 800, 200, 2000),
+        rateLimitPerMinute: normalizeAiInteger(Deno.env.get('AI_ASSISTANT_PER_MINUTE'), 8, 1, 60),
+        rateLimitPerDay: normalizeAiInteger(Deno.env.get('AI_ASSISTANT_PER_DAY'), 100, 1, 5000),
         promptVersion: 'v1'
       }
     )
@@ -1229,13 +1263,15 @@ Deno.serve(async (req) => {
     delete requestedContext.assistantScope
     const context = driverWorkflow ? DRIVER_WORKFLOW_CONTEXT : requestedContext
     const publishedPrompt = driverWorkflow
-      ? { content: DRIVER_WORKFLOW_PROMPT, version: 'driver-workflow-v1', source: 'driver_workflow_help' }
-      : await loadPublishedAiPrompt(
-          admin,
-          appUser.tenant_id,
-          'business_assistant',
-          { content: BUSINESS_ASSISTANT_DEFAULT_PROMPT, version: runtimeConfig.promptVersion }
-        )
+      ? {
+          content: DRIVER_WORKFLOW_PROMPT,
+          version: 'driver-workflow-v1',
+          source: 'driver_workflow_help'
+        }
+      : await loadPublishedAiPrompt(admin, appUser.tenant_id, 'business_assistant', {
+          content: BUSINESS_ASSISTANT_DEFAULT_PROMPT,
+          version: runtimeConfig.promptVersion
+        })
 
     const perMinute = runtimeConfig.rateLimitPerMinute
     const perDay = runtimeConfig.rateLimitPerDay
@@ -1304,11 +1340,13 @@ Deno.serve(async (req) => {
           .order('id', { ascending: false })
           .limit(MAX_HISTORY_MESSAGES - 1)
         if (historyError) throw historyError
-        providerHistory = (previous ?? []).reverse().flatMap(({ role, content }) =>
-          role === 'user' || role === 'assistant'
-            ? [{ role, content: stringValue(content).slice(0, MAX_MESSAGE_LENGTH) }]
-            : []
-        )
+        providerHistory = (previous ?? [])
+          .reverse()
+          .flatMap(({ role, content }) =>
+            role === 'user' || role === 'assistant'
+              ? [{ role, content: stringValue(content).slice(0, MAX_MESSAGE_LENGTH) }]
+              : []
+          )
         providerHistory.push(latestUserMessage)
       }
       await admin
@@ -1470,8 +1508,10 @@ Deno.serve(async (req) => {
 
     let totalInputTokens = 0
     let totalOutputTokens = 0
-    const initialProviderResponse = await requestAiProviderWithFallback(providerEndpoints, (endpoint) =>
-      requestProvider(endpoint, providerMessages, !driverWorkflow, runtimeConfig, driverWorkflow)
+    const initialProviderResponse = await requestAiProviderWithFallback(
+      providerEndpoints,
+      (endpoint) =>
+        requestProvider(endpoint, providerMessages, !driverWorkflow, runtimeConfig, driverWorkflow)
     )
     const activeProvider = initialProviderResponse.endpoint
     const firstResponse = initialProviderResponse.result
@@ -1566,7 +1606,7 @@ Deno.serve(async (req) => {
           error_code:
             error instanceof DOMException && error.name === 'AbortError'
               ? 'provider_timeout'
-              : providerFailure?.code ?? 'server_error',
+              : (providerFailure?.code ?? 'server_error'),
           error_message: message.slice(0, 2000),
           finished_at: new Date().toISOString(),
           update_by: appUser.user_email
@@ -1578,11 +1618,11 @@ Deno.serve(async (req) => {
         code:
           error instanceof DOMException && error.name === 'AbortError'
             ? 'provider_timeout'
-            : providerFailure?.code ?? 'server_error',
+            : (providerFailure?.code ?? 'server_error'),
         message:
           error instanceof DOMException && error.name === 'AbortError'
             ? 'AI 服务响应超时，请稍后重试'
-            : providerFailure?.message ?? '助手服务暂时不可用，请稍后重试'
+            : (providerFailure?.message ?? '助手服务暂时不可用，请稍后重试')
       },
       error instanceof DOMException && error.name === 'AbortError' ? 504 : 500
     )

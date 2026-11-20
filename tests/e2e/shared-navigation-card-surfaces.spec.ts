@@ -1,5 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prepareIsolatedSession } from './support/isolated-session'
+import { expectFormCardShadow } from './support/form-card-shadow'
+import { installDictionaryOptions } from './support/dictionary-options'
 
 test.use({ storageState: { cookies: [], origins: [] }, actionTimeout: 15_000 })
 
@@ -264,5 +266,169 @@ test('网站配置导航保留只读长页定位、桌面sticky、900网格与39
     contentType: 'application/json'
   })
   expect(writes).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('网站配置非页签卡片保留完整阴影、边框与未发布草稿', async ({ page }, info) => {
+  test.setTimeout(240_000)
+  const narrow = info.project.name === 'mobile-390'
+  await page.setViewportSize({ width: narrow ? 390 : 1440, height: narrow ? 844 : 900 })
+  await prepareIsolatedSession(page, { platformSuper: true })
+  await installDictionaryOptions(page, {
+    sysWebsiteLanguage: [
+      { value: 'zh', label: '中文' },
+      { value: 'en', label: 'English' }
+    ],
+    sysWatermarkContentType: [
+      { value: 'username', label: '用户名' },
+      { value: 'username_time', label: '用户名与时间' },
+      { value: 'site_name', label: '系统名称' },
+      { value: 'custom', label: '自定义内容' }
+    ],
+    sysCaptchaProvider: [{ value: 'turnstile', label: 'Turnstile' }],
+    sysTurnstileSize: [
+      { value: 'normal', label: '标准' },
+      { value: 'compact', label: '紧凑' },
+      { value: 'hidden', label: '隐藏' }
+    ],
+    sysTurnstileTheme: [
+      { value: 'auto', label: '自动' },
+      { value: 'light', label: '浅色' },
+      { value: 'dark', label: '深色' }
+    ]
+  })
+  const writes: string[] = []
+  const unexpectedReads: string[] = []
+  const errors: string[] = []
+  let configReads = 0
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/rest/v1/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const name = url.pathname.split('/').at(-1) ?? ''
+    if (request.method() === 'POST' && name === 'current_is_super')
+      return route.fulfill({ json: true })
+    if (request.method() === 'POST' && name === 'get_organization_list_secure')
+      return route.fulfill({ json: [] })
+    if (request.method() === 'POST' && name === 'get_table_column_runtime')
+      return route.fulfill({ json: { enabled: false, profiles: [] } })
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+      writes.push(`${request.method()} ${url.pathname}`)
+      return route.fulfill({
+        status: 403,
+        json: { code: '42501', message: '隔离测试阻止未预期写请求' }
+      })
+    }
+    if (name === 'sys_dictionary') return route.fallback()
+    if (name === 'sys_param') {
+      if (url.searchParams.get('param_key') !== 'eq.website.config')
+        return route.fulfill({ json: [] })
+      configReads++
+      return route.fulfill({
+        json: {
+          id: 'synthetic-website-paint-config',
+          param_key: 'website.config',
+          enabled: true,
+          param_value: JSON.stringify({
+            siteName: '卡片绘制验收站点',
+            siteShortName: '绘制验收',
+            siteDescription: '用于检查网站配置卡片边界的合成资料。',
+            captchaEnabled: false,
+            wordmarkImageEnabled: false,
+            logoUrl: '',
+            faviconUrl: '',
+            authChannels: []
+          })
+        }
+      })
+    }
+    if (['sys_user', 'sys_tenant'].includes(name)) return route.fallback()
+    unexpectedReads.push(url.pathname)
+    return route.fulfill({
+      status: 403,
+      json: { code: '42501', message: '隔离测试阻止未预期读取' }
+    })
+  })
+  await page.route('**/functions/v1/**', (route) => {
+    writes.push(`${route.request().method()} ${new URL(route.request().url()).pathname}`)
+    return route.fulfill({
+      status: 403,
+      json: { message: '隔离测试禁止执行远端函数' }
+    })
+  })
+  await page.goto(
+    '/tests/e2e/fixtures/shared-navigation-card-surfaces.html?page=website&super=true&theme=light&box=shadow-mode',
+    { waitUntil: 'domcontentloaded', timeout: 60_000 }
+  )
+  const nav = page.getByRole('navigation', { name: '网站配置分组', exact: true })
+  const brand = page.locator('#overview .website-config-page__summary-card').filter({
+    hasText: '品牌名称'
+  })
+  const identity = page.locator('#identity.art-section-card')
+  const siteName = page.getByRole('textbox', { name: /^\*?\s*系统名称$/ })
+  const mainScroll = page.locator('#app-main > .app-main__scrollbar > .app-main__scroll-wrap')
+  await expect(nav).toBeVisible({ timeout: 60_000 })
+  await expect(page.locator('.website-config-page > .art-async-state')).toHaveAttribute(
+    'aria-busy',
+    'false'
+  )
+  await expect(siteName).toBeEditable()
+  await expect(siteName).toHaveValue('卡片绘制验收站点')
+  expect(configReads).toBeGreaterThan(0)
+  const initialReads = configReads
+  const cards = [
+    { card: nav, label: 'website-navigation' },
+    { card: brand, label: 'website-brand-summary' },
+    { card: identity, label: 'website-identity-section' }
+  ]
+  for (const theme of ['light', 'dark']) {
+    await appearance(page, theme, 'shadow-mode')
+    const draft = `未发布品牌草稿 · ${theme === 'light' ? '浅色' : '深色'}绘制验收`
+    await siteName.fill(draft)
+    await expect(page.getByText('存在待发布变更', { exact: true })).toBeVisible()
+    for (const { card, label } of cards) {
+      await mainScroll.evaluate((element) => {
+        element.scrollTop = 0
+        element.scrollLeft = 0
+      })
+      await expectFormCardShadow(page, card, info, `${label}-${theme}-${narrow ? 390 : 1440}`)
+      await expect(siteName).toHaveValue(draft)
+    }
+    await appearance(page, theme, 'border-mode')
+    for (const { card } of cards) {
+      await expect(card).toHaveCSS('box-shadow', 'none')
+      await expect(card).toHaveCSS('border-left-width', '1px')
+      await expect(card).toHaveCSS('border-left-style', 'solid')
+    }
+    await mainScroll.evaluate((element) => {
+      element.scrollTop = 0
+    })
+    await nav.getByRole('button', { name: '联系合规', exact: true }).click()
+    await expect(page.locator('#contact')).toBeInViewport()
+    await expect(nav.getByRole('button', { name: '联系合规', exact: true })).toHaveClass(
+      /is-active/
+    )
+    if (!narrow) {
+      await expect(nav).toHaveCSS('position', 'sticky')
+      await expect
+        .poll(() => nav.evaluate((element) => Math.round(element.getBoundingClientRect().top)))
+        .toBe(120)
+    }
+    await nav.getByRole('button', { name: '系统标识', exact: true }).click()
+    await expect(page.locator('#identity')).toBeInViewport()
+    await expect(siteName).toHaveValue(draft)
+    await expect(siteName).toBeEditable()
+    await expect(page.getByText('存在待发布变更', { exact: true })).toBeVisible()
+    await page.screenshot({
+      path: info.outputPath(`website-form-cards-${theme}-${narrow ? 390 : 1440}-border.png`),
+      animations: 'disabled'
+    })
+  }
+  expect(configReads).toBe(initialReads)
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+  ).toBeLessThanOrEqual(1)
+  expect(writes).toEqual([])
+  expect(unexpectedReads).toEqual([])
   expect(errors).toEqual([])
 })

@@ -103,10 +103,19 @@ export interface ArtOverlayExpose<TData, TOptions> {
   getData: () => TData
 }
 
+/** Binds callback commands to the overlay session that supplied their API. */
+export interface ArtOverlayApiBinder {
+  <TArgs extends unknown[]>(command: (...args: TArgs) => void): (...args: TArgs) => void
+  <TArgs extends unknown[], TResult>(
+    command: (...args: TArgs) => TResult,
+    stale: () => TResult
+  ): (...args: TArgs) => TResult
+}
+
 interface UseArtOverlayConfig<TData, TOptions, TApi> {
   getDefaultOptions: () => TOptions
   mergeOptions: (base: TOptions, override?: Partial<TOptions>) => TOptions
-  getApi: () => TApi
+  getApi: (bind: ArtOverlayApiBinder) => TApi
   emitConfirm: (data: TData) => void
   emitReset: () => void
   emitError: (error: unknown) => void
@@ -165,6 +174,24 @@ export const useArtOverlay = <TData, TApi, TOptions extends ArtOverlayOptions<TD
   const closePending = ref(false)
   const openSequence = ref(0)
 
+  const getScopedApi = (sequence: number): TApi => {
+    function bind<TArgs extends unknown[]>(
+      command: (...args: TArgs) => void
+    ): (...args: TArgs) => void
+    function bind<TArgs extends unknown[], TResult>(
+      command: (...args: TArgs) => TResult,
+      stale: () => TResult
+    ): (...args: TArgs) => TResult
+    function bind<TArgs extends unknown[], TResult>(
+      command: (...args: TArgs) => TResult,
+      stale?: () => TResult
+    ) {
+      return (...args: TArgs) =>
+        sequence === openSequence.value && (!scope || scope.active) ? command(...args) : stale?.()
+    }
+    return config.getApi(bind)
+  }
+
   if (scope) {
     onScopeDispose(() => {
       // Invalidate UI continuations without invoking business close/reset callbacks.
@@ -208,7 +235,7 @@ export const useArtOverlay = <TData, TApi, TOptions extends ArtOverlayOptions<TD
     loading.value = false
     confirmLoading.value = false
     closePending.value = false
-    options.value.onReset?.(config.getApi())
+    options.value.onReset?.(getScopedApi(openSequence.value))
     config.emitReset()
   }
 
@@ -228,7 +255,7 @@ export const useArtOverlay = <TData, TApi, TOptions extends ArtOverlayOptions<TD
     if (sequence !== openSequence.value || !visible.value) return
 
     try {
-      await activeOptions.onOpen?.(openData.value, config.getApi())
+      await activeOptions.onOpen?.(openData.value, getScopedApi(sequence))
     } catch (error) {
       if (sequence === openSequence.value && visible.value) config.emitError(error)
     }
@@ -241,7 +268,7 @@ export const useArtOverlay = <TData, TApi, TOptions extends ArtOverlayOptions<TD
 
     try {
       if (!force && options.value.onClose) {
-        const canClose = await options.value.onClose(openData.value, config.getApi())
+        const canClose = await options.value.onClose(openData.value, getScopedApi(sequence))
         if (canClose === false) return false
       }
 
@@ -280,7 +307,7 @@ export const useArtOverlay = <TData, TApi, TOptions extends ArtOverlayOptions<TD
     const keyboardTrigger = getFocusedKeyboardButton(event)
     confirmLoading.value = true
     try {
-      const result = await activeOptions.onConfirm?.(openData.value, config.getApi())
+      const result = await activeOptions.onConfirm?.(openData.value, getScopedApi(sequence))
       if (sequence !== openSequence.value || !visible.value) return false
       if (result === false) {
         await nextTick()

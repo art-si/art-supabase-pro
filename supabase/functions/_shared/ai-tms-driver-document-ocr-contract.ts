@@ -8,29 +8,54 @@ import {
 } from './ai-ocr-values.ts'
 
 export const DRIVER_OCR_FIELDS = [
-  'driverName', 'idCardNo', 'gender', 'birthDate', 'ethnicity', 'homeAddress',
-  'homeAddressDetail', 'idCardIssuer', 'idCardValidFrom', 'idCardValidTo',
-  'licenseArchiveNo', 'licenseClasses', 'licenseIssuer', 'licenseValidFrom',
-  'licenseExpireDate', 'qualificationType', 'qualificationNo', 'qualificationValidTo'
+  'driverName',
+  'idCardNo',
+  'gender',
+  'birthDate',
+  'ethnicity',
+  'homeAddress',
+  'homeAddressDetail',
+  'idCardIssuer',
+  'idCardValidFrom',
+  'idCardValidTo',
+  'licenseArchiveNo',
+  'licenseClasses',
+  'licenseIssuer',
+  'licenseValidFrom',
+  'licenseExpireDate',
+  'qualificationType',
+  'qualificationNo',
+  'qualificationValidTo'
 ] as const
 
 export type DriverOcrField = (typeof DRIVER_OCR_FIELDS)[number]
 export type DriverOcrDocumentType = 'identity' | 'license' | 'qualification'
 export type DriverOcrImageSide =
-  | 'idCardFrontUrl' | 'idCardBackUrl' | 'driverLicenseFrontUrl'
-  | 'driverLicenseBackUrl' | 'licenseBackExtraUrl' | 'qualificationFrontUrl'
+  | 'idCardFrontUrl'
+  | 'idCardBackUrl'
+  | 'driverLicenseFrontUrl'
+  | 'driverLicenseBackUrl'
+  | 'licenseBackExtraUrl'
+  | 'qualificationFrontUrl'
   | 'qualificationAssessmentUrl'
 
 export const DRIVER_OCR_IMAGE_TYPES: Record<DriverOcrImageSide, DriverOcrDocumentType> = {
-  idCardFrontUrl: 'identity', idCardBackUrl: 'identity',
-  driverLicenseFrontUrl: 'license', driverLicenseBackUrl: 'license',
-  licenseBackExtraUrl: 'license', qualificationFrontUrl: 'qualification',
+  idCardFrontUrl: 'identity',
+  idCardBackUrl: 'identity',
+  driverLicenseFrontUrl: 'license',
+  driverLicenseBackUrl: 'license',
+  licenseBackExtraUrl: 'license',
+  qualificationFrontUrl: 'qualification',
   qualificationAssessmentUrl: 'qualification'
 }
 
 const DATE_FIELDS: readonly DriverOcrField[] = [
-  'birthDate', 'idCardValidFrom', 'idCardValidTo',
-  'licenseValidFrom', 'licenseExpireDate', 'qualificationValidTo'
+  'birthDate',
+  'idCardValidFrom',
+  'idCardValidTo',
+  'licenseValidFrom',
+  'licenseExpireDate',
+  'qualificationValidTo'
 ]
 
 export type DriverOcrDocument = Record<DriverOcrField, string | string[] | null>
@@ -48,11 +73,17 @@ export interface DriverOcrResponse {
 export function validateDriverOcrPayload(payload: unknown) {
   const errors: string[] = []
   if (!isOcrRecord(payload)) return { valid: false, errors: ['payload must be an object'] }
-  if (!isOcrRecord(payload.document)) errors.push('document must be an object')
-  else if (!DRIVER_OCR_FIELDS.some((key) => {
-    const value = payload.document[key]
-    return typeof value === 'string' ? Boolean(value.trim()) : Array.isArray(value) && value.length > 0
-  })) errors.push('document_fields_missing')
+  const document = payload.document
+  if (!isOcrRecord(document)) errors.push('document must be an object')
+  else if (
+    !DRIVER_OCR_FIELDS.some((key) => {
+      const value = document[key]
+      return typeof value === 'string'
+        ? Boolean(value.trim())
+        : Array.isArray(value) && value.length > 0
+    })
+  )
+    errors.push('document_fields_missing')
   if (!normalizeOcrRawText(payload.rawText)) errors.push('image_text_missing')
   if (typeof payload.confidence !== 'number' || payload.confidence < 0 || payload.confidence > 1) {
     errors.push('confidence must be between 0 and 1')
@@ -66,11 +97,12 @@ export function normalizeDriverOcrResponse(payload: Record<string, unknown>): Dr
   const document = {} as DriverOcrDocument
   for (const field of DRIVER_OCR_FIELDS) {
     const value = source[field]
-    document[field] = field === 'licenseClasses'
-      ? normalizeOcrStringArray(value).slice(0, 8)
-      : DATE_FIELDS.includes(field)
-        ? normalizeOcrDate(value)
-        : normalizeOcrTextValue(value, field === 'homeAddressDetail' ? 200 : 100)
+    document[field] =
+      field === 'licenseClasses'
+        ? normalizeOcrStringArray(value).slice(0, 8)
+        : DATE_FIELDS.includes(field)
+          ? normalizeOcrDate(value)
+          : normalizeOcrTextValue(value, field === 'homeAddressDetail' ? 200 : 100)
   }
   const fieldConfidence: Partial<Record<DriverOcrField, number>> = {}
   if (isOcrRecord(payload.fieldConfidence)) {
@@ -92,7 +124,8 @@ export function normalizeDriverOcrResponse(payload: Record<string, unknown>): Dr
 }
 
 export function compareDriverOcrPayloads(
-  proposed: Record<string, unknown>, finalPayload: Record<string, unknown>
+  proposed: Record<string, unknown>,
+  finalPayload: Record<string, unknown>
 ) {
   const acceptedFields: string[] = []
   const correctedFields: string[] = []

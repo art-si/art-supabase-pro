@@ -13,6 +13,7 @@ import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import tailwindcss from '@tailwindcss/vite'
 import { createBuildLogPolicy } from './scripts/build-log-policy.mjs'
 import { createViteWatchPolicy } from './scripts/vite-watch-policy.mjs'
+import { createSourceTransformPattern } from './scripts/module-vite-config.mjs'
 import { createSqlGatewayPlugin } from './scripts/sql-gateway-vite-plugin.ts'
 import { withSharedScssGlobals } from './scripts/scss-globals.mjs'
 import {
@@ -39,6 +40,7 @@ import {
 import { createNoJekyllPlugin } from './src/plugins/nojekyll.ts'
 
 const configDirectory = path.dirname(fileURLToPath(import.meta.url))
+const sourceTransformPattern = createSourceTransformPattern(configDirectory)
 const packageRequire = createRequire(path.join(configDirectory, 'package.json'))
 const excelRequire = createRequire(packageRequire.resolve('exceljs/package.json'))
 
@@ -394,6 +396,7 @@ export default async ({ mode }: { mode: string }) => {
       // 自动按需导入 API
       AutoImport({
         imports: ['vue', 'vue-router', 'pinia', '@vueuse/core'],
+        include: [sourceTransformPattern],
         dts: enableGeneratedDeclarations ? 'src/types/import/auto-imports.d.ts' : false,
         resolvers: [ElementPlusResolver({ importStyle: 'sass' })],
         eslintrc: {
@@ -404,13 +407,15 @@ export default async ({ mode }: { mode: string }) => {
       }),
       // 自动按需导入组件
       Components({
+        include: [sourceTransformPattern],
         dirs: [resolvePath('src/components')],
         dts: enableGeneratedDeclarations ? 'src/types/import/components.d.ts' : false,
         resolvers: [ElementPlusResolver({ importStyle: 'sass' })]
       }),
       // 按需定制主题配置
       ElementPlus({
-        useSource: true
+        useSource: true,
+        include: [sourceTransformPattern]
       }),
       // 压缩
       ...(compressionModule

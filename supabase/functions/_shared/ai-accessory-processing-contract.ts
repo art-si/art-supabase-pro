@@ -1,3 +1,5 @@
+import { isOcrRecord } from './ai-ocr-values.ts'
+
 export interface AccessorySketchBounds {
   page: number
   x: number
@@ -29,9 +31,6 @@ export interface AccessoryOcrResult {
 
 type RecordValue = Record<string, unknown>
 
-const isRecord = (value: unknown): value is RecordValue =>
-  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 
 const number = (value: unknown): number | null => {
@@ -41,7 +40,7 @@ const number = (value: unknown): number | null => {
 }
 
 function parseSketch(value: unknown): AccessorySketchBounds | null {
-  if (!isRecord(value)) return null
+  if (!isOcrRecord(value)) return null
   const page = number(value.page)
   const x = number(value.x)
   const y = number(value.y)
@@ -62,7 +61,8 @@ function parseSketch(value: unknown): AccessorySketchBounds | null {
     height <= 0 ||
     x + width > 1000 ||
     y + height > 1000
-  ) return null
+  )
+    return null
   return { page, x, y, width, height }
 }
 
@@ -71,19 +71,23 @@ export function normalizeAccessoryOcr(value: RecordValue): AccessoryOcrResult {
   const rows = Array.isArray(value.rows) ? value.rows : []
   const items: AccessoryRecognizedItem[] = []
   for (const rowValue of rows) {
-    if (!isRecord(rowValue)) continue
+    if (!isOcrRecord(rowValue)) continue
     const rowNo = number(rowValue.rowNo)
     const name = text(rowValue.name)
     const variants = Array.isArray(rowValue.variants) ? rowValue.variants : []
     if (!name || rowNo === null || !Number.isInteger(rowNo) || rowNo <= 0) continue
     for (const variant of variants) {
-      if (!isRecord(variant)) continue
+      if (!isOcrRecord(variant)) continue
       const lengthM = number(variant.lengthM)
       const quantity = number(variant.quantity)
       if (
-        lengthM === null || lengthM <= 0 ||
-        quantity === null || !Number.isInteger(quantity) || quantity <= 0
-      ) continue
+        lengthM === null ||
+        lengthM <= 0 ||
+        quantity === null ||
+        !Number.isInteger(quantity) ||
+        quantity <= 0
+      )
+        continue
       items.push({
         rowNo,
         name,
@@ -101,11 +105,13 @@ export function normalizeAccessoryOcr(value: RecordValue): AccessoryOcrResult {
   return {
     rawText: text(value.rawText),
     confidence: Math.min(1, Math.max(0, number(value.confidence) ?? 0)),
-    fieldConfidence: isRecord(value.fieldConfidence)
-      ? Object.fromEntries(Object.entries(value.fieldConfidence).flatMap(([key, item]) => {
-          const confidence = number(item)
-          return confidence === null ? [] : [[key, Math.min(1, Math.max(0, confidence))]]
-        }))
+    fieldConfidence: isOcrRecord(value.fieldConfidence)
+      ? Object.fromEntries(
+          Object.entries(value.fieldConfidence).flatMap(([key, item]) => {
+            const confidence = number(item)
+            return confidence === null ? [] : [[key, Math.min(1, Math.max(0, confidence))]]
+          })
+        )
       : {},
     warnings,
     projectName: text(value.projectName),
@@ -115,7 +121,7 @@ export function normalizeAccessoryOcr(value: RecordValue): AccessoryOcrResult {
 }
 
 export function validateAccessoryOcr(value: unknown): { valid: boolean; errors: string[] } {
-  if (!isRecord(value)) return { valid: false, errors: ['响应不是对象'] }
+  if (!isOcrRecord(value)) return { valid: false, errors: ['响应不是对象'] }
   const result = normalizeAccessoryOcr(value)
   const errors: string[] = []
   if (!Array.isArray(value.rows)) errors.push('缺少 rows 数组')
